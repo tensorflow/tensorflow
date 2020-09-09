@@ -72,7 +72,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices([0.0, 1.0, 2.0])
         .map(lambda x: x + var))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"`Dataset.make_one_shot_iterator\(\)` does not support "
         "datasets that capture stateful objects.+myvar"):
       dataset_ops.make_one_shot_iterator(dataset)
@@ -213,17 +213,17 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, ""):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, ""):
         sess.run(next_element)
 
       # Test that subsequent attempts to use the iterator also fail.
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, ""):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, ""):
         sess.run(next_element)
 
     with self.cached_session() as sess:
 
       def consumer_thread():
-        with self.assertRaisesRegexp(errors.InvalidArgumentError, ""):
+        with self.assertRaisesRegex(errors.InvalidArgumentError, ""):
           sess.run(next_element)
 
       num_threads = 8
@@ -293,8 +293,8 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                   "iterator has not been initialized"):
+      with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                  "iterator has not been initialized"):
         sess.run(get_next)
 
   @combinations.generate(test_base.graph_only_combinations())
@@ -946,7 +946,9 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     @def_function.function
     def fn():
-      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn)
+      output_signature = tensor_spec.TensorSpec((), dtypes.int64)
+      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn,
+                                              output_signature)
       iterator = iter(dataset)
       next(iterator)
 

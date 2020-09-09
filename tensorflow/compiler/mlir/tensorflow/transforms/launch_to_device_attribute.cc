@@ -57,7 +57,7 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
-    : public FunctionPass<LaunchToDeviceAttributePass> {
+    : public PassWrapper<LaunchToDeviceAttributePass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -104,10 +104,10 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
 }
 
 void LaunchToDeviceAttributePass::runOnFunction() {
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
-    signalPassFailure();
     getFunction().emitError() << "'tf' dialect is not registered";
+    return signalPassFailure();
   }
 
   auto result = getFunction().walk([&](tf_device::LaunchOp launch) {
@@ -122,7 +122,7 @@ void LaunchToDeviceAttributePass::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateLaunchToDeviceAttributePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
 

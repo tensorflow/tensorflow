@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/any.h"
@@ -97,6 +98,25 @@ TransformResult FuseAutoInput::ApplyToNode(Node* node, GraphFloat32* graph) {
   }
   if (nodes_to_fuse.empty()) {
     return {TransformStatus::SKIPPED, ""};
+  }
+
+  // Skip fusions which will result in duplicate inputs, e.g. diamond shapes.
+  {
+    absl::flat_hash_set<ValueId> all_inputs;
+    for (const auto& node_to_fuse : nodes_to_fuse) {
+      for (const auto& input : graph->FindInputs(node_to_fuse.first->id)) {
+        if (all_inputs.find(input->id) != all_inputs.end()) {
+          return {TransformStatus::SKIPPED, ""};
+        }
+        all_inputs.insert(input->id);
+      }
+    }
+    for (const auto& input : graph->FindInputs(node->id)) {
+      if (all_inputs.find(input->id) != all_inputs.end()) {
+        return {TransformStatus::SKIPPED, ""};
+      }
+      all_inputs.insert(input->id);
+    }
   }
 
   // Break connections between current node and its inputs.

@@ -93,7 +93,7 @@ tf_py_test(
 
 tf_py_test(
     name = "cache_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["cache_dataset_serialization_test.py"],
     tags = [
         "no_oss",
@@ -154,7 +154,7 @@ tf_py_test(
 
 tf_py_test(
     name = "choose_fastest_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["choose_fastest_dataset_serialization_test.py"],
     tags = [
         "no_oss",
@@ -199,13 +199,15 @@ tf_py_test(
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 tf_py_test(
     name = "csv_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["csv_dataset_serialization_test.py"],
     tags = [
         "no_oss",
@@ -436,7 +438,7 @@ tf_py_test(
 
 tf_py_test(
     name = "optimize_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["optimize_dataset_serialization_test.py"],
     tags = [
         "no_oss",
@@ -453,7 +455,7 @@ tf_py_test(
 
 tf_py_test(
     name = "rebatch_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["rebatch_dataset_serialization_test.py"],
     tags = [
         "no_oss",
@@ -605,7 +607,7 @@ tf_py_test(
 
 tf_py_test(
     name = "scan_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["scan_dataset_serialization_test.py"],
     tags = [
         "no_oss",
@@ -624,6 +626,7 @@ tf_py_test(
     name = "sequence_dataset_serialization_test",
     size = "medium",
     srcs = ["sequence_dataset_serialization_test.py"],
+    shard_count = 5,
     tags = [
         "no_oss",
         "no_pip",
@@ -840,7 +843,7 @@ tf_py_test(
 
 tf_py_test(
     name = "zip_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["zip_dataset_serialization_test.py"],
     tags = [
         "no_oss",

@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -40,7 +42,7 @@ using ::mlir::RankedTensorType;
 using ::mlir::Type;
 using ::mlir::Value;
 
-namespace hlo = ::mlir::xla_hlo;
+namespace hlo = ::mlir::mhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
@@ -56,6 +58,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::AndOp>(loc, rets, args, attrs)};
     case HloOpcode::kCeil:
       return {func_builder.create<hlo::CeilOp>(loc, rets, args, attrs)};
+    case HloOpcode::kComplex:
+      return {func_builder.create<hlo::ComplexOp>(loc, rets, args, attrs)};
     case HloOpcode::kCopy:
       return {func_builder.create<hlo::CopyOp>(loc, rets, args, attrs)};
     case HloOpcode::kCos:
@@ -64,6 +68,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kExp:
       return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
+    case HloOpcode::kImag:
+      return {func_builder.create<hlo::ImagOp>(loc, rets, args, attrs)};
     case HloOpcode::kLog:
       return {func_builder.create<hlo::LogOp>(loc, rets, args, attrs)};
     case HloOpcode::kMaximum:
@@ -74,6 +80,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
     case HloOpcode::kNegate:
       return {func_builder.create<hlo::NegOp>(loc, rets, args, attrs)};
+    case HloOpcode::kReal:
+      return {func_builder.create<hlo::RealOp>(loc, rets, args, attrs)};
     case HloOpcode::kRemainder:
       return {func_builder.create<hlo::RemOp>(loc, rets, args, attrs)};
     case HloOpcode::kRsqrt:
@@ -112,6 +120,7 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto res_type, ConvertTensorShapeToType<RankedTensorType>(
                                          instr->shape(), builder_));
   llvm::SmallVector<Value, 4> arguments;
+  arguments.reserve(instr->operand_count());
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
@@ -131,6 +140,23 @@ Status HloDialectEmitter::HandleBroadcast(HloInstruction* instr) {
   instruction_to_values_[instr] = builder_.create<hlo::BroadcastInDimOp>(
       getLocation(instr), llvm::makeArrayRef(res_type),
       instruction_to_values_[instr->operand(0)], broadcast_dim);
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
+  int64 concatenate_dim = instr->concatenate_dimension();
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         instr->shape(), builder_));
+
+  llvm::SmallVector<Value, 4> arguments;
+  arguments.reserve(instr->operand_count());
+  for (auto operand : instr->operands()) {
+    arguments.push_back(instruction_to_values_[operand]);
+  }
+
+  instruction_to_values_[instr] = builder_.create<hlo::ConcatenateOp>(
+      getLocation(instr), llvm::makeArrayRef(res_type), arguments,
+      builder_.getI64IntegerAttr(concatenate_dim));
   return Status::OK();
 }
 
@@ -154,6 +180,28 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* instr) {
   auto const_value =
       builder_.create<hlo::ConstOp>(getLocation(instr), type, value);
   instruction_to_values_[instr] = const_value;
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleGather(HloInstruction* instr) {
+  HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
+  mlir::mhlo::GatherDimensionNumbers dimension_numbers =
+      xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
+                                        builder_);
+  mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{gather->gather_slice_sizes().begin(),
+                                  gather->gather_slice_sizes().end()},
+      builder_);
+  mlir::BoolAttr indices_are_sorted =
+      builder_.getBoolAttr(gather->indices_are_sorted());
+
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         instr->shape(), builder_));
+
+  instruction_to_values_[instr] = builder_.create<hlo::GatherOp>(
+      getLocation(instr), res_type, instruction_to_values_[instr->operand(0)],
+      instruction_to_values_[instr->operand(1)], dimension_numbers, slice_sizes,
+      indices_are_sorted);
   return Status::OK();
 }
 
@@ -186,7 +234,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* instr) {
     reduceOp.body().push_back(block);
     HloDialectEmitter emitter(emission_context_, &reduceOp.body(), arguments);
     TF_ASSIGN_OR_RETURN(auto result, emitter.EmitComputation(*computation));
-    OpBuilder body_builder(block);
+    OpBuilder body_builder = OpBuilder::atBlockEnd(block);
     body_builder.setInsertionPointToEnd(block);
     body_builder.create<hlo::ReturnOp>(getLocation(instr),
                                        ArrayRef<Value>{result});
@@ -204,6 +252,7 @@ Status HloDialectEmitter::HandleCompare(HloInstruction* instr) {
       builder_.getStringAttr(
           ComparisonDirectionToString(instr->comparison_direction())));
   llvm::SmallVector<Value, 4> arguments;
+  arguments.reserve(instr->operand_count());
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }

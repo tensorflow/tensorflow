@@ -1,0 +1,8 @@
+op {
+  name: "TensorArrayCloseV3"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}

@@ -204,7 +204,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         loss_weights=loss_weights)
 
     data = ({'a': np.arange(10), 'b': np.arange(10)}, np.arange(10, 20))
-    print(model.fit(*data, epochs=1))
+    model.fit(*data, epochs=1)
 
   # TODO(kaftan) seems to throw an error when enabled.
   @keras_parameterized.run_all_keras_modes
@@ -239,7 +239,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         'b': np.arange(10),
         'c': np.arange(10)
     }], np.arange(10, 100))
-    print(model.fit(*data_list, epochs=1))
+    model.fit(*data_list, epochs=1)
 
     data_bloated_list = ([{
         'a': np.arange(10),
@@ -250,7 +250,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         'b': np.arange(10),
         'c': np.arange(10)
     }], np.arange(10, 100))
-    print(model.fit(*data_bloated_list, epochs=1))
+    model.fit(*data_bloated_list, epochs=1)
 
     data_dict = ({
         'fc1': {
@@ -262,7 +262,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
             'c': np.arange(10)
         }
     }, np.arange(10, 100))
-    print(model.fit(*data_dict, epochs=1))
+    model.fit(*data_dict, epochs=1)
 
     data_bloated_dict = ({
         'fc1': {
@@ -276,7 +276,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
             'c': np.arange(10)
         }
     }, np.arange(10, 100))
-    print(model.fit(*data_bloated_dict, epochs=1))
+    model.fit(*data_bloated_dict, epochs=1)
 
   @keras_parameterized.run_all_keras_modes
   def test_string_input(self):

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <dlfcn.h>
 #include <jni.h>
 #include <stdio.h>
 #include <time.h>
@@ -20,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/util.h"
@@ -100,6 +102,8 @@ int getDataType(TfLiteType data_type) {
       return 4;
     case kTfLiteString:
       return 5;
+    case kTfLiteBool:
+      return 6;
     default:
       return -1;
   }
@@ -242,6 +246,15 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndex(
 }
 
 JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getExecutionPlanLength(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  tflite_api_dispatcher::Interpreter* interpreter =
+      convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return 0;
+  return static_cast<jint>(interpreter->execution_plan().size());
+}
+
+JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputCount(JNIEnv* env,
                                                                 jclass clazz,
                                                                 jlong handle) {
@@ -312,6 +325,65 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
       convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
   interpreter->SetAllowBufferHandleOutput(allow);
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
+    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle, jboolean state,
+    jint num_threads) {
+  // If not using xnnpack, simply don't apply the delegate.
+  if (!state) {
+    return;
+  }
+
+  tflite_api_dispatcher::Interpreter* interpreter =
+      convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) {
+    return;
+  }
+
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) {
+    return;
+  }
+
+  // We use dynamic loading to avoid taking a hard dependency on XNNPack.
+  // This allows clients that use trimmed builds to save on binary size.
+  auto xnnpack_options_default =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
+  auto xnnpack_create =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
+  auto xnnpack_delete =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
+
+  if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
+    TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
+    if (num_threads > 0) {
+      options.num_threads = num_threads;
+    }
+    tflite_api_dispatcher::Interpreter::TfLiteDelegatePtr delegate(
+        xnnpack_create(&options), xnnpack_delete);
+    auto delegation_status =
+        interpreter->ModifyGraphWithDelegate(std::move(delegate));
+    // kTfLiteApplicationError occurs in cases where delegation fails but
+    // the runtime is invokable (eg. another delegate has already been applied).
+    // We don't throw an Exception in that case.
+    // TODO(b/166483905): Add support for multiple delegates when model allows.
+    if (delegation_status != kTfLiteOk &&
+        delegation_status != kTfLiteApplicationError) {
+      ThrowException(env, kIllegalArgumentException,
+                     "Internal error: Failed to apply XNNPACK delegate: %s",
+                     error_reporter->CachedErrorMessage());
+    }
+  } else {
+    ThrowException(env, kIllegalArgumentException,
+                   "Failed to load XNNPACK delegate from current runtime. "
+                   "Have you added the necessary dependencies?");
+  }
 }
 
 JNIEXPORT void JNICALL
@@ -461,31 +533,37 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
 JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
-    jint input_idx, jintArray dims) {
+    jint input_idx, jintArray dims, jboolean strict) {
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return JNI_FALSE;
   tflite_api_dispatcher::Interpreter* interpreter =
       convertLongToInterpreter(env, interpreter_handle);
   if (interpreter == nullptr) return JNI_FALSE;
-  const int idx = static_cast<int>(input_idx);
-  if (idx < 0 || idx >= interpreter->inputs().size()) {
+  if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
     ThrowException(env, kIllegalArgumentException,
                    "Input error: Can not resize %d-th input for a model having "
                    "%d inputs.",
-                   idx, interpreter->inputs().size());
+                   input_idx, interpreter->inputs().size());
     return JNI_FALSE;
   }
+  const int tensor_idx = interpreter->inputs()[input_idx];
   // check whether it is resizing with the same dimensions.
-  TfLiteTensor* target = interpreter->tensor(input_idx);
+  TfLiteTensor* target = interpreter->tensor(tensor_idx);
   bool is_changed = AreDimsDifferent(env, target, dims);
   if (is_changed) {
-    TfLiteStatus status = interpreter->ResizeInputTensor(
-        interpreter->inputs()[idx], convertJIntArrayToVector(env, dims));
+    TfLiteStatus status;
+    if (strict) {
+      status = interpreter->ResizeInputTensorStrict(
+          tensor_idx, convertJIntArrayToVector(env, dims));
+    } else {
+      status = interpreter->ResizeInputTensor(
+          tensor_idx, convertJIntArrayToVector(env, dims));
+    }
     if (status != kTfLiteOk) {
       ThrowException(env, kIllegalArgumentException,
-                     "Internal error: Failed to resize %d-th input: %s", idx,
-                     error_reporter->CachedErrorMessage());
+                     "Internal error: Failed to resize %d-th input: %s",
+                     input_idx, error_reporter->CachedErrorMessage());
       return JNI_FALSE;
     }
   }

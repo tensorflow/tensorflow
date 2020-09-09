@@ -62,4 +62,106 @@ func @transposeConv2DBackpropInput_f16(
   return %0 : tensor<1x28x28x64xf16>
 }
 
+// CHECK-LABEL: func @transposeFusedBatchNormV3_f32
+func @transposeFusedBatchNormV3_f32(
+  %arg0: tensor<1x28x28x64xf32>,
+  %arg1: tensor<64xf32>
+) -> tensor<1x28x28x64xf32> {
+
+  // CHECK: "tf.FusedBatchNormV3"
+  // CHECK-SAME: (%[[X_TRANSPOSE:[0-9]*]], %arg1, %arg1, %arg1, %arg1)
+  // CHECK-SAME: data_format = "NCHW"
+  %y, %batch_mean, %batch_var, %reserve_1, %reserve_2, %reserve_3
+    = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg1, %arg1, %arg1)
+       {
+         data_format = "NHWC",
+         epsilon = 1.001 : f32,
+         exponential_avg_factor = 1.0 : f32,
+         is_training = true
+       }
+        : (tensor<1x28x28x64xf32>, tensor<64xf32>, tensor<64xf32>,
+           tensor<64xf32>, tensor<64xf32>)
+       -> (tensor<1x28x28x64xf32>, tensor<64xf32>, tensor<64xf32>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+
+  return %y : tensor<1x28x28x64xf32>
+}
+
+// CHECK-LABEL: func @transposeFusedBatchNormV3_f16
+func @transposeFusedBatchNormV3_f16(
+  %arg0: tensor<1x28x28x64xf16>,
+  %arg1: tensor<64xf32>
+) -> tensor<1x28x28x64xf16> {
+
+  // CHECK: "tf.FusedBatchNormV3"
+  // CHECK-SAME: (%[[X_TRANSPOSE:[0-9]*]], %arg1, %arg1, %arg1, %arg1)
+  // CHECK-SAME: data_format = "NCHW"
+  %y, %batch_mean, %batch_var, %reserve_1, %reserve_2, %reserve_3
+    = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg1, %arg1, %arg1)
+       {
+         data_format = "NHWC",
+         epsilon = 1.001 : f32,
+         exponential_avg_factor = 1.0 : f32,
+         is_training = true
+       }
+        : (tensor<1x28x28x64xf16>, tensor<64xf32>, tensor<64xf32>,
+           tensor<64xf32>, tensor<64xf32>)
+       -> (tensor<1x28x28x64xf16>, tensor<64xf32>, tensor<64xf32>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+
+  return %y : tensor<1x28x28x64xf16>
+}
+
+// CHECK-LABEL: func @transposeFusedBatchNormGradV3_f32
+func @transposeFusedBatchNormGradV3_f32(
+  %arg0: tensor<1x28x28x64xf32>,
+  %arg1: tensor<1x28x28x64xf32>,
+  %arg2: tensor<64xf32>
+) -> tensor<1x28x28x64xf32> {
+
+  // CHECK: "tf.FusedBatchNormGradV3"
+  // CHECK-SAME: (%[[X_TRANSPOSE:[0-9]*]], %[[Y_TRANSPOSE:[0-9]*]],
+  // CHECK-SAME: data_format = "NCHW"
+  %x_backprop, %scale_backprop, %offset_backprop, %reserve_1, %reserve_2
+    = "tf.FusedBatchNormGradV3"(%arg0, %arg1, %arg2, %arg2, %arg2, %arg2)
+       {
+         data_format = "NHWC",
+         epsilon = 1.001 : f32,
+         exponential_avg_factor = 1.0 : f32,
+         is_training = true
+       }
+        : (tensor<1x28x28x64xf32>, tensor<1x28x28x64xf32>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+       -> (tensor<1x28x28x64xf32>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+
+  return %x_backprop : tensor<1x28x28x64xf32>
+}
+
+// CHECK-LABEL: func @transposeFusedBatchNormGradV3_f16
+func @transposeFusedBatchNormGradV3_f16(
+  %arg0: tensor<1x28x28x64xf16>,
+  %arg1: tensor<1x28x28x64xf16>,
+  %arg2: tensor<64xf32>
+) -> tensor<1x28x28x64xf16> {
+
+  // CHECK: "tf.FusedBatchNormGradV3"
+  // CHECK-SAME: (%[[X_TRANSPOSE:[0-9]*]], %[[Y_TRANSPOSE:[0-9]*]],
+  // CHECK-SAME: data_format = "NCHW"
+  %x_backprop, %scale_backprop, %offset_backprop, %reserve_1, %reserve_2
+    = "tf.FusedBatchNormGradV3"(%arg0, %arg1, %arg2, %arg2, %arg2, %arg2)
+       {
+         data_format = "NHWC",
+         epsilon = 1.001 : f32,
+         exponential_avg_factor = 1.0 : f32,
+         is_training = true
+       }
+        : (tensor<1x28x28x64xf16>, tensor<1x28x28x64xf16>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+       -> (tensor<1x28x28x64xf16>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+
+  return %x_backprop : tensor<1x28x28x64xf16>
+}
+
 }

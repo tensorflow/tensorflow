@@ -5,11 +5,12 @@
 # need to run on machines with GPUs present.
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     default_visibility = [":friends"],
@@ -165,6 +166,33 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "reduction_vectorization_test",
+    srcs = [
+        "reduction_vectorization_test.cc",
+    ],
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
     name = "reduction_dimension_grouper_test",
     srcs = [
         "reduction_dimension_grouper_test.cc",
@@ -192,6 +220,28 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "parallel_reduction_test",
+    srcs = [
+        "parallel_reduction_test.cc",
+    ],
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_copy_test",
     srcs = ["gpu_copy_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -205,6 +255,35 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_copy_alone_test",
+    srcs = [
+        "gpu_copy_alone_test.cc",
+    ],
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_dyn_shape_test",
+    srcs = ["gpu_dyn_shape_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -318,6 +397,8 @@ tf_cc_test(
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gpu_fusible",
+        "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -398,5 +479,88 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "sorting_test",
+    srcs = [
+        "sorting_test.cc",
+    ],
+    tags = tf_cuda_tests_tags() + [
+        "no_rocm",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_binary(
+    name = "hlo_to_llvm_ir",
+    srcs = ["hlo_to_llvm_ir.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:gpu_device_info",
+        "//tensorflow/compiler/xla/service/gpu:target_constants",
+        "//tensorflow/compiler/xla/tools:hlo_module_loader",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+glob_lit_tests(
+    data = [":test_utilities"],
+    default_tags = tf_cuda_tests_tags() + [
+        "no_pip",
+    ],
+    driver = "@llvm-project//mlir:run_lit.sh",
+    test_file_exts = [
+        "hlo",
+        "mlir",
+    ],
+)
+
+# Bundle together all of the test utilities that are used by tests.
+filegroup(
+    name = "test_utilities",
+    testonly = True,
+    data = [
+        ":hlo_to_llvm_ir",
+        ":xla-thunks-opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+# Binary with only the thunks dialect registered, for testing purposes.
+tf_cc_binary(
+    name = "xla-thunks-opt",
+    srcs = ["xla_thunks_opt.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/xla/service/gpu:xla_thunks_ops",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Shape",
     ],
 )

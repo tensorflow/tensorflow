@@ -117,11 +117,15 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
       visitor.private_map["tf.compat"] = ["v1", "v2"]
       traverse.traverse(tf.compat.v1, visitor)
 
-  def _upgrade(self, old_file_text, import_rename=False):
+  def _upgrade(self,
+               old_file_text,
+               import_rename=False,
+               upgrade_compat_v1_import=False):
     in_file = six.StringIO(old_file_text)
     out_file = six.StringIO()
     upgrader = ast_edits.ASTCodeUpgrader(
-        tf_upgrade_v2.TFAPIChangeSpec(import_rename))
+        tf_upgrade_v2.TFAPIChangeSpec(
+            import_rename, upgrade_compat_v1_import=upgrade_compat_v1_import))
     count, report, errors = (
         upgrader.process_opened_file("test.py", in_file,
                                      "test_out.py", out_file))
@@ -1113,6 +1117,12 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual("optimizer.compute_gradients(a)\n", new_text)
     self.assertIn("Optimizer.compute_gradients no longer takes", report)
+
+  def testColocateGradientsWithHessians(self):
+    text = "tf.hessians(ys=a, xs=b, colocate_gradients_with_ops=False)\n"
+    _, report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual("tf.hessians(ys=a, xs=b)\n", new_text)
+    self.assertIn("tf.hessians no longer takes", report)
 
   def testExportSavedModelRename(self):
     text = "self.est.export_savedmodel(path)"
@@ -2151,7 +2161,7 @@ def _log_prob(self, x):
     expected = "tf.contrib.distribute.TPUStrategy"
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
-    self.assertIn("migrated to tf.distribute.experimental.TPUStrategy",
+    self.assertIn("migrated to tf.distribute.TPUStrategy",
                   errors[0])
 
     text = "tf.contrib.distribute.foo"
@@ -2213,6 +2223,30 @@ def _log_prob(self, x):
                        "import tensorflow.compat.v2 as tf_v2\n")
     expected_text = expected_header + new_symbol
     _, _, _, new_text = self._upgrade(text, import_rename=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = ("import tensorflow.compat.v1 as tf\n"
+                     "import tensorflow.compat.v1 as tf_v1\n"
+                     "import tensorflow.compat.v2 as tf_v2\n")
+    text = import_header + old_symbol
+    expected_header = ("import tensorflow.compat.v2 as tf\n"
+                       "import tensorflow.compat.v1 as tf_v1\n"
+                       "import tensorflow.compat.v2 as tf_v2\n")
+    expected_text = expected_header + new_symbol
+    _, _, _, new_text = self._upgrade(
+        text, import_rename=True, upgrade_compat_v1_import=True)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = ("import tensorflow.compat.v1 as tf\n"
+                     "import tensorflow.compat.v1 as tf_v1\n"
+                     "import tensorflow.compat.v2 as tf_v2\n")
+    text = import_header + old_symbol
+    expected_header = ("import tensorflow as tf\n"
+                       "import tensorflow.compat.v1 as tf_v1\n"
+                       "import tensorflow.compat.v2 as tf_v2\n")
+    expected_text = expected_header + new_symbol
+    _, _, _, new_text = self._upgrade(
+        text, import_rename=False, upgrade_compat_v1_import=True)
     self.assertEqual(new_text, expected_text)
 
     import_header = "from tensorflow import foo\n"

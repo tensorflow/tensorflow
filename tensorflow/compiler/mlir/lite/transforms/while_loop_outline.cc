@@ -37,12 +37,13 @@ namespace {
 
 // This pass outlines the cond/body region of the TFL WhileOp into functions and
 // replaces the regions with calls to these outlined functions.
-class WhileOutlinePass : public mlir::ModulePass<WhileOutlinePass> {
+class WhileOutlinePass
+    : public mlir::PassWrapper<WhileOutlinePass, OperationPass<ModuleOp>> {
  public:
   explicit WhileOutlinePass() {}
 
  private:
-  void runOnModule() override;
+  void runOnOperation() override;
 
   // Outlines the regions of the WhileOp's cond and body and insert function
   // calls instead,
@@ -53,7 +54,6 @@ class WhileOutlinePass : public mlir::ModulePass<WhileOutlinePass> {
 
   tensorflow::OpOrArgLocNameMapper mapper_;
 };
-}  // namespace
 
 std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
   return (mapper_.GetUniqueName(op) + suffix).str();
@@ -61,7 +61,7 @@ std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
 
 // Returns whether the WhileOp is already outlined (e.g., only consists of calls
 // to functions).
-static bool IsAlreadyOutlinedd(WhileOp while_op) {
+bool IsAlreadyOutlined(WhileOp while_op) {
   auto just_call = [](Region& region) {
     auto it = region.front().begin();
     if (!isa<CallOp>(*it)) return false;
@@ -80,7 +80,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   // The basic block arguments correspond to values that are loop carried, while
   // all those post are loop independent. Initialize extern_values with while_op
   // not loop carried operands.
-  auto num_loop_carried = while_op.cond().front().getNumArguments();
+  auto num_loop_carried = while_op.cond().getNumArguments();
   auto not_carried_operands =
       while_op.getOperands().drop_front(num_loop_carried);
   extern_values.insert(not_carried_operands.begin(),
@@ -119,18 +119,17 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   }
 
   // Skip if already just calls.
-  if (extra_operands.empty() && IsAlreadyOutlinedd(while_op)) return;
+  if (extra_operands.empty() && IsAlreadyOutlined(while_op)) return;
 
   // Collect new types.
   SmallVector<Type, 4> types;
   types.reserve(extra_operands.size() + while_op.getNumOperands());
-  for (BlockArgument ba : while_op.cond().front().getArguments())
-    types.push_back(ba.getType());
+  for (Type type : while_op.cond().getArgumentTypes()) types.push_back(type);
   for (Value operand : extern_values) types.push_back(operand.getType());
 
   // Create outline function from region. Optional pass extra arguments through
   // to yield.
-  SymbolTable symbol_table(getModule());
+  SymbolTable symbol_table(getOperation());
   auto create_outline_func = [&](StringRef name, Region& region,
                                  bool passthru_extra_args) {
     FunctionType type;
@@ -143,8 +142,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
       type = FunctionType::get(types, result_types, &getContext());
     }
 
-    auto outlined_func = builder.create<FuncOp>(while_op.getLoc(), name, type,
-                                                ArrayRef<NamedAttribute>{});
+    auto outlined_func = builder.create<FuncOp>(while_op.getLoc(), name, type);
     outlined_func.getBody().takeBody(region);
     Region& func_region = outlined_func.getBody();
 
@@ -227,20 +225,20 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
 
   Operation* new_op = OpBuilder(op).insert(Operation::create(
       op->getLoc(), op->getName(), new_types, operands, op->getAttrs(),
-      /*successors=*/{}, /*numRegions=*/2,
-      /*resizableOperandList=*/true));
+      /*successors=*/{}, /*numRegions=*/2));
   for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
   op->replaceAllUsesWith(new_op->getResults().take_front(op->getNumResults()));
   op->erase();
 }
 
-void WhileOutlinePass::runOnModule() {
-  getModule().walk(
+void WhileOutlinePass::runOnOperation() {
+  getOperation().walk(
       [&](mlir::TFL::WhileOp while_op) { OutlineWhile(while_op); });
 }
+}  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateWhileOutlinePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {
   return std::make_unique<WhileOutlinePass>();
 }
 

@@ -48,10 +48,10 @@ int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale);
 //
 // There are several key flavors of quantization in TfLite:
 //        asymmetric symmetric  per channel
-// int8  |     X    |    X    |     X      |
-// uint8 |     X    |    X    |            |
-// int16 |     X    |         |            |
-// int32 |          |    X    |     X      |
+// int8_t  |     X    |    X    |     X      |
+// uint8_t |     X    |    X    |            |
+// int16_t |     X    |         |            |
+// int32_t |          |    X    |     X      |
 //
 // The per-op quantization spec can be found here:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -93,6 +93,17 @@ void SymmetricQuantize(const float* values, TfLiteIntArray* dims,
 void SymmetricDequantize(const int8_t* values, const int size,
                          const float dequantization_scale,
                          float* dequantized_values);
+
+template <typename T>
+void AsymmetricDequantize(const T* values, const int size,
+                          const float dequantization_scale,
+                          int dequantization_zero_point,
+                          float* dequantized_values) {
+  for (int i = 0; i < size; ++i) {
+    dequantized_values[i] =
+        (values[i] - dequantization_zero_point) * dequantization_scale;
+  }
+}
 
 }  // namespace tflite
 

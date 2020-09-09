@@ -28,19 +28,19 @@ _force_enable = None
 
 
 def enable():
-  """Enables v2 behaviors."""
+  #Enables v2 behaviors.
   global _force_enable
   _force_enable = True
 
 
 def disable():
-  """Disables v2 behaviors."""
+  #Disables v2 behaviors.
   global _force_enable
   _force_enable = False
 
 
 def enabled():
-  """Returns True iff TensorFlow 2.0 behavior should be enabled."""
+  #Returns True iff TensorFlow 2.0 behavior should be enabled.
   if _force_enable is None:
     return os.getenv("TF2_BEHAVIOR", "0") != "0"
 

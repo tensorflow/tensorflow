@@ -2822,7 +2822,7 @@ class StatefulOutputRequiredOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     // The op counts the number of outputs required in the current subgraph,
     // and emits that number on each of its required outputs.
-    Tensor count_outputs_required_t(0LL);
+    Tensor count_outputs_required_t(int64{0});
     int64& count_outputs_required = count_outputs_required_t.scalar<int64>()();
     for (int i = 0; i < num_outputs(); ++i) {
       if (ctx->output_required(i)) ++count_outputs_required;

@@ -64,6 +64,9 @@ class OpOrArgNameMapper {
     return op_or_val_to_name_;
   }
 
+  // Returns the separator used before uniqueing suffix.
+  virtual llvm::StringRef GetSuffixSeparator() { return ""; }
+
  private:
   // Returns name from the location of the operation or value.
   virtual std::string GetName(OpOrVal op_or_val) = 0;

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import TensorFlowLiteC
+import TensorFlowLiteCMetal
 
 /// A delegate that uses the `Metal` framework for performing TensorFlow Lite graph operations with
 /// GPU acceleration.
@@ -35,6 +35,7 @@ public final class MetalDelegate: Delegate {
     var delegateOptions = TFLGpuDelegateOptions()
     delegateOptions.allow_precision_loss = options.allowsPrecisionLoss
     delegateOptions.wait_type = options.waitType.cWaitType
+    delegateOptions.enable_quantization = options.isQuantizationEnabled
     cDelegate = TFLGpuDelegateCreate(&delegateOptions)
   }
 
@@ -53,6 +54,10 @@ extension MetalDelegate {
     /// A type indicating how the current thread should wait for work on the GPU to complete. The
     /// default is `passive`.
     public var waitType: ThreadWaitType = .passive
+
+    /// Indicates whether the GPU delegate allows execution of an 8-bit quantized model. The default
+    /// is `false`.
+    public var isQuantizationEnabled = false
 
     /// Creates a new instance with the default values.
     public init() {}

@@ -105,10 +105,10 @@ int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale) {
 
 int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale) {
   float quantized = round(value / scale);
-  if (quantized > INT_MAX) {
-    quantized = INT_MAX;
+  if (static_cast<int>(quantized) > INT_MAX) {
+    quantized = static_cast<float>(INT_MAX);
   } else if (quantized < INT_MIN) {
-    quantized = INT_MIN;
+    quantized = static_cast<float> INT_MIN;
   }
 
   return static_cast<int>(quantized);
@@ -249,13 +249,15 @@ void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
     max = fmaxf(max, values[i]);
   }
 
-  *scaling_factor = fmaxf(fabs(min), fabs(max)) / kSymmetricInt32Scale;
+  *scaling_factor =
+      fmaxf(fabs(min), fabs(max)) / static_cast<float>(kSymmetricInt32Scale);
   for (int i = 0; i < input_size; i++) {
     const int32_t quantized_value =
         static_cast<int32_t>(roundf(values[i] / *scaling_factor));
     // Clamp: just in case some odd numeric offset.
-    quantized_values[i] = fminf(kSymmetricInt32Scale,
-                                fmaxf(-kSymmetricInt32Scale, quantized_value));
+    quantized_values[i] = fminf(
+        static_cast<float>(kSymmetricInt32Scale),
+        fmaxf(static_cast<float>(-kSymmetricInt32Scale), quantized_value));
   }
 }
 

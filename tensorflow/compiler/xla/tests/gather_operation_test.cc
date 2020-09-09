@@ -64,6 +64,30 @@ ENTRY main {
   RunTest(hlo_text, &operand, &start_indices);
 }
 
+XLA_TEST_F(GatherOperationTest, BatchDimInMiddle) {
+  // Reverse the middle dimension (dim 1).
+  const string hlo_text = R"(
+HloModule BatchDimInMiddle
+
+ENTRY main {
+  operand = s32[3, 2, 3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[3, 1, 2, 3] gather(operand, indices),
+      offset_dims={0, 1, 3},
+      collapsed_slice_dims={},
+      start_index_map={1},
+      index_vector_dim=1,
+      slice_sizes={3, 1, 3}
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{1, 2, 3}, {4, 5, 6}},
+                                    {{7, 8, 9}, {10, 11, 12}},
+                                    {{13, 14, 15}, {16, 17, 18}}});
+  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 0});
+  RunTest(hlo_text, &operand, &start_indices);
+}
+
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherV2) {
   const string hlo_text = R"(
 HloModule TensorFlowGatherV2
@@ -685,6 +709,24 @@ ENTRY main {
   Literal operand = LiteralUtil::CreateR0<float>(1);
   Literal start_indices = LiteralUtil::CreateR1<int32>({});
   RunTest(hlo_text, &operand, &start_indices);
+}
+
+XLA_TEST_F(GatherOperationTest, GatherFromScalarNonZeroIndices) {
+  const string hlo_text = R"(
+HloModule GatherFromScalar
+
+ENTRY main {
+  operand = f32[1,1,1] parameter(0)
+  indices = s32[2,3,50] parameter(1)
+  ROOT gather = f32[1,2,50] gather(operand, indices),
+      offset_dims={0},
+      collapsed_slice_dims={0,1},
+      start_index_map={1,0,2},
+      index_vector_dim=1,
+      slice_sizes={1,1,1}
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0, 0}));
 }
 
 class GatherClientLibraryTest : public ClientLibraryTestBase {};

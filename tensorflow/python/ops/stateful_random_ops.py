@@ -255,27 +255,6 @@ class GeneratorSpec(type_spec.TypeSpec):
     return (self.shape, self.dtype, self.alg)
 
 
-def _create_variable(*args, **kwargs):
-  """Creates a variable, and check that it's not MirroredVariable.
-
-  Args:
-    *args: positional arguments passed along to `variables.Variable.
-    **kwargs: keyword arguments passed along to `variables.Variable.
-
-  Returns:
-    The created variable.
-  """
-  if ds_context.has_strategy():
-    raise ValueError(
-        "Creating a generator within a strategy scope is disallowed, because "
-        "there is ambiguity on how to replicate a generator (e.g. should it be "
-        "copied so that each replica gets the same random numbers, or 'split' "
-        "so that each replica gets different random numbers).")
-    # TODO(wangpeng): Link to the RNG guide for solutions in such cases.
-  var = variables.Variable(*args, **kwargs)
-  return var
-
-
 @tf_export("random.Generator", "random.experimental.Generator")
 class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
   """Random-number generator.
@@ -367,8 +346,8 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     if copy_from is not None:
       # All other arguments should be None
       assert (alg or state) is None
-      self._state_var = _create_variable(copy_from.state, dtype=STATE_TYPE,
-                                         trainable=False)
+      self._state_var = self._create_variable(copy_from.state, dtype=STATE_TYPE,
+                                              trainable=False)
       self._alg = copy_from.algorithm
 
     else:
@@ -380,9 +359,29 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       else:
         state = _convert_to_state_tensor(state)
         _check_state_shape(state.shape, alg)
-        self._state_var = _create_variable(state, dtype=STATE_TYPE,
-                                           trainable=False)
+        self._state_var = self._create_variable(state, dtype=STATE_TYPE,
+                                                trainable=False)
       self._alg = alg
+
+  def _create_variable(self, *args, **kwargs):
+    """Creates a variable, and check that it's not MirroredVariable.
+
+    Args:
+      *args: positional arguments passed along to `variables.Variable.
+      **kwargs: keyword arguments passed along to `variables.Variable.
+
+    Returns:
+      The created variable.
+    """
+    if ds_context.has_strategy():
+      raise ValueError(
+          "Creating a generator within a strategy scope is disallowed, because "
+          "there is ambiguity on how to replicate a generator (e.g. should it "
+          "be copied so that each replica gets the same random numbers, or "
+          "'split' so that each replica gets different random numbers).")
+      # TODO(wangpeng): Link to the RNG guide for solutions in such cases.
+    var = variables.Variable(*args, **kwargs)
+    return var
 
   @classmethod
   def from_state(cls, state, alg):

@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -91,8 +90,8 @@ class DeviceSet {
   //
   // After a call to this function, the argument vector will be sorted by
   // explicit priority (the second element in the `std::pair<DeviceType,
-  // int32>`), then by `DeviceTypeOrder` of the device type, and lastly
-  // by device name.
+  // int32>`), then by `DeviceTypeOrder` of the device type, then by device
+  // locality, and lastly by device name.
   static void SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector);
 
   // Sorts a PrioritizedDeviceTypeVector according to types and explicit

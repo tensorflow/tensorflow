@@ -30,31 +30,31 @@ from tensorflow.python.platform import test
 
 class AssignOpTest(test.TestCase):
 
-  def _initAssignFetch(self, x, y, use_gpu=False):
+  def _initAssignFetch(self, x, y, use_gpu):
     """Initialize a param to init and update it with y."""
     super(AssignOpTest, self).setUp()
-    with self.cached_session(use_gpu=use_gpu):
+    with test_util.device(use_gpu=use_gpu):
       p = variables.Variable(x)
       assign = state_ops.assign(p, y)
-      p.initializer.run()
+      self.evaluate(p.initializer)
       new_value = self.evaluate(assign)
       return self.evaluate(p), new_value
 
-  def _initAssignAddFetch(self, x, y, use_gpu=False):
+  def _initAssignAddFetch(self, x, y, use_gpu):
     """Initialize a param to init, and compute param += y."""
-    with self.cached_session(use_gpu=use_gpu):
+    with test_util.device(use_gpu=use_gpu):
       p = variables.Variable(x)
       add = state_ops.assign_add(p, y)
-      p.initializer.run()
+      self.evaluate(p.initializer)
       new_value = self.evaluate(add)
       return self.evaluate(p), new_value
 
-  def _initAssignSubFetch(self, x, y, use_gpu=False):
+  def _initAssignSubFetch(self, x, y, use_gpu):
     """Initialize a param to init, and compute param -= y."""
-    with self.cached_session(use_gpu=use_gpu):
+    with test_util.device(use_gpu=use_gpu):
       p = variables.Variable(x)
       sub = state_ops.assign_sub(p, y)
-      p.initializer.run()
+      self.evaluate(p.initializer)
       new_value = self.evaluate(sub)
       return self.evaluate(p), new_value
 
@@ -78,11 +78,10 @@ class AssignOpTest(test.TestCase):
         var_value, op_value = self._initAssignAddFetch(x, y, use_gpu=True)
         self.assertAllEqual(x + y, var_value)
         self.assertAllEqual(x + y, op_value)
-        var_value, op_value = self._initAssignSubFetch(x, y, use_gpu=False)
+        var_value, op_value = self._initAssignSubFetch(x, y, use_gpu=True)
         self.assertAllEqual(x - y, var_value)
         self.assertAllEqual(x - y, op_value)
 
-  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
@@ -93,13 +92,13 @@ class AssignOpTest(test.TestCase):
       p = variables.VariableV1([1])
       a = state_ops.assign(p, data, validate_shape=False)
       a.op.run()
-      self.assertAllEqual(p.eval(), self.evaluate(data))
+      self.assertAllEqual(p, self.evaluate(data))
 
       # Assign to yet another shape
       data2 = array_ops.fill([10, 10], 1)
       a2 = state_ops.assign(p, data2, validate_shape=False)
       a2.op.run()
-      self.assertAllEqual(p.eval(), self.evaluate(data2))
+      self.assertAllEqual(p, self.evaluate(data2))
 
   @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignAdd(self):

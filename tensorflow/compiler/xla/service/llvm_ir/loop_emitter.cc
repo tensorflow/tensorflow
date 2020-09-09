@@ -35,6 +35,14 @@ LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
                          llvm::IRBuilder<>* b)
     : body_emitter_(body_emitter), shape_(shape), b_(b) {}
 
+LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
+                         std::vector<llvm::Value*> dynamic_dims,
+                         llvm::IRBuilder<>* b)
+    : LoopEmitter::LoopEmitter(body_emitter, shape, b) {
+  CHECK_EQ(dynamic_dims.size(), shape_.dimensions_size());
+  dynamic_dims_ = std::move(dynamic_dims);
+}
+
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
                          const IrArray& target_array, llvm::IRBuilder<>* b)
     : body_emitter_([=](const llvm_ir::IrArray::Index array_index) -> Status {
@@ -84,6 +92,43 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
   }
 }
 
+IrArray::Index LoopEmitter::EmitStaticIndex(ForLoopNest* loop_nest,
+                                            llvm::Type* index_type) {
+  // Create loop nest with one for-loop for each dimension of the target shape.
+  // Loops are added from outermost to innermost order with the ForLoopNest
+  // class so emit loops in order from most-major dimension down to most-minor
+  // dimension (of the target shape).
+  std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
+  for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
+    std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
+        /*start_index=*/0,
+        /*end_index=*/shape_.dimensions(dimension),
+        /*suffix=*/absl::StrFormat("dim.%d", dimension));
+    array_multi_index[dimension] = loop->GetIndVarValue();
+  }
+  return IrArray::Index(array_multi_index, shape_, index_type);
+}
+
+IrArray::Index LoopEmitter::EmitDynamicIndex(ForLoopNest* loop_nest,
+                                             llvm::Type* index_type) {
+  CHECK_EQ(shape_.is_dynamic(), true);
+  // Create loop nest with one for-loop for each dynamic dimensions.
+  // Loops are added from outermost to innermost order with the ForLoopNest
+  // class so emit loops in order from most-major dimension down to most-minor
+  // dimension (of the target shape).
+  std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
+  for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
+    std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
+        /*suffix=*/absl::StrFormat("dim.%d", dimension),
+        /*start_index=*/llvm::ConstantInt::get(index_type, 0),
+        /*end_index=*/dynamic_dims_[dimension]);
+    array_multi_index[dimension] = loop->GetIndVarValue();
+  }
+  return IrArray::Index(array_multi_index, shape_, index_type);
+}
+
 std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
     absl::string_view loop_name, llvm::Type* index_type) {
   CHECK_NE(index_type, nullptr);
@@ -93,21 +138,11 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
     return {IrArray::Index(index_type)};
   }
 
-  // Create loop nest with one for-loop for each dimension of the target shape.
-  // Loops are added from outermost to innermost order with the ForLoopNest
-  // class so emit loops in order from most-major dimension down to most-minor
-  // dimension (of the target shape).
   ForLoopNest loop_nest(loop_name, b_);
-  std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
-  for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
-    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
-    std::unique_ptr<ForLoop> loop = loop_nest.AddLoop(
-        /*start_index=*/0,
-        /*end_index=*/shape_.dimensions(dimension),
-        /*suffix=*/absl::StrFormat("dim.%d", dimension));
-    array_multi_index[dimension] = loop->GetIndVarValue();
-  }
-  IrArray::Index array_index(array_multi_index, shape_, index_type);
+
+  IrArray::Index array_index = dynamic_dims_.empty()
+                                   ? EmitStaticIndex(&loop_nest, index_type)
+                                   : EmitDynamicIndex(&loop_nest, index_type);
 
   // Set IR builder insertion point to the loop body basic block of the
   // innermost loop.

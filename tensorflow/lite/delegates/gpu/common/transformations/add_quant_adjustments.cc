@@ -15,15 +15,19 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_quant_adjustments.h"
 
+#include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
-#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -64,7 +68,7 @@ class AddQuantAdjustments : public NodeTransformation {
 
       // Add one output Value for the new node.
       // The tensor information should rename the same.
-      Value<TensorRef<BHWC>>* adjusted_value = graph->NewValue();
+      Value* adjusted_value = graph->NewValue();
       adjusted_value->tensor = output_value->tensor;
       status =
           graph->SetProducer(quant_and_dequant_node->id, adjusted_value->id);

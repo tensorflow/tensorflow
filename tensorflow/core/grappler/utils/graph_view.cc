@@ -63,7 +63,7 @@ bool NodeView::HasFanout(const FaninView& fanout) const {
     return false;
   } else if (fanout.index() == Graph::kControlSlot) {
     return view->fanins_set_.contains({this->node(), Graph::kControlSlot});
-  } else if (fanout.index() >= view->regular_fanins_.size()) {
+  } else if (fanout.index() >= static_cast<int>(view->regular_fanins_.size())) {
     return false;
   }
   return view->regular_fanins_[fanout.index()].node_index_ == node_index_;
@@ -152,8 +152,9 @@ Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
                                      Graph::kControlSlot);
       has_observed_control = true;
     } else {
-      if (fanin_node_view.regular_fanouts_by_port_.size() <
-          fanin_id.index() + 1) {
+      int fanin_node_view_regular_fanouts_by_port_size =
+          fanin_node_view.regular_fanouts_by_port_.size();
+      if (fanin_node_view_regular_fanouts_by_port_size < fanin_id.index() + 1) {
         fanin_node_view.regular_fanouts_by_port_.resize(fanin_id.index() + 1);
       }
       fanin_node_view.regular_fanouts_by_port_[fanin_id.index()].emplace_back(
@@ -197,7 +198,7 @@ bool MutableNodeView::HasFanout(const MutableFaninView& fanout) const {
     return false;
   } else if (fanout.index() == Graph::kControlSlot) {
     return view->fanins_count_.contains({this->node(), Graph::kControlSlot});
-  } else if (fanout.index() >= view->regular_fanins_.size()) {
+  } else if (fanout.index() >= static_cast<int>(view->regular_fanins_.size())) {
     return false;
   }
   return view->regular_fanins_[fanout.index()].node_index_ == node_index_;
@@ -279,7 +280,8 @@ void Mutation::AddMutation(
 void Mutation::RemoveNode(MutableNodeView* node) {
   auto& update_index = node->update_index_;
   if (update_index != internal::kMissingIndex) {
-    if (update_index < updated_nodes_.size() - 1) {
+    int updated_nodes_size = updated_nodes_.size();
+    if (update_index < updated_nodes_size - 1) {
       graph_view_->nodes_[updated_nodes_.back().node_index].update_index_ =
           update_index;
       std::swap(updated_nodes_[update_index], updated_nodes_.back());
@@ -574,7 +576,9 @@ void MutableGraphView::AddFaninsInternal(
           --last_pos;
         }
       } else {
-        if (fanin_node_view.regular_fanouts_by_port_.size() <
+        int fanin_node_view_regular_fanouts_by_port_size =
+            fanin_node_view.regular_fanouts_by_port_.size();
+        if (fanin_node_view_regular_fanouts_by_port_size <
             fanin_id.index() + 1) {
           fanin_node_view.regular_fanouts_by_port_.resize(fanin_id.index() + 1);
         }
@@ -852,8 +856,10 @@ template <typename T>
 void MutableGraphView::ReplaceNodeFanouts(MutableNodeView* node, T* fanouts) {
   node->num_regular_fanouts_ = fanouts->num_regular_fanouts_;
   node->regular_fanouts_by_port_ = std::move(fanouts->regular_fanouts_by_port_);
-  for (int i = 0; i < node->regular_fanouts_by_port_.size(); ++i) {
-    for (int j = 0; j < node->regular_fanouts_by_port_[i].size(); ++j) {
+  for (int i = 0, i_max = node->regular_fanouts_by_port_.size(); i < i_max;
+       ++i) {
+    for (int j = 0, j_max = node->regular_fanouts_by_port_[i].size(); j < j_max;
+         ++j) {
       auto& fanout = node->regular_fanouts_by_port_[i][j];
       auto* fanout_node_view = fanout.node_view();
       auto& fanout_fanin = fanout_node_view->regular_fanins_[fanout.index()];
@@ -868,7 +874,7 @@ void MutableGraphView::ReplaceNodeFanouts(MutableNodeView* node, T* fanouts) {
     }
   }
   node->controlled_fanouts_ = std::move(fanouts->controlled_fanouts_);
-  for (int i = 0; i < node->controlled_fanouts_.size(); ++i) {
+  for (int i = 0, i_max = node->controlled_fanouts_.size(); i < i_max; ++i) {
     auto& fanout = node->controlled_fanouts_[i];
     auto* fanout_node_view = fanout.node_view();
     auto& fanout_fanin =
@@ -1017,7 +1023,8 @@ inline void MutableGraphView::RemoveRegularFaninFanoutInternal(
                       {&graph_->node(fanin.node_index_), fanin.index()});
   auto* fanin_node_view = fanin.node_view();
   auto& fanouts = fanin_node_view->regular_fanouts_by_port_[fanin.index()];
-  if (fanin.fanout_index_ < fanouts.size() - 1) {
+  int fanouts_size = fanouts.size();
+  if (fanin.fanout_index_ < fanouts_size - 1) {
     // Swap fanout with last fanout in vector, and update it's associated fanin
     // index.
     MutableFaninView& last_fanout = fanouts.back();
@@ -1043,7 +1050,9 @@ inline void MutableGraphView::RemoveRegularFaninFanoutInternal(
       break;
     }
   }
-  if (last_fanout_index < fanin_node_view->regular_fanouts_by_port_.size()) {
+  int fanin_node_view_regular_fanouts_by_port_size =
+      fanin_node_view->regular_fanouts_by_port_.size();
+  if (last_fanout_index < fanin_node_view_regular_fanouts_by_port_size) {
     fanin_node_view->regular_fanouts_by_port_.resize(last_fanout_index);
   }
 }
@@ -1052,7 +1061,9 @@ inline void MutableGraphView::AddRegularFaninInternal(
     MutableNodeView* node_view, const SafeTensorId& fanin_id) {
   MutableNodeView* fanin_node_view = GetNode(fanin_id.node());
   // Resize fanouts to include new output port index.
-  if (fanin_node_view->regular_fanouts_by_port_.size() < fanin_id.index() + 1) {
+  int fanin_node_view_regular_fanouts_by_port_size =
+      fanin_node_view->regular_fanouts_by_port_.size();
+  if (fanin_node_view_regular_fanouts_by_port_size < fanin_id.index() + 1) {
     fanin_node_view->regular_fanouts_by_port_.resize(fanin_id.index() + 1);
   }
 
@@ -1078,7 +1089,9 @@ inline void MutableGraphView::UpdateRegularFaninInternal(
 
   MutableNodeView* fanin_node_view = GetNode(fanin_id.node());
   // Resize fanouts to include new output port index.
-  if (fanin_node_view->regular_fanouts_by_port_.size() < fanin_id.index() + 1) {
+  int fanin_node_view_regular_fanouts_by_port_size =
+      fanin_node_view->regular_fanouts_by_port_.size();
+  if (fanin_node_view_regular_fanouts_by_port_size < fanin_id.index() + 1) {
     fanin_node_view->regular_fanouts_by_port_.resize(fanin_id.index() + 1);
   }
 
@@ -1110,8 +1123,10 @@ inline void MutableGraphView::RemoveControllingFaninFanoutInternal(
     // controlled fanout in controlling fanin with controlled fanout to be
     // removed.
     auto* control_to_remove_view = control_to_remove.node_view();
+    int control_to_remove_view_controlled_fanouts_size =
+        control_to_remove_view->controlled_fanouts_.size();
     if (control_to_remove.fanout_index_ <
-        control_to_remove_view->controlled_fanouts_.size() - 1) {
+        control_to_remove_view_controlled_fanouts_size - 1) {
       auto& control_to_remove_view_last_control =
           control_to_remove_view->controlled_fanouts_.back();
       control_to_remove_view_last_control.node_view()
@@ -1137,7 +1152,9 @@ inline void MutableGraphView::RemoveControllingFaninInternal(
     RemoveControllingFaninFanoutInternal(node_view, control_index);
 
     // Swap last controlling fanin in node with controlling fanin to be removed.
-    if (control_index < node_view->controlling_fanins_.size() - 1) {
+    int node_view_controlling_fanins_size =
+        node_view->controlling_fanins_.size();
+    if (control_index < node_view_controlling_fanins_size - 1) {
       auto& last_control = node_view->controlling_fanins_.back();
       auto* last_control_view = last_control.node_view();
       last_control_view->controlled_fanouts_[last_control.fanout_index_]

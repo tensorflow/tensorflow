@@ -27,7 +27,7 @@ namespace TF {
 namespace {
 
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
-struct LegalizeTFToQuant : public FunctionPass<LegalizeTFToQuant> {
+struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
   explicit LegalizeTFToQuant() = default;
   LegalizeTFToQuant(const LegalizeTFToQuant &) {}
 
@@ -106,9 +106,8 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPointAfter(tf_op);
-    IntegerAttr num_bits =
-        rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
+    rewriter.setInsertionPointAfter(tf_op.getOperation());
+    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
@@ -146,12 +145,12 @@ void LegalizeTFToQuant::runOnFunction() {
   auto func = getFunction();
   auto *ctx = func.getContext();
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect to QuantOps dialect pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFToQuantPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 

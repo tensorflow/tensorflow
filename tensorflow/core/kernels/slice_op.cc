@@ -300,14 +300,11 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 7); \
   DECLARE_GPU_SPEC(T, 8);
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
-TF_CALL_complex64(DECLARE_FOR_N);
-TF_CALL_complex128(DECLARE_FOR_N);
 TF_CALL_bfloat16(DECLARE_FOR_N);
-TF_CALL_bool(DECLARE_FOR_N);
 TF_CALL_int8(DECLARE_FOR_N);
+TF_CALL_int32(DECLARE_FOR_N);
 TF_CALL_int64(DECLARE_FOR_N);
-DECLARE_FOR_N(int32);
+TF_CALL_GPU_ALL_TYPES(DECLARE_FOR_N);
 
 #undef DECLARE_FOR_N
 #undef DECLARE_GPU_SPEC
@@ -321,13 +318,10 @@ DECLARE_FOR_N(int32);
                               .HostMemory("size"),       \
                           SliceOp<GPUDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_bfloat16(REGISTER_GPU);
-TF_CALL_bool(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

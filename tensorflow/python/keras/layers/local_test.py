@@ -319,9 +319,9 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
       copy_model_weights(model_from=model_2, model_to=model_3)
 
       # Compare outputs at initialization.
-      out_1 = model_1.call(inputs)
-      out_2 = model_2.call(inputs)
-      out_3 = model_3.call(inputs)
+      out_1 = model_1(inputs)
+      out_2 = model_2(inputs)
+      out_3 = model_3(inputs)
 
       self.assertAllCloseAccordingToType(
           out_2, out_1, rtol=1e-5, atol=1e-5)
@@ -351,9 +351,9 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
           shuffle=False)
 
       # Compare outputs after a few training steps.
-      out_1 = model_1.call(inputs)
-      out_2 = model_2.call(inputs)
-      out_3 = model_3.call(inputs)
+      out_1 = model_1(inputs)
+      out_2 = model_2(inputs)
+      out_3 = model_3(inputs)
 
       self.assertAllCloseAccordingToType(
           out_2, out_1, atol=2e-4)

@@ -16,24 +16,36 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 
 #include <memory>
-#include <utility>
+#include <string>
 
 #include "grpcpp/grpcpp.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/core/profiler/rpc/grpc.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+namespace profiler {
 
 void ProfilerServer::StartProfilerServer(int32 port) {
-  string server_address = absl::StrCat("0.0.0.0:", port);
+  std::string server_address = absl::StrCat("[::]:", port);
   service_ = CreateProfilerService();
   ::grpc::ServerBuilder builder;
-  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
+
+  int selected_port = 0;
+  builder.AddListeningPort(
+      server_address, profiler::GetDefaultServerCredentials(), &selected_port);
   builder.RegisterService(service_.get());
   server_ = builder.BuildAndStart();
-  LOG(INFO) << "Profiling Server listening on " << server_address;
+  if (!selected_port) {
+    LOG(ERROR) << "Unable to bind to " << server_address << ":"
+               << selected_port;
+  } else {
+    LOG(INFO) << "Profiling Server listening on " << server_address << ":"
+              << selected_port;
+  }
 }
 
 ProfilerServer::~ProfilerServer() {
@@ -43,4 +55,5 @@ ProfilerServer::~ProfilerServer() {
   }
 }
 
+}  // namespace profiler
 }  // namespace tensorflow

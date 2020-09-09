@@ -9,6 +9,7 @@ load(
     _tf_additional_grpc_deps_py = "tf_additional_grpc_deps_py",
     _tf_additional_license_deps = "tf_additional_license_deps",
     _tf_additional_plugin_deps = "tf_additional_plugin_deps",
+    _tf_additional_profiler_deps = "tf_additional_profiler_deps",
     _tf_additional_xla_deps_py = "tf_additional_xla_deps_py",
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
     _tf_exec_properties = "tf_exec_properties",
@@ -23,6 +24,7 @@ register_extension_info = _register_extension_info
 tf_additional_grpc_deps_py = _tf_additional_grpc_deps_py
 tf_additional_license_deps = _tf_additional_license_deps
 tf_additional_plugin_deps = _tf_additional_plugin_deps
+tf_additional_profiler_deps = _tf_additional_profiler_deps
 tf_additional_xla_deps_py = _tf_additional_xla_deps_py
 tf_cuda_tests_tags = _tf_cuda_tests_tags
 tf_exec_properties = _tf_exec_properties

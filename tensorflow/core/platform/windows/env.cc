@@ -22,7 +22,6 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#undef LoadLibrary
 #undef ERROR
 
 #include <string>
@@ -31,6 +30,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/ram_file_system.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -155,8 +155,9 @@ class WindowsEnv : public Env {
     SetThreadpoolTimer(timer, &FileDueTime, 0, 0);
   }
 
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return tensorflow::internal::LoadLibrary(library_filename, handle);
+  Status LoadDynamicLibrary(const char* library_filename,
+                            void** handle) override {
+    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
@@ -192,6 +193,7 @@ class WindowsEnv : public Env {
 
 REGISTER_FILE_SYSTEM("", WindowsFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalWinFileSystem);
+REGISTER_FILE_SYSTEM("ram", RamFileSystem);
 
 Env* Env::Default() {
   static Env* default_env = new WindowsEnv;

@@ -112,6 +112,7 @@ filegroup(
         "python/flatbuffers/number_types.py",
         "python/flatbuffers/packer.py",
         "python/flatbuffers/table.py",
+        "python/flatbuffers/util.py",
     ],
 )
 

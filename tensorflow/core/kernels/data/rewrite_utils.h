@@ -27,8 +27,7 @@ namespace data {
 // Rewrites the input dataset using the given config.
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library, bool record_fingerprint,
-                      DatasetBase** rewritten_input);
+                      bool record_fingerprint, DatasetBase** rewritten_input);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -75,9 +75,4 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.6 0
 # Install given tensorflow or tf-nightly version, if not specified, install the # latest official release
 ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
-RUN pip install ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
-
-# TODO(klimek): Figure out a better way to get the right include paths
-# forwarded when we install new packages.
-RUN ln -s "/usr/include/x86_64-linux-gnu/python3.6m" "/dt7/usr/include/x86_64-linux-gnu/python3.6m"
-RUN ln -s "/usr/include/x86_64-linux-gnu/python3.6m" "/dt8/usr/include/x86_64-linux-gnu/python3.6m"
+RUN pip3 install ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}

@@ -36,7 +36,8 @@ int ChannelTypeToSizeInBytes(cl_channel_type type);
 bool OpenCLSupported();
 
 template <DataType S, typename T>
-void CopyLinearFLT4(const Tensor<Linear, S>& src, absl::Span<T> dst) {
+void CopyLinearFLT4(const tflite::gpu::Tensor<Linear, S>& src,
+                    absl::Span<T> dst) {
   const int dst_depth = dst.size();
   for (int d = 0; d < dst_depth; ++d) {
     T val;
@@ -47,6 +48,12 @@ void CopyLinearFLT4(const Tensor<Linear, S>& src, absl::Span<T> dst) {
     dst[d] = val;
   }
 }
+
+absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
+                            bool read_only, void* data, cl_mem* result);
+
+absl::Status CreateFloatRGBAImage2D(cl_context context, int width, int height,
+                                    DataType type, void* data, cl_mem* result);
 
 }  // namespace cl
 }  // namespace gpu

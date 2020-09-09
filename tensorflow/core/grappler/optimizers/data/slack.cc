@@ -51,7 +51,7 @@ bool IsDatasetNodeOfType(const NodeDef& node,
 constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset", "ConcatenateDataset"};
 
-constexpr std::array<const char*, 21> kPassThroughOps = {
+constexpr std::array<const char*, 22> kPassThroughOps = {
     "CacheDataset",
     "CacheDatasetV2",
     "ExperimentalMaxIntraOpParallelismDataset",
@@ -70,6 +70,7 @@ constexpr std::array<const char*, 21> kPassThroughOps = {
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
     "ShuffleDatasetV2",
+    "ShuffleDatasetV3",
     "SkipDataset",
     "TakeDataset",
     "WindowDataset",
@@ -100,10 +101,9 @@ Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
     return Status::OK();
   }
 
-  return errors::InvalidArgument(
-      "Encountered unsupported op \"", dataset_node->op(),
-      "\" when rewriting the input pipeline graph to use slack in its "
-      "final prefetch transformation.");
+  LOG(WARNING) << "Could not find a final `prefetch` in the input pipeline to "
+                  "which to introduce slack.";
+  return Status::OK();
 }
 
 Status Slack::OptimizeAndCollectStats(Cluster* cluster,

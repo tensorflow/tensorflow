@@ -50,8 +50,41 @@ void NnApiHandler::Reset() {
   *nnapi_ = *NnApiPassthroughInstance();
 }
 
-void NnApiHandler::SetAndroidSdkVersion(int version) {
+void NnApiHandler::SetAndroidSdkVersion(int version,
+                                        bool set_unsupported_ops_to_null) {
   nnapi_->android_sdk_version = version;
+
+  if (!set_unsupported_ops_to_null) {
+    return;
+  }
+
+  if (version < 29) {
+    nnapi_->ANeuralNetworks_getDeviceCount = nullptr;
+    nnapi_->ANeuralNetworks_getDevice = nullptr;
+    nnapi_->ANeuralNetworksDevice_getName = nullptr;
+    nnapi_->ANeuralNetworksDevice_getVersion = nullptr;
+    nnapi_->ANeuralNetworksDevice_getFeatureLevel = nullptr;
+    nnapi_->ANeuralNetworksDevice_getType = nullptr;
+    nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices = nullptr;
+    nnapi_->ANeuralNetworksCompilation_createForDevices = nullptr;
+    nnapi_->ANeuralNetworksCompilation_setCaching = nullptr;
+    nnapi_->ANeuralNetworksExecution_compute = nullptr;
+    nnapi_->ANeuralNetworksExecution_getOutputOperandRank = nullptr;
+    nnapi_->ANeuralNetworksExecution_getOutputOperandDimensions = nullptr;
+    nnapi_->ANeuralNetworksBurst_create = nullptr;
+    nnapi_->ANeuralNetworksBurst_free = nullptr;
+    nnapi_->ANeuralNetworksExecution_burstCompute = nullptr;
+    nnapi_->ANeuralNetworksMemory_createFromAHardwareBuffer = nullptr;
+    nnapi_->ANeuralNetworksExecution_setMeasureTiming = nullptr;
+    nnapi_->ANeuralNetworksExecution_getDuration = nullptr;
+    nnapi_->ANeuralNetworksDevice_getExtensionSupport = nullptr;
+    nnapi_->ANeuralNetworksModel_getExtensionOperandType = nullptr;
+    nnapi_->ANeuralNetworksModel_getExtensionOperationType = nullptr;
+    nnapi_->ANeuralNetworksModel_setOperandExtensionData = nullptr;
+  }
+  if (version < 28) {
+    nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16 = nullptr;
+  }
 }
 
 void NnApiHandler::SetDeviceName(const std::string& name) {

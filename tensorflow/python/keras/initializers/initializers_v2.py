@@ -353,15 +353,15 @@ class VarianceScaling(init_ops_v2.VarianceScaling, Initializer):
 
   With `distribution="truncated_normal" or "untruncated_normal"`, samples are
   drawn from a truncated/untruncated normal distribution with a mean of zero and
-  a standard deviation (after truncation, if used) `stddev = sqrt(scale / n)`
-  where n is:
+  a standard deviation (after truncation, if used) `stddev = sqrt(scale / n)`,
+  where `n` is:
 
-  - number of input units in the weight tensor, if mode = "fan_in"
-  - number of output units, if mode = "fan_out"
-  - average of the numbers of input and output units, if mode = "fan_avg"
+  - number of input units in the weight tensor, if `mode="fan_in"`
+  - number of output units, if `mode="fan_out"`
+  - average of the numbers of input and output units, if `mode="fan_avg"`
 
   With `distribution="uniform"`, samples are drawn from a uniform distribution
-  within [-limit, limit], with `limit = sqrt(3 * scale / n)`.
+  within `[-limit, limit]`, where `limit = sqrt(3 * scale / n)`.
 
   Examples:
 
@@ -495,10 +495,9 @@ class GlorotUniform(VarianceScaling):
   Also available via the shortcut function
   `tf.keras.initializers.glorot_uniform`.
 
-  Draws samples from a uniform distribution within [-limit, limit] where `limit`
-  is `sqrt(6 / (fan_in + fan_out))` where `fan_in` is the number of input units
-  in the weight tensor and `fan_out` is the number of output units in the weight
-  tensor.
+  Draws samples from a uniform distribution within `[-limit, limit]`, where
+  `limit = sqrt(6 / (fan_in + fan_out))` (`fan_in` is the number of input units
+  in the weight tensor and `fan_out` is the number of output units).
 
   Examples:
 
@@ -631,9 +630,9 @@ class LecunUniform(VarianceScaling):
    Also available via the shortcut function
   `tf.keras.initializers.lecun_uniform`.
 
-  Draws samples from a uniform distribution within [-limit, limit] where `limit`
-  is `sqrt(3 / fan_in)` where `fan_in` is the number of input units in the
-  weight tensor.
+  Draws samples from a uniform distribution within `[-limit, limit]`,
+  where `limit = sqrt(3 / fan_in)` (`fan_in` is the number of input units in the
+  weight tensor).
 
   Examples:
 
@@ -714,9 +713,9 @@ class HeUniform(VarianceScaling):
    Also available via the shortcut function
   `tf.keras.initializers.he_uniform`.
 
-  Draws samples from a uniform distribution within [-limit, limit] where `limit`
-  is `sqrt(6 / fan_in)` where `fan_in` is the number of input units in the
-  weight tensor.
+  Draws samples from a uniform distribution within `[-limit, limit]`, where
+  `limit = sqrt(6 / fan_in)` (`fan_in` is the number of input units in the
+  weight tensor).
 
   Examples:
 

@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
@@ -405,7 +406,7 @@ class Layer(base_layer.Layer):
       trainable = True
 
     def _should_add_regularizer(variable, existing_variable_set):
-      if isinstance(variable, tf_variables.PartitionedVariable):
+      if base_layer_utils.is_split_variable(variable):
         for var in variable:
           if var in existing_variable_set:
             return False
@@ -439,7 +440,7 @@ class Layer(base_layer.Layer):
     with vs.variable_scope(
         self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       self._current_scope = scope
-      with ops.name_scope(self._name_scope(), skip_on_eager=False):
+      with backend.name_scope(self._name_scope()):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)

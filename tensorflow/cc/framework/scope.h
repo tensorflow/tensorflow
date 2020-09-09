@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 

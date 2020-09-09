@@ -58,9 +58,9 @@ TEST(ConversionLogUtilTest, TestCountOperatorsByType) {
   Model model;
   // 1st Conv operator.
   std::unique_ptr<ConvOperator> conv1(new ConvOperator());
-  const string conv1_input_name = "conv_input1";
-  const string conv1_filter_name = "conv_filter1";
-  const string conv1_output_name = "conv_output1";
+  const std::string conv1_input_name = "conv_input1";
+  const std::string conv1_filter_name = "conv_filter1";
+  const std::string conv1_output_name = "conv_output1";
   conv1->inputs.push_back(conv1_input_name);
   conv1->inputs.push_back(conv1_filter_name);
   conv1->outputs.push_back(conv1_output_name);
@@ -71,9 +71,9 @@ TEST(ConversionLogUtilTest, TestCountOperatorsByType) {
 
   // 2nd Conv operator.
   std::unique_ptr<ConvOperator> conv2(new ConvOperator());
-  const string conv2_input_name = "conv_input2";
-  const string conv2_filter_name = "conv_filter2";
-  const string conv2_output_name = "conv_output2";
+  const std::string conv2_input_name = "conv_input2";
+  const std::string conv2_filter_name = "conv_filter2";
+  const std::string conv2_output_name = "conv_output2";
   conv2->inputs.push_back(conv2_input_name);
   conv2->inputs.push_back(conv2_filter_name);
   conv2->outputs.push_back(conv2_output_name);
@@ -83,7 +83,7 @@ TEST(ConversionLogUtilTest, TestCountOperatorsByType) {
 
   // Mean operator.
   std::unique_ptr<MeanOperator> mean(new MeanOperator());
-  const string mean_input_name = "mean_input";
+  const std::string mean_input_name = "mean_input";
   mean->inputs.push_back(mean_input_name);
   array_map[mean_input_name] = std::unique_ptr<Array>(new Array);
 
@@ -111,26 +111,26 @@ TEST(ConversionLogUtilTest, TestCountOperatorsByType) {
   model.operators.push_back(std::move(elu_grad));
   model.operators.push_back(std::move(my_custom_op));
 
-  std::map<string, int> built_in_ops, select_ops, custom_ops;
+  std::map<std::string, int> built_in_ops, select_ops, custom_ops;
   CountOperatorsByType(model, &built_in_ops, &custom_ops, &select_ops);
 
   EXPECT_THAT(built_in_ops,
-              UnorderedElementsAre(std::pair<string, int>("Conv", 2),
-                                   std::pair<string, int>("Mean", 1)));
+              UnorderedElementsAre(std::pair<std::string, int>("Conv", 2),
+                                   std::pair<std::string, int>("Mean", 1)));
   EXPECT_THAT(select_ops,
-              UnorderedElementsAre(std::pair<string, int>("AvgPool3D", 1),
-                                   std::pair<string, int>("EluGrad", 1)));
-  EXPECT_THAT(custom_ops, UnorderedElementsAre(
-                              std::pair<string, int>("MyAwesomeCustomOp", 1)));
+              UnorderedElementsAre(std::pair<std::string, int>("AvgPool3D", 1),
+                                   std::pair<std::string, int>("EluGrad", 1)));
+  EXPECT_THAT(custom_ops, UnorderedElementsAre(std::pair<std::string, int>(
+                              "MyAwesomeCustomOp", 1)));
 }
 
 TEST(ConversionLogUtilTest, TestGetInputAndOutputTypes) {
   Model model;
   auto& array_map = model.GetMutableArrayMap();
-  const string input1 = "conv_input";
-  const string input2 = "conv_filter";
-  const string input3 = "feature";
-  const string output = "softmax";
+  const std::string input1 = "conv_input";
+  const std::string input2 = "conv_filter";
+  const std::string input3 = "feature";
+  const std::string output = "softmax";
   array_map[input1] = std::unique_ptr<Array>(new Array);
   array_map[input1]->data_type = ArrayDataType::kFloat;
   array_map[input2] = std::unique_ptr<Array>(new Array);
@@ -149,7 +149,7 @@ TEST(ConversionLogUtilTest, TestGetInputAndOutputTypes) {
   *model.flags.add_input_arrays() = input_arrays[2];
   model.flags.add_output_arrays(output);
 
-  TFLITE_PROTO_NS::RepeatedPtrField<string> input_types, output_types;
+  TFLITE_PROTO_NS::RepeatedPtrField<std::string> input_types, output_types;
   GetInputAndOutputTypes(model, &input_types, &output_types);
 
   EXPECT_THAT(input_types, ElementsAre("float", "float", "int16"));
@@ -161,9 +161,9 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
   auto& array_map = model.GetMutableArrayMap();
 
   std::unique_ptr<ConvOperator> conv(new ConvOperator());
-  const string conv_input_name = "conv_input";
-  const string conv_filter_name = "conv_filter";
-  const string conv_output_name = "conv_output";
+  const std::string conv_input_name = "conv_input";
+  const std::string conv_filter_name = "conv_filter";
+  const std::string conv_output_name = "conv_output";
   conv->inputs.push_back(conv_input_name);
   conv->inputs.push_back(conv_filter_name);
   conv->outputs.push_back(conv_output_name);
@@ -177,15 +177,15 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
   array_map[conv_output_name]->data_type = ArrayDataType::kFloat;
   array_map[conv_output_name]->copy_shape({4, 4, 2});
 
-  const string mean_input_name = "mean_input";
-  const string mean_output_name = "mean_output";
+  const std::string mean_input_name = "mean_input";
+  const std::string mean_output_name = "mean_output";
   std::unique_ptr<MeanOperator> mean(new MeanOperator());
   mean->inputs.push_back(mean_input_name);
   mean->outputs.push_back(mean_output_name);
   array_map[mean_input_name] = std::unique_ptr<Array>(new Array);
   array_map[mean_output_name] = std::unique_ptr<Array>(new Array);
 
-  const string avg_pool_3d_output_name = "avg_pool_output";
+  const std::string avg_pool_3d_output_name = "avg_pool_output";
   auto avg_pool_3d = absl::make_unique<TensorFlowUnsupportedOperator>();
   avg_pool_3d->tensorflow_op = "AvgPool3D";
   tensorflow::NodeDef node_def;
@@ -197,7 +197,7 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
   array_map[avg_pool_3d_output_name]->data_type = ArrayDataType::kInt32;
   array_map[avg_pool_3d_output_name]->copy_shape({2, 2});
 
-  const string custom_op_output_name = "custom_op_output";
+  const std::string custom_op_output_name = "custom_op_output";
   auto my_custom_op = absl::make_unique<TensorFlowUnsupportedOperator>();
   my_custom_op->tensorflow_op = "MyAwesomeCustomOp";
   my_custom_op->inputs.push_back(avg_pool_3d_output_name);
@@ -211,7 +211,7 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
   model.operators.push_back(std::move(avg_pool_3d));
   model.operators.push_back(std::move(my_custom_op));
 
-  TFLITE_PROTO_NS::RepeatedPtrField<string> op_signatures;
+  TFLITE_PROTO_NS::RepeatedPtrField<std::string> op_signatures;
   GetOpSignatures(model, &op_signatures);
   EXPECT_THAT(op_signatures,
               UnorderedElementsAre(
@@ -225,14 +225,14 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
 }
 
 TEST(ConversionLogUtilTest, TestSanitizeErrorMessage) {
-  const string error =
+  const std::string error =
       "error: failed while converting: 'main': Ops that can be supported by "
       "the flex runtime (enabled via setting the -emit-select-tf-ops flag): "
       "ResizeNearestNeighbor,ResizeNearestNeighbor. Ops that need custom "
       "implementation (enabled via setting the -emit-custom-ops flag): "
       "CombinedNonMaxSuppression.\nTraceback (most recent call last): File "
       "/usr/local/bin/toco_from_protos, line 8, in <module>";
-  const string pruned_error =
+  const std::string pruned_error =
       "Ops that can be supported by "
       "the flex runtime (enabled via setting the -emit-select-tf-ops flag): "
       "ResizeNearestNeighbor,ResizeNearestNeighbor.Ops that need custom "
@@ -242,7 +242,7 @@ TEST(ConversionLogUtilTest, TestSanitizeErrorMessage) {
 }
 
 TEST(ConversionLogUtilTest, TestSanitizeErrorMessageNoMatching) {
-  const string error =
+  const std::string error =
       "error: failed while converting: 'main': Traceback (most recent call "
       "last): File "
       "/usr/local/bin/toco_from_protos, line 8, in <module>";

@@ -72,8 +72,6 @@ class TensorShapeRep {
   std::string DebugString() const;
   static std::string DebugString(const TensorShapeProto& proto);
 
-  void DumpRep() const;  // XXX
-
  protected:
   // Constructable only via TensorShapeBase
   TensorShapeRep() = default;
@@ -103,10 +101,10 @@ class TensorShapeRep {
 
   // We use the max value of uint16 or uint32 to represent unknown shapes, so
   // the maximum representable valid shape in these representations is one less.
-  static const int64 kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
-  static const int64 kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
-  static const uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
-  static const uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
+  static constexpr int64 kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
+  static constexpr int64 kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
+  static constexpr uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
+  static constexpr uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
 
   Rep16* as16() { return reinterpret_cast<Rep16*>(buf()); }
   Rep32* as32() { return reinterpret_cast<Rep32*>(buf()); }
@@ -134,7 +132,7 @@ class TensorShapeRep {
   // We store the number of dimensions in byte 14, and the RepTag in byte 15.
   // Bytes [0..13] vary depending on the representation.
   // A value of 255 indicates unknown rank in the PartialTensorShape case.
-  static const uint8 kUnknownRank = 255;
+  static constexpr uint8 kUnknownRank = 255;
   uint8 ndims_byte() const { return buf()[14]; }
   void set_ndims_byte(uint8 nd) { buf()[14] = nd; }
 
@@ -333,6 +331,11 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // For access to TensorShapeBase(DataType).
   friend class Tensor;
 };
+
+/// Outputs `TensorShapeBase` to `std::ostream`.
+inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
+  return os << ts.DebugString();
+}
 
 /// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {

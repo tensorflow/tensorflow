@@ -53,10 +53,14 @@ class PForTestCase(test.TestCase):
                     loop_fn,
                     iters,
                     parallel_iterations=None,
+                    fallback_to_while_loop=False,
                     rtol=1e-4,
                     atol=1e-5):
-    t1 = pfor_control_flow_ops.pfor(loop_fn, iters=iters,
-                                    parallel_iterations=parallel_iterations)
+    t1 = pfor_control_flow_ops.pfor(
+        loop_fn,
+        iters=iters,
+        fallback_to_while_loop=fallback_to_while_loop,
+        parallel_iterations=parallel_iterations)
     loop_fn_dtypes = nest.map_structure(lambda x: x.dtype, t1)
     t2 = pfor_control_flow_ops.for_loop(loop_fn, loop_fn_dtypes, iters=iters,
                                         parallel_iterations=parallel_iterations)

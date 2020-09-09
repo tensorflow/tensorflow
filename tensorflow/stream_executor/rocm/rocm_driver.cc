@@ -558,10 +558,17 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ bool GpuDriver::CreateStream(GpuContext* context,
-                                          GpuStreamHandle* stream) {
+                                          GpuStreamHandle* stream,
+                                          int priority) {
   ScopedActivateContext activated{context};
-  hipError_t res = tensorflow::wrap::hipStreamCreateWithFlags(
-      stream, hipStreamDefault);  // switch to hipStreamNonBlocking?
+  hipError_t res;
+  if (priority == 0) {
+    res = tensorflow::wrap::hipStreamCreateWithFlags(
+        stream, hipStreamDefault);  // switch to hipStreamNonBlocking?
+  } else {
+    res = tensorflow::wrap::hipStreamCreateWithPriority(
+        stream, hipStreamDefault, priority);  // switch to hipStreamNonBlocking?
+  }
   if (res != hipSuccess) {
     LOG(ERROR) << "could not allocate ROCM stream for device "
                << context->device_ordinal() << ": " << ToString(res);

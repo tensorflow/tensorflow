@@ -19,6 +19,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["quantile_ops.cc"])
+
 tf_proto_library(
     name = "boosted_trees_proto",
     srcs = [

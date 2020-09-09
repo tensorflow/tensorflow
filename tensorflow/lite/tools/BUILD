@@ -1,6 +1,6 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package(
     default_visibility = [
@@ -9,6 +9,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files([
+    "logging.h",
+])
+
 common_copts = ["-Wall"]
 
 py_binary(
@@ -16,7 +20,10 @@ py_binary(
     srcs = ["visualize.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/lite/python:schema_py"],
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(
@@ -78,6 +85,17 @@ py_binary(
 )
 
 py_binary(
+    name = "reverse_xxd_dump_from_cc",
+    srcs = ["reverse_xxd_dump_from_cc.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":flatbuffer_utils",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
     name = "randomize_weights",
     srcs = ["randomize_weights.py"],
     python_version = "PY3",
@@ -124,13 +142,13 @@ py_library(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
     deps = [
+        ":command_line_flags",
         ":gen_op_registration",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
+        "//tensorflow/lite:util",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -206,11 +224,36 @@ cc_test(
 )
 
 cc_library(
+    name = "logging",
+    hdrs = ["logging.h"],
+    copts = common_copts,
+)
+
+cc_library(
+    name = "tool_params",
+    srcs = ["tool_params.cc"],
+    hdrs = ["tool_params.h"],
+    copts = tflite_copts(),
+    deps = [":logging"],
+)
+
+cc_test(
+    name = "tool_params_test",
+    srcs = ["tool_params_test.cc"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tool_params",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "command_line_flags",
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite:minimal_logging"],
+    deps = ["//tensorflow/lite/tools:logging"],
 )
 
 cc_test(
@@ -220,8 +263,93 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
-        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops",
+    srcs = ["list_flex_ops.cc"],
+    hdrs = ["list_flex_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
+        "@flatbuffers",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+# This tool list flex ops and kernels inside a TFLite file.
+# It is used to generate header file for selective registration.
+tf_cc_binary(
+    name = "list_flex_ops_main",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops_main_lib",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops_no_kernel",
+    srcs = ["list_flex_ops_no_kernel.cc"],
+    hdrs = ["list_flex_ops.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+tf_cc_binary(
+    name = "list_flex_ops_no_kernel_main",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops_no_kernel",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "list_flex_ops_test",
+    srcs = ["list_flex_ops_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/0_subgraphs.bin",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
+        "//tensorflow/lite:testdata/softplus_flex.bin",
+        "//tensorflow/lite:testdata/test_model.bin",
+        "//tensorflow/lite:testdata/test_model_broken.bin",
+    ],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 

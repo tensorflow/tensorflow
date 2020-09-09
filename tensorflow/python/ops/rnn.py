@@ -26,11 +26,13 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -137,8 +139,12 @@ def _should_cache():
   # train steps could be wrapped in a tf.while_loop. In that scenario caching
   # prevents forward computations in loop iterations from re-reading the
   # updated weights.
-  ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
-  return control_flow_util.GetContainingWhileContext(ctxt) is None
+  graph = ops.get_default_graph()
+  ctxt = graph._get_control_flow_context()  # pylint: disable=protected-access
+  in_v1_while_loop = (
+      control_flow_util.GetContainingWhileContext(ctxt) is not None)
+  in_v2_while_loop = control_flow_util_v2.in_while_loop_defun(graph)
+  return not in_v1_while_loop and not in_v2_while_loop
 
 
 # pylint: disable=unused-argument
@@ -337,6 +343,7 @@ def _reverse_seq(input_seq, lengths):
                         "keras.layers.RNN(cell))`, which is equivalent to "
                         "this API")
 @tf_export(v1=["nn.bidirectional_dynamic_rnn"])
+@dispatch.add_dispatch_support
 def bidirectional_dynamic_rnn(cell_fw,
                               cell_bw,
                               inputs,
@@ -494,6 +501,7 @@ def bidirectional_dynamic_rnn(cell_fw,
     None,
     "Please use `keras.layers.RNN(cell)`, which is equivalent to this API")
 @tf_export(v1=["nn.dynamic_rnn"])
+@dispatch.add_dispatch_support
 def dynamic_rnn(cell,
                 inputs,
                 sequence_length=None,
@@ -907,6 +915,7 @@ def _dynamic_rnn_loop(cell,
 
 
 @tf_export(v1=["nn.raw_rnn"])
+@dispatch.add_dispatch_support
 def raw_rnn(cell,
             loop_fn,
             parallel_iterations=None,
@@ -1233,6 +1242,7 @@ def raw_rnn(cell,
                         "Please use `keras.layers.RNN(cell, unroll=True)`, "
                         "which is equivalent to this API")
 @tf_export(v1=["nn.static_rnn"])
+@dispatch.add_dispatch_support
 def static_rnn(cell,
                inputs,
                initial_state=None,
@@ -1411,6 +1421,7 @@ def static_rnn(cell,
                         "Please use `keras.layers.RNN(cell, stateful=True)`, "
                         "which is equivalent to this API")
 @tf_export(v1=["nn.static_state_saving_rnn"])
+@dispatch.add_dispatch_support
 def static_state_saving_rnn(cell,
                             inputs,
                             state_saver,
@@ -1505,6 +1516,7 @@ def static_state_saving_rnn(cell,
                         "keras.layers.RNN(cell, unroll=True))`, which is "
                         "equivalent to this API")
 @tf_export(v1=["nn.static_bidirectional_rnn"])
+@dispatch.add_dispatch_support
 def static_bidirectional_rnn(cell_fw,
                              cell_bw,
                              inputs,

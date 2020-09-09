@@ -273,7 +273,7 @@ GlClBufferCopier::GlClBufferCopier(const TensorObjectDef& input_def,
 
 absl::Status GlClBufferCopier::Convert(const TensorObject& input_obj,
                                        const TensorObject& output_obj) {
-  if (absl::get_if<OpenGlBuffer>(&input_obj)) {
+  if (absl::holds_alternative<OpenGlBuffer>(input_obj)) {
     auto ssbo = absl::get_if<OpenGlBuffer>(&input_obj);
     auto cl_mem = absl::get_if<OpenClBuffer>(&output_obj);
     RETURN_IF_ERROR(

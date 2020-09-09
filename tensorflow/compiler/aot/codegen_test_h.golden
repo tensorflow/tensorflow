@@ -138,6 +138,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     return (*static_cast<const float(*)[1][2]>(
         arg_data(0)))[dim0][dim1];
   }
+  int arg0_size() const {
+    return 2 * sizeof(float);
+  }
+  int arg0_count() const {
+    return 2;
+  }
 
   void set_arg_myfeed_data(const void* data) {
     set_arg_data(0, data);
@@ -156,6 +162,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     return (*static_cast<const float(*)[1][2]>(
         arg_data(0)))[dim0][dim1];
   }
+  int arg_myfeed_size() const {
+    return 2 * sizeof(float);
+  }
+  int arg_myfeed_count() const {
+    return 2;
+  }
 
   void set_arg1_data(const void* data) {
     set_arg_data(1, data);
@@ -173,6 +185,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   const tensorflow::int64& arg1(size_t dim0, size_t dim1) const {
     return (*static_cast<const tensorflow::int64(*)[3][4]>(
         arg_data(1)))[dim0][dim1];
+  }
+  int arg1_size() const {
+    return 12 * sizeof(tensorflow::int64);
+  }
+  int arg1_count() const {
+    return 12;
   }
 
   // Result methods for managing output buffers. Buffers are in row-major order.
@@ -204,6 +222,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     return (*static_cast<const tensorflow::uint32(*)[5][6]>(
         result_data(0)))[dim0][dim1];
   }
+  int result0_size() const {
+    return 30 * sizeof(tensorflow::uint32);
+  }
+  int result0_count() const {
+    return 30;
+  }
 
   tensorflow::uint32* result_myfetch_data() {
     return static_cast<tensorflow::uint32*>(result_data(0));
@@ -218,6 +242,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   const tensorflow::uint32& result_myfetch(size_t dim0, size_t dim1) const {
     return (*static_cast<const tensorflow::uint32(*)[5][6]>(
         result_data(0)))[dim0][dim1];
+  }
+  int result_myfetch_size() const {
+    return 30 * sizeof(tensorflow::uint32);
+  }
+  int result_myfetch_count() const {
+    return 30;
   }
 
   // Methods for managing variable buffers. Buffers are in row-major order.
@@ -261,6 +291,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     return (*static_cast<const float(*)[1]>(
         arg_data(2)))[0];
   }
+  int var_myvar_readonly_size() const {
+    return 1 * sizeof(float);
+  }
+  int var_myvar_readonly_count() const {
+    return 1;
+  }
 
   void set_var_myvar_data(float* data) {
     set_arg_data(3, data);
@@ -279,6 +315,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     return (*static_cast<const float(*)[1]>(
         arg_data(3)))[0];
   }
+  int var_myvar_size() const {
+    return 1 * sizeof(float);
+  }
+  int var_myvar_count() const {
+    return 1;
+  }
 
   void set_var_myvar2_data(tensorflow::int32* data) {
     set_arg_data(4, data);
@@ -296,6 +338,12 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   const tensorflow::int32& var_myvar2(size_t dim0) const {
     return (*static_cast<const tensorflow::int32(*)[5]>(
         arg_data(4)))[dim0];
+  }
+  int var_myvar2_size() const {
+    return 5 * sizeof(tensorflow::int32);
+  }
+  int var_myvar2_count() const {
+    return 5;
   }
 
  private:

@@ -96,9 +96,8 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
           keras_correctness_test_base.test_combinations_with_tpu_strategies()))
   def test_incorrectly_use_multiple_cores_for_stateful_lstm_model(
       self, distribution, use_numpy, use_validation_data):
-    with self.assertRaisesRegexp(
-        ValueError,
-        'RNNs with stateful=True not yet supported with '
+    with self.assertRaisesRegex(
+        ValueError, 'RNNs with stateful=True not yet supported with '
         'tf.distribute.Strategy.'):
       self.run_correctness_test(
           distribution,

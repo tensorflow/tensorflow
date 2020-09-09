@@ -124,12 +124,12 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
           run_args.options,
           on_run_start_response.debug_urls,
           debug_ops=on_run_start_response.debug_ops,
-          node_name_regex_whitelist=(
-              on_run_start_response.node_name_regex_whitelist),
-          op_type_regex_whitelist=(
-              on_run_start_response.op_type_regex_whitelist),
-          tensor_dtype_regex_whitelist=(
-              on_run_start_response.tensor_dtype_regex_whitelist),
+          node_name_regex_allowlist=(
+              on_run_start_response.node_name_regex_allowlist),
+          op_type_regex_allowlist=(
+              on_run_start_response.op_type_regex_allowlist),
+          tensor_dtype_regex_allowlist=(
+              on_run_start_response.tensor_dtype_regex_allowlist),
           tolerate_debug_op_creation_failures=(
               on_run_start_response.tolerate_debug_op_creation_failures))
       # pylint: enable=protected-access
@@ -205,9 +205,9 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
         run_context.session.graph,
         debug_urls=debug_urls,
         debug_ops=watch_options.debug_ops,
-        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
-        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
-        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        node_name_regex_allowlist=watch_options.node_name_regex_allowlist,
+        op_type_regex_allowlist=watch_options.op_type_regex_allowlist,
+        tensor_dtype_regex_allowlist=watch_options.tensor_dtype_regex_allowlist,
         tolerate_debug_op_creation_failures=(
             watch_options.tolerate_debug_op_creation_failures),
         reset_disk_byte_usage=reset_disk_byte_usage)
@@ -292,9 +292,9 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
         debug_urls=self._grpc_debug_wrapper_session.prepare_run_debug_urls(
             fetches, feed_dict),
         debug_ops=watch_options.debug_ops,
-        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
-        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
-        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        node_name_regex_allowlist=watch_options.node_name_regex_allowlist,
+        op_type_regex_allowlist=watch_options.op_type_regex_allowlist,
+        tensor_dtype_regex_allowlist=watch_options.tensor_dtype_regex_allowlist,
         tolerate_debug_op_creation_failures=(
             watch_options.tolerate_debug_op_creation_failures))
 

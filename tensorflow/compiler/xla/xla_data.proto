@@ -120,7 +120,7 @@ enum Format {
 }
 
 // Describes a tile used in tiling-based layout. Refer to
-// g3doc/third_party/tensorflow/compiler/xla/g3doc/layout_with_tiling.md for
+// g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
 // details about tiling-based layout.
 message TileProto {
   // Number of elements in each dimension of the tile. It's ordered from the
@@ -627,6 +627,11 @@ message OpSharding {
   // applied, this is inferred from the instruction this sharding gets attached
   // to.
   repeated OpSharding tuple_shardings = 5;
+
+  // Only used for OTHER type. If true, data is sharded according to other
+  // dimensions of tile_assignment(), but replicated across devices along the
+  // last dimension. (Experimental)
+  bool replicate_on_last_tile_dim = 6;
 }
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and

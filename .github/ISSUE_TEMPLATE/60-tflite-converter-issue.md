@@ -38,6 +38,9 @@ state what is wrong:
 - Producing correct results, but the model is slower than expected (model generated from old converter)
 
 
+**RNN conversion support**
+If converting TF RNN to TFLite fused RNN ops, please prefix [RNN] in the title.
+
 **Any other info / logs**
 
 Include any logs or source code that would be helpful to diagnose the problem. If including tracebacks, please include the full traceback. Large logs and files should be attached.

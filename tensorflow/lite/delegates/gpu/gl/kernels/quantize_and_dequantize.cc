@@ -33,20 +33,15 @@ class QuantizeAndDequantize : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    std::string code;
-    // Constants
-    code += "vec4 scale = vec4($quant_scale$);";
-    code += "vec4 min_bound = vec4($quant_min$);";
-    code += "vec4 max_bound = vec4($quant_max$);";
-    // Quantize
-    code += "value_0 = clamp(value_0, min_bound, max_bound);";
-    code += "value_0 = (value_0 - min_bound) / scale;";
-    code += "value_0 = floor(value_0 + vec4(0.5));";
-    // Dequantize
-    code += "value_0 = value_0 * scale + min_bound;";
+    std::string code = R"(
+value_0 = clamp(value_0, vec4($quant_min$), vec4($quant_max$));
+value_0 = (value_0 - vec4($quant_min$)) / vec4($quant_scale$);
+value_0 = floor(value_0 + vec4(0.5));
+value_0 = value_0 * vec4($quant_scale$) + vec4($quant_min$);
+)";
 
-    auto attr = absl::any_cast<const QuantizeAndDequantizeAttributes&>(
-        ctx.node->operation.attributes);
+    const auto& attr =
+        absl::any_cast<const QuantizeAndDequantizeAttributes&>(ctx.op_attr);
     *generated_code = {
         /*parameters=*/{{"quant_min", attr.min},
                         {"quant_max", attr.max},

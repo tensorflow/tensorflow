@@ -280,6 +280,11 @@ extern void TF_ShapeInferenceContextSetOutput(TF_ShapeInferenceContext* ctx,
                                               int i, TF_ShapeHandle* handle,
                                               TF_Status* status);
 
+// Returns a newly-allocated scalar shape handle. The returned handle should
+// be freed with TF_DeleteShapeHandle.
+TF_CAPI_EXPORT extern TF_ShapeHandle* TF_ShapeInferenceContextScalar(
+    TF_ShapeInferenceContext* ctx);
+
 // Returns a newly-allocate shape handle representing a vector of the given
 // size. The returned handle should be freed with TF_DeleteShapeHandle.
 TF_CAPI_EXPORT extern TF_ShapeHandle* TF_ShapeInferenceContextVectorFromSize(

@@ -139,10 +139,13 @@ TF_CALL_uint8(DECLARE_TYPE);
 TF_CALL_int32(DECLARE_TYPE);
 TF_CALL_int16(DECLARE_TYPE);
 TF_CALL_int64(DECLARE_TYPE);
+TF_CALL_uint32(DECLARE_TYPE);
+TF_CALL_uint64(DECLARE_TYPE);
 TF_CALL_half(DECLARE_TYPE);
 TF_CALL_complex64(DECLARE_TYPE);
 TF_CALL_complex128(DECLARE_TYPE);
 TF_CALL_tstring(DECLARE_TYPE);
+TF_CALL_variant(DECLARE_TYPE);
 #undef DECLARE_TYPE
 
 #define DECLARE_DIM(T, NDIM)                           \
@@ -240,10 +243,13 @@ class TileOp : public OpKernel {
     TF_CALL_int32(HANDLE_TYPE_NAME);
     TF_CALL_int16(HANDLE_TYPE_NAME);
     TF_CALL_int64(HANDLE_TYPE_NAME);
+    TF_CALL_uint32(HANDLE_TYPE_NAME);
+    TF_CALL_uint64(HANDLE_TYPE_NAME);
     TF_CALL_half(HANDLE_TYPE_NAME);
     TF_CALL_tstring(HANDLE_TYPE_NAME);  // when DEVICE=CPUDevice.
     TF_CALL_complex64(HANDLE_TYPE_NAME);
     TF_CALL_complex128(HANDLE_TYPE_NAME);
+    TF_CALL_variant(HANDLE_TYPE_NAME);  // when DEVICE=CPUDevice
 
 #undef HANDLE_TYPE_NAME
 #undef HANDLE_TYPE
@@ -319,10 +325,13 @@ TF_CALL_int8(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int32(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int16(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int64(HANDLE_TYPE_NAME_CPU);
+TF_CALL_uint32(HANDLE_TYPE_NAME_CPU);
+TF_CALL_uint64(HANDLE_TYPE_NAME_CPU);
 TF_CALL_half(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex64(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_CPU);
 TF_CALL_tstring(HANDLE_TYPE_NAME_CPU);
+TF_CALL_variant(HANDLE_TYPE_NAME_CPU);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_bool(HANDLE_TYPE_NAME_GPU);
@@ -545,7 +554,7 @@ inline void TileGradientOp<Device, Tmultiples>::HandleCase(
     OpKernelContext* context, const std::vector<Tmultiples>& input_dims,
     const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) {
   LOG(FATAL) << "TileGradientOp: Invalid combination of Device, DT and NDIM: "
-             << MakeTypeIndex<Device>().name() << ", " << DataTypeString(DT)
+             << TypeIndex::Make<Device>().name() << ", " << DataTypeString(DT)
              << ", " << NDIM;
 }
 

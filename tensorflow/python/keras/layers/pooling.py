@@ -164,8 +164,9 @@ class MaxPooling1D(Pooling1D):
       for each pooling step.
       If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      "valid" adds no padding.  "same" adds padding such that if the stride
-      is 1, the output shape is the same as the input shape.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -209,6 +210,9 @@ class AveragePooling1D(Pooling1D):
       E.g. 2 will halve the input.
       If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -419,8 +423,9 @@ class MaxPooling2D(Pooling2D):
       Strides values.  Specifies how far the pooling window moves
       for each pooling step. If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      "valid" adds no zero padding.  "same" adds padding such that if the stride
-      is 1, the output shape is the same as input shape.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -475,6 +480,9 @@ class AveragePooling2D(Pooling2D):
       Strides values.
       If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -617,6 +625,9 @@ class MaxPooling3D(Pooling3D):
       `(2, 2, 2)` will halve the size of the 3D input in each dimension.
     strides: tuple of 3 integers, or None. Strides values.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -667,6 +678,9 @@ class AveragePooling3D(Pooling3D):
       `(2, 2, 2)` will halve the size of the 3D input in each dimension.
     strides: tuple of 3 integers, or None. Strides values.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -714,7 +728,6 @@ class GlobalPooling1D(Layer):
     super(GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -849,7 +862,6 @@ class GlobalPooling2D(Layer):
     super(GlobalPooling2D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -957,7 +969,6 @@ class GlobalPooling3D(Layer):
     super(GlobalPooling3D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

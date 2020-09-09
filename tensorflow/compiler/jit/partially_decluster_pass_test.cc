@@ -28,14 +28,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -400,37 +400,6 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
   ASSERT_NE(n, nullptr);
   n->set_assigned_device_name(
       "/job:localhost/replica:0/task:0/device:XLA_GPU:0");
-
-  TF_ASSERT_OK(PartiallyDecluster(&graph));
-
-  EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
-}
-
-TEST(PartiallyDeclusterPassTest, DontDeclusterNonTensorFlowOps) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output dynamic_slice_operand =
-      ops::Placeholder(s.WithOpName("dynamic_slice_operand"), DT_INT32,
-                       ops::Placeholder::Attrs{});
-  Output dynamic_slice_begin = ops::Placeholder(
-      s.WithOpName("dynamic_slice_begin"), DT_INT32, ops::Placeholder::Attrs{});
-  Output dynamic_slice_size = ops::Placeholder(
-      s.WithOpName("dynamic_slice_size"), DT_INT32, ops::Placeholder::Attrs{});
-  Output dynamic_slice =
-      ops::XlaDynamicSlice(s.WithOpName("dynamic_slice"), dynamic_slice_operand,
-                           dynamic_slice_begin, dynamic_slice_size);
-
-  Output reshape_input = ops::Placeholder(s.WithOpName("reshape_input"),
-                                          DT_FLOAT, ops::Placeholder::Attrs{});
-  Output reshape =
-      ops::Reshape(s.WithOpName("reshape"), reshape_input, dynamic_slice);
-
-  AddToCluster({dynamic_slice.node(), reshape.node()}, "cluster_0");
-
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
-  TF_ASSERT_OK(s.ToGraph(graph.get()));
-
-  Node* n = FindNodeByName(*graph, "dynamic_slice");
-  ASSERT_NE(n, nullptr);
 
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 

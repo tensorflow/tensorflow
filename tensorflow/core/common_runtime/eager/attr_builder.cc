@@ -71,7 +71,15 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
     if (*out != nullptr) return Status::OK();
   }
+
   mutex_lock l(g_op_name_to_attr_type_map_lock);
+
+  // Check the existence of AttrTypeMap for op_name again because another thread
+  // may insert this map after the tf_shared_lock is released but before the
+  // mutex_lock is acquired.
+  *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
+  if (*out != nullptr) return Status::OK();
+
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
   if (errors::IsNotFound(s)) {
@@ -121,7 +129,9 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     gtl::InsertIfNotPresent(m.get(), attr.name(), t);
   }
   *out = m.get();
-  (*OpNameToAttrTypeMap())[op_name] = m.release();
+  auto r = OpNameToAttrTypeMap()->emplace(op_name, m.release());
+  DCHECK(r.second) << "AttrTypeMap already exists for " << op_name;
+
   return Status::OK();
 }
 
@@ -222,6 +232,11 @@ const NodeDef& AttrBuilder::BuildNodeDef() {
   FillAttrValueMap(node_def_.mutable_attr());
   node_def_finalized_ = true;
   return node_def_;
+}
+
+void AttrBuilder::CopyAttributes(const AttrBuilder& other) {
+  encoded_attrs_.insert(other.encoded_attrs_.begin(),
+                        other.encoded_attrs_.end());
 }
 
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,

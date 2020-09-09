@@ -38,7 +38,8 @@ class NodeDef;
 //         dimensions as the input.
 //   EXPLICIT: The user specifies the pad values in the explicit_paddings
 //             attribute.
-// The padded area is zero-filled.
+// The padded area is typically zero-filled. For pooling ops, the padded area is
+// instead ignored. For max pool, this is equivalent to padding with -infinity.
 enum Padding {
   VALID = 1,     // No padding.
   SAME = 2,      // Input and output layers have the same size.
@@ -52,12 +53,12 @@ Status CheckValidPadding(Padding padding_type,
 
 // Return the string containing the list of valid padding types, that can be
 // used as an Attr() in REGISTER_OP.
-string GetPaddingAttrString();
+std::string GetPaddingAttrString();
 
 // Like GetPaddingAttrString(), but also includes EXPLICIT.
-string GetPaddingAttrStringWithExplicit();
+std::string GetPaddingAttrStringWithExplicit();
 
-string GetExplicitPaddingsAttrString();
+std::string GetExplicitPaddingsAttrString();
 
 // Sets padding value based on the given string padding value.
 Status GetPaddingFromString(StringPiece str_value, Padding* value);

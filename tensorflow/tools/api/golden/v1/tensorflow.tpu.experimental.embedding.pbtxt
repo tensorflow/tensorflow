@@ -1,0 +1,27 @@
+path: "tensorflow.tpu.experimental.embedding"
+tf_module {
+  member {
+    name: "Adagrad"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Adam"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FeatureConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SGD"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbedding"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TableConfig"
+    mtype: "<type \'type\'>"
+  }
+}

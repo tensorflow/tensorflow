@@ -16,6 +16,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "optimizer_v2",
     srcs = [
@@ -28,6 +34,7 @@ py_library(
         "nadam.py",
         "optimizer_v2.py",
         "rmsprop.py",
+        "utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -39,6 +46,7 @@ py_library(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
@@ -47,6 +55,7 @@ py_library(
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:base_layer_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -105,6 +114,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adam_test.py"],
     shard_count = 4,
+    tags = ["no_rocm"],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -224,6 +234,7 @@ cuda_py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -271,6 +282,7 @@ cuda_py_test(
         "//tensorflow/python:training_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 

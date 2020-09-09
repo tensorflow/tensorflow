@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import sys
 
 import numpy as np
 import six
@@ -136,6 +137,25 @@ class TestIOUtils(keras_parameterized.TestCase):
       mock_log.side_effect = ['m', 'n']
       self.assertFalse(
           io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
+
+  def test_path_to_string(self):
+
+    class PathLikeDummy(object):
+
+      def __fspath__(self):
+        return 'dummypath'
+
+    dummy = object()
+    if sys.version_info >= (3, 4):
+      from pathlib import Path  # pylint:disable=g-import-not-at-top
+      # conversion of PathLike
+      self.assertEqual(io_utils.path_to_string(Path('path')), 'path')
+    if sys.version_info >= (3, 6):
+      self.assertEqual(io_utils.path_to_string(PathLikeDummy()), 'dummypath')
+
+    # pass-through, works for all versions of python
+    self.assertEqual(io_utils.path_to_string('path'), 'path')
+    self.assertIs(io_utils.path_to_string(dummy), dummy)
 
 
 if __name__ == '__main__':

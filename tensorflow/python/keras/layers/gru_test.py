@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -46,7 +47,7 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_float64_GRU(self):
     if test.is_built_with_rocm():
       self.skipTest('Double type is yet not supported in ROCm')
@@ -252,6 +253,12 @@ class GRULayerGenericTest(test.TestCase):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
+
+  def test_deep_copy_GRU(self):
+    cell = keras.layers.GRUCell(5)
+    copied_cell = copy.deepcopy(cell)
+    self.assertEqual(copied_cell.units, 5)
+    self.assertEqual(cell.get_config(), copied_cell.get_config())
 
   def test_regularizers_GRU(self):
     embedding_dim = 4

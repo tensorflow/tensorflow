@@ -51,6 +51,10 @@ class Member {
 
   Status FillPossibleDevices(PossibleDevices* possible_device) const;
 
+  // Returns whether `src_root` is assigned to a CompositeDevice and `this` is
+  // assigned to a physical device.
+  bool IsEdgeFromCompositeDeviceToPhysicalDevice(const Member& src_root) const;
+
   Status EnsureCompatibilityAcrossResourceEdge(
       const Node& src, const Member& src_root,
       const Node& dst, /*dst_root is this*/

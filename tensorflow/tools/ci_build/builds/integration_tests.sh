@@ -24,19 +24,19 @@
 # the Python binary path.
 #
 # This script obeys the following environment variables (if exists):
-#   TF_BUILD_INTEG_TEST_BLACKLIST: Force skipping of specified integration tests
+#   TF_BUILD_INTEG_TEST_DENYLIST: Force skipping of specified integration tests
 #       listed in INTEG_TESTS below.
 #
 
 # List of all integration tests to run, separated by spaces
 INTEG_TESTS="ffmpeg_lib"
 
-if [[ -z "${TF_BUILD_INTEG_TEST_BLACKLIST}" ]]; then
-  TF_BUILD_INTEG_TEST_BLACKLIST=""
+if [[ -z "${TF_BUILD_INTEG_TEST_DENYLIST}" ]]; then
+  TF_BUILD_INTEG_TEST_DENYLIST=""
 fi
 echo ""
 echo "=== Integration Tests ==="
-echo "TF_BUILD_INTEG_TEST_BLACKLIST = \"${TF_BUILD_INTEG_TEST_BLACKLIST}\""
+echo "TF_BUILD_INTEG_TEST_DENYLIST = \"${TF_BUILD_INTEG_TEST_DENYLIST}\""
 
 # Timeout (in seconds) for each integration test
 TIMEOUT=1800
@@ -121,4 +121,4 @@ test_ffmpeg_lib() {
 
 # Run the integration tests
 test_runner "integration test-on-install" \
-    "${INTEG_TESTS}" "${TF_BUILD_INTEG_TEST_BLACKLIST}" "${LOGS_DIR}"
+    "${INTEG_TESTS}" "${TF_BUILD_INTEG_TEST_DENYLIST}" "${LOGS_DIR}"

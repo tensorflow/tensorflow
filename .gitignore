@@ -38,6 +38,7 @@ gradleBuild
 *.pbxproj
 *.xcworkspace
 /*.podspec
+/tensorflow/lite/**/coreml/**/BUILD
 /tensorflow/lite/**/ios/BUILD
 /tensorflow/lite/**/objc/BUILD
 /tensorflow/lite/**/swift/BUILD

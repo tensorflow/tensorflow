@@ -20,7 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import gradients as gradient_ops
+from tensorflow.python.ops import gradients_impl as gradient_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.util import nest
 

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -1478,7 +1478,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
                                     int out_x_buffer_end, int output_depth,
                                     int32* acc_buffer) {
   ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
-  // Sanity check parameters. This is important in particular to ensure
+  // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
   static_assert(kFixedDepthMultiplier || !kFixedInputDepth, "");

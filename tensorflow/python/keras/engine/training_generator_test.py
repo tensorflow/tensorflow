@@ -446,11 +446,11 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
     model.evaluate(CustomSequence())
     model.predict(CustomSequence())
 
-    with self.assertRaisesRegexp(ValueError, '`y` argument is not supported'):
+    with self.assertRaisesRegex(ValueError, '`y` argument is not supported'):
       model.fit(CustomSequence(), y=np.ones([10, 1]))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 '`sample_weight` argument is not supported'):
+    with self.assertRaisesRegex(ValueError,
+                                '`sample_weight` argument is not supported'):
       model.fit(CustomSequence(), sample_weight=np.ones([10, 1]))
 
     model.compile(rmsprop.RMSprop(0.001), 'binary_crossentropy')

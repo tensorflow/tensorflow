@@ -200,6 +200,21 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
   if (FLAGS_gpuexec_cuda_sync_around_driver_calls) SynchronizeOrDie();
 
   auto* tls = &tls_data.get();
+
+  // If this is an outermost scope, we must not assume that the CUDA context has
+  // been left in the same state we left it. Other code may have run on this
+  // thread and altered the context.
+  if (tls->depth == 0) {
+    VLOG(3) << "ScopedActivateContext switching to " << cuda_context->id();
+    FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(cuda_context->context()),
+                           "Failed setting context");
+    tls->depth = 1;
+    tls->id = cuda_context->id();
+    tls->context = cuda_context;
+    to_restore_ = nullptr;
+    return;
+  }
+
   tls->depth++;
   if (tls->id == cuda_context->id()) {
     if (kVerifyGpuContext) {
@@ -212,8 +227,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
   VLOG(3) << "ScopedActivateContext switching context from " << tls->id
           << " to " << cuda_context->id();
 
-  to_restore_ = (tls->depth == 1 ? nullptr : tls->context);
-
+  to_restore_ = tls->context;
   // Set the context and update thread local.
   FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(cuda_context->context()),
                          "Failed setting context");
@@ -308,9 +322,12 @@ static port::Status InternalInit() {
 
   if (res == CUDA_SUCCESS) {
     return port::Status::OK();
+  } else if (res == CUDA_ERROR_SHARED_OBJECT_INIT_FAILED) {
+    LOG(WARNING) << "failed call to cuInit: " << ToString(res);
+  } else {
+    LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   }
 
-  LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   Diagnostician::LogDiagnosticInformation();
   return port::Status(port::error::ABORTED,
                       absl::StrCat("failed call to cuInit: ", ToString(res)));
@@ -713,13 +730,21 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
-/* static */ bool GpuDriver::CreateStream(GpuContext* context,
-                                          CUstream* stream) {
+/* static */ bool GpuDriver::CreateStream(GpuContext* context, CUstream* stream,
+                                          int priority) {
   // TODO(leary) can we switch this to CU_STREAM_NON_BLOCKING or will that mess
   // up synchronization with respect to memsets and any other things that have
   // to occur on the default stream?
   ScopedActivateContext activated{context};
-  CUresult res = cuStreamCreate(stream, 0);
+  CUresult res;
+  // If the priority is 0, then use the previous api to create the stream with
+  // the default priority for backward compatibility. Probably there is no
+  // difference in using the new api call but leaving it as is for now.
+  if (priority == 0) {
+    res = cuStreamCreate(stream, 0);
+  } else {
+    res = cuStreamCreateWithPriority(stream, 0, priority);
+  }
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not allocate CUDA stream for context "
                << context->context() << ": " << ToString(res);

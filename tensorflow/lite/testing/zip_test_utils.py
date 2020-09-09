@@ -75,6 +75,7 @@ RANDOM_SEED = 342
 TF_TYPE_INFO = {
     tf.float32: (np.float32, "FLOAT"),
     tf.float16: (np.float16, "FLOAT"),
+    tf.float64: (np.double, "FLOAT64"),
     tf.int32: (np.int32, "INT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),
@@ -108,7 +109,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   if dtype in TF_TYPE_INFO:
     dtype = TF_TYPE_INFO[dtype][0]
 
-  if dtype in (tf.float32, tf.float16):
+  if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random_sample(shape) + min_value
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
@@ -128,10 +129,15 @@ def create_scalar_data(dtype, min_value=-100, max_value=100):
   if dtype in TF_TYPE_INFO:
     dtype = TF_TYPE_INFO[dtype][0]
 
-  if dtype in (tf.float32, tf.float16):
+  if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random() + min_value
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1)
+  elif dtype == tf.bool:
+    value = np.random.choice([True, False])
+  elif dtype == np.string_:
+    l = np.random.randint(1, 6)
+    value = "".join(np.random.choice(list(string.ascii_uppercase), size=l))
   return np.array(value, dtype=dtype)
 
 
@@ -156,7 +162,8 @@ def format_result(t):
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
-    return _pywrap_string_util.SerializeAsHexString(t.flatten())
+    # SerializeAsHexString returns bytes in PY3, so decode if appropriate.
+    return _pywrap_string_util.SerializeAsHexString(t.flatten()).decode("utf-8")
 
 
 def write_examples(fp, examples):
@@ -322,11 +329,13 @@ def make_zip_of_tests(options,
     # Only count parameters when fully_quantize is True.
     parameter_count = 0
     for parameters in test_parameters:
-      if True in parameters.get("fully_quantize", []):
+      if True in parameters.get("fully_quantize",
+                                []) and False in parameters.get(
+                                    "quant_16x8", [False]):
         parameter_count += functools.reduce(operator.mul, [
             len(values)
             for key, values in parameters.items()
-            if key != "fully_quantize"
+            if key != "fully_quantize" and key != "quant_16x8"
         ])
 
   label_base_path = zip_path
@@ -348,8 +357,8 @@ def make_zip_of_tests(options,
 
       param_dict = dict(zip(keys, curr))
 
-      if options.make_edgetpu_tests and not param_dict.get(
-          "fully_quantize", False):
+      if options.make_edgetpu_tests and (not param_dict.get(
+          "fully_quantize", False) or param_dict.get("quant_16x8", False)):
         continue
 
       def generate_inputs_outputs(tflite_model_binary,

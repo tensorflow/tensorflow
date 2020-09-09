@@ -23,14 +23,14 @@ namespace tensorflow {
 struct MyRandomPODType {};
 
 TEST(AbiTest, AbiDemangleTest) {
-  EXPECT_EQ(port::MaybeAbiDemangle(MakeTypeIndex<int>().name()), "int");
+  EXPECT_EQ(port::MaybeAbiDemangle(TypeIndex::Make<int>().name()), "int");
 
 #ifdef PLATFORM_WINDOWS
   const char pod_type_name[] = "struct tensorflow::MyRandomPODType";
 #else
   const char pod_type_name[] = "tensorflow::MyRandomPODType";
 #endif
-  EXPECT_EQ(port::MaybeAbiDemangle(MakeTypeIndex<MyRandomPODType>().name()),
+  EXPECT_EQ(port::MaybeAbiDemangle(TypeIndex::Make<MyRandomPODType>().name()),
             pod_type_name);
 
   EXPECT_EQ(

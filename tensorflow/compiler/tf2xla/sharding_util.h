@@ -43,6 +43,9 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
 xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica);
 
+xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+    const Edge& edge, int num_cores_per_replica);
+
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst);
 
 // Get sharding inforamtion from node.

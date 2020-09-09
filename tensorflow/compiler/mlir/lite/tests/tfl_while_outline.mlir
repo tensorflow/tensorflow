@@ -1,6 +1,6 @@
 // Test to verify loop outlining.
 
-// RUN: tf-opt --split-input-file --tfl-while-loop-outline %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt --split-input-file --tfl-while-loop-outline %s | FileCheck %s
 // Check that while loop outlining is nop if re-ran.
 // RUN: tf-opt --tfl-while-loop-outline %s -o %t1
 // RUN: tf-opt --tfl-while-loop-outline %t1 -o %t2

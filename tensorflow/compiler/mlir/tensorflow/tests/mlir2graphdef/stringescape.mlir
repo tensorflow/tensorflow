@@ -11,7 +11,7 @@ func @main() {
   // CHECK-NEXT: value {
   // CHECK-NEXT:   s: " 0\n\000\000"
   tf_executor.graph {
-    %0:2 = tf_executor.island wraps "tf.Empty"() {name = "dummy", dtype = "tfdtype$DT_INT32", value = "\200\n\00\00", listvalue = ["\20\0A"]} : () -> tensor<2xi32>
+    %0:2 = tf_executor.island wraps "tf.Placeholder"() {name = "dummy", dtype = "tfdtype$DT_INT32", value = "\200\n\00\00", listvalue = ["\20\0A"]} : () -> tensor<2xi32>
     tf_executor.fetch
   }
   return

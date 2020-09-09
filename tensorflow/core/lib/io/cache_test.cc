@@ -44,7 +44,7 @@ class CacheTest : public ::testing::Test {
     current_->deleted_values_.push_back(DecodeValue(v));
   }
 
-  static const int kCacheSize = 1000;
+  static constexpr int kCacheSize = 1000;
   std::vector<int> deleted_keys_;
   std::vector<int> deleted_values_;
   Cache* cache_;

@@ -24,6 +24,8 @@ limitations under the License.
 namespace xla {
 namespace mlir_gpu {
 
+using mlir::OpBuilder;
+
 BoundAffineMap GetBoundAffineMapFrom(mlir::Operation* op) {
   if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(op)) {
     return {load.getAffineMap(),
@@ -40,7 +42,7 @@ BoundAffineMap GetBoundAffineMapFrom(mlir::Operation* op) {
 
 mlir::Operation* CloneWithNewAffineMap(mlir::Operation* op,
                                        BoundAffineMap new_affine,
-                                       mlir::OpBuilder builder) {
+                                       OpBuilder builder) {
   if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(op)) {
     return builder.create<mlir::AffineLoadOp>(
         builder.getUnknownLoc(), load.getMemRef(), new_affine.affine_map,
@@ -62,20 +64,20 @@ bool IsSimpleLoop(mlir::AffineForOp loop) {
 }
 
 std::vector<mlir::AffineForOp> CreateNestedSimpleLoops(
-    absl::Span<const int64_t> upper_bounds, mlir::OpBuilder builder) {
+    absl::Span<const int64_t> upper_bounds, OpBuilder builder) {
   std::vector<mlir::AffineForOp> loops;
   loops.reserve(upper_bounds.size());
   for (int64_t dim : upper_bounds) {
     auto loop =
         builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, dim);
     loops.push_back(loop);
-    builder = loop.getBodyBuilder();
+    builder = OpBuilder::atBlockTerminator(loop.getBody());
   }
   return loops;
 }
 
 void SetBoundForSimpleLoop(mlir::AffineForOp loop, mlir::AffineExpr new_bound,
-                           mlir::OpBuilder builder) {
+                           OpBuilder builder) {
   CHECK(IsSimpleLoop(loop));
 
   loop.setUpperBoundMap(mlir::AffineMap::get(
@@ -93,7 +95,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
     CHECK(absl::c_linear_search(all_loops, target));
   }
 
-  auto builder = target.getBodyBuilder();
+  auto builder = OpBuilder::atBlockTerminator(target.getBody());
 
   auto inner_loop =
       builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, size);
@@ -127,8 +129,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
     }
     affine_map.affine_map = affine_map.affine_map.replaceDimsAndSymbols(
         replacements, {}, affine_map.operands.size(), 0);
-    auto new_op =
-        CloneWithNewAffineMap(owner, affine_map, mlir::OpBuilder(owner));
+    auto new_op = CloneWithNewAffineMap(owner, affine_map, OpBuilder(owner));
     owner->replaceAllUsesWith(new_op);
     owner->erase();
   }

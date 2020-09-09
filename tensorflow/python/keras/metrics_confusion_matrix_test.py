@@ -106,12 +106,12 @@ class FalsePositivesTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([125., 42., 12.], self.evaluate(result))
 
   def test_threshold_limit(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Threshold values must be in \[0, 1\]. Invalid values: \[-1, 2\]'):
       metrics.FalsePositives(thresholds=[-1, 0.5, 2])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Threshold values must be in \[0, 1\]. Invalid values: \[None\]'):
       metrics.FalsePositives(thresholds=[None])
@@ -817,12 +817,12 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0.675, self.evaluate(result))
 
   def test_invalid_specificity(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'`specificity` must be in the range \[0, 1\].'):
       metrics.SensitivityAtSpecificity(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.SensitivityAtSpecificity(0.4, num_thresholds=-1)
 
 
@@ -913,12 +913,12 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0.4, self.evaluate(result))
 
   def test_invalid_sensitivity(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'`sensitivity` must be in the range \[0, 1\].'):
       metrics.SpecificityAtSensitivity(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.SpecificityAtSensitivity(0.4, num_thresholds=-1)
 
 
@@ -1012,12 +1012,12 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0.7, self.evaluate(result))
 
   def test_invalid_sensitivity(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'`recall` must be in the range \[0, 1\].'):
+    with self.assertRaisesRegex(ValueError,
+                                r'`recall` must be in the range \[0, 1\].'):
       metrics.PrecisionAtRecall(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.PrecisionAtRecall(0.4, num_thresholds=-1)
 
 
@@ -1127,12 +1127,12 @@ class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0, self.evaluate(result))
 
   def test_invalid_sensitivity(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r'`precision` must be in the range \[0, 1\].'):
+    with self.assertRaisesRegex(ValueError,
+                                r'`precision` must be in the range \[0, 1\].'):
       metrics.RecallAtPrecision(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.RecallAtPrecision(0.4, num_thresholds=-1)
 
 
@@ -1381,19 +1381,19 @@ class AUCTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 1.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 1.'):
       metrics.AUC(num_thresholds=-1)
 
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 1.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 1.'):
       metrics.AUC(num_thresholds=1)
 
   def test_invalid_curve(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Invalid AUC curve value "Invalid".'):
+    with self.assertRaisesRegex(ValueError,
+                                'Invalid AUC curve value "Invalid".'):
       metrics.AUC(curve='Invalid')
 
   def test_invalid_summation_method(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Invalid AUC summation method value "Invalid".'):
       metrics.AUC(summation_method='Invalid')
 

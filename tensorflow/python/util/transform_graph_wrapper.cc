@@ -16,7 +16,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"

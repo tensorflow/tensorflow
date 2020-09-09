@@ -1,5 +1,5 @@
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s --dump-input=fail
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo -emit-use-tuple-args %s | FileCheck %s --check-prefix=TUPLE --dump-input=fail
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo -emit-use-tuple-args %s | FileCheck %s --check-prefix=TUPLE
 
 // Test entry function with no dynamic parameter bindings.
 
@@ -19,7 +19,7 @@ func @main(%arg0: tensor<10xf32>, %arg1: tensor<i32>) {
 
 // Test entry function with single dynamic parameter binding on an argument.
 
-func @main(%arg0: tensor<10xf32> {xla_hlo.padding_map = {shape_indices = [0 : i32], padding_arg_indices = [1 : i32]}}, %arg1: tensor<i32>) {
+func @main(%arg0: tensor<10xf32> {mhlo.padding_map = {shape_indices = [0 : i32], padding_arg_indices = [1 : i32]}}, %arg1: tensor<i32>) {
   return
 }
 
@@ -42,7 +42,7 @@ func @main(%arg0: tensor<10xf32> {xla_hlo.padding_map = {shape_indices = [0 : i3
 
 // Test entry function with multiple dynamic parameter bindings on an argument.
 
-func @main(%arg0: tensor<8x10xf32> {xla_hlo.padding_map = {shape_indices = [0 : i32, 1 : i32], padding_arg_indices = [1 : i32, 2 : i32]}}, %arg1: tensor<i32>, %arg2: tensor<i32>) {
+func @main(%arg0: tensor<8x10xf32> {mhlo.padding_map = {shape_indices = [0 : i32, 1 : i32], padding_arg_indices = [1 : i32, 2 : i32]}}, %arg1: tensor<i32>, %arg2: tensor<i32>) {
   return
 }
 
@@ -75,7 +75,7 @@ func @main(%arg0: tensor<8x10xf32> {xla_hlo.padding_map = {shape_indices = [0 : 
 // Test entry function with multiple dynamic parameter bindings on multiple
 // arguments.
 
-func @main(%arg0: tensor<8x10xf32> {xla_hlo.padding_map = {shape_indices = [0 : i32, 1 : i32], padding_arg_indices = [1 : i32, 2 : i32]}}, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<10x8x6xi32> {xla_hlo.padding_map = {shape_indices = [2 : i32], padding_arg_indices = [4 : i32]}}, %arg4: tensor<i32>) {
+func @main(%arg0: tensor<8x10xf32> {mhlo.padding_map = {shape_indices = [0 : i32, 1 : i32], padding_arg_indices = [1 : i32, 2 : i32]}}, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<10x8x6xi32> {mhlo.padding_map = {shape_indices = [2 : i32], padding_arg_indices = [4 : i32]}}, %arg4: tensor<i32>) {
   return
 }
 

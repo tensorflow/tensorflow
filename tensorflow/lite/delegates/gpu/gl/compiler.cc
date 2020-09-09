@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -102,9 +103,10 @@ class CompilerImpl : public Compiler {
     }
   }
 
-  absl::Status Compile(const GraphFloat32& graph,
-                       const std::unordered_set<int>& tflite_graph_io,
-                       const ShaderCodeCallback& callback) final {
+  absl::Status Compile(
+      const GraphFloat32& graph,
+      const std::unordered_set<int>& tflite_graph_io,  // NOLINT
+      const ShaderCodeCallback& callback) final {
     // It is important to have ids in a compiled graph identical to the given
     // graph.
     RETURN_IF_ERROR(graph.MakeExactCopy(&compiled_graph_));
@@ -120,8 +122,18 @@ class CompilerImpl : public Compiler {
     for (auto node : compiled_graph_.nodes()) {
       CompiledNodeAttributes attr;
       attr.node_indices.push_back(node->id);
-      RETURN_IF_ERROR(node_shader_.GenerateCode(
-          {&compiled_graph_, &gpu_info_, node, options_}, &attr.code));
+      NodeShader::GenerationContext ctx = {&gpu_info_, options_,
+                                           node->operation.type,
+                                           node->operation.attributes};
+      for (const auto& tensor : graph.FindInputs(node->id)) {
+        const auto& shape = tensor->tensor.shape;
+        ctx.input_shapes.push_back({shape.b, shape.h, shape.w, shape.c});
+      }
+      for (const auto& tensor : graph.FindOutputs(node->id)) {
+        const auto& shape = tensor->tensor.shape;
+        ctx.output_shapes.push_back({shape.b, shape.h, shape.w, shape.c});
+      }
+      RETURN_IF_ERROR(node_shader_.GenerateCode(ctx, &attr.code));
       node->operation.attributes = std::move(attr);
     }
 
@@ -148,7 +160,7 @@ class CompilerImpl : public Compiler {
     }
 
     // Prepare internal objects.
-    std::unordered_map<ValueId, Object> objects;
+    absl::flat_hash_map<ValueId, Object> objects;
     for (auto value : compiled_graph_.values()) {
       Object object = MakePHWC4Ref(value->id, value->tensor.shape);
       object.data_type = value->tensor.type;
@@ -180,8 +192,7 @@ class CompilerImpl : public Compiler {
                 "Workload uint3() requires all output sizes to match");
           }
         }
-        attr.code.workload =
-            uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4));
+        attr.code.workload = uint3(shape.w, shape.h, DivideRoundUp(shape.c, 4));
       }
 
       int num_textures = 0;

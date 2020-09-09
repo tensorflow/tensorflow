@@ -57,7 +57,7 @@ Status FunctionHandleCache::Instantiate(
 
 Status FunctionHandleCache::Clear() {
   mutex_lock l(mu_);
-  for (auto entry : handles_) {
+  for (const auto& entry : handles_) {
     TF_RETURN_IF_ERROR(lib_->ReleaseHandle(entry.second));
   }
   handles_.clear();

@@ -68,8 +68,9 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public ModulePass<TensorArrayOpsDecompositionPass> {
-  void runOnModule() override;
+    : public PassWrapper<TensorArrayOpsDecompositionPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Infers the element type and count for a TensorArraySplitV3Op. Requires
@@ -104,17 +105,12 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
 // Tries to infer the tensor array element shape.
 llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
     TF::TensorArrayV3Op ta, ModuleOp module) {
-  tensorflow::TensorShapeProto element_shape;
-  if (tensorflow::mangling_util::DemangleShape(ta.element_shape().str(),
-                                               &element_shape)
-          .ok()) {
-    tensorflow::PartialTensorShape shape(element_shape);
-    if (shape.IsFullyDefined()) {
-      // Convert int64 to int64_.
-      auto int64_dims = shape.dim_sizes();
-      llvm::SmallVector<int64_t, 8> dims(int64_dims.begin(), int64_dims.end());
-      return dims;
-    }
+  auto element_shape = ta.element_shapeAttr().cast<mlir::TF::ShapeAttr>();
+  if (element_shape.hasStaticShape()) {
+    auto shape = element_shape.getShape();
+    // Convert int64 to int64_.
+    llvm::SmallVector<int64_t, 8> dims(shape.begin(), shape.end());
+    return dims;
   }
 
   bool has_failure = false;
@@ -170,8 +166,7 @@ LogicalResult HandleTensorArrayV3Op(
               ArrayRef<TensorType>{buffer.getType().cast<TensorType>()},
               ta.getContext()));
   auto local_var = builder.create<TF::MlirLocalVarOp>(
-      ta.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
+      ta.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
   cutil::WriteLocalVariable(local_var, buffer, builder, ta.getLoc());
   ta.handle().replaceAllUsesWith(local_var);
   // The flow output is just a way for the front end to enforce ordering among
@@ -231,8 +226,7 @@ LogicalResult HandleTensorArrayWriteV3Op(
     elem = builder.create<TF::ReshapeOp>(
         write.getLoc(), ArrayRef<Type>{slice_type},
         ArrayRef<Value>{elem, cutil::GetR1Const(slice_type.getShape(), builder,
-                                                write.getLoc())},
-        ArrayRef<NamedAttribute>{});
+                                                write.getLoc())});
     elem =
         cutil::AccumulateBuffers(elem, original_elem, builder, write.getLoc());
   }
@@ -265,8 +259,7 @@ LogicalResult HandleTensorArrayConcatV3Op(
       ArrayRef<Type>{
           RankedTensorType::get(shape, buffer_type.getElementType())},
       ArrayRef<Value>{buffer,
-                      cutil::GetR1Const(shape, builder, concat.getLoc())},
-      ArrayRef<NamedAttribute>{});
+                      cutil::GetR1Const(shape, builder, concat.getLoc())});
   concat.value().replaceAllUsesWith(buffer);
 
   // Create the lengths as a list of the same value (element size).
@@ -306,8 +299,7 @@ LogicalResult HandleTensorArraySplitV3Op(
                             buffer_shape, elem_type.getElementType())},
                         ArrayRef<Value>{split.value(),
                                         cutil::GetR1Const(buffer_shape, builder,
-                                                          split.getLoc())},
-                        ArrayRef<NamedAttribute>{})
+                                                          split.getLoc())})
                     .output();
   // Accumulate with the old buffer.
   auto old_buffer =
@@ -343,8 +335,7 @@ LogicalResult CreateAndInitializeGradVariable(Type local_var_type,
                                               Operation* op, Value* var) {
   OpBuilder builder(op);
   *var = builder.create<TF::MlirLocalVarOp>(
-      op->getLoc(), ArrayRef<Type>{local_var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
+      op->getLoc(), ArrayRef<Type>{local_var_type}, ArrayRef<Value>{});
   Value buffer;
   auto buffer_type = getElementTypeOrSelf(local_var_type)
                          .cast<TF::ResourceType>()
@@ -444,45 +435,27 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
   };
   for (FuncOp func : funcs) {
     for (auto& op : func.front().getOperations()) {
-      if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+      if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
         op.replaceAllUsesWith(op.getOperands());
         continue;
       }
       if (auto grad = llvm::dyn_cast<TF::TensorArrayGradV3Op>(&op)) {
         insert(grad.handle(), grad.source().str());
       } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-        auto body = module.lookupSymbol<FuncOp>(while_op.body());
-        auto cond = module.lookupSymbol<FuncOp>(while_op.cond());
-        for (const auto& entry : AccessedGradients({body, cond}, module)) {
-          for (const string& source : entry.getSecond()) {
+        for (const auto& entry : AccessedGradients(
+                 {while_op.body_func(), while_op.cond_func()}, module))
+          for (const string& source : entry.getSecond())
             insert(while_op.getOperand(entry.getFirst()), source);
-          }
-        }
       } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-        auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-        auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
         for (const auto& entry :
-             AccessedGradients({then_branch, else_branch}, module)) {
-          for (const string& source : entry.getSecond()) {
+             AccessedGradients({if_op.then_func(), if_op.else_func()}, module))
+          for (const string& source : entry.getSecond())
             insert(if_op.getOperand(entry.getFirst() + 1), source);
-          }
-        }
-      } else if (auto pc = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-        if (!pc.f().isa<FlatSymbolRefAttr>()) continue;
-        auto callee = module.lookupSymbol<FuncOp>(pc.f().getRootReference());
-        for (const auto& entry : AccessedGradients({callee}, module)) {
-          for (const string& source : entry.getSecond()) {
-            insert(pc.getOperand(entry.getFirst()), source);
-          }
-        }
-      } else if (auto spc =
-                     llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
-        auto callee = module.lookupSymbol<FuncOp>(spc.f());
-        for (const auto& entry : AccessedGradients({callee}, module)) {
-          for (const string& source : entry.getSecond()) {
-            insert(spc.getOperand(entry.getFirst()), source);
-          }
-        }
+      } else if (auto call = llvm::dyn_cast<CallOpInterface>(&op)) {
+        auto callee = dyn_cast<FuncOp>(call.resolveCallable());
+        for (const auto& entry : AccessedGradients({callee}, module))
+          for (const string& source : entry.getSecond())
+            insert(call.getArgOperands()[entry.getFirst()], source);
       }
     }
   }
@@ -530,15 +503,14 @@ void ChangeFunctionInputSignature(
 
 LogicalResult DecomposeTensorArrayOps(
     Block*, ModuleOp, llvm::SmallDenseMap<Value, TensorArrayStats>*,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*);
+    llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*);
 
-LogicalResult HandleWhileOp(
-    TF::WhileOp while_op, ModuleOp module,
-    llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
-        decomposed_partitioned_call_callees) {
-  auto body = module.lookupSymbol<FuncOp>(while_op.body());
-  auto cond = module.lookupSymbol<FuncOp>(while_op.cond());
+LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
+                            llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
+                            llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
+                                decomposed_partitioned_call_callees) {
+  auto body = while_op.body_func();
+  auto cond = while_op.cond_func();
   auto grads = AccessedGradients({body, cond}, module);
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(while_op.getOperand(index));
@@ -605,8 +577,6 @@ LogicalResult HandleWhileOp(
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   operands, while_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_while.setAttr("output_shapes", builder.getArrayAttr({}));
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -618,13 +588,12 @@ LogicalResult HandleWhileOp(
   return success();
 }
 
-LogicalResult HandleIfOp(
-    TF::IfOp if_op, ModuleOp module,
-    llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
-        decomposed_partitioned_call_callees) {
-  auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-  auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
+LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
+                         llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
+                         llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
+                             decomposed_partitioned_call_callees) {
+  auto then_branch = if_op.then_func();
+  auto else_branch = if_op.else_func();
   auto grads = AccessedGradients({then_branch, else_branch}, module);
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(if_op.getOperand(index + 1));
@@ -674,8 +643,6 @@ LogicalResult HandleIfOp(
   auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
                                          then_branch.getType().getResults(),
                                          operands, if_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_if.setAttr("output_shapes", builder.getArrayAttr({}));
   auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();
@@ -705,11 +672,11 @@ template <typename CallOp>
 LogicalResult HandlePartitionedCallOp(
     CallOp call, FuncOp callee, ModuleOp module,
     llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
+    llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
   auto emplace_res = decomposed_partitioned_call_callees->try_emplace(
-      callee, PartitionedCallTensorArrayOpsInfo());
-  auto& info = emplace_res.first->getSecond();
+      callee.getName(), PartitionedCallTensorArrayOpsInfo());
+  auto& info = emplace_res.first->second;
   // Recreates the call op with info.
   auto recreate_caller = [&]() -> LogicalResult {
     auto new_operands = llvm::to_vector<8>(call.getOperands());
@@ -751,7 +718,7 @@ LogicalResult HandlePartitionedCallOp(
     if (!info.signature_change) return success();
     return recreate_caller();
   }
-  // Rewrite the callee on a cloned function.
+  // Rewrite the callee.
   info.signature_change = false;
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(call.getOperand(index));
@@ -764,44 +731,46 @@ LogicalResult HandlePartitionedCallOp(
     if (it == stats->end()) return false;
     return it->getSecond().accumulate_on_write;
   };
-  auto callee_clone = callee.clone();
-  auto grads = AccessedGradients({callee_clone}, module);
-  for (int64_t i = 0; i < callee_clone.getNumArguments(); ++i) {
+  FuncOp lowered_callee = callee;
+  if (!callee.isPrivate()) {
+    // Clone non-private callee in case of signature change.
+    lowered_callee = callee.clone();
+    lowered_callee.setVisibility(SymbolTable::Visibility::Private);
+  }
+  auto grads = AccessedGradients({lowered_callee}, module);
+  for (int64_t i = 0; i < lowered_callee.getNumArguments(); ++i) {
     auto it = grads.find(i);
     if (it == grads.end()) continue;
     info.arg_grads.emplace_back(i, it->getSecond());
   }
   llvm::SmallDenseMap<Value, TensorArrayStats> callee_stats;
-  ChangeFunctionInputSignature(callee_clone, grads, ta_arg_buffer_type,
+  ChangeFunctionInputSignature(lowered_callee, grads, ta_arg_buffer_type,
                                ta_accumulate_on_write, &callee_stats);
-  if (failed(DecomposeTensorArrayOps(&callee_clone.front(), module,
+  if (failed(DecomposeTensorArrayOps(&lowered_callee.front(), module,
                                      &callee_stats,
                                      decomposed_partitioned_call_callees))) {
     return failure();
   }
   for (int64_t i = 0; i < call.getNumResults(); ++i) {
-    auto ret = callee_clone.front().getTerminator()->getOperand(i);
+    auto ret = lowered_callee.front().getTerminator()->getOperand(i);
     if (!getElementTypeOrSelf(ret.getType()).isa<TF::ResourceType>()) continue;
     auto arg = ret.dyn_cast<BlockArgument>();
     if (!arg) continue;
     info.ret_forward_input.emplace_back(i, arg.getArgNumber());
   }
 
-  if (!info.signature_change) {
-    // Signature is not modified. We do not need to keep two copies.
-    info.signature_change = false;
-    auto name = callee.getName();
-    callee.erase();
-    callee_clone.setName(name);
-    SymbolTable(module).insert(callee_clone);
-  } else {
-    info.decomposed_callee = callee_clone;
-    // Add the clone with a new name.
-    auto name =
-        llvm::formatv("{0}_{1}", callee.getName(), "tensorarray_decomposed")
-            .str();
-    callee_clone.setName(name);
-    SymbolTable(module).insert(callee_clone);
+  info.decomposed_callee = lowered_callee;
+  if (lowered_callee != callee) {
+    if (!info.signature_change) {
+      // Signature is not modified. We do not need to keep two copies.
+      lowered_callee.setName(callee.getName());
+      callee.erase();
+    } else {
+      // Add the clone with a new name.
+      lowered_callee.setName(
+          llvm::formatv("{0}_tensorarray_decomposed", callee.getName()).str());
+    }
+    SymbolTable(module).insert(lowered_callee);
   }
   if (info.signature_change) return recreate_caller();
   return success();
@@ -810,10 +779,10 @@ LogicalResult HandlePartitionedCallOp(
 LogicalResult DecomposeTensorArrayOps(
     Block* block, ModuleOp module,
     llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
+    llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     } else if (auto ta = llvm::dyn_cast<TF::TensorArrayV3Op>(&op)) {
@@ -851,21 +820,22 @@ LogicalResult DecomposeTensorArrayOps(
         return failure();
       }
     } else if (auto pcall = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-      if (!pcall.f().isa<FlatSymbolRefAttr>()) {
+      auto callee = pcall.func();
+      if (!callee)
         return pcall.emitOpError(
             "TensorArray decomposition does not support call with nested "
             "references.");
-      }
-      if (failed(HandlePartitionedCallOp(
-              pcall, module.lookupSymbol<FuncOp>(pcall.f().getRootReference()),
-              module, stats, decomposed_partitioned_call_callees))) {
+
+      if (failed(
+              HandlePartitionedCallOp(pcall, callee, module, stats,
+                                      decomposed_partitioned_call_callees))) {
         return failure();
       }
     } else if (auto spcall =
                    llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
-      if (failed(HandlePartitionedCallOp(
-              spcall, module.lookupSymbol<FuncOp>(spcall.f()), module, stats,
-              decomposed_partitioned_call_callees))) {
+      if (failed(
+              HandlePartitionedCallOp(spcall, spcall.func(), module, stats,
+                                      decomposed_partitioned_call_callees))) {
         return failure();
       }
     }
@@ -873,12 +843,12 @@ LogicalResult DecomposeTensorArrayOps(
   return success();
 }
 
-void TensorArrayOpsDecompositionPass::runOnModule() {
-  auto module = getModule();
+void TensorArrayOpsDecompositionPass::runOnOperation() {
+  auto module = getOperation();
   auto main = module.lookupSymbol<FuncOp>("main");
   if (!main) return;
   llvm::SmallDenseMap<Value, TensorArrayStats> stats;
-  llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>
+  llvm::StringMap<PartitionedCallTensorArrayOpsInfo>
       decomposed_partitioned_call_callees;
   if (failed(DecomposeTensorArrayOps(&main.front(), module, &stats,
                                      &decomposed_partitioned_call_callees))) {
@@ -893,7 +863,8 @@ static PassRegistration<TensorArrayOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorArrayOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTensorArrayOpsDecompositionPass() {
   return std::make_unique<TensorArrayOpsDecompositionPass>();
 }
 

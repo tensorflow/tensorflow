@@ -111,7 +111,6 @@ class GradientTapeTest(test.TestCase, parameterized.TestCase,
         return grads
       return distribution.experimental_local_results(
           distribution.run(train_step, args=(x,)))
-
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
     for x in dist_dataset:

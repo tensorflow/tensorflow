@@ -54,6 +54,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 #define TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
 namespace micro_test {
@@ -85,8 +86,10 @@ extern tflite::ErrorReporter* reporter;
       (micro_test::tests_failed + micro_test::tests_passed));  \
   if (micro_test::tests_failed == 0) {                         \
     micro_test::reporter->Report("~~~ALL TESTS PASSED~~~\n");  \
+    return kTfLiteOk;                                          \
   } else {                                                     \
     micro_test::reporter->Report("~~~SOME TESTS FAILED~~~\n"); \
+    return kTfLiteError;                                       \
   }                                                            \
   }
 
@@ -107,13 +110,16 @@ extern tflite::ErrorReporter* reporter;
     }                                                                          \
   } while (false)
 
+// TODO(b/139142772): this macro is used with types other than ints even though
+// the printf specifier is %d.
 #define TF_LITE_MICRO_EXPECT_EQ(x, y)                                          \
   do {                                                                         \
     auto vx = x;                                                               \
     auto vy = y;                                                               \
     if ((vx) != (vy)) {                                                        \
       micro_test::reporter->Report(#x " == " #y " failed at %s:%d (%d vs %d)", \
-                                   __FILE__, __LINE__, (vx), (vy));            \
+                                   __FILE__, __LINE__, static_cast<int>(vx),   \
+                                   static_cast<int>(vy));                      \
       micro_test::did_test_fail = true;                                        \
     }                                                                          \
   } while (false)
@@ -144,17 +150,18 @@ extern tflite::ErrorReporter* reporter;
     }                                                                   \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                               \
-  do {                                                                         \
-    auto vx = (x);                                                             \
-    auto vy = (y);                                                             \
-    auto delta = ((vx) > (vy)) ? ((vx) - (vy)) : ((vy) - (vx));                \
-    if (delta > epsilon) {                                                     \
-      micro_test::reporter->Report(                                            \
-          #x " (%f) near " #y " (%f) failed at %s:%d", static_cast<float>(vx), \
-          static_cast<float>(vy), __FILE__, __LINE__);                         \
-      micro_test::did_test_fail = true;                                        \
-    }                                                                          \
+#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                      \
+  do {                                                                \
+    auto vx = (x);                                                    \
+    auto vy = (y);                                                    \
+    auto delta = ((vx) > (vy)) ? ((vx) - (vy)) : ((vy) - (vx));       \
+    if (delta > epsilon) {                                            \
+      micro_test::reporter->Report(                                   \
+          #x " (%f) near " #y " (%f) failed at %s:%d",                \
+          static_cast<double>(vx), static_cast<double>(vy), __FILE__, \
+          __LINE__);                                                  \
+      micro_test::did_test_fail = true;                               \
+    }                                                                 \
   } while (false)
 
 #define TF_LITE_MICRO_EXPECT_GT(x, y)                                        \

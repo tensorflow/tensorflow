@@ -164,7 +164,7 @@ std::unique_ptr<GenericBuffer> QuantizeBuffer(
 
 template <ArrayDataType A>
 void QuantizeArray(GraphTransformation* transformation, Model* model,
-                   const string& name,
+                   const std::string& name,
                    const QuantizationParams& quantization_params) {
   auto& array = model->GetArray(name);
   CHECK(array.data_type == ArrayDataType::kFloat);
@@ -184,7 +184,7 @@ void QuantizeArray(GraphTransformation* transformation, Model* model,
 }  // namespace
 
 void QuantizeArray(GraphTransformation* transformation, Model* model,
-                   const string& name, ArrayDataType quantized_data_type,
+                   const std::string& name, ArrayDataType quantized_data_type,
                    const QuantizationParams& quantization_params) {
   ArrayDataType adjusted_data_type = quantized_data_type;
   auto& array = model->GetArray(name);

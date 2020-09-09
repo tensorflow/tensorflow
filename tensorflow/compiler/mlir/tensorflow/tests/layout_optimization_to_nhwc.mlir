@@ -48,7 +48,7 @@ func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
         } : (tensor<?x3x230x230xf32>, tensor<7x7x3x64xf32>) -> tensor<?x64x112x112xf32>
 
   // CHECK: %[[CONV0:[0-9]*]] = "tf.Conv2D"
-  // CHECK-SAME %[[PAD]]
+  // CHECK-SAME: %[[PAD]]
   // CHECK-SAME: data_format = "NHWC"
   // CHECK-SAME: strides = [1, 2, 2, 1]
 

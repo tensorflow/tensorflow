@@ -36,6 +36,7 @@ def make_conv_with_shared_weights_tests(options):
       "padding": ["SAME"],
       "data_format": ["NHWC"],
       "channel_multiplier": [1],
+      "dynamic_range_quantize": [False, True],
   }]
 
   def get_tensor_shapes(parameters):

@@ -81,7 +81,12 @@ cc_library(
     hdrs = [
         "s3_file_system.h",
     ],
-    deps = [
+    deps = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "//tensorflow/core/platform:retrying_file_system",
+        ],
+        "//conditions:default": [],
+    }) + [
         ":aws_crypto",
         ":aws_logging",
         "//tensorflow/core:lib",

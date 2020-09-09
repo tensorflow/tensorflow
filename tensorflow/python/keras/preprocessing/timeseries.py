@@ -26,8 +26,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.preprocessing.timeseries.dataset_from_array', v1=[])
-def dataset_from_array(
+@keras_export('keras.preprocessing.timeseries_dataset_from_array', v1=[])
+def timeseries_dataset_from_array(
     data,
     targets,
     sequence_length,
@@ -106,8 +106,8 @@ def dataset_from_array(
   ```python
   input_data = data[:-10]
   targets = data[10:]
-  dataset = tf.keras.preprocessing.timeseries.dataset_from_array(
-    input_data, targets, sequence_length=10)
+  dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
+      input_data, targets, sequence_length=10)
   for batch in dataset:
     inputs, targets = batch
     assert np.array_equal(inputs[0], data[:10])  # First sequence: steps [0-9]

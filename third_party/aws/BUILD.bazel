@@ -31,6 +31,14 @@ cc_library(
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
         "//conditions:default": [],
+    }) + select({
+        "//conditions:default": glob([
+            "aws-cpp-sdk-core/source/net/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:windows": glob([
+            "aws-cpp-sdk-core/source/platform/windows/*.cpp",
+            "aws-cpp-sdk-core/source/net/windows/*.cpp",
+        ]),
     }) + glob([
         "aws-cpp-sdk-core/include/**/*.h",
         "aws-cpp-sdk-core/source/*.cpp",
@@ -59,7 +67,6 @@ cc_library(
         "aws-cpp-sdk-transfer/include/**/*.h",
         "aws-cpp-sdk-transfer/source/**/*.cpp",
         "aws-cpp-sdk-core/source/monitoring/*.cpp",
-        "aws-cpp-sdk-core/source/net/linux-shared/*.cpp",
         "aws-cpp-sdk-core/source/utils/memory/*.cpp",
         "aws-cpp-sdk-core/source/utils/crypto/openssl/*.cpp",
     ]),
@@ -94,6 +101,11 @@ cc_library(
             "ENABLE_CURL_CLIENT",
             "OPENSSL_IS_BORINGSSL",
         ],
+        "@org_tensorflow//tensorflow:windows": [
+            "PLATFORM_WINDOWS",
+            "ENABLE_CURL_CLIENT",
+            "OPENSSL_IS_BORINGSSL",
+        ],
         "//conditions:default": [],
     }),
     includes = [
@@ -101,6 +113,13 @@ cc_library(
         "aws-cpp-sdk-s3/include/",
         "aws-cpp-sdk-transfer/include/",
     ],
+    linkopts = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "-DEFAULTLIB:Userenv.lib",
+            "-DEFAULTLIB:Version.lib",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         "@aws-c-common",
         "@aws-c-event-stream",

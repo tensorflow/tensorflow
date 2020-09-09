@@ -39,10 +39,10 @@ namespace stream_executor {
 // memory for cudnn convolutions.
 class RedzoneAllocator : public ScratchAllocator {
  public:
-  static const int64 kDefaultMemoryLimit = 1LL << 32;  // 4GB
-  static const int64 kDefaultRedzoneSize =
+  static constexpr int64 kDefaultMemoryLimit = 1LL << 32;  // 4GB
+  static constexpr int64 kDefaultRedzoneSize =
       1LL << 23;  // 8MiB per side, 16MiB total.
-  static const uint8 kDefaultRedzonePattern = -1;
+  static constexpr uint8 kDefaultRedzonePattern = -1;
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
                    GpuAsmOpts gpu_compilation_opts_,
                    int64 memory_limit = kDefaultMemoryLimit,
@@ -118,6 +118,9 @@ class RedzoneAllocator : public ScratchAllocator {
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the
   // user allocation size is not a multiple of 4 bytes, we round up the size of
   // the RHS redzone.
+  //
+  // ScratchAllocators need to free all allocated memory on destruction so we
+  // use `OwningDeviceMemory` here.
   std::vector<std::pair<OwningDeviceMemory, int64>> allocated_buffers_;
 
   int64 allocated_bytes_excluding_redzones_ = 0;

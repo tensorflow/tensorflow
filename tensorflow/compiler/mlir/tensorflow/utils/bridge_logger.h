@@ -44,6 +44,13 @@ class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
                            PrintCallbackFn print_callback) override;
 };
 
+// Logger for logging/dumping pass pipeline timings after completion.
+class BridgeTimingConfig : public mlir::PassManager::PassTimingConfig {
+ public:
+  // Hook that control how/where is the output produced
+  void printTiming(PrintCallbackFn printCallback) override;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_BRIDGE_LOGGER_H_

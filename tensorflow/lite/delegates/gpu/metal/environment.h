@@ -22,6 +22,13 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
+enum class Vendor {
+  kUnknown,
+  kApple,
+  kIntel,
+  kAMD,
+};
+
 enum class AppleGPU {
   kUnknown,
   kA7,
@@ -50,16 +57,29 @@ struct AppleGPUInfo {
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
 
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
+
   int GetComputeUnitsCount() const;
 };
 
 struct DeviceInfo {
   DeviceInfo() = default;
   explicit DeviceInfo(const std::string& device_name);
+
+  Vendor vendor;
+
   AppleGPUInfo apple_info;
+
+  bool IsIntelGPU() const;
+  bool IsAppleGPU() const;
+  bool IsAMDGPU() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
+
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
 
   int GetComputeUnitsCount() const;
 };

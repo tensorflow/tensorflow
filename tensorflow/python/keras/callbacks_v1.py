@@ -83,15 +83,16 @@ class TensorBoard(callbacks.TensorBoard):
       embeddings_layer_names: a list of names of layers to keep eye on. If None
         or empty list all the embedding layer will be watched.
       embeddings_metadata: a dictionary which maps layer name to a file name in
-        which metadata for this embedding layer is saved. See the
-          [details](https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
+        which metadata for this embedding layer is saved.
+          [Here are details](
+            https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
             about metadata files format. In case if the same metadata file is
             used for all embedding layers, string can be passed.
       embeddings_data: data to be embedded at layers specified in
         `embeddings_layer_names`. Numpy array (if the model has a single input)
-        or list of Numpy arrays (if the model has multiple inputs). Learn [more
-        about
-            embeddings](https://www.tensorflow.org/programmers_guide/embedding)
+        or list of Numpy arrays (if the model has multiple inputs). Learn more
+        about embeddings [in this guide](
+          https://www.tensorflow.org/programmers_guide/embedding).
       update_freq: `'batch'` or `'epoch'` or integer. When using `'batch'`,
         writes the losses and metrics to TensorBoard after each batch. The same
         applies for `'epoch'`. If using an integer, let's say `1000`, the

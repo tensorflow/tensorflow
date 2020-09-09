@@ -79,11 +79,19 @@ class IrBuilderMixin {
     return mixin_builder()->CreateBr(std::forward<Args>(args)...);
   }
 
-  llvm::CallInst* Call(llvm::Value* callee,
+  llvm::CallInst* Call(llvm::FunctionCallee func_callee,
                        llvm::ArrayRef<llvm::Value*> args = llvm::None,
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
-    return mixin_builder()->CreateCall(callee, args, name, fp_math_tag);
+    return mixin_builder()->CreateCall(func_callee, args, name, fp_math_tag);
+  }
+
+  llvm::CallInst* Call(llvm::FunctionType* func_type, llvm::Value* callee,
+                       llvm::ArrayRef<llvm::Value*> args = llvm::None,
+                       const llvm::Twine& name = "",
+                       llvm::MDNode* fp_math_tag = nullptr) {
+    return mixin_builder()->CreateCall(func_type, callee, args, name,
+                                       fp_math_tag);
   }
 
   template <class... Args>

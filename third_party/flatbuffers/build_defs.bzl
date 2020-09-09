@@ -24,6 +24,7 @@ def flatbuffer_library_public(
         out_prefix = "",
         includes = [],
         include_paths = [],
+        compatible_with = [],
         flatc_args = DEFAULT_FLATC_ARGS,
         reflection_name = "",
         reflection_visibility = None,
@@ -43,6 +44,8 @@ def flatbuffer_library_public(
           single source targets. Usually is a directory name.
       includes: Optional, list of filegroups of schemas that the srcs depend on.
       include_paths: Optional, list of paths the includes files can be found in.
+      compatible_with: Optional, passed to genrule for environments this rule
+          can be built for.
       flatc_args: Optional, list of additional arguments to pass to flatc.
       reflection_name: Optional, if set this will generate the flatbuffer
         reflection binaries for the schemas.
@@ -72,6 +75,7 @@ def flatbuffer_library_public(
         srcs = srcs,
         outs = outs,
         output_to_bindir = output_to_bindir,
+        compatible_with = compatible_with,
         tools = includes + [flatc_path],
         cmd = genrule_cmd,
         message = "Generating flatbuffer files for %s:" % (name),
@@ -97,6 +101,7 @@ def flatbuffer_library_public(
             srcs = srcs,
             outs = reflection_outs,
             output_to_bindir = output_to_bindir,
+            compatible_with = compatible_with,
             tools = includes + [flatc_path],
             cmd = reflection_genrule_cmd,
             message = "Generating flatbuffer reflection binary for %s:" % (name),
@@ -111,6 +116,7 @@ def flatbuffer_library_public(
         #         native.FilesetEntry(files = reflection_outs),
         #     ],
         #     visibility = reflection_visibility,
+        #     compatible_with = compatible_with,
         # )
 
 def flatbuffer_cc_library(
@@ -120,6 +126,7 @@ def flatbuffer_cc_library(
         out_prefix = "",
         includes = [],
         include_paths = [],
+        compatible_with = [],
         flatc_args = DEFAULT_FLATC_ARGS,
         visibility = None,
         srcs_filegroup_visibility = None,
@@ -175,6 +182,8 @@ def flatbuffer_cc_library(
       includes: Optional, list of filegroups of schemas that the srcs depend on.
           ** SEE REMARKS BELOW **
       include_paths: Optional, list of paths the includes files can be found in.
+      compatible_with: Optional, passed to genrule for environments this rule
+          can be built for
       flatc_args: Optional list of additional arguments to pass to flatc
           (e.g. --gen-mutable).
       visibility: The visibility of the generated cc_library. By default, use the
@@ -198,6 +207,7 @@ def flatbuffer_cc_library(
         out_prefix = out_prefix,
         includes = includes,
         include_paths = include_paths,
+        compatible_with = compatible_with,
         flatc_args = flatc_args,
         reflection_name = reflection_name,
         reflection_visibility = visibility,
@@ -215,6 +225,7 @@ def flatbuffer_cc_library(
         includes = ["."],
         linkstatic = 1,
         visibility = visibility,
+        compatible_with = compatible_with,
     )
 
     # A filegroup for the `srcs`. That is, all the schema files for this
@@ -223,6 +234,7 @@ def flatbuffer_cc_library(
         name = srcs_filegroup_name if srcs_filegroup_name else "%s_includes" % (name),
         srcs = srcs,
         visibility = srcs_filegroup_visibility if srcs_filegroup_visibility != None else visibility,
+        compatible_with = compatible_with,
     )
 
 # Custom provider to track dependencies transitively.
@@ -358,11 +370,8 @@ def _concat_flatbuffer_py_srcs_impl(ctx):
         outputs = [ctx.outputs.out],
         command = (
             "find '%s' -name '*.py' -exec cat {} + |" +
-            "sed '/import flatbuffers/d' |" +
-            "sed 's/from flatbuffers." +
-            "/from flatbuffers.python.flatbuffers./' |" +
-            "sed '1s/^/from flatbuffers.python " +
-            "import flatbuffers\\n/' > %s"
+            "sed 's/from flatbuffers.compat import import_numpy/import numpy as np' |" +
+            "sed '/np = import_numpy()/d' > %s"
         ) % (
             ctx.attr.deps[0].files.to_list()[0].path,
             ctx.outputs.out.path,
@@ -472,6 +481,7 @@ def flatbuffer_java_library(
     native.java_library(
         name = name,
         srcs = [out_srcjar],
+        javacopts = ["-source 7 -target 7"],
         deps = [
             "@flatbuffers//:runtime_java",
         ],
@@ -562,7 +572,6 @@ def flatbuffer_android_library(
         srcs,
         custom_package = "",
         package_prefix = "",
-        javacopts = None,
         include_paths = DEFAULT_INCLUDE_PATHS,
         flatc_args = DEFAULT_FLATC_ARGS,
         visibility = None):
@@ -575,7 +584,6 @@ def flatbuffer_android_library(
           namespace in the schema files will be used. (optional)
       package_prefix: like custom_package, but prefixes to the existing
           namespace. (optional)
-      javacopts: List of options to pass to javac.
       include_paths: List of paths that includes files can be found in. (optional)
       flatc_args: List of additional arguments to pass to flatc. (optional)
       visibility: Visibility setting for the android_library rule. (optional)
@@ -604,6 +612,7 @@ def flatbuffer_android_library(
     android_library(
         name = name,
         srcs = [out_srcjar],
+        javacopts = ["-source 7 -target 7"],
         visibility = visibility,
         deps = [
             "@flatbuffers//:runtime_android",

@@ -404,7 +404,6 @@ class SplitOpSYCL : public SplitOpBase<SYCLDevice, T> {
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
 REGISTER_SPLIT(quint8);
-REGISTER_SPLIT(uint64);
 
 #undef REGISTER_SPLIT
 
@@ -417,10 +416,9 @@ REGISTER_SPLIT(uint64);
                               .HostMemory("split_dim"),  \
                           SplitOpGPU<type>)
 
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

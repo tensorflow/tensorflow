@@ -74,7 +74,7 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
 
 Status InitializableLookupTable::AreEntriesSame(const InitTableIterator& iter,
                                                 bool* result) {
-  *result = iter.total_size() == size();
+  *result = static_cast<size_t>(iter.total_size()) == size();
   return Status::OK();
 }
 

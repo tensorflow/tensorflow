@@ -138,10 +138,13 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/core:error_codes_proto_impl",
+        "//tensorflow/core/protobuf:error_codes_proto_impl",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
-    exports = ["//tensorflow/core:error_codes_proto_impl"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/core/protobuf:__subpackages__",
+    ],
+    exports = ["//tensorflow/core/protobuf:error_codes_proto_impl"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

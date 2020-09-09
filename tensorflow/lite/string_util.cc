@@ -35,27 +35,32 @@ void DynamicBuffer::AddString(const StringRef& string) {
 
 void DynamicBuffer::AddJoinedString(const std::vector<StringRef>& strings,
                                     char separator) {
+  StringRef ref;
+  ref.str = &separator;
+  ref.len = 1;
+  AddJoinedString(strings, ref);
+}
+
+void DynamicBuffer::AddJoinedString(const std::vector<StringRef>& strings,
+                                    StringRef separator) {
   // Resize the data buffer.
-  int total_len = strings.size() - 1;
+  int total_len = (strings.size() - 1) * separator.len;
   for (StringRef ref : strings) {
     total_len += ref.len;
   }
   data_.resize(data_.size() + total_len);
 
-  int current_idx = 0;
-  for (StringRef ref : strings) {
-    char* dst = data_.data() + offset_.back() + current_idx;
-
+  char* dst = data_.data() + offset_.back();
+  for (int i = 0; i < strings.size(); ++i) {
     // Fill separator if not first string.
-    if (current_idx != 0) {
-      *dst = separator;
-      ++dst;
-      ++current_idx;
+    if (i != 0) {
+      memcpy(dst, separator.str, separator.len);
+      dst += separator.len;
     }
 
     // Fill content of the string.
-    memcpy(dst, ref.str, ref.len);
-    current_idx += ref.len;
+    memcpy(dst, strings[i].str, strings[i].len);
+    dst += strings[i].len;
   }
   offset_.push_back(offset_.back() + total_len);
 }
@@ -89,6 +94,7 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
   return bytes;
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 void DynamicBuffer::WriteToTensorAsVector(TfLiteTensor* tensor) {
   auto dims = TfLiteIntArrayCreate(1);
   dims->data[0] = offset_.size() - 1;  // Store number of strings.
@@ -109,6 +115,7 @@ void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor,
                     tensor_buffer, bytes, kTfLiteDynamic, tensor->allocation,
                     tensor->is_variable, tensor);
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 int GetStringCount(const void* raw_buffer) {
   // The first integers in the raw buffer is the number of strings.

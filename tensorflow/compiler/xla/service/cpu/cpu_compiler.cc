@@ -42,6 +42,13 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/VectorOps.h"  // from @llvm-project
+#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -52,6 +59,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
+#include "tensorflow/compiler/xla/service/comparison_expander.h"
+#include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
@@ -72,14 +81,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
+#include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
-#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -91,6 +101,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -99,6 +110,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
@@ -113,6 +125,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+
+namespace {
+
+// We need to explicitly load all the dialects we will involved in emitting the
+// IR. This is only needed because of how MLIR is bolted into XLA and does not
+// make use of the MLIR infrastructure (like using a proper pass pipeline).
+// Hopefully this will all go away at some point in favor of a better
+// integration.
+void LoadMLIRDialects(mlir::MLIRContext& context) {
+  context.loadDialect<mlir::linalg::LinalgDialect, mlir::scf::SCFDialect,
+                      mlir::vector::VectorDialect, mlir::StandardOpsDialect,
+                      mlir::AffineDialect>();
+}
+
+}  // namespace
 
 namespace xla {
 namespace cpu {
@@ -239,7 +266,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
-
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
@@ -253,6 +279,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
+  pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
@@ -273,25 +300,29 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConvolutionGroupConverter>(
       cost_model,
       /*convert_batch_groups_only=*/false);
+  pipeline.AddPass<BatchNormExpander>(
+      /*rewrite_training_op=*/true,
+      /*rewrite_inference_op=*/true,
+      /*rewrite_grad_op=*/true);
+  pipeline.AddPass<LogisticExpander>(
+      /*expansion_type=*/LogisticExpansionType::kExp);
+  pipeline.AddPass<ConditionalCanonicalizer>();
+  pipeline.AddPass<DynamicPadder>();
+  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                          /*allow_mixed_precision=*/false);
+    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
+                                               /*allow_mixed_precision=*/false);
 
     pass.AddPass<TreeReductionRewriter>();
-    pass.AddPass<ScatterExpander>();
-    pass.AddPass<BatchNormExpander>(
-        /*rewrite_training_op=*/true,
-        /*rewrite_inference_op=*/true,
-        /*rewrite_grad_op=*/true);
-    pipeline.AddPass<HloGetDimensionSizeRewriter>();
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<AlgebraicSimplifier>(options);
     pass.AddPass<SortSimplifier>();
     pass.AddPass<HloDCE>();
+    pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -310,6 +341,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<HloConstantFolding>();
     pass.AddPass<ConditionalSimplifier>();
   }
+  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64) {
+    return sort->operand(0)->shape().element_type() == F32;
+  });
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,
@@ -339,18 +373,18 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     LLVMTargetMachineFeatures* target_machine_features) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
   // After layout assignment, use a layout-sensitive verifier.
-  auto& after_layout_assn =
-      pipeline.AddPass<HloPassPipeline>("after layout assignment");
-  after_layout_assn.AddInvariantChecker<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false);
+
+  pipeline.AddPass<HloPassPipeline>("after layout assignment")
+      .AddInvariantCheckerDebug<HloVerifier>(
+          /*layout_sensitive=*/true,
+          /*allow_mixed_precision=*/false);
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignment");
-    pass.AddInvariantChecker<HloVerifier>(
+    pass.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
@@ -402,8 +436,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
 namespace {
 
 // Align buffers to 16-byte boundaries.
-constexpr int64 kMemoryAlignment = 16;
-auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
+int64 memory_alignment(LogicalBuffer::Color) {
+  return cpu_function_runtime::kMinAlign;
+}
 
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
@@ -521,6 +556,33 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+CpuCompiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator) {
+  TF_ASSIGN_OR_RETURN(
+      module, RunHloPasses(std::move(module), executor, device_allocator));
+
+  // Select an order for emitting the HLO instructions for each computation.
+  // Using this sequence enables tighter buffer liveness analysis and reduced
+  // memory usage (as compared to using DependencyHloOrdering).
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
+
+  // Run buffer allocation on the HLO graph.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(module.get(),
+                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          BufferSizeBytesFunction(), memory_alignment,
+                          /*allocate_buffers_for_constants=*/true));
+
+  return std::make_tuple(std::move(module), std::move(assignment));
+}
+
 namespace {
 
 // Post-compilation callback functor for use by SimpleOrcJIT.
@@ -577,9 +639,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                        user_post_optimization_hook_);
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  auto llvm_context = absl::make_unique<llvm::LLVMContext>();
+  mlir::MLIRContext mlir_context;
+  LoadMLIRDialects(mlir_context);
+  llvm::LLVMContext llvm_context;
   auto llvm_module =
-      absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
+      absl::make_unique<llvm::Module>("__compute_module", llvm_context);
 
   auto jit = absl::make_unique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
@@ -633,7 +697,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // before a caller computation.
 
   LLVMTargetMachineFeatures target_machine_features(jit->target_machine());
-  IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+  IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
                        &target_machine_features,
@@ -787,6 +851,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
+  mlir::MLIRContext mlir_context;
+  LoadMLIRDialects(mlir_context);
   llvm::LLVMContext llvm_context;
   llvm::Module llvm_module("__compute_module", llvm_context);
   llvm_module.setDataLayout(target_machine->createDataLayout());
@@ -837,7 +903,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
 
     LLVMTargetMachineFeatures target_machine_features(target_machine.get());
-    IrEmitter ir_emitter(*module, *assignment, &llvm_module,
+    IrEmitter ir_emitter(&mlir_context, *module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
                          &target_machine_features,

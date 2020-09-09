@@ -26,8 +26,11 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -92,10 +95,9 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
     PyObject* arg = nullptr;
     if (call->eager) {
       Tensor t = call->ins[i];
-      TensorHandle* handle = TensorHandle::CreateLocalHandle(
-          std::move(t), ctx->CanonicalDevice(device), nullptr, ctx);
-      arg = EagerTensorFromHandle(new TFE_TensorHandle{
-          std::make_unique<tensorflow::TensorHandleInterface>(handle)});
+      arg = EagerTensorFromHandle(
+          tensorflow::wrap(TensorHandle::CreateLocalHandle(
+              std::move(t), ctx->CanonicalDevice(device), nullptr, ctx)));
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
@@ -145,7 +147,7 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                                 const Device* expected_device,
                                                 const Tensor** output_tensor) {
   tensorflow::TensorHandle* handle = tensorflow::TensorHandleFromInterface(
-      EagerTensor_Handle(eager_tensor)->handle);
+      tensorflow::unwrap(EagerTensor_Handle(eager_tensor)));
   if (VariantDeviceIsCustom(handle->device())) {
     return errors::Unimplemented(
         "Custom devices are currently not supported with PyFuncs.");
@@ -195,7 +197,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
         PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
     CHECK_NE(ctx, nullptr);
-    EagerContext* context = ContextFromInterface(ctx->context);
+    EagerContext* context = ContextFromInterface(tensorflow::unwrap(ctx));
     TF_RETURN_IF_ERROR(MakeArgTuple(call, context, &args));
     new_executor.reset(new EagerExecutor(call->eager_async));
     old_executor = &context->Executor();
@@ -235,7 +237,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   if (new_executor != nullptr) {
     TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
         PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
-    EagerContext* context = ContextFromInterface(ctx->context);
+    EagerContext* context = ContextFromInterface(tensorflow::unwrap(ctx));
     s.Update(new_executor->WaitForAllPendingNodes());
     context->SetExecutorForThread(old_executor);
   }

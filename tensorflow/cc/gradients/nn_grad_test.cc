@@ -259,9 +259,6 @@ TEST_F(NNGradTest, MaxPoolGradV2Helper) {
   RunTest(x, x_init_value, y, y_shape);
 }
 
-// TODO(rocm):
-// Re-enable this test once 3D pooling is supported on ROCm platform
-#ifndef TENSORFLOW_USE_ROCM
 TEST_F(NNGradTest, MaxPool3DGradHelper) {
   TensorShape x_shape({1, 3, 3, 3, 1});
   TensorShape y_shape({1, 1, 1, 1, 1});
@@ -274,7 +271,6 @@ TEST_F(NNGradTest, MaxPool3DGradHelper) {
   SetRandomValuesForMaxPooling<float>(&x_init_value);
   RunTest(x, x_init_value, y, y_shape);
 }
-#endif
 
 TEST_F(NNGradTest, AvgPoolGradHelper) {
   TensorShape x_shape({1, 2, 2, 1});
@@ -287,9 +283,6 @@ TEST_F(NNGradTest, AvgPoolGradHelper) {
   RunTest(x, x_shape, y, y_shape);
 }
 
-// TODO(rocm):
-// Re-enable this test once 3D pooling is supported on ROCm platform
-#ifndef TENSORFLOW_USE_ROCM
 TEST_F(NNGradTest, AvgPool3DGradHelper) {
   TensorShape x_shape({1, 3, 3, 3, 1});
   TensorShape y_shape({1, 1, 1, 1, 1});
@@ -300,7 +293,6 @@ TEST_F(NNGradTest, AvgPool3DGradHelper) {
   auto y = AvgPool3D(scope_, x, ksize, strides, "SAME");
   RunTest(x, x_shape, y, y_shape);
 }
-#endif
 
 TEST_F(NNGradTest, LRN) {
   TensorShape x_shape({1, 1, 2, 1});

@@ -133,7 +133,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
                         const bool return_flattened_batch_indices) {
   typedef BCastList::Vec Vec;
   bool all_equal = true;
-  int largest_rank = 0;
+  size_t largest_rank = 0;
   output_batch_size_ = 1;
   for (int i = 0; i < N; ++i) {
     if (x[i] != x[0]) {

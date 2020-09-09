@@ -78,7 +78,7 @@ def start():
       context.ensure_initialized()
     _profiler = _pywrap_profiler.ProfilerSession()
     try:
-      _profiler.start('')
+      _profiler.start('', {})
     except errors.AlreadyExistsError:
       logging.warning('Another profiler session is running which is probably '
                       'created by profiler server. Please avoid using profiler '

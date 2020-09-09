@@ -18,11 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import one_device_strategy
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import losses as losses_mod
 from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -47,7 +53,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -80,7 +86,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -106,7 +112,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -129,7 +135,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -164,7 +170,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
               array_ops.zeros((10, 1))],
         'a': array_ops.ones((10, 1))
     }
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
     self.assertEqual(total_loss.numpy(), 0.75)
@@ -187,7 +193,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
     self.assertEqual(total_loss.numpy(), 0.5)
@@ -214,13 +220,13 @@ class LossesContainerTest(keras_parameterized.TestCase):
     })
 
     y_p = {
-        'output1': ops.convert_to_tensor([[0], [1], [2]]),
-        'output2': ops.convert_to_tensor([[3], [4], [5]]),
-        'output3': ops.convert_to_tensor([[6], [7], [8]])
+        'output1': ops.convert_to_tensor_v2_with_dispatch([[0], [1], [2]]),
+        'output2': ops.convert_to_tensor_v2_with_dispatch([[3], [4], [5]]),
+        'output3': ops.convert_to_tensor_v2_with_dispatch([[6], [7], [8]])
     }
     y_t = {
-        'output1': ops.convert_to_tensor([[1], [2], [3]]),
-        'output3': ops.convert_to_tensor([[4], [5], [6]])
+        'output1': ops.convert_to_tensor_v2_with_dispatch([[1], [2], [3]]),
+        'output3': ops.convert_to_tensor_v2_with_dispatch([[4], [5], [6]])
     }
 
     total_loss = loss_container(y_t, y_p)
@@ -238,6 +244,99 @@ class LossesContainerTest(keras_parameterized.TestCase):
     output_3_metric = loss_container.metrics[2]
     self.assertEqual(output_3_metric.name, 'output3_loss')
     self.assertEqual(output_3_metric.result().numpy(), 2.)
+
+  def test_mismatched_dtypes(self):
+    y_t = constant_op.constant([1, 9, 2, -5], shape=(2, 2))
+    y_p = constant_op.constant([4, 8, 12, 8],
+                               shape=(2, 2),
+                               dtype=dtypes.float32)
+
+    def my_mae(labels, preds):
+      self.assertEqual(labels.dtype, dtypes.int32)
+      self.assertEqual(preds.dtype, dtypes.float32)
+      labels = math_ops.cast(labels, preds.dtype)
+      return K.mean(math_ops.abs(preds - labels), axis=-1)
+
+    loss_container = compile_utils.LossesContainer(my_mae)
+    total_loss = loss_container(y_t, y_p)
+    self.assertEqual(total_loss.dtype, dtypes.float32)
+
+  def test_integer_dtypes(self):
+    y_t = constant_op.constant([1, 9, 2, -5], shape=(2, 2))
+    y_p = constant_op.constant([4, 8, 12, 8], shape=(2, 2), dtype=dtypes.int64)
+
+    def my_mae(labels, preds):
+      self.assertEqual(labels.dtype, dtypes.int64)
+      self.assertEqual(preds.dtype, dtypes.int64)
+      return K.mean(math_ops.abs(preds - labels), axis=-1)
+
+    loss_container = compile_utils.LossesContainer(my_mae)
+    total_loss = loss_container(y_t, y_p)
+    self.assertEqual(total_loss.dtype, dtypes.int64)
+
+  def test_float_dtypes(self):
+    y_t = constant_op.constant([1, 9, 2, -5],
+                               shape=(2, 2),
+                               dtype=dtypes.float32)
+    y_p = constant_op.constant([4, 8, 12, 8],
+                               shape=(2, 2),
+                               dtype=dtypes.float64)
+
+    def my_mae(labels, preds):
+      self.assertEqual(labels.dtype, dtypes.float64)
+      self.assertEqual(preds.dtype, dtypes.float64)
+      return K.mean(math_ops.abs(preds - labels), axis=-1)
+
+    loss_container = compile_utils.LossesContainer(my_mae)
+    total_loss = loss_container(y_t, y_p)
+    self.assertEqual(total_loss.dtype, dtypes.float64)
+
+  def test_loss_masking(self):
+    loss_container = compile_utils.LossesContainer('mae')
+    y_p = constant_op.constant([[[1], [1]], [[0], [0]]], dtype=dtypes.float32)
+    y_t = constant_op.constant([[[1], [1]], [[1], [1]]], dtype=dtypes.float32)
+    y_p._keras_mask = constant_op.constant([[1, 0], [1, 0]],
+                                           dtype=dtypes.float32)
+
+    total_loss = loss_container(y_t, y_p)
+    self.assertAlmostEqual(total_loss.numpy(), .25)  # sum over batch size
+
+    self.assertLen(loss_container.metrics, 1)
+    loss_metric = loss_container.metrics[0]
+    self.assertEqual(loss_metric.name, 'loss')
+    self.assertAlmostEqual(loss_metric.result().numpy(), .25)
+
+  def test_loss_sample_weight(self):
+    loss_container = compile_utils.LossesContainer('mae')
+    y_p = constant_op.constant([[[1], [1]], [[0], [0]]], dtype=dtypes.float32)
+    y_t = constant_op.constant([[[1], [1]], [[1], [1]]], dtype=dtypes.float32)
+    sw = constant_op.constant([[.2, .3], [.5, 0]], dtype=dtypes.float32)
+
+    total_loss = loss_container(y_t, y_p, sample_weight=sw)
+    # (0 * .2 + 0 * .3 + 1 * .5 + 1 * 0) / 4
+    self.assertAlmostEqual(total_loss.numpy(), .125)
+
+    self.assertLen(loss_container.metrics, 1)
+    loss_metric = loss_container.metrics[0]
+    self.assertEqual(loss_metric.name, 'loss')
+    self.assertAlmostEqual(loss_metric.result().numpy(), .125)
+
+  def test_loss_masking_sample_weight(self):
+    loss_container = compile_utils.LossesContainer('mae')
+    y_p = constant_op.constant([[[1], [1]], [[0], [0]]], dtype=dtypes.float32)
+    y_t = constant_op.constant([[[1], [1]], [[1], [1]]], dtype=dtypes.float32)
+    sw = constant_op.constant([[.2, .3], [.5, 0]], dtype=dtypes.float32)
+    y_p._keras_mask = constant_op.constant([[1, 0], [1, 0]],
+                                           dtype=dtypes.float32)
+
+    total_loss = loss_container(y_t, y_p, sample_weight=sw)
+    # (0 * .2 + 1 * .5) / 4
+    self.assertAlmostEqual(total_loss.numpy(), .125)  # sum over batch size
+
+    self.assertLen(loss_container.metrics, 1)
+    loss_metric = loss_container.metrics[0]
+    self.assertEqual(loss_metric.name, 'loss')
+    self.assertAlmostEqual(loss_metric.result().numpy(), .125)
 
 
 class MetricsContainerTest(keras_parameterized.TestCase):
@@ -273,7 +372,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), 2 * array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 6)
 
@@ -316,7 +415,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': 2 * array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
     metric_container.update_state(y_t, y_p, sample_weight=sw)
 
     mse_metric = metric_container.metrics[0]
@@ -341,7 +440,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 1)
@@ -358,7 +457,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 1)
@@ -388,7 +487,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
               array_ops.zeros((10, 1))],
         'a': array_ops.ones((10, 1))
     }
-    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2_with_dispatch([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 3)
@@ -449,9 +548,9 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     metric_container = compile_utils.MetricsContainer(
         metrics=['mae'], weighted_metrics=['mae'])
 
-    y_t = ops.convert_to_tensor_v2([[0], [3], [0]])
-    y_p = ops.convert_to_tensor_v2([[0], [0], [0]])
-    sw = ops.convert_to_tensor_v2([[1], [0], [1]])
+    y_t = ops.convert_to_tensor_v2_with_dispatch([[0], [3], [0]])
+    y_p = ops.convert_to_tensor_v2_with_dispatch([[0], [0], [0]])
+    sw = ops.convert_to_tensor_v2_with_dispatch([[1], [0], [1]])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 2)
@@ -467,8 +566,8 @@ class MetricsContainerTest(keras_parameterized.TestCase):
   def test_broadcast_metrics_to_dict(self):
     metric_container = compile_utils.MetricsContainer(metrics=['mae'])
 
-    y_p = {'output': ops.convert_to_tensor([[0], [1], [2]])}
-    y_t = {'output': ops.convert_to_tensor([[1], [2], [3]])}
+    y_p = {'output': ops.convert_to_tensor_v2_with_dispatch([[0], [1], [2]])}
+    y_t = {'output': ops.convert_to_tensor_v2_with_dispatch([[1], [2], [3]])}
     metric_container.update_state(y_t, y_p)
 
     mae_metric = metric_container.metrics[0]
@@ -479,8 +578,8 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     metric_container = compile_utils.MetricsContainer(
         metrics=['mae'], output_names=['output'])
 
-    y_p = ops.convert_to_tensor([[0], [1], [2]])
-    y_t = {'output': ops.convert_to_tensor([[1], [2], [3]])}
+    y_p = ops.convert_to_tensor_v2_with_dispatch([[0], [1], [2]])
+    y_t = {'output': ops.convert_to_tensor_v2_with_dispatch([[1], [2], [3]])}
     metric_container.update_state(y_t, y_p)
 
     mae_metric = metric_container.metrics[0]
@@ -496,13 +595,13 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     })
 
     y_p = {
-        'output1': ops.convert_to_tensor([[0], [1], [2]]),
-        'output2': ops.convert_to_tensor([[3], [4], [5]]),
-        'output3': ops.convert_to_tensor([[6], [7], [8]])
+        'output1': ops.convert_to_tensor_v2_with_dispatch([[0], [1], [2]]),
+        'output2': ops.convert_to_tensor_v2_with_dispatch([[3], [4], [5]]),
+        'output3': ops.convert_to_tensor_v2_with_dispatch([[6], [7], [8]])
     }
     y_t = {
-        'output1': ops.convert_to_tensor([[1], [2], [3]]),
-        'output3': ops.convert_to_tensor([[4], [5], [6]])
+        'output1': ops.convert_to_tensor_v2_with_dispatch([[1], [2], [3]]),
+        'output3': ops.convert_to_tensor_v2_with_dispatch([[4], [5], [6]])
     }
 
     metric_container.update_state(y_t, y_p)
@@ -515,6 +614,76 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     mse_metric = metric_container.metrics[1]
     self.assertEqual(mse_metric.name, 'output3_mse')
     self.assertEqual(mse_metric.result().numpy(), 4.)
+
+  def test_metrics_masking(self):
+    metrics_container = compile_utils.MetricsContainer(
+        metrics=['mae'], weighted_metrics=['mse'])
+    y_p = constant_op.constant([[[1], [1]], [[0], [0]]], dtype=dtypes.float32)
+    y_t = constant_op.constant([[[1], [1]], [[1], [1]]], dtype=dtypes.float32)
+    y_p._keras_mask = constant_op.constant([[1, 1], [0, 0]],
+                                           dtype=dtypes.float32)
+
+    metrics_container.update_state(y_t, y_p)
+    self.assertLen(metrics_container.metrics, 2)
+
+    mae_metric = metrics_container.metrics[0]
+    self.assertEqual(mae_metric.name, 'mae')
+    self.assertAlmostEqual(mae_metric.result().numpy(), 0)
+
+    weighted_mae_metric = metrics_container.metrics[1]
+    self.assertEqual(weighted_mae_metric.name, 'mse')
+    self.assertAlmostEqual(weighted_mae_metric.result().numpy(), 0)
+
+  def test_metrics_sample_weight(self):
+    metrics_container = compile_utils.MetricsContainer(
+        metrics=['mae'], weighted_metrics=['mse'])
+    y_p = constant_op.constant([[[1], [1]], [[0], [1]]], dtype=dtypes.float32)
+    y_t = constant_op.constant([[[1], [1]], [[1], [1]]], dtype=dtypes.float32)
+    sw = constant_op.constant([[.2, .3], [.5, 0]], dtype=dtypes.float32)
+
+    metrics_container.update_state(y_t, y_p, sample_weight=sw)
+    self.assertLen(metrics_container.metrics, 2)
+
+    mae_metric = metrics_container.metrics[0]
+    self.assertEqual(mae_metric.name, 'mae')
+    self.assertAlmostEqual(mae_metric.result().numpy(), .25)  # 1 / 4
+
+    weighted_mae_metric = metrics_container.metrics[1]
+    self.assertEqual(weighted_mae_metric.name, 'mse')
+    self.assertAlmostEqual(weighted_mae_metric.result().numpy(), .5)  # .5 / 1
+
+  def test_metrics_masking_sample_weight(self):
+    metrics_container = compile_utils.MetricsContainer(
+        metrics=['mae'], weighted_metrics=['mse'])
+    y_p = constant_op.constant([[[1], [1]], [[0], [1]]], dtype=dtypes.float32)
+    y_t = constant_op.constant([[[1], [1]], [[1], [1]]], dtype=dtypes.float32)
+    sw = constant_op.constant([[.3, .2], [.2, .3]], dtype=dtypes.float32)
+    y_p._keras_mask = constant_op.constant([[1, 0], [1, 0]],
+                                           dtype=dtypes.float32)
+
+    metrics_container.update_state(y_t, y_p, sample_weight=sw)
+    self.assertLen(metrics_container.metrics, 2)
+
+    mae_metric = metrics_container.metrics[0]
+    self.assertEqual(mae_metric.name, 'mae')
+    self.assertAlmostEqual(mae_metric.result().numpy(), .5)  # 1 / .5
+
+    weighted_mae_metric = metrics_container.metrics[1]
+    self.assertEqual(weighted_mae_metric.name, 'mse')
+    self.assertAlmostEqual(weighted_mae_metric.result().numpy(), .2 / .5)
+
+  def test_loss_class_as_metric_with_distribution(self):
+    distribution = one_device_strategy.OneDeviceStrategy('/device:CPU:0')
+    with distribution.scope():
+      metric_container = compile_utils.MetricsContainer(
+          losses_mod.MeanSquaredError())
+      y_t, y_p = array_ops.ones((10, 5)), array_ops.zeros((10, 5))
+      metric_container.update_state(y_t, y_p)
+
+      self.assertLen(metric_container.metrics, 1)
+      metric = metric_container.metrics[0]
+      self.assertEqual(metric.name, 'mean_squared_error')
+      self.assertEqual(metric.result().numpy(), 1.)
 
 
 if __name__ == '__main__':

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_H_
 
+#include <complex>
+
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
 
@@ -42,6 +44,18 @@ extern void __xla_cpu_runtime_EigenMatMulF64(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, double* out,
     double* lhs, double* rhs, tensorflow::int64 m, tensorflow::int64 n,
     tensorflow::int64 k, tensorflow::int32 transpose_lhs,
+    tensorflow::int32 transpose_rhs);
+
+extern void __xla_cpu_runtime_EigenMatMulC64(
+    const void* run_options_ptr, std::complex<float>* out,
+    std::complex<float>* lhs, std::complex<float>* rhs, tensorflow::int64 m,
+    tensorflow::int64 n, tensorflow::int64 k, tensorflow::int32 transpose_lhs,
+    tensorflow::int32 transpose_rhs);
+
+extern void __xla_cpu_runtime_EigenMatMulC128(
+    const void* run_options_ptr, std::complex<double>* out,
+    std::complex<double>* lhs, std::complex<double>* rhs, tensorflow::int64 m,
+    tensorflow::int64 n, tensorflow::int64 k, tensorflow::int32 transpose_lhs,
     tensorflow::int32 transpose_rhs);
 
 extern void __xla_cpu_runtime_EigenMatMulS32(

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -44,8 +43,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -516,6 +516,106 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   } else {
     it->second.second.emplace_back(std::move(node_info));
   }
+}
+
+// Returns `true` iff node has a given `attr` set to `true`. Returns `false`
+// both for the missing attr, and the attr set to `false`.
+static bool HasBoolAttr(const NodeDef& node, const char* attr) {
+  const auto& it = node.attr().find(attr);
+  return it != node.attr().end() && it->second.b();
+}
+
+bool CanCreateXlaKernel(const NodeDef& node_def) {
+  return HasBoolAttr(node_def, kXlaMustCompileAttr);
+}
+
+Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
+                                       const NameAttrList& function,
+                                       const FunctionBody** fbody,
+                                       std::vector<int>* constant_arg_indices,
+                                       std::vector<int>* resource_arg_indices) {
+  FunctionLibraryRuntime::Handle handle;
+  TF_RETURN_IF_ERROR(
+      flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
+  *fbody = flr->GetFunctionBody(handle);
+  CHECK(*fbody);  // Can't be nullptr since we just instantiated it.
+  const DataTypeVector& arg_types = (*fbody)->arg_types;
+  std::vector<bool> const_args(arg_types.size());
+  // If we can't analyze the const args. Bail out.
+  TF_RETURN_IF_ERROR(
+      BackwardsConstAnalysis(*((*fbody)->graph), &const_args,
+                             /*compile_time_const_nodes=*/nullptr, flr));
+
+  for (size_t i = 0; i < const_args.size(); ++i) {
+    if (const_args[i]) {
+      constant_arg_indices->push_back(i);
+    }
+  }
+
+  // There can be hundreds of resource variables. Reserve the space for them.
+  // We don't reserve for constants above as they are usually few.
+  resource_arg_indices->reserve(arg_types.size());
+  for (size_t i = 0; i < arg_types.size(); ++i) {
+    if (arg_types[i] == DT_RESOURCE) {
+      resource_arg_indices->push_back(i);
+    }
+  }
+
+  return Status::OK();
+}
+
+static auto const ops_triggering_xla_compilation =
+    new absl::flat_hash_set<std::string>{"XlaBroadcastHelper",
+                                         "XlaConv",
+                                         "XlaDequantize",
+                                         "XlaDot",
+                                         "XlaDynamicSlice",
+                                         "XlaDynamicUpdateSlice",
+                                         "XlaEinsum",
+                                         "XlaGather",
+                                         "XlaIf",
+                                         "XlaKeyValueSort",
+                                         "XlaPad",
+                                         "XlaRecv",
+                                         "XlaReduce",
+                                         "XlaReduceWindow",
+                                         "XlaReplicaId",
+                                         "XlaScatter",
+                                         "XlaSelectAndScatter",
+                                         "XlaSelfAdjointEig",
+                                         "XlaSend",
+                                         "XlaSharding",
+                                         "XlaSort",
+                                         "XlaSpmdFullToShardShape",
+                                         "XlaSpmdShardToFullShape",
+                                         "XlaSvd",
+                                         "XlaWhile"};
+
+static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
+  return node.attr().find(kXlaClusterIdAttr) != node.attr().end() ||
+         HasBoolAttr(node, kXlaMustCompileAttr) ||
+         HasBoolAttr(node, kXlaCompileAttr) ||
+         HasBoolAttr(node, kXlaScopeAttr) ||
+         HasBoolAttr(node, kXlaInternalScopeAttr) ||
+         ops_triggering_xla_compilation->count(node.op());
+}
+
+bool CanTriggerXlaCompilation(const GraphDef& graph) {
+  for (const FunctionDef& function : graph.library().function()) {
+    for (const NodeDef& node : function.node_def()) {
+      if (NodeCanTriggerXlaCompilation(node)) {
+        return true;
+      }
+    }
+  }
+
+  for (const NodeDef& node : graph.node()) {
+    if (NodeCanTriggerXlaCompilation(node)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace tensorflow

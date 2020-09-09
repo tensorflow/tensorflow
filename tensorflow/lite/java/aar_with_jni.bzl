@@ -52,7 +52,11 @@ EOF
         ],
     )
 
-    srcs = [android_library + ".aar", name + "_dummy_app_for_so_unsigned.apk"]
+    srcs = [
+        android_library + ".aar",
+        name + "_dummy_app_for_so_unsigned.apk",
+        "//:LICENSE",
+    ]
 
     cmd = """
 cp $(location {0}.aar) $(location :{1}.aar)
@@ -62,6 +66,8 @@ cd $$(mktemp -d)
 unzip $$origdir/$(location :{1}_dummy_app_for_so_unsigned.apk) "lib/*"
 cp -r lib jni
 zip -r $$origdir/$(location :{1}.aar) jni/*/*.so
+cp $$origdir/$(location //:LICENSE) ./
+zip $$origdir/$(location :{1}.aar) LICENSE
 """.format(android_library, name)
 
     if headers:

@@ -29,7 +29,6 @@ function install_pylint () {
   # TODO(mihaimaruseac): this is used in the release build in the same way,
   # maybe extract out to a common?
   sudo python3 -m pip install setuptools --upgrade
-  sudo python2 -m pip install pylint==1.6.4
   sudo python3 -m pip install pylint==1.6.4
 }
 

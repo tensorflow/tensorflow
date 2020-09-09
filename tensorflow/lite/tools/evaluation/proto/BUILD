@@ -47,6 +47,15 @@ tf_proto_library_py(
     srcs = [
         "evaluation_stages.proto",
     ],
+    protodeps = [":preprocessing_steps"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library_py(
+    name = "preprocessing_steps",
+    srcs = [
+        "preprocessing_steps.proto",
+    ],
     visibility = ["//visibility:public"],
 )
 

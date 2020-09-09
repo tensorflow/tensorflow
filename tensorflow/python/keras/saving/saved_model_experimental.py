@@ -29,8 +29,9 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
-from tensorflow.python.lib.io import file_io
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
@@ -42,7 +43,6 @@ from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import keras_export
 
 # To avoid circular dependencies between keras/engine and keras/saving,
@@ -152,7 +152,8 @@ def _export_model_json(model, saved_model_path):
   model_json_filepath = os.path.join(
       saved_model_utils.get_or_create_assets_dir(saved_model_path),
       compat.as_text(constants.SAVED_MODEL_FILENAME_JSON))
-  file_io.write_string_to_file(model_json_filepath, model_json)
+  with gfile.Open(model_json_filepath, 'w') as f:
+    f.write(model_json)
 
 
 def _export_model_variables(model, saved_model_path):
@@ -417,7 +418,8 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
       compat.as_bytes(saved_model_path),
       compat.as_bytes(constants.ASSETS_DIRECTORY),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
-  model_json = file_io.read_file_to_string(model_json_filepath)
+  with gfile.Open(model_json_filepath, 'r') as f:
+    model_json = f.read()
   model = model_config.model_from_json(
       model_json, custom_objects=custom_objects)
 

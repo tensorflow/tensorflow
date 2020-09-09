@@ -94,6 +94,11 @@ class XlaDevice : public LocalDevice {
   static Status GetMetadata(OpKernelConstruction* ctx,
                             const Metadata** metadata);
 
+  // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by
+  // `device`.
+  static Status GetMetadataFromDevice(DeviceBase* device,
+                                      const XlaDevice::Metadata** metadata);
+
   struct Options {
     // The StreamExecutor platform. Not owned. Must be non-null.
     se::Platform* platform = nullptr;
@@ -196,8 +201,6 @@ class XlaDevice : public LocalDevice {
   xla::StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
   GetDeviceContextLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  static Status GetMetadataFromDevice(DeviceBase* device,
-                                      const XlaDevice::Metadata** metadata);
 
   Status MakeTensorFromProto(XlaDeviceContext* device_context,
                              const TensorProto& tensor_proto,
@@ -279,6 +282,8 @@ struct XlaDeviceOpRegistrations {
 };
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
+
+Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
 
 }  // namespace tensorflow
 

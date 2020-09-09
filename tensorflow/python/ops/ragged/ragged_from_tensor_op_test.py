@@ -628,8 +628,8 @@ class RaggedTensorFromTensorOpTest(test_util.TensorFlowTestCase,
                  ragged_rank=1,
                  error=None):
     dt = constant_op.constant(tensor)
-    self.assertRaisesRegexp(error[0], error[1], RaggedTensor.from_tensor, dt,
-                            lengths, padding, ragged_rank)
+    self.assertRaisesRegex(error[0], error[1], RaggedTensor.from_tensor, dt,
+                           lengths, padding, ragged_rank)
 
 
 if __name__ == '__main__':

@@ -67,8 +67,9 @@ typedef struct {
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
-  kTfLiteActRelu1,  // min(max(-1, x), 1)
-  kTfLiteActRelu6,  // min(max(0, x), 6)
+  kTfLiteActReluN1To1,                    // min(max(-1, x), 1)
+  kTfLiteActRelu1 = kTfLiteActReluN1To1,  // kTfLiteActRelu1 will be deprecated.
+  kTfLiteActRelu6,                        // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
   kTfLiteActSigmoid,
@@ -124,21 +125,33 @@ typedef struct {
 typedef struct {
   int rank;
   TfLiteFusedActivation activation;
+
+  // Parameter for SVDF version 4.
+  bool asymmetric_quantize_inputs;
 } TfLiteSVDFParams;
 
 typedef struct {
   TfLiteFusedActivation activation;
+
+  // Parameter for RNN version 3.
+  bool asymmetric_quantize_inputs;
 } TfLiteRNNParams;
 
 typedef struct {
   bool time_major;
   TfLiteFusedActivation activation;
+
+  // Parameter for Sequence RNN version 3.
+  bool asymmetric_quantize_inputs;
 } TfLiteSequenceRNNParams;
 
 typedef struct {
   bool time_major;
   TfLiteFusedActivation activation;
   bool merge_outputs;
+
+  // Parameter for Bidirectional RNN verison 3.
+  bool asymmetric_quantize_inputs;
 } TfLiteBidirectionalSequenceRNNParams;
 
 typedef enum {
@@ -158,6 +171,11 @@ typedef struct {
   // tensors are the same. Furthermore, all but the last dimension of the input
   // and output shapes will be equal.
   bool keep_num_dims;
+
+  // Parameters for FullyConnected version 7 or above.
+  // If set to true and the weights are quantized, then non constant inputs
+  // are quantized at evaluation time with asymmetric quantization.
+  bool asymmetric_quantize_inputs;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -181,6 +199,8 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 4.
+  bool pot_scale_int16;
 } TfLiteAddParams;
 
 typedef struct {
@@ -192,11 +212,18 @@ typedef struct {
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
+  bool adj_x;
+  bool adj_y;
+} TfLiteBatchMatMulParams;
+
+typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteMulParams;
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 5.
+  bool pot_scale_int16;
 } TfLiteSubParams;
 
 typedef struct {
@@ -228,6 +255,9 @@ typedef struct {
   // Parameters for LSTM version 2.
   // kTfLiteLSTMBasicKernel is only supported in version 2 or above.
   TfLiteLSTMKernelType kernel_type;
+
+  // Parameters for LSTM version 4.
+  bool asymmetric_quantize_inputs;
 } TfLiteLSTMParams;
 
 typedef struct {
@@ -238,6 +268,9 @@ typedef struct {
 
   // If set to true then the first dimension is time, otherwise batch.
   bool time_major;
+
+  // Parameter for unidirectional sequence RNN version 3.
+  bool asymmetric_quantize_inputs;
 } TfLiteUnidirectionalSequenceLSTMParams;
 
 typedef struct {
@@ -253,6 +286,10 @@ typedef struct {
   // Parameters supported by version 2:
   // If set to true then the first dimension is time, otherwise batch.
   bool time_major;
+
+  // Parameters supported by version 4:
+  // If set to true, then hybrid ops use asymmetric quantization for inputs.
+  bool asymmetric_quantize_inputs;
 } TfLiteBidirectionalSequenceLSTMParams;
 
 typedef struct {
@@ -265,6 +302,7 @@ typedef struct {
 
 typedef struct {
   bool align_corners;
+  bool half_pixel_centers;
 } TfLiteResizeNearestNeighborParams;
 
 typedef struct {

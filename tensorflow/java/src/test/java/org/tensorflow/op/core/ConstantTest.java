@@ -27,7 +27,6 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -179,17 +178,13 @@ public class ConstantTest {
     byte[] data = {(byte) 1, (byte) 2, (byte) 3, (byte) 4};
     long[] shape = {};
 
-    // byte arrays (DataType.STRING in Tensorflow) are encoded as an offset in the data buffer,
-    // followed by a varint encoded size, followed by the data.
     ByteArrayOutputStream baout = new ByteArrayOutputStream();
     DataOutputStream out = new DataOutputStream(baout);
-    // Offset in array.
-    out.writeLong(0L);
-    // Varint encoded length of buffer.
-    // For any number < 0x80, the varint encoding is simply the number itself.
-    // https://developers.google.com/protocol-buffers/docs/encoding#varints
-    assertTrue(data.length < 0x80);
-    out.write(data.length);
+    // We construct a TF_TString_Small tstring, which has the capacity for a 22 byte string.
+    // The first 6 most significant bits of the first byte represent length; the remaining
+    // 2-bits are type indicators, and are left as 0b00 to denote a TF_TSTR_SMALL type.
+    assertTrue(data.length <= 22);
+    out.writeByte(data.length << 2);
     out.write(data);
     out.close();
     byte[] content = baout.toByteArray();

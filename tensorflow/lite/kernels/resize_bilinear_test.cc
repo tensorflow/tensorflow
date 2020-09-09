@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -25,8 +29,8 @@ using ::testing::ElementsAreArray;
 using uint8 = std::uint8_t;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 class ResizeBilinearOpModel : public SingleOpModel {
@@ -35,7 +39,7 @@ class ResizeBilinearOpModel : public SingleOpModel {
                                  std::initializer_list<int> size_data,
                                  TestType test_type,
                                  bool half_pixel_centers = false) {
-    bool const_size = (test_type == TestType::CONST);
+    bool const_size = (test_type == TestType::kConst);
 
     input_ = AddInput(input);
     if (const_size) {
@@ -190,10 +194,6 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
 
 TEST_P(ResizeBilinearOpTest,
        TwoDimensionalResizeWithTwoBatches_HalfPixelCenters) {
-  // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   ResizeBilinearOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {3, 3},
                           GetParam(), /**half_pixel_centers**/ true);
   m.SetInput<float>({
@@ -253,10 +253,6 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
 
 TEST_P(ResizeBilinearOpTest,
        TwoDimensionalResizeWithTwoBatchesUInt8_HalfPixelCenters) {
-  // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   ResizeBilinearOpModel m({TensorType_UINT8, {2, 2, 2, 1}}, {3, 3}, GetParam(),
                           /**half_pixel_centers**/ true);
   m.SetInput<uint8>({
@@ -332,7 +328,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
 }
 
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTest, ResizeBilinearOpTest,
-                         testing::Values(TestType::CONST, TestType::DYNAMIC));
+                         testing::Values(TestType::kConst, TestType::kDynamic));
 
 }  // namespace
 }  // namespace tflite

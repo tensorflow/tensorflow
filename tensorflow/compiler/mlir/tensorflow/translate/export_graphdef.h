@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -50,6 +51,12 @@ stream_executor::port::Status ConvertMlirToGraph(
 stream_executor::port::Status ConvertMlirToGraph(
     mlir::ModuleOp module, const GraphExportConfig& configs,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def);
+
+// Converts an MLIR function and adds it to a FunctionLibraryDefinition.
+stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
+    mlir::FuncOp func, const GraphExportConfig& configs,
+    FunctionDef* function_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_

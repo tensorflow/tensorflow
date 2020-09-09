@@ -50,7 +50,16 @@ class XlaCaseOp : public XlaOpKernel {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCaseOp);
 
-  std::vector<NameAttrList> branches_;
+  // If the branch_index input is a constant: prunes out all but the branch
+  // corrresponding to that constant branch index, and returns that branch and
+  // the literal 0 (as the first and second component of the pair).
+  //
+  // If the branch_index input is not a constant: returns unpruned_branches_ and
+  // the branch_index input.
+  std::pair<std::vector<NameAttrList>, xla::XlaOp> GetPrunedBranchesAndIndex(
+      XlaOpKernelContext* ctx);
+
+  std::vector<NameAttrList> unpruned_branches_;
   DataTypeVector input_types_;
   DataTypeVector output_types_;
   bool has_token_input_output_;

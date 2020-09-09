@@ -1,0 +1,28 @@
+op {
+  name: "RefMerge"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "value_index"
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}

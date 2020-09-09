@@ -53,14 +53,12 @@ cusolverStatus_t GetSymbolNotFoundError() {
 
 #if CUDA_VERSION < 10000
 #include "tensorflow/stream_executor/cuda/cusolver_dense_9_0.inc"
-#elif CUDA_VERSION == 10000
+#elif CUDA_VERSION < 10010
 #include "tensorflow/stream_executor/cuda/cusolver_dense_10_0.inc"
-#elif CUDA_VERSION == 10010
+#elif CUDA_VERSION < 10020
 #include "tensorflow/stream_executor/cuda/cusolver_dense_10_1.inc"
-#elif CUDA_VERSION == 10020
+#elif CUDA_VERSION < 11000
 #include "tensorflow/stream_executor/cuda/cusolver_dense_10_2.inc"
-#elif CUDA_VERSION == 11000
-#include "tensorflow/stream_executor/cuda/cusolver_dense_11_0.inc"
 #else
-#error "We don't have a wrapper for this version."
+#include "tensorflow/stream_executor/cuda/cusolver_dense_11_0.inc"
 #endif

@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
@@ -136,6 +136,10 @@ bool IsXlaDevice(absl::string_view device_type) {
           device_type == "TPU");
 }
 
+bool IsCompositeDevice(absl::string_view device_type) {
+  return device_type == kCompositeDeviceType;
+}
+
 }  // namespace
 
 Status Member::SetParentAndSupportedDevices(
@@ -218,6 +222,26 @@ Status Member::FillPossibleDevices(PossibleDevices* possible_device) const {
   possible_device->resource_device_name = resource_device_name_;
   possible_device->device_types = supported_device_types_;
   return Status::OK();
+}
+
+bool Member::IsEdgeFromCompositeDeviceToPhysicalDevice(
+    const Member& src_root) const {
+  auto compatible_edge_from_composite_device_to_physical_device =
+      [](const DeviceNameUtils::ParsedName& src_device,
+         const DeviceNameUtils::ParsedName& dst_device) -> bool {
+    return src_device.has_type && dst_device.has_type &&
+           IsCompositeDevice(src_device.type) &&
+           !IsCompositeDevice(dst_device.type);
+  };
+  if (compatible_edge_from_composite_device_to_physical_device(
+          src_root.assigned_device_name_, assigned_device_name_) ||
+      compatible_edge_from_composite_device_to_physical_device(
+          src_root.resource_device_name_, resource_device_name_) ||
+      compatible_edge_from_composite_device_to_physical_device(
+          src_root.requested_device_name_, requested_device_name_)) {
+    return true;
+  }
+  return false;
 }
 
 Status Member::EnsureCompatibilityAcrossResourceEdge(
@@ -484,7 +508,10 @@ Status Member::AssignDevice(const Node& node) {
 void Member::MaybeExcludeXlaDevices() {
   for (const auto& parsed_name :
        {requested_device_name_, assigned_device_name_, resource_device_name_}) {
-    if (parsed_name.has_type && IsXlaDevice(parsed_name.type)) {
+    // Don't exculde XLA devices from supported devices if member is explicitly
+    // assigned to a CompositeDevice.
+    if (parsed_name.has_type && (IsXlaDevice(parsed_name.type) ||
+                                 IsCompositeDevice(parsed_name.type))) {
       return;
     }
   }
@@ -664,6 +691,12 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
   auto& src_root = members_[src_root_id];
   auto& dst_root = members_[dst_root_id];
 
+  if (dst_root.IsEdgeFromCompositeDeviceToPhysicalDevice(src_root)) {
+    // If the src root is assigned to a composite device and the dst root is
+    // assigned to a physical device, don't colocate the dst root with the src
+    // root.
+    return Status::OK();
+  }
   TF_RETURN_IF_ERROR(dst_root.EnsureCompatibilityAcrossResourceEdge(
       *src, src_root, *dst, log_device_placement_));
   Status status = ColocateNodes(*src, src_root_id, *dst, dst_root_id);
@@ -888,6 +921,15 @@ Status GetGroupNodes(const IOColocationGroups& groups, const Node& node,
     }
   }
   return Status::OK();
+}
+
+// Returns whether the device_type in `device_attributes` is supported.
+bool IsSupportedDeviceType(const DeviceAttributes& device_attributes,
+                           const DeviceType& supported_type) {
+  if (DeviceType(device_attributes.device_type()) == supported_type) {
+    return true;
+  }
+  return IsCompositeDevice(device_attributes.device_type());
 }
 
 }  // namespace
@@ -1364,7 +1406,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
   }
 
   for (const auto& d : member->supported_device_types()) {
-    if (DeviceType(assigned_device->attributes().device_type()) == d.first) {
+    if (IsSupportedDeviceType(assigned_device->attributes(), d.first)) {
       return Status::OK();
     }
   }
@@ -1434,8 +1476,8 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
   PrioritizedDeviceVector prioritized_filtered_devices;
   for (const auto& supported_device_type : supported_device_types) {
     for (Device* device : devices) {
-      if (DeviceType(device->attributes().device_type()) ==
-          supported_device_type.first) {
+      if (IsSupportedDeviceType(device->attributes(),
+                                supported_device_type.first)) {
         if (default_local_device &&
             (device == default_local_device ||
              // TODO(nareshmodi, fishx): At times the device pointer in the

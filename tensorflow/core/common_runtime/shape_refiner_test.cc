@@ -849,17 +849,17 @@ REGISTER_OP("TensorAsShapeInt64")
 
 REGISTER_OP("NonConstScalarInt32")
     .Output("o: int32")
-    .SetIsStateful()  // prevents constant folding
+    .SetDoNotOptimize()
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("NonConstScalarInt64")
     .Output("o: int64")
-    .SetIsStateful()  // prevents constant folding
+    .SetDoNotOptimize()
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("WithEmptyVectorShape")
     .Output("o: int32")
-    .SetIsStateful()  // prevents constant folding
+    .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(0));
       return Status::OK();
@@ -867,7 +867,7 @@ REGISTER_OP("WithEmptyVectorShape")
 
 REGISTER_OP("WithPartialShape")
     .Output("o: int32")
-    .SetIsStateful()  // prevents constant folding
+    .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(
           0, c->MakeShape({1, shape_inference::InferenceContext::kUnknownDim, 3,
@@ -877,7 +877,7 @@ REGISTER_OP("WithPartialShape")
 
 REGISTER_OP("WithPartialShape2")
     .Output("o: int32")
-    .SetIsStateful()  // prevents constant folding
+    .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(
           0,
@@ -887,7 +887,7 @@ REGISTER_OP("WithPartialShape2")
 
 REGISTER_OP("WithUnknownShape")
     .Output("o: int32")
-    .SetIsStateful()  // prevents constant folding
+    .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
       return Status::OK();

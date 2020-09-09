@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/flt_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -37,60 +36,16 @@ namespace cl {
 // on the GPU, which cannot represent int8 tensors.
 //
 // Implemented as:
-// qvalue = round((min(qmax, max(qmin, src_val)) - qmin) * (1/qscale) + 0.5)
+// qvalue = round((min(qmax, max(qmin, src_val)) - qmin) * (1/qscale))
 // dq_value = qvalue * qscale + qmin
 // Here, qmin, qmax & qscale refer to the quantization values as implemented in
-// TensorFlow Lite's 'FakeQuant' kernel. round(x + 0.5) ensures we round away
-// from zero.
+// TensorFlow Lite's 'FakeQuant' kernel.
 //
 // NOTE: We do not need to nudge min/max values in this op, since they would
 // already be adjusted while generating the quantized model.
-class QuantizeAndDequantize : public ElementwiseOperation {
- public:
-  QuantizeAndDequantize() = default;
-  // Move only
-  QuantizeAndDequantize(QuantizeAndDequantize&& operation);
-  QuantizeAndDequantize& operator=(QuantizeAndDequantize&& operation);
-  QuantizeAndDequantize(const QuantizeAndDequantize&) = delete;
-  QuantizeAndDequantize& operator=(const QuantizeAndDequantize&) = delete;
-
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-
-  friend absl::Status CreateQuantizeAndDequantize(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const QuantizeAndDequantizeAttributes& attr,
-      QuantizeAndDequantize* result);
-
- private:
-  QuantizeAndDequantize(const OperationDef& definition,
-                        const QuantizeAndDequantizeAttributes& attr,
-                        CalculationsPrecision scalar_precision);
-
-  template <DataType T>
-  absl::Status UploadParameters(
-      const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
-
-  FLT min_;
-  FLT max_;
-  FLT scale_;
-};
-
-absl::Status CreateQuantizeAndDequantize(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const QuantizeAndDequantizeAttributes& attr, QuantizeAndDequantize* result);
-
-template <DataType T>
-absl::Status QuantizeAndDequantize::UploadParameters(
-    const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type =
-      DeduceLinearStorageType(definition_.GetPrimaryStorageType());
-  create_info.data_type = definition_.GetPrimaryDataType();
-  return absl::OkStatus();
-}
+GPUOperation CreateQuantizeAndDequantize(
+    const OperationDef& definition,
+    const QuantizeAndDequantizeAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

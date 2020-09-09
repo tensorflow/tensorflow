@@ -20,7 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -28,9 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 
@@ -85,8 +84,8 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
     // TODO(b/134547156): TEMPORARY WORKAROUND. If input shape handle is not set
     // in outer context, set _Arg node output shape to unknown.
     if (outer_context->input(index).SameHandle(ShapeHandle())) {
-      LOG(WARNING) << "Function instantiation has undefined input shape at "
-                   << "index: " << index << " in the outer inference context.";
+      VLOG(1) << "Function instantiation has undefined input shape at "
+              << "index: " << index << " in the outer inference context.";
       node_context->set_output(0, node_context->UnknownShape());
     } else {
       node_context->set_output(0, outer_context->input(index));

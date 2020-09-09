@@ -365,8 +365,8 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase,
           message='axis=3 out of bounds: expected -3<=axis<3'),
   )
   def testError(self, rt_inputs, axis, error, message):
-    self.assertRaisesRegexp(error, message, ragged_concat_ops.stack, rt_inputs,
-                            axis)
+    self.assertRaisesRegex(error, message, ragged_concat_ops.stack, rt_inputs,
+                           axis)
 
   def testSingleTensorInput(self):
     """Tests ragged_stack with a single tensor input.

@@ -130,8 +130,8 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
       constant_args, attr.padding.prepended.w, attr.padding.prepended.h,
       attr.stride.w, attr.stride.h, kernel_x, kernel_y, inner_size_x,
       inner_size_y, kernel_x - 1, kernel_y - 1);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 4);
   return absl::Substitute(shader_source, src_depth * dst_channels_aligned,
                           src_depth, dst_depth, attr.weights.shape.o,
@@ -264,8 +264,8 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
       constant_args, attr.padding.prepended.w, attr.padding.prepended.h,
       attr.stride.w, attr.stride.h, kernel_x, kernel_y, inner_size_x,
       inner_size_y, kernel_x - 1, kernel_y - 1);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 4);
   const int src_local_size_x = (workgroup_x + kernel_x) / attr.stride.w;
   const int src_local_size_y = (workgroup_y + kernel_y) / attr.stride.h;
@@ -275,7 +275,18 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
       src_local_size_x, src_local_size_y, workgroup_x, workgroup_y);
 }
 
-std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
+std::string GetDeconvolution4x4(const int2& block_size,
+                                const DeviceInfo& device_info) {
+  bool use_local_mem = false;
+  if (device_info.IsAppleGPU() && device_info.apple_info.IsBionic()) {
+    use_local_mem = true;
+  }
+  if (device_info.IsIntelGPU()) {
+    use_local_mem = true;
+  }
+  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+                                  ? "SIMDGROUP_BARRIER"
+                                  : "threadgroup_barrier";
   std::string c = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -284,7 +295,9 @@ std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
       int4 src_size;
       int4 dst_size;
       int filter_offset;
-      int3 dummy_0;
+      int dummy_0;
+      int dummy_1;
+      int dummy_2;
     };
 )";
   c += R"(
@@ -349,7 +362,7 @@ std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
   }
   c += "  for (int s = 0; s < params.src_size.z; ++s) {\n";
   if (use_local_mem) {
-    c += "    BARRIER(mem_flags::mem_none);\n";
+    c += "    " + barrier + "(mem_flags::mem_none);\n";
     c += "    weights_cache[local_id] = filters[f_offset + local_id];\n";
     c += "    weights_cache[local_id + 32] = filters[f_offset + local_id + "
          "32];\n";
@@ -365,7 +378,7 @@ std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
   }
   c += "    f_offset += 64;\n";
   if (use_local_mem) {
-    c += "    BARRIER(mem_flags::mem_threadgroup);\n";
+    c += "    " + barrier + "(mem_flags::mem_threadgroup);\n";
   }
   for (int i = 0; i < 16; ++i) {
     const int result_sub_pixel_id = i % 4;
@@ -451,7 +464,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
       (kThreadGroupWidth + params.weights.shape.w) / params.stride.w;
   const int src_local_size_y =
       (kThreadGroupHeight + params.weights.shape.h) / params.stride.h;
-  const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(params.weights.shape.i, 4);
   const int shared_size =
       sizeof(float) * 4 * src_depth * src_local_size_x * src_local_size_y;
   if (shared_size < 1000 * 16 &&
@@ -530,8 +543,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     const uint3 groups_size{kThreadGroupWidth, kThreadGroupHeight, 1};
     BHWC dst_shape =
         CalculateOutputShape(buffers.find(input_id)->second, params);
-    int groups_x = IntegralDivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(dst_shape.h, groups_size.y);
+    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
     int groups_z = 1;
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
@@ -543,8 +556,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params,
     const DeviceInfo& device_info, const RuntimeOptions& options) {
-  const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(params.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(params.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(params.weights.shape.o, 4);
   const int kernel_x = 4;
   const int kernel_y = 4;
 
@@ -595,12 +608,20 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   desc->id = id;
   desc->is_linkable = false;
 
-  const bool recommended_2x =
-      device_info.apple_info.IsBionic() &&
-      options.storage_precision == RuntimeOptions::Precision::FP16;
-  const bool use_local_mem = !device_info.apple_info.IsBionic();
+  bool recommended_2x = false;
+  if (device_info.IsAppleGPU()) {
+    if (device_info.apple_info.IsBionic() &&
+        options.storage_precision == RuntimeOptions::Precision::FP16) {
+      recommended_2x = true;
+    }
+  } else {
+    if (options.storage_precision == RuntimeOptions::Precision::FP16) {
+      recommended_2x = true;
+    }
+  }
+
   const int2 block_size(recommended_2x ? 2 : 1, 1);
-  desc->shader_source = GetDeconvolution4x4(block_size, use_local_mem);
+  desc->shader_source = GetDeconvolution4x4(block_size, device_info);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
@@ -624,7 +645,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
        [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_shape = buffers.find(input_id)->second;
          const auto& dst_shape = buffers.find(output_id)->second;
-         const int src_depth = IntegralDivideRoundUp(src_shape.c, 4);
+         const int src_depth = DivideRoundUp(src_shape.c, 4);
          std::vector<int> uniform_params{
              src_shape.w,
              src_shape.h,
@@ -632,7 +653,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
              src_shape.w * src_shape.h,
              dst_shape.w,
              dst_shape.h,
-             IntegralDivideRoundUp(dst_shape.c, 4),
+             DivideRoundUp(dst_shape.c, 4),
              0,
              4 * 16 * src_depth,
              0,
@@ -646,13 +667,13 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   desc->resize_function = [output_id, block_size,
                            params](const std::map<ValueId, BHWC>& buffers) {
     const auto& dst_shape = buffers.find(output_id)->second;
-    const int grid_x = IntegralDivideRoundUp(dst_shape.w + 2, 2 * block_size.x);
-    const int grid_y = IntegralDivideRoundUp(dst_shape.h + 2, 2 * block_size.y);
-    const int grid_z = IntegralDivideRoundUp(dst_shape.c, 4);
+    const int grid_x = DivideRoundUp(dst_shape.w + 2, 2 * block_size.x);
+    const int grid_y = DivideRoundUp(dst_shape.h + 2, 2 * block_size.y);
+    const int grid_z = DivideRoundUp(dst_shape.c, 4);
     const uint3 group_size{8, 4, 1};
-    int groups_x = IntegralDivideRoundUp(grid_x, group_size.x);
-    int groups_y = IntegralDivideRoundUp(grid_y, group_size.y);
-    int groups_z = IntegralDivideRoundUp(grid_z, group_size.z);
+    int groups_x = DivideRoundUp(grid_x, group_size.x);
+    int groups_y = DivideRoundUp(grid_y, group_size.y);
+    int groups_z = DivideRoundUp(grid_z, group_size.z);
     return std::make_pair(group_size, uint3{groups_z, groups_x, groups_y});
   };
 

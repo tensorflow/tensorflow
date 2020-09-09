@@ -36,7 +36,8 @@ class OptimizeDatasetSerializationTest(
 
     def build_dataset(num_elements, batch_size):
       return dataset_ops.Dataset.range(num_elements).map(lambda x: x * x).batch(
-          batch_size).apply(optimization.optimize(["map_and_batch_fusion"]))
+          batch_size).apply(
+              optimization.optimize(["map_and_batch_fusion"], None, None))
 
     self.run_core_tests(lambda: build_dataset(200, 10), 20)
 
@@ -50,7 +51,8 @@ class OptimizeDatasetSerializationTest(
       dataset = dataset.batch(5)
       # map_vectorization adds a new vectorized function to the function
       # library.
-      dataset = dataset.apply(optimization.optimize(["map_vectorization"]))
+      dataset = dataset.apply(
+          optimization.optimize(["map_vectorization"], None, None))
       return dataset
 
     self.run_core_tests(build_dataset, 20)

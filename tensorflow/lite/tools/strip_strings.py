@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Strips all nonessential strings from a tflite file.
+r"""Strips all nonessential strings from a tflite file.
 
 Example usage:
-python strip_strings.py foo.tflite foo_stripped.tflite
+python strip_strings.py \
+  --input_tflite_file=foo.tflite \
+  --output_tflite_file=foo_stripped.tflite
 """
 
 from __future__ import absolute_import

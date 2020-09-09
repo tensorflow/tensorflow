@@ -167,4 +167,43 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testShape2x2Kernel2x2 {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  DepthwiseConvolution2DAttributes attr;
+  Tensor<Linear, DataType::FLOAT32> bias;
+  bias.shape.v = 1;
+  bias.id = 1;
+  bias.data = {0};
+  attr.bias = std::move(bias);
+
+  Tensor<OHWI, DataType::FLOAT32> weights;
+  weights.shape = OHWI(1, 2, 2, 1);
+  weights.id = 1;
+  weights.data = {1, 2, 3, 4};
+
+  attr.weights = std::move(weights);
+
+  attr.dilations = HW(1, 1);
+  attr.padding.prepended = HW(0, 0);
+  attr.padding.appended = HW(1, 1);
+  attr.strides = HW(1, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 3;
+  output.shape = BHWC(1, 2, 2, 1);
+
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 4, 9, 16}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({100, 52, 41, 16}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 @end

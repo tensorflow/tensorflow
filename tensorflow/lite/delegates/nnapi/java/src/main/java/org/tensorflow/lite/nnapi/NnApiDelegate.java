@@ -64,16 +64,34 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       return this;
     }
 
+    /**
+     * Specifies the name of the target accelerator to be used by NNAPI. If this parameter is
+     * specified the {@link #setUseNnapiCpu(boolean)} method won't have any effect.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
     public Options setAcceleratorName(String name) {
       this.acceleratorName = name;
       return this;
     }
 
+    /**
+     * Configure the location to be used to store model compilation cache entries. If either
+     * {@code cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
     public Options setCacheDir(String cacheDir) {
       this.cacheDir = cacheDir;
       return this;
     }
 
+    /**
+     * Sets the token to be used to identify this model in the model compilation cache. If either
+     * {@code cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
     public Options setModelToken(String modelToken) {
       this.modelToken = modelToken;
       return this;
@@ -93,10 +111,21 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
      * Enable or disable the NNAPI CPU Device "nnapi-reference". If unset it will use the NNAPI
      * default settings.
      *
-     * <p>Only effective on Android 10 and above.
+     * <p>Only effective on Android 10 (API level 29) and above.
      */
     public Options setUseNnapiCpu(boolean enable) {
       this.useNnapiCpu = !enable;
+      return this;
+    }
+
+    /**
+     * Enable or disable to allow fp32 computation to be run in fp16 in NNAPI. See
+     * https://source.android.com/devices/neural-networks#android-9
+     *
+     * <p>Only effective on Android 9 (API level 28) and above.
+     */
+    public Options setAllowFp16(boolean enable) {
+      this.allowFp16 = enable;
       return this;
     }
 
@@ -106,6 +135,7 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     private String modelToken = null;
     private Integer maxDelegatedPartitions = null;
     private Boolean useNnapiCpu = null;
+    private Boolean allowFp16 = null;
   }
 
   public NnApiDelegate(Options options) {
@@ -121,7 +151,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
             /*overrideDisallowCpu=*/ options.useNnapiCpu != null,
             /*disallowCpuValue=*/ options.useNnapiCpu != null
                 ? !options.useNnapiCpu.booleanValue()
-                : false);
+                : false,
+            options.allowFp16 != null ? options.allowFp16 : false);
   }
 
   public NnApiDelegate() {
@@ -186,7 +217,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       String modelToken,
       int maxDelegatedPartitions,
       boolean overrideDisallowCpu,
-      boolean disallowCpuValue);
+      boolean disallowCpuValue,
+      boolean allowFp16);
 
   private static native void deleteDelegate(long delegateHandle);
 

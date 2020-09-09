@@ -22,7 +22,6 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 package(
     default_visibility = [
         # TODO(scottzhu): Remove these two deps and convert the test to integration test.
-        "//tensorflow/python:__pkg__",  # For loss_scale_optimizer_test
         "//tensorflow/python/distribute:__pkg__",  # For collective_all_reduce_strategy_test
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
@@ -31,6 +30,12 @@ package(
 )
 
 exports_files(["LICENSE"])
+
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 py_library(
     name = "mixed_precision_experimental",
@@ -80,9 +85,7 @@ py_library(
     srcs = ["device_compatibility_check.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:device_lib",
-        "//tensorflow/python:gpu_util",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python:config",
     ],
 )
 
@@ -125,11 +128,14 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -143,9 +149,10 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -167,11 +174,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":loss_scale",
-        "//tensorflow/python:loss_scale",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -179,7 +186,7 @@ py_library(
 
 cuda_py_test(
     name = "loss_scale_optimizer_test",
-    size = "small",
+    size = "medium",
     srcs = ["loss_scale_optimizer_test.py"],
     python_version = "PY3",
     deps = [
@@ -209,6 +216,25 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "mixed_precision_graph_rewrite_test",
+    size = "small",
+    srcs = ["mixed_precision_graph_rewrite_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":loss_scale_optimizer",
+        ":policy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:mixed_precision",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],
@@ -223,9 +249,16 @@ cuda_py_test(
     name = "keras_test",
     size = "medium",
     srcs = ["keras_test.py"],
+    data = [
+        "//tensorflow/python/keras/mixed_precision/experimental/testdata:lso_ckpt_tf2.2",
+        "//tensorflow/python/keras/mixed_precision/experimental/testdata:lso_savedmodel_tf2.2",
+    ],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
+    tags = [
+        "no_pip",
+        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
+    ],
     deps = [
         ":test_util",
         "//tensorflow/python:client_testlib",
@@ -243,6 +276,7 @@ py_test(
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
     shard_count = 10,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",

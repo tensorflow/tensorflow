@@ -25,7 +25,7 @@ namespace mlir {
 namespace TF {
 
 // Legalize the tf ops to the quant ops, so the quantization passes can work.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFToQuantPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass();
 
 }  // namespace TF
 }  // namespace mlir

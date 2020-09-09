@@ -41,30 +41,27 @@ Status PartitionFunctionGraph(
 //
 // More specifically, this function
 //  (1) rewrites the indices of the `Arg` and `Retval` nodes placed
-//      on a particular device.  When a function is partitioned each
-//      partition, `subgraph`, get a subset of the arguments and
+//      on a particular device.  When a function is partitioned, each
+//      partition `subgraph` gets a subset of the arguments and
 //      return values. The `index` attributes of these _Arg and _Retval
 //      nodes reflect the indices of these parameters in the original
 //      function. To convert `subgraph` to a function, we need to replace
 //      there original indices with 0, 1, 2, ... .
 //
 //      The argument and return value order in the partitioned function is
-//      determined by the node iteration order in `subgraph`. This order
-//      is also used in UpdateArgAndRetvalMetadata. This is fine because the
-//      node iteration order is deterministic - it follows the node ids.
+//      determined by the argument and return value order in the original
+//      function. This stability is important because it enables us to treat
+//      a single-partition function as having the same signature as the
+//      subgraph.
 //  (2) records the subsets of `Arg` and `Retval` nodes assigned to the
 //      device in `*_indices`, and
 //  (3) records which `Arg` and `Retval` nodes live in host memory in
 //      `*_alloc_attrs`.
 Status UpdateArgAndRetvalMetadata(
-    Graph* subgraph, const string& device_type, std::vector<int>* arg_indices,
-    std::vector<int>* ret_indices,
+    Graph* subgraph, const string& device_type,
+    std::vector<FunctionArgIndex>* arg_indices, std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
     std::vector<AllocatorAttributes>* ret_alloc_attrs);
-
-// Extracts tensors at `indices` from `arguments`.
-std::vector<Tensor> GetArgsForIndices(const std::vector<int>& indices,
-                                      gtl::ArraySlice<Tensor> arguments);
 
 // Utility for generating function names not present in `flib_def`, using
 // given `name` as the base for the name.

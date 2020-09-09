@@ -13,12 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+static bool Initialized = [] {
+  tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
+  return true;
+}();
 
 REGISTER_OP("XRTAllocate")
     .Input("allocation: string")
@@ -226,6 +232,16 @@ Reads the selected metric values from the metrics collection registry.
 
 'request' is a serialized xrt::XRTMetricsCollect proto.
 'result' is a serialized xrt::MetricsReport proto.
+)");
+
+REGISTER_OP("XRTMemoryInfo")
+    .Output("result: string")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Returns the memory information of the device this op executes on/
+
+'result' is a serialized xrt::MemoryInfo proto.
 )");
 
 }  // namespace tensorflow

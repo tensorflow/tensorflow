@@ -26,13 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/function.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -126,9 +126,10 @@ class RecursiveCompilabilityChecker {
     bool allow_inaccurate_ops = false;
   };
 
-  RecursiveCompilabilityChecker(const OperationFilter* op_filter,
-                                const DeviceType* jit_device_type)
-      : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
+  RecursiveCompilabilityChecker(OperationFilter op_filter,
+                                DeviceType jit_device_type)
+      : op_filter_(std::move(op_filter)),
+        jit_device_type_(std::move(jit_device_type)) {}
 
   using UncompilableNodesMap =
       std::map<std::string,
@@ -257,14 +258,33 @@ class RecursiveCompilabilityChecker {
       UncompilableNodesMap* uncompilable_nodes_map);
 
   // Make sure we don't recurse infinitely on recursive functions.
-  const int kMaxRecursionDepth = 10;
+  const size_t kMaxRecursionDepth = 10;
 
-  const OperationFilter& op_filter_;
-  const DeviceType& jit_device_type_;
+  const OperationFilter op_filter_;
+  const DeviceType jit_device_type_;
 };
 
 RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
     const XlaOpRegistry::DeviceRegistration& registration);
+
+// Given a FunctionLibraryRuntime and a `function`, returns this function's body
+// in `fbody` as well as the indices of its constant and resource arguments.
+// `fbody` is owned by `flr`.
+// `constant_arg_indices` and `resource_arg_indices` should be empty vector.
+// They are sorted in ascending order on this function's return.
+Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
+                                       const NameAttrList& function,
+                                       const FunctionBody** fbody,
+                                       std::vector<int>* constant_arg_indices,
+                                       std::vector<int>* resource_arg_indices);
+
+// Given a NodeDef `node_def` returns true iff `node_def` has kXlaCompileAttr
+// set.
+bool CanCreateXlaKernel(const NodeDef& node_def);
+
+// Check whether graph can trigger XLA compilation.
+bool CanTriggerXlaCompilation(const GraphDef& graph);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_COMPILABILITY_CHECK_UTIL_H_

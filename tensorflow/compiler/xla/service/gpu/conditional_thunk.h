@@ -43,10 +43,10 @@ namespace gpu {
 class ConditionalThunk : public Thunk {
  public:
   ConditionalThunk(
+      ThunkInfo thunk_info,
       const BufferAllocation::Slice& branch_index_buffer_index,
       absl::Span<const BufferAllocation::Slice> branch_operand_buffer_indexes,
-      std::vector<ThunkSequence> branch_thunk_sequences,
-      const HloInstruction* hlo);
+      std::vector<ThunkSequence> branch_thunk_sequences);
 
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
@@ -56,6 +56,7 @@ class ConditionalThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const bool branch_index_is_bool_;
   BufferAllocation::Slice branch_index_buffer_index_;
   std::vector<BufferAllocation::Slice> branch_operand_buffer_indexes_;

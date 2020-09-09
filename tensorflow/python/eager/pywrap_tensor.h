@@ -37,6 +37,8 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
                                        DataType dtype,
                                        const char* device_name = nullptr);
 
+PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TENSOR_H_

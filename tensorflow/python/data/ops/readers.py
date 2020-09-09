@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -249,9 +248,6 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
         block_length, dtype=dtypes.int64, name="block_length")
-    if sloppy is not None:
-      self._sloppy = ops.convert_to_tensor(
-          sloppy, dtype=dtypes.bool, name="sloppy")
     self._buffer_output_elements = convert.optional_param_to_tensor(
         "buffer_output_elements",
         buffer_output_elements,
@@ -260,34 +256,22 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-    if sloppy is None or compat.forward_compatible(2020, 3, 6):
-      if sloppy is None:
-        self._deterministic = "default"
-      elif sloppy:
-        self._deterministic = "false"
-      else:
-        self._deterministic = "true"
-      variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          self._cycle_length,
-          self._block_length,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          f=self._map_func.function,
-          deterministic=self._deterministic,
-          **self._flat_structure)
+    if sloppy is None:
+      self._deterministic = "default"
+    elif sloppy:
+      self._deterministic = "false"
     else:
-      variant_tensor = ged_ops.parallel_interleave_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          self._cycle_length,
-          self._block_length,
-          self._sloppy,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          f=self._map_func.function,
-          **self._flat_structure)
+      self._deterministic = "true"
+    variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        f=self._map_func.function,
+        deterministic=self._deterministic,
+        **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 

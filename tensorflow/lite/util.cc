@@ -38,6 +38,14 @@ bool IsFlexOp(const char* custom_name) {
                                 strlen(kFlexCustomCodePrefix)) == 0;
 }
 
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data) {
+  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
+      TfLiteIntArrayCreate(data.size()));
+  std::copy(data.begin(), data.end(), result->data);
+  return result;
+}
+
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
   return ConvertArrayToTfLiteIntArray(static_cast<int>(input.size()),
                                       input.data());
@@ -94,6 +102,9 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteComplex64:
       *bytes = sizeof(std::complex<float>);
       break;
+    case kTfLiteComplex128:
+      *bytes = sizeof(std::complex<double>);
+      break;
     case kTfLiteInt16:
       *bytes = sizeof(int16_t);
       break;
@@ -102,6 +113,9 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       break;
     case kTfLiteFloat16:
       *bytes = sizeof(TfLiteFloat16);
+      break;
+    case kTfLiteFloat64:
+      *bytes = sizeof(double);
       break;
     default:
       if (context) {

@@ -42,19 +42,17 @@ class SliceOp : public XlaOpKernel {
     const TensorShape begin_tensor_shape = ctx->InputShape(1);
     const TensorShape size_tensor_shape = ctx->InputShape(2);
 
+    const int input_dims = input_shape.dims();
     OP_REQUIRES(
         ctx,
         TensorShapeUtils::IsVector(begin_tensor_shape) &&
             TensorShapeUtils::IsVector(size_tensor_shape) &&
-            begin_tensor_shape.num_elements() == input_shape.dims() &&
-            size_tensor_shape.num_elements() == input_shape.dims(),
+            begin_tensor_shape.num_elements() == input_dims &&
+            size_tensor_shape.num_elements() == input_dims,
         errors::InvalidArgument(
             "Expected begin and size arguments to be 1-D tensors of size ",
-            input_shape.dims(), ", but got shapes ",
-            begin_tensor_shape.DebugString(), " and ",
-            size_tensor_shape.DebugString(), " instead."));
-
-    const int input_dims = input_shape.dims();
+            input_dims, ", but got shapes ", begin_tensor_shape.DebugString(),
+            " and ", size_tensor_shape.DebugString(), " instead."));
 
     std::vector<int64> begin;
     std::vector<int64> size;
@@ -129,7 +127,15 @@ class SliceOp : public XlaOpKernel {
                                             input_shape.dim_size(i), "], but ",
                                             "got ", size[i]));
       }
-      ctx->SetOutput(0, xla::DynamicSlice(ctx->Input(0), ctx->Input(1), size));
+
+      absl::InlinedVector<xla::XlaOp, 4> scalar_indices;
+      scalar_indices.reserve(input_dims);
+      xla::XlaOp begin = ctx->Input("begin");
+      for (int i = 0; i < input_dims; i++)
+        scalar_indices.push_back(
+            xla::Reshape(xla::Slice(begin, {i}, {i + 1}, {1}), {}));
+
+      ctx->SetOutput(0, xla::DynamicSlice(ctx->Input(0), scalar_indices, size));
     }
   }
 };

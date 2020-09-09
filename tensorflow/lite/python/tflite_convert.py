@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python command line interface for running TOCO."""
+"""Python command line interface for converting TF models to TFLite models."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -65,11 +65,13 @@ def _parse_inference_type(value, flag):
     return lite_constants.FLOAT
   if value == "QUANTIZED_UINT8":
     return lite_constants.QUANTIZED_UINT8
+  if value == "INT8":
+    return lite_constants.INT8
   raise ValueError("Unsupported value for --{0}. Only FLOAT and "
                    "QUANTIZED_UINT8 are supported.".format(flag))
 
 
-def _get_toco_converter(flags):
+def _get_tflite_converter(flags):
   """Makes a TFLiteConverter object based on the flags provided.
 
   Args:
@@ -127,7 +129,7 @@ def _convert_tf1_model(flags):
     ValueError: Invalid flags.
   """
   # Create converter.
-  converter = _get_toco_converter(flags)
+  converter = _get_tflite_converter(flags)
   if flags.inference_type:
     converter.inference_type = _parse_inference_type(flags.inference_type,
                                                      "inference_type")
@@ -352,12 +354,12 @@ def _get_tf1_flags(parser):
   parser.add_argument(
       "--inference_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
+      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
       help="Target data type of real-number arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
+      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
       help=("Target data type of real-number input arrays. Allows for a "
             "different type for input arrays in the case of quantization."))
 
@@ -587,7 +589,7 @@ def _get_parser(use_v2_converter):
       action=_ParseExperimentalNewConverter,
       nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
-            "conversion instead of TOCO conversion."))
+            "conversion instead of TOCO conversion. (default True)"))
   return parser
 
 

@@ -47,7 +47,7 @@ def start_tracing(service_addr,
     UnavailableError: If no trace event is collected.
   """
   _pywrap_profiler.trace(service_addr, logdir, worker_list, include_dataset_ops,
-                         duration_ms, num_tracing_attempts)
+                         duration_ms, num_tracing_attempts, {})
 
 
 @deprecated('2020-07-01', 'use `tf.profiler.experimental.client.monitor`.')

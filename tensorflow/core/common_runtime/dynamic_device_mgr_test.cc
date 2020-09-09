@@ -18,7 +18,11 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -26,16 +30,36 @@ namespace tensorflow {
 namespace {
 
 // Return a fake device with the specified type and name.
-static Device* CreateDevice(const char* type, const char* name) {
+static Device* CreateDevice(const char* type, const char* name,
+                            Notification* n = nullptr) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
     Status Sync() override { return Status::OK(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
+
+  class FakeDeviceWithDestructorNotification : public FakeDevice {
+   public:
+    FakeDeviceWithDestructorNotification(const DeviceAttributes& attr,
+                                         Notification* n)
+        : FakeDevice(attr), n_(n) {}
+    ~FakeDeviceWithDestructorNotification() override { n_->Notify(); }
+
+   private:
+    Notification* n_;
+  };
+
   DeviceAttributes attr;
   attr.set_name(name);
   attr.set_device_type(type);
+  do {
+    attr.set_incarnation(random::New64());
+  } while (attr.incarnation() == 0);
+
+  if (n) {
+    return new FakeDeviceWithDestructorNotification(attr, n);
+  }
   return new FakeDevice(attr);
 }
 
@@ -57,6 +81,7 @@ TEST(DynamicDeviceMgrTest, RemoveDeviceFromMgr) {
   std::unique_ptr<Device> d0(CreateDevice("CPU", "/device:CPU:0"));
   std::unique_ptr<Device> d1(CreateDevice("CPU", "/device:CPU:1"));
   Device* d1_ptr = d1.get();
+  const int64 d1_incarnation = d1->attributes().incarnation();
 
   auto dm = MakeUnique<DynamicDeviceMgr>();
   std::vector<std::unique_ptr<Device>> devices;
@@ -68,6 +93,38 @@ TEST(DynamicDeviceMgrTest, RemoveDeviceFromMgr) {
   std::vector<Device*> removed_devices{d1_ptr};
   TF_CHECK_OK(dm->RemoveDevices(removed_devices));
   EXPECT_EQ(dm->ListDevices().size(), 1);
+  EXPECT_FALSE(dm->ContainsDevice(d1_incarnation));
+
+  // Device still accessible shortly through the raw pointer after removal.
+  EXPECT_EQ(d1_ptr->name(), "/device:CPU:1");
+  EXPECT_EQ(d1_ptr->device_type(), "CPU");
+}
+
+TEST(DynamicDeviceMgrTest, RemoveDeviceFromMgrBuffer) {
+  // Create a device whose destructor will send a notification.
+  Notification n;
+  std::unique_ptr<Device> d0(CreateDevice("CPU", "/device:CPU:0", &n));
+  Device* d0_ptr = d0.get();
+  std::vector<std::unique_ptr<Device>> added_devices;
+  added_devices.emplace_back(std::move(d0));
+  auto dm = MakeUnique<DynamicDeviceMgr>();
+  TF_CHECK_OK(dm->AddDevices(std::move(added_devices)));
+  std::vector<Device*> removed_devices{d0_ptr};
+  TF_CHECK_OK(dm->RemoveDevices(removed_devices));
+
+  // Repeatedly add and remove devices to fill up the stale devices buffer.
+  for (int i = 0; i < kStaleDeviceBufferSize; i++) {
+    added_devices.clear();
+    removed_devices.clear();
+    std::unique_ptr<Device> d(CreateDevice("CPU", "/device:CPU:0"));
+    Device* d_ptr = d.get();
+    added_devices.emplace_back(std::move(d));
+    TF_CHECK_OK(dm->AddDevices(std::move(added_devices)));
+    removed_devices.emplace_back(d_ptr);
+    TF_CHECK_OK(dm->RemoveDevices(removed_devices));
+  }
+  // Verify that d0 destructor is called after the buffer is full.
+  n.WaitForNotification();
 }
 
 TEST(DynamicDeviceMgrTest, RemoveDeviceByNameFromMgr) {

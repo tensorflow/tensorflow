@@ -22,9 +22,10 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "llvm-c/Target.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/flags.h"
-#include "tensorflow/compiler/mlir/lite/quantization/xla/quantize.h"
+#include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -45,6 +46,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfcompile {
+
+static llvm::ManagedStatic<QuantizeXlaFn> quantize_xla;
+
+bool RegisterQuantizeFn(const QuantizeXlaFn& fn) {
+  if (*quantize_xla) return false;
+  *quantize_xla = fn;
+  return true;
+}
 
 namespace {
 
@@ -116,9 +125,11 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   } else {
     return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
   }
-  if (flags.quantize) {
-    TF_RETURN_IF_ERROR(mlir::xla_hlo::XlaQuantize(config, &computation));
+
+  if (flags.experimental_quantize && *quantize_xla) {
+    TF_RETURN_IF_ERROR((*quantize_xla)(config, &computation));
   }
+
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
                         computation.Snapshot());
@@ -157,6 +168,12 @@ static void InitializeTargets() {
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
+#endif
+#if TF_LLVM_S390X_AVAILABLE
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmPrinter();
 #endif
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();

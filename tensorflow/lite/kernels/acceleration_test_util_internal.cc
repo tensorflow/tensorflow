@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/acceleration_test_util_internal.h"
 
+#include <ctype.h>
+
+#include <algorithm>
+#include <functional>
+#include <iterator>
+#include <sstream>
+#include <string>
+
 namespace tflite {
 
 void ReadAccelerationConfig(
@@ -38,7 +46,7 @@ void ReadAccelerationConfig(
       auto first_sep_pos =
           std::find(curr_config_line.begin(), curr_config_line.end(), ',');
 
-      bool is_blacklist = false;
+      bool is_denylist = false;
       std::string key = curr_config_line;
       std::string value{};
       if (first_sep_pos != curr_config_line.end()) {
@@ -46,13 +54,13 @@ void ReadAccelerationConfig(
         value = std::string(first_sep_pos + 1, curr_config_line.end());
       }
 
-      // Regexps starting with '-'' are blacklist ones.
+      // Regexps starting with '-'' are denylist ones.
       if (key[0] == '-') {
         key = key.substr(1);
-        is_blacklist = true;
+        is_denylist = true;
       }
 
-      consumer(key, value, is_blacklist);
+      consumer(key, value, is_denylist);
     }
   }
 }

@@ -28,7 +28,7 @@ namespace toco {
 // is successful. msg has the usage string if there was an error or
 // "--help" was specified
 bool ParseModelFlagsFromCommandLineFlags(
-    int* argc, char* argv[], string* msg,
+    int* argc, char* argv[], std::string* msg,
     ParsedModelFlags* parsed_model_flags_ptr);
 // Populate the ModelFlags proto with model data.
 void ReadModelFlagsFromCommandLineFlags(

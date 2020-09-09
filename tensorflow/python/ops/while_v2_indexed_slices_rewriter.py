@@ -143,10 +143,10 @@ def _rewrite_input_as_indexed_slices(body_grad_graph, grad_output_slices,
   # computation.
   with body_grad_graph.as_default():
     input_slices = ops.IndexedSlices(
-        values=body_grad_graph.capture(init_slices.values, whitelisted=True),
-        indices=body_grad_graph.capture(init_slices.indices, whitelisted=True),
-        dense_shape=body_grad_graph.capture(init_slices.dense_shape,
-                                            whitelisted=True))
+        values=body_grad_graph.capture(init_slices.values, allowlisted=True),
+        indices=body_grad_graph.capture(init_slices.indices, allowlisted=True),
+        dense_shape=body_grad_graph.capture(
+            init_slices.dense_shape, allowlisted=True))
 
     # Remove the captured tensors from the function inputs. We'll add them back
     # at the correct index in _update_indexed_slices_param.

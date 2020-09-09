@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/rng.h"
-#include "tensorflow/stream_executor/shared_memory_config.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -182,15 +181,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  SharedMemoryConfig GetDeviceSharedMemoryConfig() override {
-    return SharedMemoryConfig::kDefault;
-  }
-
-  port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config) override {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "Shared memory not supported"};
-  }
-
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override {
     return nullptr;
@@ -203,7 +193,8 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
-    return std::unique_ptr<internal::StreamInterface>(new host::HostStream());
+    return std::unique_ptr<internal::StreamInterface>(
+        new host::HostStream(/*thread_stack_size=*/0));
   }
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {

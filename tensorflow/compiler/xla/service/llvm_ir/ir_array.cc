@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -70,6 +71,32 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
   }
 }
 
+void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
+                                 llvm::Value* linear, const Shape& shape,
+                                 absl::Span<llvm::Value*> dynamic_dims,
+                                 llvm::IRBuilder<>* b) const {
+  CHECK_EQ(shape.dimensions_size(), dynamic_dims.size());
+  CHECK_EQ(multidim_.size(), shape.rank());
+  llvm::Value* divisor = GetConstantWithIndexType(1);
+  const Layout& layout = shape.layout();
+  for (int64 i = 0; i < layout.minor_to_major_size(); ++i) {
+    int64 dimension = layout.minor_to_major(i);
+
+    // If i is not the last dimension, compute
+    //   (linear_index / divisor) % current_dimension.
+    // If i is the last dimension, we can skip the mod, because we assume that
+    // linear is in bounds.
+    auto* quot = b->CreateUDiv(linear, divisor, "quot");
+    if (i < layout.minor_to_major_size() - 1) {
+      (*multidim)[dimension] =
+          b->CreateURem(quot, dynamic_dims[dimension], "dim_value");
+      divisor = b->CreateMul(divisor, dynamic_dims[dimension], "divisor");
+    } else {
+      (*multidim)[dimension] = quot;
+    }
+  }
+}
+
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       llvm::IRBuilder<>* b)
     : multidim_(shape.rank()),
@@ -82,6 +109,21 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
       << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
       << " should have a layout.";
   Delinearize(&multidim_, linear, shape, b);
+}
+
+IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
+                      absl::Span<llvm::Value*> dynamic_dims,
+                      llvm::IRBuilder<>* b)
+    : multidim_(shape.rank()),
+      linear_(linear),
+      layout_(shape.layout()),
+      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
+  CHECK_NE(linear, nullptr);
+  index_type_ = linear->getType();
+  CHECK(LayoutUtil::HasLayout(shape))
+      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
+      << " should have a layout.";
+  Delinearize(&multidim_, linear, shape, dynamic_dims, b);
 }
 
 IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
@@ -369,6 +411,28 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,
     logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
                                               /*HasNUW=*/true, /*HasNSW=*/true);
     multiplier *= dimensions[i];
+  }
+  return logical_linear_index;
+}
+
+llvm::Value* IrArray::Index::Linearize(
+    const std::vector<llvm::Value*>& dynamic_dims,
+    llvm::IRBuilder<>* builder) const {
+  // Each dimension is multiplied by the product of the sizes of all
+  // earlier dimensions and added to the accumulator logical_linear_index.
+  CHECK_EQ(size(), dynamic_dims.size());
+  llvm::Value* logical_linear_index = GetConstantWithIndexType(0);
+  llvm::Value* multiplier = GetConstantWithIndexType(1);
+  for (ssize_t i = size() - 1; i >= 0; --i) {
+    llvm::Value* addend = builder->CreateMul((*this)[i], multiplier, "",
+                                             /*HasNUW=*/true, /*HasNSW=*/true);
+    addend = builder->CreateZExtOrTrunc(addend, index_type_);
+    logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
+                                              /*HasNUW=*/true, /*HasNSW=*/true);
+    if (i) {
+      multiplier = builder->CreateMul(multiplier, dynamic_dims[i],
+                                      /*Name=*/"multiplier");
+    }
   }
   return logical_linear_index;
 }

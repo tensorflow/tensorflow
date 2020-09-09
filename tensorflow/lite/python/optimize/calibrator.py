@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.lite.python import lite_constants
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies. Must use double quotes to match code internal rewrite
@@ -59,6 +60,7 @@ class Calibrator(object):
                              input_type,
                              output_type,
                              allow_float,
+                             activations_type=lite_constants.INT8,
                              resize_input=True):
     """Calibrates the model with specified generator and then quantizes it.
 
@@ -73,9 +75,11 @@ class Calibrator(object):
       input_type: A tf.dtype representing the desired real-value input type.
       output_type: A tf.dtype representing the desired real-value output type.
       allow_float: A boolean. False if the resulting model cannot perform float
-        computation, useful when targeting an integer-only backend. If False, an
-        error will be thrown if an operation cannot be quantized, otherwise the
-        model will fallback to float ops.
+                   computation, useful when targeting an integer-only backend.
+                   If False, an error will be thrown if an operation cannot be
+                   quantized, otherwise the model will fallback to float ops.
+      activations_type: A tf.dtype representing the desired type for
+                   activations.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
     """
@@ -90,7 +94,8 @@ class Calibrator(object):
       self._calibrator.FeedTensor(sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float)
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float,
+        np.dtype(activations_type.as_numpy_dtype()).num)
 
   def calibrate_and_quantize_single(self,
                                     dataset_gen,

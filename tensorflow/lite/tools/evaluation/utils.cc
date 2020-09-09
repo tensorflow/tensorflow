@@ -101,30 +101,28 @@ TfLiteDelegatePtr CreateNNAPIDelegate() {
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
 #else
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
-#endif  // defined(__ANDROID__)
-}
-
-TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
-#if defined(__ANDROID__)
-  return TfLiteDelegatePtr(
-      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
-        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
-      });
-#else
   return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
 #if defined(__ANDROID__)
+TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
+  return TfLiteDelegatePtr(
+      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+      });
+}
+#endif  // defined(__ANDROID__)
+
+#if TFLITE_SUPPORTS_GPU_DELEGATE
 TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options) {
   return TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
                            &TfLiteGpuDelegateV2Delete);
 }
-#endif  // defined(__ANDROID__)
+#endif  // TFLITE_SUPPORTS_GPU_DELEGATE
 
 TfLiteDelegatePtr CreateGPUDelegate() {
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
   options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_preference =
@@ -133,22 +131,31 @@ TfLiteDelegatePtr CreateGPUDelegate() {
   return CreateGPUDelegate(&options);
 #else
   return CreateNullDelegate();
-#endif  // defined(__ANDROID__)
+#endif  // TFLITE_SUPPORTS_GPU_DELEGATE
 }
 
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling) {
 #if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+  TfLiteHexagonDelegateOptions options = {0};
+  options.print_graph_profile = profiling;
+  return CreateHexagonDelegate(&options, library_directory_path);
+#else
+  return CreateNullDelegate();
+#endif  // defined(__ANDROID__)
+}
+
+#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+TfLiteDelegatePtr CreateHexagonDelegate(
+    const TfLiteHexagonDelegateOptions* options,
+    const std::string& library_directory_path) {
   if (library_directory_path.empty()) {
     TfLiteHexagonInit();
   } else {
     TfLiteHexagonInitWithPath(library_directory_path.c_str());
   }
 
-  const TfLiteHexagonDelegateOptions options = {
-      /*debug_level=*/0, /*powersave_level=*/0, profiling,
-      /*print_graph_debug=*/false};
-  TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(&options);
+  TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(options);
   if (!delegate) {
     TfLiteHexagonTearDown();
     return CreateNullDelegate();
@@ -157,10 +164,8 @@ TfLiteDelegatePtr CreateHexagonDelegate(
     TfLiteHexagonDelegateDelete(delegate);
     TfLiteHexagonTearDown();
   });
-#else
-  return CreateNullDelegate();
-#endif  // defined(__ANDROID__)
 }
+#endif
 
 // TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
 #if defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)

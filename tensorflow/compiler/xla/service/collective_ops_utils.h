@@ -38,7 +38,7 @@ absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
 // Figures out which devices (named by their replica-ids) are participating in
-// the all-reduce subgroup that contains device_id.
+// the collective subgroup that contains device_id.
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
     GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
     int64 total_replica_count, const DeviceAssignment& device_assn);
@@ -147,13 +147,28 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
              << desc_fn();
 }
 
-// Encapsulates parameters to Rendezvous::SubmitParticipant.
-struct AllReduceParticipantData {
-  explicit AllReduceParticipantData(RendezvousKey rendezvous_key)
-      : rendezvous_key(rendezvous_key) {}
+// Participant data for each rendezvous.
+struct ParticipantData {
+  ParticipantData(const RendezvousKey& rendezvous_key, int64 device_ordinal,
+                  se::Stream* stream)
+      : rendezvous_key(rendezvous_key),
+        device_ordinal(device_ordinal),
+        stream(stream) {}
 
-  int64 device_ordinal;
+  virtual ~ParticipantData() {}
+
   RendezvousKey rendezvous_key;
+  int64 device_ordinal;
+  se::Stream* stream;
+
+  virtual std::string ToString() const = 0;
+};
+
+// Encapsulates parameters to Rendezvous::SubmitParticipant.
+struct AllReduceParticipantData : ParticipantData {
+  AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
+                           int64 device_ordinal_p, se::Stream* stream_p)
+      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
 
   // TODO(b/125951860): We should vet that we're buffer allocating such that
   // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
@@ -166,7 +181,6 @@ struct AllReduceParticipantData {
     PrimitiveType primitive_type;
   };
   std::vector<Buffer> buffers;
-  se::Stream* stream;
   const NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
@@ -175,7 +189,7 @@ struct AllReduceParticipantData {
   // pair for the participant. Participants are in no particular order.
   std::vector<std::pair<GlobalDeviceId, int64>> local_devices;
 
-  string ToString() const {
+  string ToString() const override {
     std::vector<std::string> buffer_strs;
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(
@@ -197,19 +211,27 @@ struct AllReduceParticipantData {
 //
 // Rendezvous objects can only be used once.
 //
+// I: Participant data.
 // O: Participant output.
-template <typename O>
+template <typename I, typename O,
+          typename =
+              std::enable_if_t<std::is_base_of<ParticipantData, I>::value>>
 class Rendezvous {
  public:
+  struct ParticipantImplOutput {
+    bool is_primary;
+    O custom_output;
+  };
+
   virtual ~Rendezvous() {}
   explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
 
   // Submit a participant to the rendezvous. We get the rendezvous from
   // `rendezvous_getter`, which we can then use to drop the existing reference.
   static StatusOr<O> SubmitParticipant(
-      std::function<std::shared_ptr<Rendezvous<O>>()> rendezvous_getter,
-      AllReduceParticipantData participant) {
-    std::shared_ptr<Rendezvous<O>> rendezvous = rendezvous_getter();
+      std::function<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
+      I participant) {
+    std::shared_ptr<Rendezvous<I, O>> rendezvous = rendezvous_getter();
     TF_ASSIGN_OR_RETURN(auto p, rendezvous->SubmitParticipant(participant));
 
     // Drop our reference to the Rendezvous and wait for all other threads to do
@@ -234,8 +256,19 @@ class Rendezvous {
 
  protected:
   // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<std::pair<O, bool>> SubmitParticipantImpl(
-      AllReduceParticipantData participant) = 0;
+  virtual StatusOr<ParticipantImplOutput> RunCollectiveOp(
+      const I& participant) = 0;
+
+  // Initialize the rendezvous by the first ("primary") thread which reaches the
+  // barrier. Returns whether this thread is primary.
+  bool InitializationBarrier() {
+    tensorflow::mutex_lock lock(mu_);
+    if (!initialized_) {
+      initialized_ = true;
+      return true;
+    }
+    return false;
+  }
 
   virtual void CleanupImpl(O handle, bool is_primary) {}
 
@@ -243,7 +276,7 @@ class Rendezvous {
 
   bool initialized_ TF_GUARDED_BY(mu_) = false;
 
-  std::vector<AllReduceParticipantData> participants_ TF_GUARDED_BY(mu_);
+  std::vector<I> participants_ TF_GUARDED_BY(mu_);
 
  private:
   // Runs the all-reduce on the given thread.  If successful, returns
@@ -253,15 +286,14 @@ class Rendezvous {
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
   StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
-  SubmitParticipant(AllReduceParticipantData participant) {
+  SubmitParticipant(const I& participant) {
     {
       tensorflow::mutex_lock lock(mu_);
       CHECK(!initialized_);
 
       // Spot check for consistent replica counts among submitting threads.
       if (!participants_.empty() &&
-          (participants_.back().buffers.size() != participant.buffers.size() ||
-           participants_.back().rendezvous_key != participant.rendezvous_key)) {
+          participants_.back().rendezvous_key != participant.rendezvous_key) {
         return InvalidArgument(
             "Mismatch among all-reduce participants.  Expected same "
             "replica-count, element-count, and rendezvous-key but were %s and "
@@ -280,20 +312,17 @@ class Rendezvous {
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 
-    StatusOr<std::pair<O, bool>> p_or = SubmitParticipantImpl(participant);
+    StatusOr<ParticipantImplOutput> p_or = RunCollectiveOp(participant);
 
     done_.DecrementCount();
     if (!p_or.ok()) {
       return p_or.status();
     }
-    std::pair<O, bool> p = p_or.ValueOrDie();
-
-    O handle = p.first;
-    bool is_primary = p.second;
+    ParticipantImplOutput p = p_or.ValueOrDie();
 
     // The primary owns the lock on the NCCL clique.  Hold it until all threads
     // are done.  (We'll release it when we return from this function.)
-    if (is_primary) {
+    if (p.is_primary) {
       WaitAndLogIfStuck(&done_, [&] {
         return absl::StrFormat(
             "primary participant waiting for all other participants to "
@@ -302,9 +331,9 @@ class Rendezvous {
       });
     }
 
-    CleanupImpl(handle, is_primary);
+    CleanupImpl(p.custom_output, p.is_primary);
 
-    return std::make_pair(handle, returned_blocking_counter_);
+    return std::make_pair(p.custom_output, returned_blocking_counter_);
   }
   const RendezvousKey key_;
 

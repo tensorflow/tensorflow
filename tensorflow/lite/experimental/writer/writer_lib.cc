@@ -31,7 +31,7 @@ namespace tflite {
 
 std::pair<BuiltinOptions, flatbuffers::Offset<void>> CreateBuiltinUnion(
     flatbuffers::FlatBufferBuilder* fbb, enum BuiltinOperator op,
-    void* builtin_op_data) {
+    void* builtin_op_data, const TfLiteNode& node) {
   switch (op) {
 #include "tensorflow/lite/experimental/writer/option_writer_generated.h"
   }
@@ -82,7 +82,7 @@ SubgraphWriter::ExportOperators(flatbuffers::FlatBufferBuilder* fbb) {
       // builtin
       auto builtin_options_and_type = CreateBuiltinUnion(
           fbb, static_cast<enum BuiltinOperator>(registration.builtin_code),
-          node.builtin_data);
+          node.builtin_data, node);
       builtin_options = builtin_options_and_type.second;
       builtin_options_type = builtin_options_and_type.first;
     } else {
@@ -224,7 +224,7 @@ SubgraphWriter::ExportBuffers(flatbuffers::FlatBufferBuilder* fbb) {
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<OperatorCode>>>
 SubgraphWriter::CreateOpCodeTable(flatbuffers::FlatBufferBuilder* fbb) {
   std::vector<flatbuffers::Offset<OperatorCode>> codes;
-  for (auto it : opcodes_) {
+  for (const auto& it : opcodes_) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
     codes.push_back(CreateOperatorCodeDirect(
         *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
@@ -320,6 +320,14 @@ TfLiteStatus SubgraphWriter::CheckInputOutput(
         subgraph_->node_and_registration(op_index);
     const TfLiteNode& node = node_and_registration->first;
     for (int tensor_index : TfLiteIntArrayView(node.inputs)) {
+      if (tensor_index < 0) {
+        // Skip if optional input not present.
+        if (tensor_index == kTfLiteOptionalTensor) {
+          continue;
+        } else {
+          return kTfLiteError;
+        }
+      }
       if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
         // Skip constant tensors.
         if (tensor->allocation_type == kTfLiteMmapRo) {

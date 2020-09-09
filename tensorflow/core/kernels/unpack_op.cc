@@ -144,12 +144,9 @@ TF_CALL_ALL_TYPES(REGISTER_UNPACK);
       Name("Unpack").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       UnpackOp<GPUDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_uint8(REGISTER_GPU);
-TF_CALL_bool(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.

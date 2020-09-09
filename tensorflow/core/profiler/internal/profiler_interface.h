@@ -15,47 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
-
-enum class DeviceType {
-  kUnspecified,
-  kCpu,
-  kGpu,
-  kTpu,
-};
-
-struct ProfilerOptions {
-  // DeviceType::kUnspecified: All registered device profiler will be enabled.
-  // DeviceType::kCpu: only CPU will be profiled.
-  // DeviceType::kGpu: only CPU/GPU will be profiled.
-  // DeviceType::kTpu: only CPU/TPU will be profiled.
-  DeviceType device_type = DeviceType::kUnspecified;
-
-  // Levels of host tracing:
-  // - Level 0 is used to disable host traces.
-  // - Level 1 enables tracing of only user instrumented (or default) TraceMe.
-  // - Level 2 enables tracing of all level 1 TraceMe(s) and instrumented high
-  //           level program execution details (expensive TF ops, XLA ops, etc).
-  //           This is the default.
-  // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
-  //           (low-level) program execution details (cheap TF ops, etc).
-  uint32 host_tracer_level = 2;
-
-  // Levels of device tracing:
-  // - Level 0 is used to disable device traces.
-  // - Level 1 is used to enable device traces.
-  // - More levels might be defined for specific device for controlling the
-  //   verbosity of the trace.
-  uint32 device_tracer_level = 1;
-
-  // Whether to enable python function calls tracer.
-  bool enable_python_tracer = false;
-};
 
 // Interface for tensorflow profiler plugins.
 //
@@ -84,9 +49,6 @@ class ProfilerInterface {
   // After this or the overload above are called once, subsequent calls might
   // return empty data.
   virtual Status CollectData(XSpace* space) = 0;
-
-  // Which device this ProfilerInterface is used for.
-  virtual DeviceType GetDeviceType() = 0;
 };
 
 }  // namespace profiler

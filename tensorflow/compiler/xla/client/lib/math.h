@@ -111,9 +111,6 @@ XlaOp Sinh(XlaOp x);
 // is true, otherwise returns its argument.
 xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);
 
-// Computes the logistic function: logistic(x) = 0.5 + 0.5 * tanh(0.5 * x).
-XlaOp Logistic(XlaOp x);
-
 // Computes the Modified Bessel function of the first kind of the zeroth order
 // at x.
 XlaOp BesselI0e(XlaOp x);

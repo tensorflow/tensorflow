@@ -708,7 +708,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             return
           x = linalg_impl.tridiagonal_solve(
               diags, rhs, partial_pivoting=pivoting)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x),

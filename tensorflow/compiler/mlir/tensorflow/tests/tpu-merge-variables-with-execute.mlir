@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -tf-tpu-merge-variables-with-execute %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -split-input-file -tf-tpu-merge-variables-with-execute %s | FileCheck %s
 
 // Tests that the pass merges only variable reads/writes on the same device.
 

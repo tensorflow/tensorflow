@@ -19,7 +19,7 @@ limitations under the License.
 // nvcc.
 
 // clang-format off
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 // clang-format on
 #include "tensorflow/core/framework/tensor_types.h"
@@ -53,7 +53,7 @@ struct Softplus {
     activations.device(d) = too_large.select(
         features,                       // softplus(x) ~= x for x large
         too_small.select(features_exp,  // softplus(x) ~= exp(x) for x small
-                         (features_exp + features.constant(T(1))).log()));
+                         features_exp.log1p()));
   }
 };
 

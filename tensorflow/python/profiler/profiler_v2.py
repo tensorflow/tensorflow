@@ -34,6 +34,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import threading
 
 from tensorflow.python.framework import errors
@@ -45,26 +46,59 @@ _profiler = None
 _profiler_lock = threading.Lock()
 
 
+@tf_export('profiler.experimental.ProfilerOptions', v1=[])
+class ProfilerOptions(
+    collections.namedtuple(
+        'ProfilerOptions',
+        ['host_tracer_level', 'python_tracer_level', 'device_tracer_level'])):
+  """Options for finer control over the profiler.
+
+  Use `tf.profiler.ProfilerOptions` to control `tf.profiler`
+  behavior.
+
+  Fields:
+    host_tracer_level: Adjust CPU tracing level. Values are: 1 - critical info
+    only, 2 - info, 3 - verbose. [default value is 2]
+    python_tracer_level: Toggle tracing of Python function calls. Values are: 1
+    - enabled, 0 - disabled [default value is 0]
+    device_tracer_level: Adjust device (TPU/GPU) tracing level. Values are: 1 -
+    enabled, 0 - disabled [default value is 1]
+  """
+
+  def __new__(cls,
+              host_tracer_level=2,
+              python_tracer_level=0,
+              device_tracer_level=1):
+    return super(ProfilerOptions,
+                 cls).__new__(cls, host_tracer_level, python_tracer_level,
+                              device_tracer_level)
+
+
 @tf_export('profiler.experimental.start', v1=[])
-def start(logdir):
-  """Starts profiling.
+def start(logdir, options=None):
+  """Start profiling TensorFlow performance.
 
   Args:
-    logdir: A log directory read by TensorBoard to export the profile results.
+    logdir: Profiling results log directory.
+    options: `ProfilerOptions` namedtuple to specify miscellaneous profiler
+      options. See example usage below.
 
   Raises:
-    AlreadyExistsError: If another profiling session is running.
+    AlreadyExistsError: If a profiling session is already running.
 
   Example usage:
   ```python
-  tf.profiler.experimental.start('logdir_path')
-  # do your training here.
+  options = tf.profiler.experimental.ProfilerOptions(host_tracer_level = 3,
+                                                     python_tracer_level = 1,
+                                                     device_tracer_level = 1)
+  tf.profiler.experimental.start('logdir_path', options = options)
+  # Training code here
   tf.profiler.experimental.stop()
   ```
 
-  Launch TensorBoard and point it to the same logdir you provided to this API.
-  $ tensorboard --logdir=logdir_path
-  Open your browser and go to localhost:6006/#profile to view profiling results.
+  To view the profiling results, launch TensorBoard and point it to `logdir`.
+  Open your browser and go to `localhost:6006/#profile` to view profiling
+  results.
 
   """
   global _profiler
@@ -74,7 +108,10 @@ def start(logdir):
                                       'Another profiler is running.')
     _profiler = _pywrap_profiler.ProfilerSession()
     try:
-      _profiler.start(logdir)
+      # support for namedtuple in pybind11 is missing, we change it to
+      # dict type first.
+      opts = dict(options._asdict()) if options is not None else {}
+      _profiler.start(logdir, opts)
     except errors.AlreadyExistsError:
       logging.warning('Another profiler session is running which is probably '
                       'created by profiler server. Please avoid using profiler '
@@ -154,11 +191,19 @@ class Profile(object):
   ```
   """
 
-  def __init__(self, logdir):
+  def __init__(self, logdir, options=None):
+    """Creates a context manager object for profiler API.
+
+    Args:
+      logdir: profile data will save to this directory.
+      options: An optional tf.profiler.ProfilerOptions can be provided to fine
+        tune the profiler's behavior.
+    """
     self._logdir = logdir
+    self._options = options
 
   def __enter__(self):
-    start(self._logdir)
+    start(self._logdir, self._options)
 
   def __exit__(self, typ, value, tb):
     stop()

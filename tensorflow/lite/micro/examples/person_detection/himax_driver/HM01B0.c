@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "HM01B0.h"
 
 #include "HM01B0_Walking1s_01.h"
@@ -499,45 +505,6 @@ uint32_t hm01b0_test_walking1s(hm01b0_cfg_t* psCfg) {
 
 //*****************************************************************************
 //
-//! @brief Check the data read from HM01B0 in the walking 1s test mode
-//!
-//! @param pui8Buffer       - Pointer to data buffer.
-//! @param ui32BufferLen    - Buffer length
-//! @param ui32PrintCnt     - Number of mismatched data to be printed out
-//!
-//! This function sets HM01B0 in the walking 1s test mode.
-//!
-//! @return Error code.
-//
-//*****************************************************************************
-void hm01b0_test_walking1s_check_data_sanity(uint8_t* pui8Buffer,
-                                             uint32_t ui32BufferLen,
-                                             uint32_t ui32PrintCnt) {
-  uint8_t ui8ByteData = *pui8Buffer;
-  uint32_t ui32MismatchCnt = 0x00;
-
-  for (uint32_t ui32Idx = 0; ui32Idx < ui32BufferLen; ui32Idx++) {
-    if (*(pui8Buffer + ui32Idx) != ui8ByteData) {
-      if (ui32PrintCnt) {
-        am_util_stdio_printf("[0x%08X] actual 0x%02X expected 0x%02X\n",
-                             ui32Idx, *(pui8Buffer + ui32Idx), ui8ByteData);
-        am_util_delay_ms(1);
-        ui32PrintCnt--;
-      }
-      ui32MismatchCnt++;
-    }
-
-    if (ui8ByteData)
-      ui8ByteData = ui8ByteData << 1;
-    else
-      ui8ByteData = 0x01;
-  }
-
-  am_util_stdio_printf("Mismatch Rate %d/%d\n", ui32MismatchCnt, ui32BufferLen);
-}
-
-//*****************************************************************************
-//
 //! @brief Software reset HM01B0
 //!
 //! @param psCfg        - Pointer to HM01B0 configuration structure.
@@ -756,3 +723,5 @@ uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t* psCfg) {
                    HM01B0_REG_MODE_SELECT_STREAMING_NFRAMES, 1);
   hm01b0_write_reg(psCfg, HM01B0_REG_GRP_PARAM_HOLD, 0x01, 1);
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

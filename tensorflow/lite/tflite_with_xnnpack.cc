@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
-// Corresponding weak declaration found in lite/model.cc.
+// Corresponding weak declaration found in lite/interpreter_builder.cc.
 std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
 AcquireXNNPACKDelegate(int num_threads) {
   auto opts = TfLiteXNNPackDelegateOptionsDefault();

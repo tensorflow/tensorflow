@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -134,8 +136,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       op_context.output->type = op_context.dtype;
       break;
     default:
-      context->ReportError(context, "Unknown output data type: %d",
-                           op_context.dtype);
+      TF_LITE_KERNEL_LOG(context, "Unknown output data type: %s",
+                         TfLiteTypeGetName(op_context.dtype));
       return kTfLiteError;
   }
 
@@ -146,8 +148,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.depth), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.on_value), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.off_value), 1);
-  TF_LITE_ENSURE_EQ(context, op_context.on_value->type, op_context.dtype);
-  TF_LITE_ENSURE_EQ(context, op_context.off_value->type, op_context.dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.on_value->type, op_context.dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.off_value->type,
+                          op_context.dtype);
 
   if (!IsConstantTensor(op_context.depth)) {
     SetTensorToDynamic(op_context.output);

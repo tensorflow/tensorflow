@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 
@@ -183,6 +184,15 @@ class TransferManager {
       const se::DeviceMemoryBase& source,
       const TransferMetadata* transfer_metadata = nullptr);
 
+  // Read from a device buffer and update the dynamic dimension sizes of
+  // `host_shape` and `device_shape`. The function takes in bounded dynamic
+  // shapes, and returns static shapes with dynamic shapes updated.
+  // The shape of the buffer also have to be compatible with the host shape and
+  // device shape.
+  virtual Status ReadDynamicShapes(se::Stream* stream,
+                                   ShapedBuffer* device_buffer,
+                                   Shape* host_shape, Shape* device_shape);
+
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
   virtual Status TransferLiteralToInfeed(se::StreamExecutor* executor,
@@ -253,6 +263,13 @@ class TransferManager {
   // immediately.
   virtual bool CanShapedBufferBeAccessedNow(
       se::StreamExecutor* executor, const ShapedBuffer& device_buffer) const {
+    return false;
+  }
+
+  // Equivalent to CanShapedBufferBeAccessedNow but for a single device buffer.
+  virtual bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const {
     return false;
   }
 

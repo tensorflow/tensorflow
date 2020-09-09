@@ -74,7 +74,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
   def _from_num_gpus(cls, num_gpus):
     return cls(device_util.local_devices_from_num_gpus(num_gpus))
 
-  def experimental_distribute_dataset(self, dataset):  # pylint: disable=useless-super-delegation
+  def experimental_distribute_dataset(self, dataset, options=None):  # pylint: disable=useless-super-delegation
     """Distributes a tf.data.Dataset instance provided via dataset.
 
     The returned dataset is a wrapped strategy dataset which creates a
@@ -96,14 +96,17 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     ```
     Args:
       dataset: `tf.data.Dataset` to be prefetched to device.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
     Returns:
       A "distributed `Dataset`" that the caller can iterate over.
     """
     return super(CentralStorageStrategy, self).experimental_distribute_dataset(
-        dataset)
+        dataset, options)
 
-  def experimental_distribute_datasets_from_function(self, dataset_fn):  # pylint: disable=useless-super-delegation
+  def experimental_distribute_datasets_from_function(self, dataset_fn,  # pylint: disable=useless-super-delegation
+                                                     options=None):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
     `dataset_fn` will be called once for each worker in the strategy. In this
@@ -136,6 +139,8 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
         returning a `tf.data.Dataset`.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
     Returns:
       A "distributed `Dataset`", which the caller can iterate over like regular
@@ -143,7 +148,8 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     """
     return super(
         CentralStorageStrategy,
-        self).experimental_distribute_datasets_from_function(dataset_fn)
+        self).experimental_distribute_datasets_from_function(dataset_fn,
+                                                             options)
 
   def experimental_local_results(self, value):  # pylint: disable=useless-super-delegation
     """Returns the list of all local per-replica values contained in `value`.

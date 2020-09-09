@@ -19,17 +19,20 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 class CompleteGroupRequest;
 class CompleteGroupResponse;
 class CompleteInstanceRequest;
 class CompleteInstanceResponse;
+class ConfigProto;
 class DeviceMgr;
 
 // Implements ParamResolverInterface for a single-task context.
@@ -44,7 +47,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   ~CollectiveParamResolverLocal() override {}
 
-  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
                            const StatusCallback& done) override;
 
@@ -58,6 +61,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                              CancellationManager* cancel_mgr,
                              const StatusCallback& done) override;
 
+  void StartAbort(const Status& s) override;
+
  protected:
   // For access to InstanceRec and CompleteDefaultRanking.
   friend class CollectiveParamResolverLocalTest;
@@ -67,10 +72,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     CollGroupParams group;
     mutable mutex mu;
     Status status TF_GUARDED_BY(mu);
-    std::set<string> device_set TF_GUARDED_BY(mu);
-    std::vector<string> device_list TF_GUARDED_BY(mu);
-    std::set<string> task_set TF_GUARDED_BY(mu);
-    std::vector<string> task_list TF_GUARDED_BY(mu);
+    std::unordered_map<string, DeviceAttributes> devices TF_GUARDED_BY(mu);
     std::vector<StatusCallback> waiting TF_GUARDED_BY(mu);
   };
 
@@ -82,7 +84,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // callback.
   typedef std::function<void(const Status& s, const GroupRec* gr)>
       GroupRecCallback;
-  void CompleteGroupLocal(const string& device, CollectiveParams* cp,
+  void CompleteGroupLocal(const DeviceAttributes& device, CollectiveParams* cp,
                           const GroupRecCallback& done)
       TF_LOCKS_EXCLUDED(group_mu_);
 
@@ -227,6 +229,9 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   void CallbackWithStatus(const InstanceRecCallback& done, InstanceRec* irec)
       TF_LOCKS_EXCLUDED(irec->out_mu);
 
+  void StartAbortLocal(const Status& s)
+      TF_LOCKS_EXCLUDED(status_mu_, group_mu_, instance_mu_);
+
   const bool nccl_;
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.
@@ -235,8 +240,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_
       TF_GUARDED_BY(group_mu_);
   mutex instance_mu_;
-  gtl::FlatMap<int32, std::unique_ptr<InstanceRec>> instance_table_
-      TF_GUARDED_BY(instance_mu_);
+  gtl::FlatMap<int32, gtl::FlatMap<int32, std::unique_ptr<InstanceRec>>>
+      instance_table_ TF_GUARDED_BY(instance_mu_);
+  mutex status_mu_;
+  Status status_ TF_GUARDED_BY(status_mu_);
 };
 
 }  // namespace tensorflow

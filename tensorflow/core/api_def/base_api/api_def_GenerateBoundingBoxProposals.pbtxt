@@ -71,7 +71,7 @@ END
       `nms_threshold` intersection-over-union (iou) value, discarding boxes where shorter
       side is less than `min_size`.
       Inputs:
-      `scores`: A 4D tensor of shape [Batch, Height, Width, Num Anchors] containing the scores per anchor at given postion
+      `scores`: A 4D tensor of shape [Batch, Height, Width, Num Anchors] containing the scores per anchor at given position
       `bbox_deltas`: is a tensor of shape [Batch, Height, Width, 4 x Num Anchors] boxes encoded to each anchor
       `anchors`: A 1D tensor of shape [4 x Num Anchors], representing the anchors.
       Outputs:

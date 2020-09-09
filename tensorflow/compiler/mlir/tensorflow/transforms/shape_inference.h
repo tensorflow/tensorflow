@@ -27,29 +27,14 @@ namespace mlir {
 
 namespace TF {
 
-// Performs shape inference on the provided op and return true if the type of
-// at least one result has been changed.
-// A tf.Cast() is inserted for any uses that isn't in the TensorFlow dialect.
-// `graph_version` indicates the current GraphDef compatibility versions
-// (the versions field in graph.proto).
-bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
-                                  int64_t graph_version);
-
-// Infers shape on the provided region, including nested ones, iterate until fix
-// point with a limit of max_iteration. Returns success if fix point is reached
-// before max_iteration.
-LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
-                                      int64_t max_iteration = 10);
-
 // Given a list of refined shapes matching the function arguments of func, runs
 // shape inference over the function to propagate this updated information.
-LogicalResult InferShapeForFunction(FuncOp func,
-                                    ArrayRef<ArrayRef<int64_t>> arg_shapes,
-                                    int64_t graph_version);
-
-// Refines the return type of the given function by folding tf.Cast that
-// precedes the return instruction.
-LogicalResult InferShapeForFunctionType(FuncOp func);
+// If arg_shapes are empty, then argument shapes will be left unchanged.
+// TODO(b/154065712): Remove propagate_caller_callee_constants once using
+// SCCP pass instead.
+LogicalResult InferShapeForFunction(
+    FuncOp func, ArrayRef<ArrayRef<int64_t>> arg_shapes, int64_t graph_version,
+    bool propagate_caller_callee_constants = true);
 
 }  // namespace TF
 
