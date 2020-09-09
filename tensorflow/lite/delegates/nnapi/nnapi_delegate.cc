@@ -2040,16 +2040,9 @@ bool NNAPIDelegateKernel::Validate(
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
-      const TfLiteType input_type =
-          context->tensors[node->inputs->data[0]].type;
-
-      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
-        ExpectIsFloatOrInt32Operator(context, node, &val_ctx);
-      } else {
-        Expect(IsFloat(input_type),
-               NNAPIValidationFailureType::kUnsupportedInputType,
-               "NNAPI only support float div.", &val_ctx);
-      }
+      Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI only support float div.", &val_ctx);
     } break;
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinPadv2: {
