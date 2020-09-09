@@ -24,6 +24,7 @@ from io import BytesIO
 import zipfile
 
 import json
+import numpy as np
 import os
 import six
 
@@ -2229,7 +2230,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             for filename in filenames:
                 with gfile.GFile(filename, "rb") as f:
                     zf.writestr(os.path.relpath(filename, temp_ram_location), f.read())
-    return self._reconstruct_pickle, (b, )
+    b.seek(0)
+    return self._reconstruct_pickle, (np.asarray(b.read()), )
 
   @classmethod
   def _reconstruct_pickle(cls, obj):
@@ -2238,7 +2240,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     save_folder = f"tmp/saving/{id(obj)}"
     ram_prefix = "ram://"
     temp_ram_location = os.path.join(ram_prefix, save_folder)
-    with zipfile.ZipFile(obj, "r", zipfile.ZIP_DEFLATED) as zf:
+    b = BytesIO()
+    b.write(obj)
+    b.seek(0)
+    with zipfile.ZipFile(b, "r", zipfile.ZIP_DEFLATED) as zf:
         for path in zf.namelist():
             if not tf_io.file_io.file_exists_v2(os.path.dirname(os.path.join(temp_ram_location, path))):
                 tf_io.file_io.recursive_create_dir_v2(os.path.dirname(os.path.join(temp_ram_location, path)))

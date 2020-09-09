@@ -3721,7 +3721,8 @@ class PickleProtocolTests(keras_parameterized.TestCase):
 
     def roundtest(model):
       model = copy.deepcopy(model)
-      model = pickle.loads(pickle.dumps(model))
+      for protocol in range(5):  # support up to protocol version 5
+          model = pickle.loads(pickle.dumps(model, protocol=protocol))
       return model
 
     # create model
