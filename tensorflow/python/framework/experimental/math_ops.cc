@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/experimental/ops/nn_ops.h"
 
 #include <pybind11/stl.h>
 
@@ -56,6 +57,42 @@ PYBIND11_MODULE(_math_ops, m) {
           ctx, tape, {a, b}, absl::MakeSpan(outputs), *registry));
     }
     return outputs[0];
+  });
+
+  m.def("matmul", [](AbstractContext* ctx, AbstractTensorHandle* a,
+                  AbstractTensorHandle* b, const char* name) {
+    int num_outputs = 1;
+    std::vector<AbstractTensorHandle*> outputs(1);
+    if (!name) {
+      name = "MatMul";
+    }
+    MaybeRaiseRegisteredFromStatus(
+        MatMul(ctx, {a, b}, absl::MakeSpan(outputs), name, /*t_a=*/false, /*t_b=*/false));
+    return outputs[0];
+  });
+
+  m.def("relu", [](AbstractContext* ctx, AbstractTensorHandle* a,
+                   const char* name) {
+    int num_outputs = 1;
+    std::vector<AbstractTensorHandle*> outputs(1);
+    if (!name) {
+      name = "Relu";
+    }
+    MaybeRaiseRegisteredFromStatus(
+        Relu(ctx, {a}, absl::MakeSpan(outputs), name));
+    return outputs[0];
+  });
+
+  m.def("softmax_loss", [](AbstractContext* ctx, AbstractTensorHandle* features,
+                  AbstractTensorHandle* labels, const char* name) {
+    int num_outputs = 2;
+    std::vector<AbstractTensorHandle*> outputs(2);
+    if (!name) {
+      name = "SparseSoftmaxCrossEntropyWithLogits";
+    }
+    MaybeRaiseRegisteredFromStatus(
+        SparseSoftmaxCrossEntropyLoss(ctx, {features, labels}, absl::MakeSpan(outputs), name));
+    return outputs[0]; // Only return the loss vals, not the backprop.
   });
 }
 }  // namespace tensorflow
