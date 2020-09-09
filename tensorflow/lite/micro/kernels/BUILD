@@ -24,6 +24,74 @@ package_group(
     packages = ["//tensorflow/lite/micro"],
 )
 
+
+cc_library(
+    name = "fixedpoint_utils",
+    hdrs = select({
+        "//conditions:default": [
+        ],
+        ":xtensa_hifimini": [
+            "xtensa_hifimini/fixedpoint_utils.h",
+        ],
+        ":xtensa_hifimini_staging": [
+            "xtensa_hifimini/fixedpoint_utils.h",
+        ],
+    }),
+    copts = micro_copts(),
+    deps = select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        ],
+    }),
+)
+
+cc_library(
+    name = "fully_connected",
+    srcs = select({
+        "//conditions:default": [
+            "fully_connected.cc",
+        ],
+        ":xtensa_hifimini": [
+            "xtensa_hifimini/fully_connected.cc",
+        ],
+        ":xtensa_hifimini_staging": [
+            "xtensa_hifimini_staging/fully_connected.cc",
+        ],
+    }),
+    hdrs = ["fully_connected.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Needed for micro:op_resolvers but visibility can not be finer-grained
+        # than a package.
+        ":micro_top_level",
+    ],
+    deps = [
+        ":activation_utils",
+        ":fixedpoint_utils",
+        ":kernel_util",
+        ":micro_utils",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/kernels:padding",
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:memory_helpers",
+        "//tensorflow/lite/micro:micro_utils",
+    ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
+)
+
 cc_library(
     name = "micro_ops",
     srcs = [
@@ -63,7 +131,6 @@ cc_library(
         "//conditions:default": [
             "conv.cc",
             "depthwise_conv.cc",
-            "fully_connected.cc",
             "quantize.cc",
             "softmax.cc",
             "svdf.cc",
@@ -71,8 +138,6 @@ cc_library(
         ":xtensa_hifimini": [
             "xtensa_hifimini/conv.cc",
             "xtensa_hifimini/depthwise_conv.cc",
-            "xtensa_hifimini/fixedpoint_utils.h",
-            "xtensa_hifimini/fully_connected.cc",
             "xtensa_hifimini/quantize.cc",
             "xtensa_hifimini/softmax.cc",
             "xtensa_hifimini/svdf.cc",
@@ -85,8 +150,6 @@ cc_library(
             # behavior that we get with the Makefiles.
             "conv.cc",
             "depthwise_conv.cc",
-            "xtensa_hifimini/fixedpoint_utils.h",
-            "xtensa_hifimini_staging/fully_connected.cc",
             "xtensa_hifimini_staging/quantize.cc",
             "xtensa_hifimini_staging/softmax.cc",
             "xtensa_hifimini_staging/svdf.cc",
@@ -102,6 +165,7 @@ cc_library(
     deps = [
         ":activation_utils",
         ":kernel_util",
+        ":fixedpoint_utils",
         ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
@@ -172,13 +236,13 @@ tflite_micro_cc_test(
         "fully_connected_test.cc",
     ],
     deps = [
+        ":fully_connected",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
-        "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

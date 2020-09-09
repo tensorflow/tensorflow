@@ -13,22 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
-
 #include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace fully_connected {
 namespace {
 
 struct OpData {
@@ -81,8 +78,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
   }
   return status;
 }
-
-}  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -333,19 +328,57 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace fully_connected
+// Note that the current function names are not ideal at all (this EvalInt8
+// function internally calls EvalQuantizedInt8, and there is similar name
+// aliasing in the Eval function too). We will be attempting to have a more
+// descriptive naming convention but holding off on that for now, since the
+// renaming might be coupled with reducing code duplication and some additional
+// refactoring.
+TfLiteStatus EvalInt8(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* filter =
+      tflite::micro::GetEvalInput(context, node, kWeightsTensor);
+  const TfLiteEvalTensor* bias =
+      tflite::micro::GetEvalInput(context, node, kBiasTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData& data = *(static_cast<const OpData*>(node->user_data));
+
+  // Checks in Prepare ensure input, output and filter types are all the same.
+  if (input->type != kTfLiteInt8) {
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                       TfLiteTypeGetName(input->type), input->type);
+    return kTfLiteError;
+  }
+
+  return EvalQuantizedInt8(context, node, data, input, filter, bias, output);
+}
+
+}  // namespace
 
 TfLiteRegistration Register_FULLY_CONNECTED() {
-  return {/*init=*/fully_connected::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/fully_connected::Prepare,
-          /*invoke=*/fully_connected::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
+TfLiteRegistration Register_FULLY_CONNECTED_INT8() {
+  return {/*init=*/Init,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/EvalInt8,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
+}
+
 }  // namespace tflite

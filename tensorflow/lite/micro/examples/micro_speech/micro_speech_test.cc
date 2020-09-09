@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/model.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.h"
+#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -48,7 +49,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // tflite::AllOpsResolver resolver;
   tflite::MicroMutableOpResolver<4> micro_op_resolver;
   micro_op_resolver.AddDepthwiseConv2D();
-  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddFullyConnected(tflite::Register_FULLY_CONNECTED_INT8());
   micro_op_resolver.AddReshape();
   micro_op_resolver.AddSoftmax();
 

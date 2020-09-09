@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
