@@ -74,30 +74,39 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+OPTIMIZATION_LEVEL := -O3
+
 CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
                -Wshadow -Wunused-variable -Wmissing-field-initializers \
-               -Wunused-function
+               -Wunused-function -Wswitch
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
-# TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
-# this flag is for an optimized micro runtime.
-CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
-CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
+	          $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
 TARGET_TOOLCHAIN_ROOT :=
 
-OPTIMIZATION_LEVEL := -O3
 ifeq ($(BUILD_TYPE), debug)
-	CXXFLAGS += -DDEBUG -g $(OPTIMIZATION_LEVEL)
-	CCFLAGS  += -DDEBUG -g $(OPTIMIZATION_LEVEL)
+	CXXFLAGS += -DDEBUG -g
+	CCFLAGS  += -DDEBUG -g
 else ifeq ($(BUILD_TYPE), release)
-	CXXFLAGS += -DNDEBUG $(OPTIMIZATION_LEVEL) -DTF_LITE_STRIP_ERROR_STRINGS
-	CCFLAGS  += -DNDEBUG $(OPTIMIZATION_LEVEL) -DTF_LITE_STRIP_ERROR_STRINGS
+	CXXFLAGS += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+	CCFLAGS  += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+else ifeq ($(BUILD_TYPE), no_tf_lite_static_memory)
+	# This build should not be used to run any binaries/tests since
+	# TF_LITE_STATIC_MEMORY should be defined for all micro builds. However,
+	# having a build without TF_LITE_STATIC_MEMORY is useful to catch errors in
+	# code that is shared between TfLite Mobile and TfLite Micro. See this issue
+	# for more details:
+	# https://github.com/tensorflow/tensorflow/issues/43076
+	CXXFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CXXFLAGS))
+	CCFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CCFLAGS))
 else
-	CXXFLAGS += -DNDEBUG $(OPTIMIZATION_LEVEL)
-	CCFLAGS  += -DNDEBUG $(OPTIMIZATION_LEVEL)
+	CXXFLAGS += -DNDEBUG
+	CCFLAGS  += -DNDEBUG
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
