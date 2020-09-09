@@ -78,12 +78,6 @@ upper_tabs:
       - heading: "Convert a model"
       - title: "Overview"
         path: /lite/convert/
-      - title: "Python API"
-        path: /lite/convert/python_api
-      - title: "Command line"
-        path: /lite/convert/cmdline
-      - title: "Convert quantized models"
-        path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
       - title: "Add metadata"
@@ -98,7 +92,7 @@ upper_tabs:
         status: experimental
         path: /lite/guide/model_maker
 
-      - heading: "Inference"
+      - heading: "Run Inference"
       - title: "Overview"
         path: /lite/guide/inference
       - title: "Operator compatibility"
@@ -113,7 +107,7 @@ upper_tabs:
         path: /lite/guide/ops_version
         status: experimental
 
-      - heading: "Inference with metadata"
+      - heading: "Run Inference with metadata"
       - title: "Overview"
         path: /lite/inference_with_metadata/overview
       - title: "Generate model interfaces with codegen"
