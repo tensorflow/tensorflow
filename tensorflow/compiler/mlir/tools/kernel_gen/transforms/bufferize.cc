@@ -97,12 +97,10 @@ class ExtractElementOpConversion
 }  // namespace
 
 void populateStandardBufferizePattern(MLIRContext *context,
-                                      BufferAssignmentPlacer *bufferAssignment,
                                       BufferAssignmentTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
   patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
-                   TensorLoadOpConversion>(context, bufferAssignment,
-                                           converter);
+                   TensorLoadOpConversion>(context, converter);
 }
 
 }  // namespace transforms
