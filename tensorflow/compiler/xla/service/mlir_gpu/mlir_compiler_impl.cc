@@ -117,7 +117,9 @@ void PrintCantFindCudaMessage(absl::string_view msg,
   LOG(WARNING) << msg;
   LOG(WARNING) << "Searched for CUDA in the following directories:";
 
-  for (const auto& dir : tensorflow::CandidateCudaRoots(hlo_module_config)) {
+  for (const auto& dir :
+       tensorflow::CandidateCudaRoots(
+         hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
     LOG(WARNING) << "  " << dir;
   }
   LOG(WARNING)
