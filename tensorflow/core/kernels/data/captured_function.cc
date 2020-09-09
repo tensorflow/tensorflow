@@ -519,13 +519,6 @@ Status FunctionMetadata::Create(
       return Status::OK();
     }
   }
-  for (const auto& node : fdef->node_def()) {
-    if (node.op() == kDataServiceDataset) {
-      return errors::InvalidArgument(
-          "The `.distribute(...)` dataset transformation is not supported "
-          "within tf.data functions.");
-    }
-  }
   return Status::OK();
 }
 

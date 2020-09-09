@@ -284,7 +284,7 @@ A special case of hidden side effects are methods, which are commonly used
 to change the value of objects:
 
 ```
-def MyClass(object):
+class MyClass(object):
   def change(self):
     self.y += 1
 
@@ -308,7 +308,7 @@ temporary objects when executing eagerly, but their number is greatly reduced
 in `@tf.function`:
 
 ```
-def MyClass(object):
+class MyClass(object):
   def change(self):
     self.y += 1
     return self

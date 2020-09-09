@@ -4489,6 +4489,23 @@ def where_v2(condition, x=None, y=None, name=None):
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([100, 100, 100, 100],
   dtype=int32)>
 
+  Note that if the gradient of either branch of the tf.where generates
+  a NaN, then the gradient of the entire tf.where will be NaN.
+  A workaround is to use an inner tf.where to ensure the function has
+  no asymptote, and to avoid computing a value whose gradient is NaN by
+  replacing dangerous inputs with safe inputs.
+
+  Instead of this,
+
+  >>> y = tf.constant(-1, dtype=tf.float32)
+  >>> tf.where(y > 0, tf.sqrt(y), y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+
+  Use this
+
+  >>> tf.where(y > 0, tf.sqrt(tf.where(y > 0, y, 1)), y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+
   Args:
     condition: A `tf.Tensor` of type `bool`
     x: If provided, a Tensor which is of the same type as `y`, and has a shape
@@ -5502,9 +5519,9 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
   ```
 
   Args:
-    images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]
-    sizes: The size of the extracted patches. Must be [1, size_rows, size_cols,
-      1].
+    images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
+    sizes: The size of the extracted patches. Must be
+      `[1, size_rows, size_cols, 1]`.
     strides: A 1-D Tensor of length 4. How far the centers of two consecutive
       patches are in the images. Must be: `[1, stride_rows, stride_cols, 1]`.
     rates: A 1-D Tensor of length 4. Must be: `[1, rate_rows, rate_cols, 1]`.

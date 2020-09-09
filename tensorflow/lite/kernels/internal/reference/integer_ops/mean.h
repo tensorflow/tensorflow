@@ -23,9 +23,9 @@ namespace reference_integer_ops {
 template <typename integer_type>
 inline void Mean(const tflite::MeanParams& op_params, int32_t multiplier,
                  int32_t shift, const RuntimeShape& unextended_input_shape,
-                 const integer_type* input_data, int32 input_zero_point,
+                 const integer_type* input_data, int32_t input_zero_point,
                  const RuntimeShape& unextended_output_shape,
-                 integer_type* output_data, int32 output_zero_point) {
+                 integer_type* output_data, int32_t output_zero_point) {
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
   TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
@@ -53,7 +53,7 @@ inline void Mean(const tflite::MeanParams& op_params, int32_t multiplier,
 
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
-      int32 acc = 0;
+      int32_t acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
           acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)] -

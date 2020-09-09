@@ -536,7 +536,7 @@ tf_cuda_cc_test(
     srcs = ["memory_optimizer_test.cc"],
     tags = [
         "no_cuda_on_cpu_tap",  # Do not re-enable again without actually testing.
-        "no_windows",  # b/56402646
+        "nowindows",
     ],
     deps = [
         ":gpu_swapping_kernels",
@@ -883,6 +883,7 @@ tf_cuda_cc_test(
     deps = [
         ":remapper",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

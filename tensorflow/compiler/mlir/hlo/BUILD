@@ -17,6 +17,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/google/xla/mlir/...",
+        "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/...",
         "//tensorflow/compiler/mlir/...",
@@ -311,17 +312,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_dialect_force_registration",
-    srcs = ["lib/Dialect/mhlo/IR/dialect_registration.cc"],
-    deps = [
-        ":hlo",
-        ":lhlo",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "hlo_dialect_registration",
     srcs = ["lib/Dialect/mhlo/IR/init.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
@@ -341,11 +331,28 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "mhlo_control_flow_to_scf",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_control_flow_to_scf.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 cc_library(
@@ -439,9 +446,13 @@ cc_library(
 cc_library(
     name = "transform_unranked_hlo",
     srcs = ["lib/Dialect/mhlo/transforms/transform_unranked_hlo.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
     deps = [
         ":hlo",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
@@ -459,6 +470,7 @@ cc_library(
         ":lhlo",
         ":map_lmhlo_to_scalar_op",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
@@ -477,9 +489,11 @@ cc_library(
     deps = [
         ":lhlo",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -682,7 +696,6 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":hlo_dialect_force_registration",
         ":lower_complex_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -797,6 +810,7 @@ cc_library(
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
+        ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
         ":sink_constants_to_control_flow",
@@ -813,7 +827,8 @@ cc_binary(
     ],
     deps = [
         ":all_passes",
-        ":hlo_dialect_registration",
+        ":hlo",
+        ":lhlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",

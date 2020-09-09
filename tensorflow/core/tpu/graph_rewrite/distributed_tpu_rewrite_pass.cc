@@ -961,7 +961,7 @@ bool IsTpuDevice(const string& device_string) {
 const absl::flat_hash_set<std::string>& PlaceOnTPUOpList() {
   static const auto place_on_tpu_ops = new absl::flat_hash_set<std::string>(
       {"Identity", "IdentityN", "Enter", "Exit", "Switch", "Merge",
-       "NextIteration", "Shape"});
+       "NextIteration", "Shape", "_Retval"});
   return *place_on_tpu_ops;
 }
 
@@ -1568,7 +1568,8 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
     arg_shape.shape = TensorShape();  // Variables are always scalars.
     arg_shape.handle_shape = info->handle_shape;
     arg_shape.handle_type = info->handle_type;
-    TF_RET_CHECK(arg_shape.handle_type != DT_INVALID);
+    TF_RET_CHECK(arg_shape.handle_type != DT_INVALID)
+        << " input edge: " << input_edges[edge_pos]->DebugString();
     ++edge_pos;
   }
 

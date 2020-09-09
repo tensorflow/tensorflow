@@ -67,6 +67,7 @@ REQUIRED_PACKAGES = [
     'tensorboard >= 2.3.0, < 3',
     'tensorflow_estimator >= 2.3.0, < 2.4.0',
     'termcolor >= 1.1.0',
+    'typing_extensions >= 3.7.4.2',
     'wrapt >= 1.11.1',
     'wheel >= 0.26',
     'six >= 1.12.0',
@@ -259,6 +260,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
+    long_description_content_type="text/markdown",
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -287,6 +289,8 @@ setup(
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
+        # TODO(angerson) Add IFTTT when possible
+        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

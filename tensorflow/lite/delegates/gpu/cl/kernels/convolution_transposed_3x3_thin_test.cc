@@ -54,9 +54,9 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposed3x3ThinSimpleWeights) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionTransposed3x3Thin operation;
-      ASSERT_OK(CreateConvolutionTransposed3x3Thin(creation_context_, op_def,
-                                                   attr, &operation));
+      ConvolutionTransposed3x3Thin operation =
+          CreateConvolutionTransposed3x3Thin(creation_context_.GetDeviceInfo(),
+                                             op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -90,9 +90,9 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposed3x3Thin) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionTransposed3x3Thin operation;
-      ASSERT_OK(CreateConvolutionTransposed3x3Thin(creation_context_, op_def,
-                                                   attr, &operation));
+      ConvolutionTransposed3x3Thin operation =
+          CreateConvolutionTransposed3x3Thin(creation_context_.GetDeviceInfo(),
+                                             op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(

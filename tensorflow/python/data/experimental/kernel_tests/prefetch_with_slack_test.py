@@ -86,18 +86,16 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, range(1, 11))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithoutPrefetch(self):
-    """The rewrite fails if there is no prefetch() in the pipeline."""
+  def testNoErrorWithoutPrefetch(self):
+    """The rewrite should not fail if there is no prefetch() in the pipeline."""
     dataset = dataset_ops.Dataset.range(10)
     options = dataset_ops.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
-    with self.assertRaises(errors.InvalidArgumentError):
-      get_next = self.getNext(dataset)
-      self.evaluate(get_next())
+    self.assertDatasetProduces(dataset, range(10))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithInvalidDataset(self):
+  def testNoErrorWithInvalidDataset(self):
     """With a nested dataset op after prefetch, the rewrite should fail."""
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.prefetch(1)
@@ -105,9 +103,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
-    with self.assertRaises(errors.InvalidArgumentError):
-      get_next = self.getNext(dataset)
-      self.evaluate(get_next())
+    self.assertDatasetProduces(dataset, range(10))
 
 
 if __name__ == "__main__":

@@ -30,22 +30,12 @@ namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 
-namespace TFFrameworkTypes {
-enum Kind {
-  OpKernelContextType = Type::FIRST_TF_FRAMEWORK_TYPE,
-};
-}  // namespace TFFrameworkTypes
-
 /// OpKernelContextType corresponds to C++ class OpKernelContext defined in
 /// tensorflow/core/framework/op_kernel.h
 class OpKernelContextType
     : public Type::TypeBase<OpKernelContextType, Type, TypeStorage> {
  public:
   using Base::Base;
-
-  static OpKernelContextType get(MLIRContext *context) {
-    return Base::get(context, TFFrameworkTypes::Kind::OpKernelContextType);
-  }
 };
 
 #define GET_OP_CLASSES

@@ -177,8 +177,8 @@ tf_cc_test(
     srcs = ["kernel_test.cc"],
     tags = ["no_gpu"],  # GPU + flex is not officially supported.
     deps = [
+        ":delegate",
         ":delegate_data",
-        ":delegate_only_runtime",
         ":test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -275,4 +275,16 @@ tf_cc_test(
             "//tensorflow/core:framework",
         ],
     }),
+)
+
+# Alias to support selective build of image ops.
+# TODO(b/163285312): Remove after tensorflow/core refactoring completed.
+cc_library(
+    name = "portable_images_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:portable_jpeg_internal",
+        "//tensorflow/core:portable_png_internal",
+    ],
 )

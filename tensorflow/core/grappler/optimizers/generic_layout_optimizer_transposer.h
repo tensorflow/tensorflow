@@ -41,6 +41,7 @@ constexpr char kAttrSrcFormat[] = "src_format";
 constexpr char kAttrDstFormat[] = "dst_format";
 constexpr char kAttrOutputShape[] = "_output_shapes";
 constexpr char kGPU[] = "GPU";
+constexpr char kCPU[] = "CPU";
 
 // TransposeContext owns all data members. Must initialize GraphProperties,
 // FrameView, GraphDef and MutableGraphView with the same graph. NodeDef

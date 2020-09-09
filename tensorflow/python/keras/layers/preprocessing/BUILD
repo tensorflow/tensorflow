@@ -18,6 +18,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "preprocessing",
     srcs = [
@@ -46,8 +52,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:boosted_trees_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
     ],
 )
 

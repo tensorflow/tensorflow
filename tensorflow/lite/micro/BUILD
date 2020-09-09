@@ -152,7 +152,6 @@ cc_library(
         "micro_string.h",
     ],
     copts = micro_copts(),
-    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(

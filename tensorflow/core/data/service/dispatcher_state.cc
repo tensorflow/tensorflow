@@ -25,7 +25,7 @@ namespace data {
 
 DispatcherState::DispatcherState() {}
 
-Status DispatcherState::Apply(Update update) {
+Status DispatcherState::Apply(const Update& update) {
   switch (update.update_type_case()) {
     case Update::kRegisterDataset:
       RegisterDataset(update.register_dataset());
@@ -35,6 +35,12 @@ Status DispatcherState::Apply(Update update) {
       break;
     case Update::kCreateJob:
       CreateJob(update.create_job());
+      break;
+    case Update::kAcquireJobClient:
+      AcquireJobClient(update.acquire_job_client());
+      break;
+    case Update::kReleaseJobClient:
+      ReleaseJobClient(update.release_job_client());
       break;
     case Update::kCreateTask:
       CreateTask(update.create_task());
@@ -89,6 +95,29 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
 }
 
+void DispatcherState::AcquireJobClient(
+    const AcquireJobClientUpdate& acquire_job_client) {
+  int64 job_client_id = acquire_job_client.job_client_id();
+  std::shared_ptr<Job>& job = jobs_for_client_ids_[job_client_id];
+  DCHECK(!job);
+  job = jobs_[acquire_job_client.job_id()];
+  DCHECK(job);
+  job->num_clients++;
+  next_available_job_client_id_ =
+      std::max(next_available_job_client_id_, job_client_id + 1);
+}
+
+void DispatcherState::ReleaseJobClient(
+    const ReleaseJobClientUpdate& release_job_client) {
+  int64 job_client_id = release_job_client.job_client_id();
+  std::shared_ptr<Job>& job = jobs_for_client_ids_[job_client_id];
+  DCHECK(job);
+  job->num_clients--;
+  DCHECK_GE(job->num_clients, 0);
+  job->last_client_released_micros = release_job_client.time_micros();
+  jobs_for_client_ids_.erase(job_client_id);
+}
+
 void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   int64 task_id = create_task.task_id();
   auto& task = tasks_[task_id];
@@ -122,32 +151,32 @@ int64 DispatcherState::NextAvailableDatasetId() const {
 }
 
 Status DispatcherState::DatasetFromId(
-    int64 id, std::shared_ptr<const Dataset>* dataset) const {
+    int64 id, std::shared_ptr<const Dataset>& dataset) const {
   auto it = datasets_by_id_.find(id);
   if (it == datasets_by_id_.end()) {
     return errors::NotFound("Dataset id ", id, " not found");
   }
-  *dataset = it->second;
+  dataset = it->second;
   return Status::OK();
 }
 
 Status DispatcherState::DatasetFromFingerprint(
-    uint64 fingerprint, std::shared_ptr<const Dataset>* dataset) const {
+    uint64 fingerprint, std::shared_ptr<const Dataset>& dataset) const {
   auto it = datasets_by_fingerprint_.find(fingerprint);
   if (it == datasets_by_fingerprint_.end()) {
     return errors::NotFound("Dataset fingerprint ", fingerprint, " not found");
   }
-  *dataset = it->second;
+  dataset = it->second;
   return Status::OK();
 }
 
 Status DispatcherState::WorkerFromAddress(
-    const std::string& address, std::shared_ptr<const Worker>* worker) const {
+    const std::string& address, std::shared_ptr<const Worker>& worker) const {
   auto it = workers_.find(address);
   if (it == workers_.end()) {
     return errors::NotFound("Worker with address ", address, " not found.");
   }
-  *worker = it->second;
+  worker = it->second;
   return Status::OK();
 }
 
@@ -172,23 +201,23 @@ DispatcherState::ListJobs() {
 }
 
 Status DispatcherState::JobFromId(int64 id,
-                                  std::shared_ptr<const Job>* job) const {
+                                  std::shared_ptr<const Job>& job) const {
   auto it = jobs_.find(id);
   if (it == jobs_.end()) {
     return errors::NotFound("Job id ", id, " not found");
   }
-  *job = it->second;
+  job = it->second;
   return Status::OK();
 }
 
 Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
-                                      std::shared_ptr<const Job>* job) const {
+                                      std::shared_ptr<const Job>& job) const {
   auto it = named_jobs_.find(named_job_key);
   if (it == named_jobs_.end()) {
     return errors::NotFound("Named job key (", named_job_key.name, ", ",
                             named_job_key.index, ") not found");
   }
-  *job = it->second;
+  job = it->second;
   return Status::OK();
 }
 
@@ -196,26 +225,39 @@ int64 DispatcherState::NextAvailableJobId() const {
   return next_available_job_id_;
 }
 
+Status DispatcherState::JobForJobClientId(int64 job_client_id,
+                                          std::shared_ptr<const Job>& job) {
+  job = jobs_for_client_ids_[job_client_id];
+  if (!job) {
+    return errors::NotFound("Job client id not found: ", job_client_id);
+  }
+  return Status::OK();
+}
+
+int64 DispatcherState::NextAvailableJobClientId() const {
+  return next_available_job_client_id_;
+}
+
 Status DispatcherState::TaskFromId(int64 id,
-                                   std::shared_ptr<const Task>* task) const {
+                                   std::shared_ptr<const Task>& task) const {
   auto it = tasks_.find(id);
   if (it == tasks_.end()) {
     return errors::NotFound("Task ", id, " not found");
   }
-  *task = it->second;
+  task = it->second;
   return Status::OK();
 }
 
 Status DispatcherState::TasksForJob(
-    int64 job_id, std::vector<std::shared_ptr<const Task>>* tasks) const {
+    int64 job_id, std::vector<std::shared_ptr<const Task>>& tasks) const {
   auto it = tasks_by_job_.find(job_id);
   if (it == tasks_by_job_.end()) {
     return errors::NotFound("Job ", job_id, " not found");
   }
-  tasks->clear();
-  tasks->reserve(it->second.size());
+  tasks.clear();
+  tasks.reserve(it->second.size());
   for (const auto& task : it->second) {
-    tasks->push_back(task);
+    tasks.push_back(task);
   }
   return Status::OK();
 }

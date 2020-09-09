@@ -362,7 +362,9 @@ func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> 
 // CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
 // CHECK:  [[VAL_2:%.*]] = f32[5,5] parameter(1)
 // CHECK:  ROOT
-// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]]), custom_call_target="foo", backend_config="bar"
+// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-SAME:  backend_config="bar"
 
 // -----
 

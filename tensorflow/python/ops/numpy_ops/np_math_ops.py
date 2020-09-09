@@ -217,6 +217,9 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
             *np_utils.tf_broadcast(a.data, a_min.data, a_max.data)))
 
 
+setattr(np_arrays.ndarray, 'clip', clip)
+
+
 @np_utils.np_doc('matmul')
 def matmul(x1, x2):  # pylint: disable=missing-docstring
   def f(x1, x2):

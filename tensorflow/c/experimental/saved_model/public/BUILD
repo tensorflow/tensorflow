@@ -24,6 +24,8 @@ exports_files(
         "concrete_function_list.h",
         "function_metadata.h",
         "saved_model_api.h",
+        "signature_def_function.h",
+        "signature_def_function_metadata.h",
     ],
     visibility = ["//tensorflow/c/experimental/saved_model/internal:__pkg__"],
 )
@@ -39,6 +41,8 @@ cc_library(
         ":concrete_function_list",
         ":function_metadata",
         ":saved_model_api",
+        ":signature_def_function",
+        ":signature_def_function_metadata",
     ],
 )
 
@@ -60,4 +64,14 @@ alias(
 alias(
     name = "saved_model_api",
     actual = "//tensorflow/c/experimental/saved_model/internal:saved_model_api",
+)
+
+alias(
+    name = "signature_def_function",
+    actual = "//tensorflow/c/experimental/saved_model/internal:signature_def_function",
+)
+
+alias(
+    name = "signature_def_function_metadata",
+    actual = "//tensorflow/c/experimental/saved_model/internal:signature_def_function_metadata",
 )

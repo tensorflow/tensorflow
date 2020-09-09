@@ -93,9 +93,8 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
       Padding2D padding;
       padding.prepended = HW(1, 1);
       padding.appended = HW(1, 1);
-      Winograd4x4To36 wino_up;
-      ASSERT_OK(
-          CreateWinograd4x4To36(creation_context_, op_def, padding, &wino_up));
+      Winograd4x4To36 wino_up = CreateWinograd4x4To36(
+          creation_context_.GetDeviceInfo(), op_def, padding);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &wino_up,
                                     BHWC(1, 36, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), dst_ref.data));
@@ -162,9 +161,8 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Winograd36To4x4 wino_down;
-      ASSERT_OK(
-          CreateWinograd36To4x4(creation_context_, op_def, biases, &wino_down));
+      Winograd36To4x4 wino_down = CreateWinograd36To4x4(
+          creation_context_.GetDeviceInfo(), op_def, biases);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &wino_down,
                                     BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), dst_ref.data));

@@ -1197,42 +1197,6 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
-static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
-  static mutex plugin_mutex(LINKER_INITIALIZED);
-  static bool plugin_initialized = false;
-  mutex_lock lock(plugin_mutex);
-  if (plugin_initialized) return;
-
-  LOG(INFO) << "Linked TensorRT version: " << GetLinkedTensorRTVersion();
-  LOG(INFO) << "Loaded TensorRT version: " << GetLoadedTensorRTVersion();
-
-  plugin_initialized = initLibNvInferPlugins(trt_logger, "");
-  if (!plugin_initialized) {
-    LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
-                  "fail later.";
-  }
-
-  int num_trt_plugins = 0;
-  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
-      getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
-  if (!trt_plugin_creator_list) {
-    LOG_WARNING_WITH_PREFIX << "Can not find any TensorRT plugins in registry.";
-  } else {
-    VLOG(1) << "Found the following " << num_trt_plugins
-            << " TensorRT plugins in registry:";
-    for (int i = 0; i < num_trt_plugins; ++i) {
-      if (!trt_plugin_creator_list[i]) {
-        LOG_WARNING_WITH_PREFIX
-            << "TensorRT plugin at index " << i
-            << " is not accessible (null pointer returned by "
-               "getPluginCreatorList for this plugin)";
-      } else {
-        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
-      }
-    }
-  }
-}
-
 // static
 StatusOr<std::unique_ptr<Converter>> Converter::Create(
     TrtPrecisionMode precision_mode, bool use_calibration,
@@ -1249,7 +1213,7 @@ Converter::Converter(TrtPrecisionMode precision_mode, bool use_calibration,
     : precision_mode_(precision_mode),
       use_calibration_(use_calibration),
       use_implicit_batch_(use_implicit_batch) {
-  InitializeTrtPlugins(trt_logger);
+  MaybeInitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
 }
 
@@ -1434,7 +1398,8 @@ Status Converter::BuildCudaEngine(
   TF_RETURN_IF_ERROR(
       TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
   string trt_network_name = StrCat(
-      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
+      "TF:", TF_VERSION_STRING, ", ",
+      "TRT:", absl::StrJoin(GetLoadedTensorRTVersion(), "."), "-",
       "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
       ", ", "Max-Batch-Size:", max_batch_size, ", ",
       "Max-Workspace-Size:", max_workspace_size_bytes);

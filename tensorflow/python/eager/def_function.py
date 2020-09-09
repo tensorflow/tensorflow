@@ -217,17 +217,18 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, trackable.CheckpointInitialValue):
-      self._maybe_initialize_trackable()
-      self._update_uid = initial_value.checkpoint_position.restore_uid
-      initial_value = initial_value.wrapped_value
-
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
       with ops.name_scope("Initializer"):
-        initial_value = ops.convert_to_tensor(
-            initial_value() if init_from_fn else initial_value,
-            name="initial_value", dtype=dtype)
+        if init_from_fn:
+          initial_value = initial_value()
+        if isinstance(initial_value, trackable.CheckpointInitialValue):
+          self._maybe_initialize_trackable()
+          self._update_uid = initial_value.checkpoint_position.restore_uid
+          initial_value = initial_value.wrapped_value
+
+        initial_value = ops.convert_to_tensor(initial_value,
+                                              name="initial_value", dtype=dtype)
       assert initial_value is not None
 
       # Don't use `shape or initial_value.shape` since TensorShape has
@@ -845,13 +846,14 @@ class Function(object):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      _, _, flat_args, flat_kwds = \
+      _, _, _, filtered_flat_args = \
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
               *args, **kwds)
       # If we did not create any variables the trace we have is good enough.
-      return self._concrete_stateful_fn._filtered_call(flat_args, flat_kwds)  # pylint: disable=protected-access
+      return self._concrete_stateful_fn._call_flat(
+          filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
 
-    def fn_with_cond(inner_args, inner_kwds, inner_flat_args, inner_flat_kwds):
+    def fn_with_cond(inner_args, inner_kwds, inner_filtered_flat_args):
       """Conditionally runs initialization if it's needed."""
       condition = True
       for wr in self._created_variables:
@@ -900,17 +902,17 @@ class Function(object):
           condition,
           lambda: self._stateless_fn(*inner_args, **inner_kwds),
           functools.partial(
-              self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
-              inner_flat_args,
-              inner_flat_kwds))
+              self._concrete_stateful_fn._call_flat,  # pylint: disable=protected-access
+              inner_filtered_flat_args,
+              captured_inputs=self._concrete_stateful_fn.captured_inputs))
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds, flat_args, flat_kwds = \
+    canon_args, canon_kwds, _, filtered_flat_args = \
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             *args, **kwds)
-    return function_lib.defun(fn_with_cond)(canon_args, canon_kwds, flat_args,
-                                            flat_kwds)
+    return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
+                                            filtered_flat_args)
 
   @property
   def python_function(self):

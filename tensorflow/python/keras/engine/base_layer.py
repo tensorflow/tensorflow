@@ -1006,10 +1006,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         np_arrays.ndarray, np.ndarray, float, int)) for x in input_list):
 
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
+        # Don't call `ops.convert_to_tensor` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2(x)
+          return ops.convert_to_tensor_v2_with_dispatch(x)
         return x
 
       inputs = nest.map_structure(_convert_non_tensor, inputs)
@@ -1518,7 +1518,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       loss._unconditional_loss = True  # pylint: disable=protected-access
       return loss
 
@@ -1535,7 +1536,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if not tensor_util.is_tensor(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if ((tf_utils.is_symbolic_tensor(loss) or
            isinstance(loss, keras_tensor.KerasTensor)) and
@@ -1757,7 +1759,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if not call_context.frozen:
       for update in nest.flatten(updates):
         if callable(update):
-          update()
+          update()  # pylint: disable=not-callable
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -2586,10 +2588,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # we copy them to avoid loss of KerasHistory metadata.
     flat_outputs = nest.flatten(outputs)
     flat_inputs = nest.flatten((args, kwargs))
-    inputs_set = object_identity.ObjectIdentitySet(flat_inputs)
+    input_ids_set = {id(i) for i in flat_inputs}
     outputs_copy = []
     for x in flat_outputs:
-      if x in inputs_set:
+      if id(x) in input_ids_set:
         with backend.name_scope(self.name):
           x = array_ops.identity(x)
       outputs_copy.append(x)
@@ -2985,12 +2987,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
-    output, seen_weights = [], object_identity.ObjectIdentitySet()
+    output, seen_ids = [], set()
     for w in weights:
-      if w not in seen_weights:
+      if id(w) not in seen_ids:
         output.append(w)
         # Track the Variable's identity to avoid __eq__ issues.
-        seen_weights.add(w)
+        seen_ids.add(id(w))
+
     return output
 
   def _split_out_first_arg(self, args, kwargs):
@@ -3266,7 +3269,7 @@ def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  
 
 def _convert_numpy_or_python_types(x):
   if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-    return ops.convert_to_tensor_v2(x)
+    return ops.convert_to_tensor_v2_with_dispatch(x)
   return x
 
 

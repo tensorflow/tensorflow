@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
@@ -62,6 +63,7 @@ class InferenceContext {
     TensorStorageType storage_type;
     ModelHints hints;
   };
+
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
                              const GraphFloat32& graph, Environment* env);
 
@@ -88,25 +90,29 @@ class InferenceContext {
                                TensorFloat32* result);
 
  private:
+  enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
+
   void CopyInAndOutIds(const GraphFloat32& graph);
-  absl::Status ConvertOperations(const CreationContext& creation_context,
+  absl::Status ConvertOperations(const DeviceInfo& device_info,
                                  const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const CreationContext& creation_context,
+                           const DeviceInfo& device_info,
                            const GraphFloat32& graph);
   absl::Status Merge();
-  absl::Status AllocateMemory(const CLDevice& device, CLContext* context);
+  absl::Status AllocateMemory(CLContext* context);
 
-  absl::Status AllocateMemoryForBuffers(const CLDevice& device,
-                                        CLContext* context);
+  absl::Status AllocateMemoryForVariableTensors(CLContext* context);
 
-  absl::Status AllocateMemoryForStrongShapes(const CLDevice& device,
-                                             CLContext* context);
+  absl::Status AllocateMemoryForBuffers(CLContext* context);
+
+  absl::Status AllocateMemoryForStrongShapes(CLContext* context);
 
   // utility function
-  void GetUsages(const std::function<bool(const TensorDescriptor&)>& functor,
+  void GetUsages(const std::function<bool(ValueId)>& functor,
                  std::map<ValueId, int2>* usages);
+
+  TensorMemoryType GetTensorMemoryType(ValueId id);
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
@@ -162,6 +168,7 @@ class InferenceContext {
   };
   TensorReserver tensor_reserver_;
 
+  std::map<ValueId, Tensor> variable_tensors_;
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
       shared_buffer_tensors_;  // use references to memory from shared_buffers_
@@ -171,6 +178,7 @@ class InferenceContext {
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
   std::vector<ValueId> input_ids_;
+  std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::vector<ValueId> output_ids_;
 };
 

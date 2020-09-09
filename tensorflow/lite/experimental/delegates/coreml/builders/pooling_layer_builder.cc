@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_factory.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace delegates {
@@ -29,13 +31,15 @@ const char* PoolingLayerBuilder::DebugName() {
     case kTfLiteBuiltinAveragePool2d:
       GetDebugName("PoolingLayerBuilder (AVERAGE)", node_id_, str_debug_name_);
       break;
-
     case kTfLiteBuiltinMaxPool2d:
       GetDebugName("PoolingLayerBuilder (MAX)", node_id_, str_debug_name_);
       break;
     case kTfLiteBuiltinL2Pool2d:
-      GetDebugName("PoolingLayerBuilder (L2, unsupported)",
-                   node_id_, str_debug_name_);
+      GetDebugName("PoolingLayerBuilder (L2, unsupported)", node_id_,
+                   str_debug_name_);
+      break;
+    case kTfLiteBuiltinMean:
+      GetDebugName("PoolingLayerBuilder (MEAN)", node_id_, str_debug_name_);
       break;
     default:
       GetDebugName("PoolingLayerBuilder (ERROR)", node_id_, str_debug_name_);
@@ -44,13 +48,18 @@ const char* PoolingLayerBuilder::DebugName() {
 }
 
 CoreML::Specification::NeuralNetworkLayer* PoolingLayerBuilder::Build() {
-  if (layer_ == nullptr) {
-    layer_.reset(new CoreML::Specification::NeuralNetworkLayer);
-  }
   layer_->set_name(DebugName());
+  auto* pooling_params = layer_->mutable_pooling();
+
+  if (pooling_type_ == kTfLiteBuiltinMean) {
+    pooling_params->set_type(
+        CoreML::Specification::PoolingLayerParams::AVERAGE);
+    pooling_params->set_globalpooling(true);
+    return layer_.release();
+  }
+
   const TfLitePoolParams* params =
       reinterpret_cast<const TfLitePoolParams*>(builtin_data_);
-  auto* pooling_params = layer_->mutable_pooling();
   pooling_params->mutable_stride()->Add(params->stride_height);
   pooling_params->mutable_stride()->Add(params->stride_width);
   pooling_params->mutable_kernelsize()->Add(params->filter_height);
@@ -89,7 +98,12 @@ CoreML::Specification::NeuralNetworkLayer* PoolingLayerBuilder::Build() {
 
 TfLiteStatus PoolingLayerBuilder::RegisterInputs(const TfLiteIntArray* inputs,
                                                  TfLiteContext* context) {
-  if (inputs->size != 1) {
+  if (pooling_type_ == kTfLiteBuiltinMean) {
+    if (inputs->size != 2) {
+      TF_LITE_KERNEL_LOG(context, "Wrong # of inputs to Mean!.");
+      return kTfLiteError;
+    }
+  } else if (inputs->size != 1) {
     TF_LITE_KERNEL_LOG(context, "Wrong # of inputs to Pooling!.");
     return kTfLiteError;
   }
@@ -113,6 +127,38 @@ OpBuilder* CreateAveragePool2dOpBuilder(GraphBuilder* graph_builder) {
 
 OpBuilder* CreateMaxPool2dOpBuilder(GraphBuilder* graph_builder) {
   return new PoolingLayerBuilder(graph_builder, kTfLiteBuiltinMaxPool2d);
+}
+
+OpBuilder* CreateMeanOpBuilder(GraphBuilder* graph_builder) {
+  return new PoolingLayerBuilder(graph_builder, kTfLiteBuiltinMean);
+}
+
+// Only supports averaging over H and W dimensions, as
+bool IsMeanOpSupported(const TfLiteRegistration* registration,
+                       const TfLiteNode* node, TfLiteContext* context) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* axis = GetInput(context, node, 1);
+  const auto* params =
+      reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
+
+  if (!params->keep_dims) {
+    TF_LITE_KERNEL_LOG(context, "keep_dims should be true for Mean op.");
+    return false;
+  }
+  if (input->dims->size != 4) {
+    TF_LITE_KERNEL_LOG(context, "Mean op is only supported for 4D input.");
+    return false;
+  }
+  const int* axis_data = GetTensorData<int>(axis);
+  std::vector<bool> axis_mask = {false, true, true, false};
+  for (int i = 0; i < axis->dims->data[0]; ++i) {
+    if (!axis_mask[(axis_data[i] + 4) % 4]) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Mean op should reduce for H and W dimensions.");
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace coreml

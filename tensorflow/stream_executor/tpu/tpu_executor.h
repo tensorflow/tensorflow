@@ -100,6 +100,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   absl::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
 
+  tpu::TpuCoreLocationExternal GetCoreLocationExternal() const override;
+
   Status GetStatus(Stream* stream) override;
 
   std::unique_ptr<::stream_executor::internal::StreamInterface>

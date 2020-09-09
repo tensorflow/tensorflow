@@ -24,19 +24,6 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-namespace AttrKind {
-
-// List of supported custom TensorFlow Attribute kinds, necessary for
-// isa/dyn_cast.
-enum Kind {
-  FIRST_USED_TENSORFLOW_ATTR = Attribute::FIRST_TENSORFLOW_ATTR,
-  SHAPE = FIRST_USED_TENSORFLOW_ATTR,
-  FUNC,
-  LAST_USED_TENSORFLOW_ATTR,
-};
-
-}  // namespace AttrKind
-
 namespace detail {
 
 struct ShapeAttrStorage;

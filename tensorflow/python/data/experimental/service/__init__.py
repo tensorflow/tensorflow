@@ -107,10 +107,11 @@ dataset = dataset.apply(tf.data.experimental.service.distribute(
 
 Below is a toy example that you can run yourself.
 
->>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+>>> dispatcher = tf.data.experimental.service.DispatchServer()
 >>> dispatcher_address = dispatcher.target.split("://")[1]
 >>> worker = tf.data.experimental.service.WorkerServer(
-...     port=0, dispatcher_address=dispatcher_address)
+...     tf.data.experimental.service.WorkerConfig(
+...         dispatcher_address=dispatcher_address))
 >>> dataset = tf.data.Dataset.range(10)
 >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
 ...     processing_mode="parallel_epochs", service=dispatcher.target))
@@ -128,5 +129,7 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import from_dataset_id
 from tensorflow.python.data.experimental.ops.data_service_ops import register_dataset
+from tensorflow.python.data.experimental.service.server_lib import DispatcherConfig
 from tensorflow.python.data.experimental.service.server_lib import DispatchServer
+from tensorflow.python.data.experimental.service.server_lib import WorkerConfig
 from tensorflow.python.data.experimental.service.server_lib import WorkerServer

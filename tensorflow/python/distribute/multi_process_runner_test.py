@@ -514,6 +514,19 @@ class MultiProcessRunnerTest(test.TestCase):
     while mpr.process_exists('worker', 0):
       time.sleep(1)
 
+  def test_timeout_none(self):
+
+    def proc_func():
+      time.sleep(250)
+      raise ValueError('Worker 0 errored')
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func, multi_worker_test_base.create_cluster_spec(num_workers=1))
+
+    mpr.start()
+    with self.assertRaisesRegex(ValueError, 'Worker 0 errored'):
+      mpr.join(timeout=None)
+
 
 class MultiProcessPoolRunnerTest(test.TestCase):
 

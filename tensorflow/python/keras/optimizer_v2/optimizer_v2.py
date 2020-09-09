@@ -304,26 +304,29 @@ class OptimizerV2(trackable.Trackable):
     ```
 
     Args:
-      name: A non-empty string.  The name to use for accumulators created
-        for the optimizer.
+      name: String. The name to use for momentum accumulator weights created
+        by the optimizer.
       gradient_aggregator: The function to use to aggregate gradients across
         devices (when using `tf.distribute.Strategy`). If `None`, defaults to
         summing the gradients across devices. The function should accept and
         return a list of `(gradient, variable)` tuples.
-      gradient_transformers: (Optional). List of functions to use to transform
-        gradients before applying updates to `Variable`s. The functions are
+      gradient_transformers: Optional. List of functions to use to transform
+        gradients before applying updates to Variables. The functions are
         applied after `gradient_aggregator`. The functions should accept and
         return a list of `(gradient, variable)` tuples.
-      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
-        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
-        gradients by value, `decay` is included for backward compatibility to
-        allow time inverse decay of learning rate. `lr` is included for backward
-        compatibility, recommended to use `learning_rate` instead.
+      **kwargs: keyword arguments. Allowed arguments are `clipvalue`,
+        `clipnorm`, `global_clipnorm`.
+        If `clipvalue` (float) is set, the gradient of each weight
+        is clipped to be no higher than this value.
+        If `clipnorm` (float) is set, the gradient of each weight
+        is individually clipped so that its norm is no higher than this value.
+        If `global_clipnorm` (float) is set the gradient of all weights is
+        clipped so that their global norm is no higher than this value.
 
     Raises:
-      ValueError: If name is malformed.
+      ValueError: in case of any invalid argument.
     """
-    allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay"}
+    allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay", "global_clipnorm"}
     for k in kwargs:
       if k not in allowed_kwargs:
         raise TypeError("Unexpected keyword argument "
@@ -370,12 +373,22 @@ class OptimizerV2(trackable.Trackable):
       gradient_transformers = []
     self.gradient_transformers = gradient_transformers
     self.clipnorm = kwargs.pop("clipnorm", None)
+    self.global_clipnorm = kwargs.pop("global_clipnorm", None)
+    if self.clipnorm is not None and self.global_clipnorm is not None:
+      raise ValueError("Cannot accept both `clipnorm` and `global_clipnorm`, "
+                       "passed `clipnorm` {}, `global_clipnorm` {}".format(
+                           self.clipnorm, self.global_clipnorm))
     self.clipvalue = kwargs.pop("clipvalue", None)
 
   @property
   def clipnorm(self):
     """`float` or `None`. If set, clips gradients to a maximum norm."""
     return self._clipnorm
+
+  @property
+  def global_clipnorm(self):
+    """`float` or `None`. If set, clips gradients to a maximum norm."""
+    return self._global_clipnorm
 
   @clipnorm.setter
   def clipnorm(self, val):
@@ -386,6 +399,16 @@ class OptimizerV2(trackable.Trackable):
     self._clipnorm = val
     self._clipnorm_fn = optimizer_utils.make_gradient_clipnorm_fn(
         self._clipnorm)
+
+  @global_clipnorm.setter
+  def global_clipnorm(self, val):
+    if val is not None and self.gradient_transformers:
+      raise ValueError("`clipnorm` cannot be set when `gradient_transformers` "
+                       "is set. Instead, use the `gradient_transformers` to "
+                       "specify clipping and other transformations.")
+    self._global_clipnorm = val
+    self._global_clipnorm_fn = optimizer_utils.make_global_gradient_clipnorm_fn(
+        self._global_clipnorm)
 
   @property
   def clipvalue(self):
@@ -425,6 +448,8 @@ class OptimizerV2(trackable.Trackable):
       grads_and_vars = self._clipvalue_fn(grads_and_vars)
     if self._clipnorm is not None:
       grads_and_vars = self._clipnorm_fn(grads_and_vars)
+    if self._global_clipnorm is not None:
+      grads_and_vars = self._global_clipnorm_fn(grads_and_vars)
 
     for fn in self.gradient_transformers:
       grads_and_vars = fn(grads_and_vars)
@@ -1267,7 +1292,7 @@ class OptimizerV2(trackable.Trackable):
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = trackable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
       slot_variable = self.add_slot(
           var=variable,

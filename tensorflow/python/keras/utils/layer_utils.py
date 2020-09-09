@@ -29,7 +29,6 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.conv_utils import convert_kernel
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -104,7 +103,7 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  unique_weights = object_identity.ObjectIdentitySet(weights)
+  unique_weights = {id(w): w for w in weights}.values()
   weight_shapes = [w.shape.as_list() for w in unique_weights]
   standardized_weight_shapes = [
       [0 if w_i is None else w_i for w_i in w] for w in weight_shapes
@@ -502,4 +501,3 @@ def cached_per_instance(f):
 
   wrapped.cache = cache
   return wrapped
-

@@ -166,6 +166,71 @@ static LogicalResult Verify(DotGeneralOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// GatherOp
+//===----------------------------------------------------------------------===//
+
+// Converts gather ops to slice ops in case we have a single set of constant
+// indices.
+struct GatherSlice : public OpRewritePattern<GatherOp> {
+  using OpRewritePattern<GatherOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GatherOp gather,
+                                PatternRewriter& rewriter) const override {
+    DenseIntElementsAttr index;
+    if (!matchPattern(gather.start_indices(), m_Constant(&index)))
+      return failure();
+
+    const auto& dnums = gather.dimension_numbers();
+    if (dnums.collapsed_slice_dims().getNumElements() != 0 ||
+        dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
+      return failure();
+
+    // TODO(tberghammer): Remove when the verifier catches this case what is
+    // invalid if all previous condition holds.
+    if (index.getNumElements() != dnums.start_index_map().getNumElements())
+      return failure();
+
+    auto slice_end =
+        llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
+    llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
+    for (auto it : llvm::zip(dnums.start_index_map().getIntValues(),
+                             index.getIntValues())) {
+      int64_t map_index = std::get<0>(it).getSExtValue();
+      int64_t offset = std::get<1>(it).getSExtValue();
+      slice_start[map_index] += offset;
+      slice_end[map_index] += offset;
+    }
+
+    llvm::SmallVector<int64_t, 8> slice_stride(slice_end.size(), 1);
+    rewriter.replaceOpWithNewOp<SliceOp>(
+        gather, gather.getType(), gather.getOperand(0),
+        GetI64ElementsAttr(slice_start, &rewriter),
+        GetI64ElementsAttr(slice_end, &rewriter),
+        GetI64ElementsAttr(slice_stride, &rewriter));
+    return success();
+  }
+};
+
+void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<GatherSlice>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// GetDimensionSizeOp
+//===----------------------------------------------------------------------===//
+
+/// Fold get_dimension_size when the said shape dimension is a constant.
+OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
+  RankedTensorType type = operand().getType().cast<RankedTensorType>();
+  int32_t dim = dimension();
+  if (type.isDynamic(dim)) return {};
+  // The result type is always is a 0-d i32 tensor.
+  return DenseIntElementsAttr::get<int32_t>(
+      getResult().getType().cast<RankedTensorType>(), type.getDimSize(dim));
+}
+
+//===----------------------------------------------------------------------===//
 // IotaOp
 //===----------------------------------------------------------------------===//
 
@@ -176,7 +241,7 @@ static LogicalResult Verify(IotaOp op) {
   if (shape.getRank() == 0)
     return op.emitOpError() << "does not support scalars.";
 
-  auto iota_dimension = op.iota_dimension().getSExtValue();
+  auto iota_dimension = op.iota_dimension();
   if (iota_dimension >= shape.getRank() || iota_dimension < 0)
     return op.emitOpError() << "iota dimension cannot go beyond the output "
                                "rank or be negative.";
@@ -198,8 +263,7 @@ struct IotaBroadcast : public OpRewritePattern<IotaOp> {
     auto iota_dimension = iota.iota_dimension();
 
     auto iota_type = RankedTensorType::get(
-        {result_ty.getDimSize(iota_dimension.getLimitedValue())},
-        result_ty.getElementType());
+        {result_ty.getDimSize(iota_dimension)}, result_ty.getElementType());
 
     auto new_iota = rewriter.create<IotaOp>(iota.getLoc(), iota_type,
                                             rewriter.getI64IntegerAttr(0));
@@ -219,7 +283,7 @@ void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 }
 
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
-  auto dimension = iota_dimension().getLimitedValue();
+  auto dimension = iota_dimension();
   auto result_ty = getResult().getType().cast<ShapedType>();
   if (result_ty.hasRank() && result_ty.getDimSize(dimension) == 1) {
     Builder builder(getContext());
@@ -263,7 +327,7 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
     }
 
     auto iota_dimension = iota.iota_dimension();
-    auto iota_dimension_int = iota_dimension.getLimitedValue();
+    auto iota_dimension_int = iota_dimension;
 
     auto converted_shape = rewriter.create<IndexCastOp>(
         iota.getLoc(),
@@ -462,7 +526,7 @@ static LogicalResult Verify(DequantizeOp op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(GetTupleElementOp op) {
-  auto indexVal = op.index().getZExtValue();
+  auto indexVal = op.index();
   auto operandType = op.getOperand().getType().cast<TupleType>();
   if (indexVal >= operandType.size()) {
     return op.emitOpError(
@@ -481,7 +545,7 @@ static LogicalResult Verify(GetTupleElementOp op) {
 OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
   if (auto tupleOp =
           dyn_cast_or_null<mhlo::TupleOp>(getOperand().getDefiningOp())) {
-    return tupleOp.getOperand(index().getLimitedValue());
+    return tupleOp.getOperand(index());
   }
 
   return {};
@@ -551,8 +615,8 @@ static LogicalResult Verify(AllToAllOp op) {
   // count.
   auto type = op.getOperand().getType().dyn_cast<RankedTensorType>();
   if (!type) return success();
-  auto split_dim_size = type.getDimSize(op.split_dimension().getSExtValue());
-  auto split_count = op.split_count().getSExtValue();
+  auto split_dim_size = type.getDimSize(op.split_dimension());
+  auto split_count = op.split_count();
   if (split_dim_size % split_count != 0) {
     return op.emitError() << "split dimension has size " << split_dim_size
                           << ", expected to be a multiple of split_count "
@@ -900,7 +964,7 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(ConcatenateOp op,
                                 PatternRewriter& rewriter) const override {
-    auto axis = op.dimension().getLimitedValue();
+    auto axis = op.dimension();
     llvm::SmallVector<Value, 6> new_operands;
     for (auto operand : op.getOperands()) {
       auto ty = operand.getType().cast<ShapedType>();
@@ -980,7 +1044,7 @@ void ConcatenateOp::getCanonicalizationPatterns(
 template <typename T>
 static Attribute foldConcatenateHelper(ConcatenateOp* op,
                                        ArrayRef<Attribute> operands) {
-  auto axis = op->dimension().getLimitedValue();
+  auto axis = op->dimension();
   auto type = op->getType().cast<ShapedType>();
 
   SmallVector<T, 6> values;
@@ -1028,7 +1092,7 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   ShapedType type = getResult().getType().cast<ShapedType>();
   if (!type.hasStaticShape()) return {};
 
-  auto axis = dimension().getLimitedValue();
+  auto axis = dimension();
   if (auto attr = foldConcatenate(this, operands)) {
     return attr;
   }
@@ -1201,6 +1265,130 @@ static LogicalResult Verify(InfeedOp op) {
                                "be of token type, but got "
                             << subtypes[1];
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Logical Ops
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto rType = getType().cast<ShapedType>();
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return rhs();
+    }
+
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhsVal;
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return lhs();
+    }
+
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhsVal;
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) & std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
+}
+
+OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto rType = getType().cast<ShapedType>();
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return lhsVal;
+    }
+
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return rhsVal;
+    }
+
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) | std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
+}
+
+OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
+  auto rType = getType().cast<ShapedType>();
+  if (lhs() == rhs()) {
+    return DenseIntElementsAttr::get(rType, 0);
+  }
+
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) ^ std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1394,6 +1582,29 @@ static LogicalResult Verify(SelectOp op) {
   // TODO(jpienaar): Update to allow broadcastable and unranked inputs. This
   // corresponds to the client side HLO.
   return success();
+}
+
+OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
+  if (on_true() == on_false()) {
+    return on_true();
+  }
+
+  auto predicate = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!predicate) {
+    return {};
+  }
+
+  auto predicateTy = predicate.getType().cast<ShapedType>();
+  if (!predicateTy.getElementType().isInteger(1)) {
+    return {};
+  }
+
+  if (predicate.isSplat()) {
+    return predicate.getSplatValue<APInt>().getBoolValue() ? on_true()
+                                                           : on_false();
+  }
+
+  return {};
 }
 
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
@@ -1758,11 +1969,11 @@ static Attribute FoldSlice(SliceOp* op, I values) {
 
 OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   // Check if the SliceOp is a NoOp operation.
-  auto operand_shape = getOperand().getType().cast<ShapedType>().getShape();
+  auto operand_type = getOperand().getType().cast<ShapedType>();
   auto result_type = getResult().getType().cast<ShapedType>();
-  auto result_shape = result_type.getShape();
 
-  if (result_type.hasStaticShape() && (operand_shape == result_shape)) {
+  if (operand_type.hasStaticShape() && result_type.hasStaticShape() &&
+      (operand_type.getShape() == result_type.getShape())) {
     return getOperand();
   }
 
@@ -1808,7 +2019,7 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
       return failure();
     }
 
-    auto dimension = concat.dimension().getSExtValue();
+    auto dimension = concat.dimension();
 
     auto start = slice.start_indices().getIntValues();
     auto limit = slice.limit_indices().getIntValues();
@@ -1958,7 +2169,7 @@ static LogicalResult Verify(SortOp op) {
       return op.emitOpError("requires all inputs to have the same dimensions");
 
     int64_t rank = input_shape.size();
-    int64_t cmp_dim = op.dimension().getSExtValue();
+    int64_t cmp_dim = op.dimension();
     if (cmp_dim < -rank || cmp_dim >= rank)
       return op.emitOpError("dimension attribute value must be in range [-")
              << rank << ", " << rank << "), but found " << cmp_dim;

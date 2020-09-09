@@ -67,24 +67,29 @@ tf_py_test(
     shard_count = 14,
     tags = ["no_oss"],  # TODO(b/162119374)
     deps = [
+        ":client",
         ":parameter_server_client",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/logging",
     ],
 )
 
 tf_py_test(
-    name = "parameter_server_client_mpr_test",
-    srcs = ["parameter_server_client_mpr_test.py"],
+    name = "client_mpr_test",
+    srcs = ["client_mpr_test.py"],
     python_version = "PY3",
     shard_count = 2,
     tags = ["no_oss"],  # TODO(b/162119374)
@@ -122,6 +127,7 @@ tf_py_test(
         ":metric_utils",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:test",
     ],
@@ -131,10 +137,6 @@ py_library(
     name = "utils",
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//learning/tfx/users/apps_itemsuggest:__subpackages__",
-        "//tensorflow:internal",
-    ],
     deps = [
         "//tensorflow/python:training_server_lib",
     ],

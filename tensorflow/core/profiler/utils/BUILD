@@ -212,6 +212,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":timespan",
+        ":trace_utils",
         ":xplane_builder",
         ":xplane_visitor",
         "//tensorflow/core:platform_base",
@@ -431,5 +432,13 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "step_interval",
+    hdrs = ["step_interval.h"],
+    deps = [
+        "//tensorflow/core:lib",
     ],
 )

@@ -201,6 +201,7 @@ Status GpuCompiler::OptimizeHloModule(
       pass.AddPass<ZeroSizedHloElimination>();
 
       pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+      pass.AddPass<ScatterExpander>(ScatterExpander::kEliminateSimpleScatters);
 
       AlgebraicSimplifierOptions options;
       // When transposes appear in a fusion node, we can easily adjust the
@@ -515,7 +516,6 @@ static Status CompileModuleToLlvmIrImpl(
   DumpHloModuleIfEnabled(*hlo_module, **buffer_assignment,
                          "after_optimizations");
 
-  mlir::registerAllDialects();
   mlir::MLIRContext mlir_context;
 
   IrEmitterContext ir_emitter_context(

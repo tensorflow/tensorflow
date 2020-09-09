@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/plugins/s3/aws_crypto.h"
+#include "tensorflow/c/experimental/filesystem/plugins/s3/aws_logging.h"
 #include "tensorflow/c/logging.h"
 #include "tensorflow/c/tf_status.h"
 
@@ -187,6 +188,8 @@ static void GetS3Client(tf_s3_filesystem::S3File* s3_file) {
   absl::MutexLock l(&s3_file->initialization_lock);
 
   if (s3_file->s3_client.get() == nullptr) {
+    tf_s3_filesystem::AWSLogSystem::InitializeAWSLogging();
+
     Aws::SDKOptions options;
     options.cryptoOptions.sha256Factory_create_fn = []() {
       return Aws::MakeShared<tf_s3_filesystem::AWSSHA256Factory>(
@@ -251,6 +254,7 @@ static void ShutdownClient(Aws::S3::S3Client* s3_client) {
     delete s3_client;
     Aws::SDKOptions options;
     Aws::ShutdownAPI(options);
+    tf_s3_filesystem::AWSLogSystem::ShutdownAWSLogging();
   }
 }
 

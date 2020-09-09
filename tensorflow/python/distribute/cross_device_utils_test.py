@@ -81,32 +81,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
   def testIsIndexedSlices(self):
     t = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices(t))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_List(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices([t0, t1]))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_Tuple(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices((t0, t1)))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_PerReplica(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_replica = value_lib.PerReplica((t0, t1))
-    self.assertTrue(cross_device_utils.contains_indexed_slices(per_replica))
+    self.assertTrue(cross_device_utils.is_indexed_slices(t))
 
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],

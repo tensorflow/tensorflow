@@ -69,7 +69,7 @@ func @sqrt_static(%a: tensor<2x3xf32>) -> tensor<2x3xf32> {
 func @add_unranked(%a : tensor<*xf32>, %b : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SHAPE_A:.*]] = shape.shape_of %[[A]]
   // CHECK: %[[SHAPE_B:.*]] = shape.shape_of %[[B]]
-  // CHECK: %[[SHAPE:.*]] = "shape.any"(%[[SHAPE_A]], %[[SHAPE_B]])
+  // CHECK: %[[SHAPE:.*]] = shape.any %[[SHAPE_A]], %[[SHAPE_B]]
   // CHECK: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
   // CHECK: %[[FLAT_SHAPE:.*]] = tensor_from_elements(%[[NUM_ELEMENTS]]) : tensor<1xindex>
   // CHECK: %[[FLAT_A:.*]] = "mhlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>

@@ -710,4 +710,21 @@ TEST(OpVersionTest, VersioningResizeNearestNeighborTest) {
   fake_op_sig.options.resize.align_corners = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
+TEST(OpVersionTest, VersioningAbsTest) {
+  // Default.
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_ABS,
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // int8 input is version 2.
+  fake_op_sig = {
+      .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 }  // namespace tflite

@@ -428,10 +428,9 @@ def build_toco_convert_protos(input_tensors,
   if conversion_summary_dir:
     toco.conversion_summary_dir = conversion_summary_dir
   if target_ops:
-    if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
+    if OpsSet.SELECT_TF_OPS in set(target_ops):
       toco.enable_select_tf_ops = True
-    elif set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
-      toco.enable_select_tf_ops = True
+    if set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
       toco.force_select_tf_ops = True
 
   model = _model_flags_pb2.ModelFlags()

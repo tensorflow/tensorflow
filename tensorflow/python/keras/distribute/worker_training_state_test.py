@@ -48,7 +48,7 @@ class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
         callbacks.ModelCheckpoint(
             filepath=saving_filepath, save_weights_only=save_weights_only)
     ]
-    self.assertFalse(file_io.file_exists(saving_filepath))
+    self.assertFalse(file_io.file_exists_v2(saving_filepath))
 
     try:
       model.fit(
@@ -56,9 +56,9 @@ class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
     except NotFoundError as e:
       if 'Failed to create a NewWriteableFile' in e.message:
         self.skipTest('b/138941852, path not found error in Windows py35.')
-    tf_saved_model_exists = file_io.file_exists(saving_filepath)
-    tf_weights_only_checkpoint_exists = file_io.file_exists(saving_filepath +
-                                                            '.index')
+    tf_saved_model_exists = file_io.file_exists_v2(saving_filepath)
+    tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
+        saving_filepath + '.index')
     self.assertTrue(tf_saved_model_exists or tf_weights_only_checkpoint_exists)
 
 

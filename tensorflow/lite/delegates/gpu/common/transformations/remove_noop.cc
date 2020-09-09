@@ -15,14 +15,25 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/remove_noop.h"
 
+#include <algorithm>
+#include <any>
+#include <functional>
+#include <iterator>
+#include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -118,7 +129,7 @@ class RemoveIdentityReshape : public NodeTransformation {
       return {TransformStatus::SKIPPED,
               "Can not apply transformation when node output is graph output"};
     }
-    absl::Status status = RemoveOneInputOneOutputNode(graph, node);
+    absl::Status status = RemoveSimpleNodeKeepInput(graph, node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove a node: " + std::string(status.message())};

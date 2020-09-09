@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 // NOLINTNEXTLINE - This header file should't go to the top.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/transpose_conv.h"
@@ -96,13 +95,10 @@ struct OpData {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* data = new OpData;
-  eigen_support::IncrementUsageCounter(context);
-  return data;
+  return new OpData;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  eigen_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 

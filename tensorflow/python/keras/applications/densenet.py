@@ -145,8 +145,9 @@ def DenseNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.densenet.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     blocks: numbers of building blocks for the four dense layers.
@@ -192,7 +193,7 @@ def DenseNet(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -382,9 +383,10 @@ DOC = """
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.densenet.preprocess_input` for an example.
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     include_top: whether to include the fully-connected

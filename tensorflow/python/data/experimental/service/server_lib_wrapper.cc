@@ -34,7 +34,8 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
                                                        "DispatchGrpcDataServer")
       .def("start", &tensorflow::data::DispatchGrpcDataServer::Start)
       .def("stop", &tensorflow::data::DispatchGrpcDataServer::Stop)
-      .def("join", &tensorflow::data::DispatchGrpcDataServer::Join)
+      .def("join", &tensorflow::data::DispatchGrpcDataServer::Join,
+           py::call_guard<py::gil_scoped_release>())
       .def("bound_port", &tensorflow::data::DispatchGrpcDataServer::BoundPort)
       .def("num_workers",
            [](tensorflow::data::DispatchGrpcDataServer* server) -> int {
@@ -47,7 +48,8 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
   py::class_<tensorflow::data::WorkerGrpcDataServer>(m, "WorkerGrpcDataServer")
       .def("start", &tensorflow::data::WorkerGrpcDataServer::Start)
       .def("stop", &tensorflow::data::WorkerGrpcDataServer::Stop)
-      .def("join", &tensorflow::data::WorkerGrpcDataServer::Join)
+      .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,
+           py::call_guard<py::gil_scoped_release>())
       .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort);
 
   m.def(
@@ -61,7 +63,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewDispatchServer(config, &server);
+            tensorflow::data::NewDispatchServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
@@ -78,7 +80,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewWorkerServer(config, &server);
+            tensorflow::data::NewWorkerServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },

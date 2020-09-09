@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CONVERT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CONVERT_H_
 
+#include <stdint.h>
+
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"

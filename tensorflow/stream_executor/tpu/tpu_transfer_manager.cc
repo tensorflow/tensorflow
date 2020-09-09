@@ -217,6 +217,19 @@ int64 TpuTransferManager::GetByteSizeRequirement(
   return size_in_bytes;
 }
 
+bool TpuTransferManager::CanShapedBufferBeAccessedNow(
+    stream_executor::StreamExecutor* executor,
+    const xla::ShapedBuffer& device_buffer) const {
+  auto* tpu_executor = down_cast<TpuExecutor*>(executor->implementation());
+  XLA_ShapedBuffer c_device_buffer;
+  ApiConverter::ToC(device_buffer, &c_device_buffer);
+  auto cleanup = xla::MakeCleanup(
+      [&c_device_buffer]() { ApiConverter::Free(&c_device_buffer); });
+  return tpu::ExecutorApiFn()
+      ->TpuTransferManager_CanShapedBufferBeAccessedNowFn(
+          manager_, tpu_executor->se_executor(), &c_device_buffer);
+}
+
 Status TpuTransferManager::WriteSingleTupleIndexTable(
     stream_executor::Stream* stream,
     absl::Span<const stream_executor::DeviceMemoryBase> elements,

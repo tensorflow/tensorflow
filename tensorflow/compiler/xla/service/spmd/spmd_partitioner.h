@@ -47,6 +47,12 @@ struct SpmdPartitionerOptions {
 
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
+
+  // Whether to use cached all-gather to avoid repeatedly replicate a tiled
+  // tensor. If it is set to false, the result tends to be more
+  // memory-efficient, and the compiler can use the ScheduleAwareAllGatherCSE
+  // pass to CSE some all-gathers which are relatively close to each other.
+  bool cache_all_gather = true;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -180,6 +186,8 @@ class SpmdPartitioner : public HloModulePass {
       int64 channel_id, absl::Span<const int64> selected_dims,
       const SPMDCollectiveOpsCreator& collectives_creator);
 
+  const SpmdPartitionerOptions& options() { return options_; }
+
  protected:
   virtual std::unique_ptr<SpmdPartitioningVisitor> CreateVisitor(
       HloComputation* computation, int64 num_partitions, int64 num_replicas,
@@ -304,6 +312,14 @@ class PartitionedHlo {
 
   // Helper function to reshard the tensor using CollectivePermute.
   PartitionedHlo ReshardWithCollectivePermute(const HloSharding& target) const;
+
+  // Helper function to reshard to partial replicate using AllGather.
+  absl::optional<PartitionedHlo> ReshardToPartialReplicateWithAllGather(
+      const HloSharding& target);
+
+  // Helper function to reshard from partial replicate using DynamicSlice.
+  absl::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
+      const HloSharding& target);
 
   // SPMD instruction.
   HloInstruction* hlo_;

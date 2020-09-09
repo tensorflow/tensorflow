@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/BufferPlacement.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -50,8 +51,9 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(
-    MLIRContext *context, BufferAssignmentPlacer *bufferAssignment,
-    TypeConverter *converter, OwningRewritePatternList *patterns);
+    MLIRContext *context, BufferAssignmentTypeConverter *converter,
+    OwningRewritePatternList *patterns);
+
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
                                           OwningRewritePatternList *patterns);

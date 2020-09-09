@@ -111,7 +111,7 @@ def smart_resize(x, size, interpolation='bilinear'):
   if len(size) != 2:
     raise ValueError('Expected `size` to be a tuple of 2 integers, '
                      'but got: %s' % (size,))
-  img = ops.convert_to_tensor(x)
+  img = ops.convert_to_tensor_v2_with_dispatch(x)
   if img.shape.rank is not None:
     if img.shape.rank != 3:
       raise ValueError(

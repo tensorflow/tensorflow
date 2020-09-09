@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
@@ -540,6 +541,8 @@ class DropoutTest(test_lib.TestCase):
       _ = nn_ops.dropout(x, 0.5)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests _compute_sampled_logits and related functions, which call matmul")
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
   def setUp(self):
@@ -1699,6 +1702,89 @@ class RaggedEmbeddingTest(test_lib.TestCase):
       self.assertAllClose(
           ragged_factory_ops.constant(expected, dtype=float, ragged_rank=1),
           actual)
+
+
+class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_increasing_and_decreasing(self):
+    x = constant_op.constant([[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]],
+                             dtype=dtypes.float64)
+    y, segments = nn_ops.isotonic_regression(x, decreasing=False)
+    self.assertAllClose(y, x)
+    self.assertAllClose(segments, [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
+
+    y, segments = nn_ops.isotonic_regression(x, decreasing=True)
+    self.assertAllClose(
+        y,
+        [
+            [2, 2, 2, 2, 2],  # Average of the inputs.
+            [7, 7, 7, 7, 7]
+        ])
+    self.assertAllClose(segments, array_ops.zeros((2, 5)))
+
+    y, segments = nn_ops.isotonic_regression(-x, decreasing=True)
+    self.assertAllClose(segments, [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
+
+    self.assertAllClose(y, -x)
+    y, segments = nn_ops.isotonic_regression(-x, decreasing=False)
+    self.assertAllClose(
+        -y,
+        [
+            [2, 2, 2, 2, 2],  # Average of the inputs.
+            [7, 7, 7, 7, 7]
+        ])
+    self.assertAllClose(segments, array_ops.zeros((2, 5)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_different_axis(self):
+    x = constant_op.constant([[0, 6, 2, 8, 4], [5, 1, 7, 3, 9]],
+                             dtype=dtypes.float64)
+    y, segments = nn_ops.isotonic_regression(x, decreasing=True, axis=0)
+    self.assertAllClose(
+        y,
+        [
+            [2.5, 6, 4.5, 8, 6.5],  # Either identity or average.
+            [2.5, 1, 4.5, 3, 6.5]
+        ])
+    self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
+
+  @test_util.run_v2_only
+  def testGradientV2(self, dtype=np.float64, batch_size=30, dimensions=50):
+
+    @def_function.function
+    def ComputeIsotonicFn(x):
+      y, _ = nn_ops.isotonic_regression(x)  # No gradient wrt segments.
+      return y
+
+    np.random.seed(0)
+    x_init = np.random.randn(batch_size, dimensions).astype(dtype)
+    grad_theoretical, grad_numerical = gradient_checker_v2.compute_gradient(
+        ComputeIsotonicFn, [x_init], delta=1e-5)
+    self.assertAllClose(grad_theoretical, grad_numerical)
+
+  @test_util.run_v1_only("compute_gradient_error is v1 only")
+  def testGradientV1(self, dtype=np.float64, batch_size=30, dimensions=50):
+    np.random.seed(0)
+    x_init = np.random.randn(batch_size, dimensions).astype(dtype)
+    with self.cached_session():
+      x = array_ops.placeholder(dtype, (batch_size, dimensions))
+      y, _ = nn_ops.isotonic_regression(x)  # Segments have no gradient.
+      max_error = gradient_checker.compute_gradient_error(
+          x, (batch_size, dimensions), y, (batch_size, dimensions), x_init)
+    self.assertAllClose(max_error, 0.)
+
+  @parameterized.parameters([[dtypes.half, dtypes.half],
+                             [dtypes.bfloat16, dtypes.bfloat16],
+                             [dtypes.float32, dtypes.float32],
+                             [dtypes.float64, dtypes.float64],
+                             [dtypes.int32, dtypes.float64],
+                             [dtypes.int16, dtypes.float32]])
+  def testTypePromotion(self, dtype_in, expected_dtype_out):
+    x = constant_op.constant([[0, 6, 2, 8, 4], [5, 1, 7, 3, 9]], dtype=dtype_in)
+    y, segments = nn_ops.isotonic_regression(x)
+    self.assertEqual(y.dtype, expected_dtype_out)
+    self.assertEqual(segments.dtype, dtypes.int32)
 
 
 if __name__ == "__main__":

@@ -660,5 +660,19 @@ XLA_TEST_F(MathTest, BesselI1eDouble) {
   ComputeAndCompareR1<double>(&builder, expected, {}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, AcosComplexValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<std::complex<float>>(
+      &builder, {{0, 0}, {0, 1}, {1, 1}, {0.8, 0.2}});
+
+  Acos(x);
+  std::vector<std::complex<float>> expected = {
+      {1.5707963267948966, 0},
+      {1.5707963267948966, -0.881373587019543},
+      {0.9045568943023814, -1.0612750619050357},
+      {0.7011246914497526, -0.30527648462436596}};
+  ComputeAndCompareR1<std::complex<float>>(&builder, expected, {}, error_spec_);
+}
+
 }  // namespace
 }  // namespace xla

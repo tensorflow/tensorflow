@@ -28,8 +28,8 @@ This example is quantized with symmetric uint8 scheme. As noted in
 embARC MLI supports optimized kernels for int8 quantization only. Therefore,
 this example will only use TFLM reference kernels.
 
-The ARC EM SDP board contains the reach set of extension interfaces. You can
-choose any compatible camera and modify
+The ARC EM SDP board contains a rich set of extension interfaces. You can choose
+any compatible camera and modify
 [image_provider.cc](/tensorflow/lite/micro/examples/person_detection/image_provider.cc)
 file accordingly to use input from your specific camera. By default, results of
 running this example are printed to the console. If you would like to instead
@@ -94,6 +94,11 @@ get it started.
     *   Plug in the microSD card into the J11 connector.
     *   Push the RST button. If a red LED is lit beside RST button, push the CFG
         button.
+    *   Type or copy next commands one-by-another into serial terminal: `setenv
+        loadaddr 0x10800000 setenv bootfile app.elf setenv bootdelay 1 setenv
+        bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+        saveenv`
+    *   Push the RST button.
 
 6.  If you have the MetaWare Debugger installed in your environment:
 
