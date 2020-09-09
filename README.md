@@ -44,9 +44,9 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 
 ### Project Showcase
 
-# Watch Out Mobile 팀
+### Watch Out Mobile 팀
 
-Contributor: 강상훈(sanghunkang), 공예슬(0ys), 김도연(yammayamm), 김창윤(Karmantez), 김하림(harheem), 송보영(ufo8945), 서미지(prograsshopper), 이보성(dlqh406), 양윤석(yoonseok312)
+![](./images/watch-out.gif)
 
 ### 프로젝트 배경 (프로젝트 선정이유, 키워드 및 선정이유)
 
