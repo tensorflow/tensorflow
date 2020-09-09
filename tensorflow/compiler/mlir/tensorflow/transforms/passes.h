@@ -276,6 +276,11 @@ namespace TFTPU {
 // `_tpu_replicate` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
 
+// Creates a pass that cleans up `_tpu_replicate` attribute on operations
+// that are inside a cluster.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUClusterCleanupAttributesPass();
+
 // Creates a pass that removes Identity/IdentityN ops from a cluster.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUIdentityPruningPass();
 
