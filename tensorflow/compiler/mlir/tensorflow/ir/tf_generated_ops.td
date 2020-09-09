@@ -11722,7 +11722,7 @@ of a step/run.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayFree]>:$handle
   );
 
   let results = (outs);
@@ -11746,7 +11746,7 @@ All elements must have the same shape (excepting the first dimension).
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     F32Tensor:$flow_in,
 
     DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
@@ -11770,7 +11770,7 @@ All elements selected by `indices` must have the same shape.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     I32Tensor:$indices,
     F32Tensor:$flow_in,
 
@@ -11829,14 +11829,14 @@ calculation gets its own TensorArray accumulator.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     F32Tensor:$flow_in,
 
     StrAttr:$source
   );
 
   let results = (outs
-    TF_ResourceTensor:$grad_handle,
+    Res<TF_ResourceTensor, "", [TF_TensorArrayAlloc]>:$grad_handle,
     F32Tensor:$flow_out
   );
 }
@@ -11845,7 +11845,7 @@ def TF_TensorArrayReadV3Op : TF_Op<"TensorArrayReadV3", []> {
   let summary = "Read an element from the TensorArray into output `value`.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     I32Tensor:$index,
     F32Tensor:$flow_in
   );
@@ -11867,7 +11867,7 @@ Scatter the data from the input value into specific TensorArray elements.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     I32Tensor:$indices,
     TF_Tensor:$value,
     F32Tensor:$flow_in
@@ -11884,7 +11884,7 @@ def TF_TensorArraySizeV3Op : TF_Op<"TensorArraySizeV3", []> {
   let summary = "Get the current size of the TensorArray.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     F32Tensor:$flow_in
   );
 
@@ -11919,7 +11919,7 @@ and having size
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     TF_Tensor:$value,
     I64Tensor:$lengths,
     F32Tensor:$flow_in
@@ -11951,7 +11951,7 @@ Write data via Write and read via Read or Pack.
   );
 
   let results = (outs
-    TF_ResourceTensor:$handle,
+    Res<TF_ResourceTensor, "", [TF_TensorArrayAlloc]>:$handle,
     F32Tensor:$flow
   );
 }
@@ -11960,7 +11960,7 @@ def TF_TensorArrayWriteV3Op : TF_Op<"TensorArrayWriteV3", []> {
   let summary = "Push an element onto the tensor_array.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     I32Tensor:$index,
     TF_Tensor:$value,
     F32Tensor:$flow_in
