@@ -10,7 +10,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <fstream>
@@ -19,13 +18,12 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/micro_speech/command_responder.h"
 #include "tensorflow/lite/micro/examples/micro_speech/feature_provider.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"
-#include "tensorflow/lite/micro/examples/micro_speech/recognize_commands.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/model.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/micro/examples/micro_speech/recognize_commands.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/version.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/version.h"
 
 extern int32_t g_latest_audio_timestamp;
 void setup_tf();
@@ -35,25 +33,21 @@ void GetAudio();
 int detection_loop();
 void read_samples();
 int32_t LatestAudioTimestamp();
-extern "C"{
-void setup()
-{
-	init_audio();
-	setup_tf();
+extern "C" {
+void setup() {
+  init_audio();
+  setup_tf();
 }
 }
 
-extern "C"{
-void loop()
-{
-	//get audio samples
-	//run detection
-	GetAudio();
-	detection_loop();
+extern "C" {
+void loop() {
+  // get audio samples
+  // run detection
+  GetAudio();
+  detection_loop();
 }
 }
-
-
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace {
@@ -73,8 +67,6 @@ constexpr int kTensorArenaSize = 10 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 
-
-
 // The name of this function is important for Arduino compatibility.
 void setup_tf() {
   // Set up logging. Google style is to avoid globals or statics because of
@@ -88,11 +80,14 @@ void setup_tf() {
   // copying or parsing, it's a very lightweight operation.
   model = tflite::GetModel(g_model);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-	   TF_LITE_REPORT_ERROR(error_reporter, "Model provided is schema version %d not equal to supported version %d.",model->version(), TFLITE_SCHEMA_VERSION);
-	   return;
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal to "
+                         "supported version %d.",
+                         model->version(), TFLITE_SCHEMA_VERSION);
+    return;
   }
 
-// Pull in only the operation implementations we need.
+  // Pull in only the operation implementations we need.
   // This relies on a complete list of all the ops needed by this graph.
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
@@ -115,14 +110,13 @@ void setup_tf() {
   }
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(
-      model, micro_op_resolver, tensor_arena, kTensorArenaSize,
-      error_reporter);
+      model, micro_op_resolver, tensor_arena, kTensorArenaSize, error_reporter);
   interpreter = &static_interpreter;
 
   // Allocate memory from the tensor_arena for the model's tensors.
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
   if (allocate_status != kTfLiteOk) {
-   	TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
+    TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
     return;
   }
 
@@ -151,33 +145,30 @@ void setup_tf() {
   previous_time = 0;
 }
 
-
-
 int detection_loop() {
-
   // Fetch the spectrogram for the current time.
   int retVal = 0;
   const int32_t current_time = LatestAudioTimestamp();
   int how_many_new_slices = 0;
-	int static frame_counter = 0;
+  int static frame_counter = 0;
 
   TfLiteStatus feature_status = feature_provider->PopulateFeatureData(
       error_reporter, previous_time, current_time, &how_many_new_slices);
 
-printf("frame =  %d\n",frame_counter);
-frame_counter++;
+  printf("frame =  %d\n", frame_counter);
+  frame_counter++;
   if (feature_status != kTfLiteOk) {
-   	TF_LITE_REPORT_ERROR(error_reporter, "Feature generation failed");
+    TF_LITE_REPORT_ERROR(error_reporter, "Feature generation failed");
     return retVal;
   }
   previous_time = current_time;
   // If no new audio samples have been received since last time, don't bother
   // running the network model.
   if (how_many_new_slices == 0) {
-	printf("no new slices\n");
+    printf("no new slices\n");
     return retVal;
   }
-// Copy feature buffer to input tensor
+  // Copy feature buffer to input tensor
   for (int i = 0; i < kFeatureElementCount; i++) {
     model_input_buffer[i] = feature_buffer[i];
   }
@@ -185,15 +176,15 @@ frame_counter++;
   // Run the model on the spectrogram input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk) {
-   	TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed");
-	return retVal;
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed");
+    return retVal;
   }
 
   // The output from the model is a vector containing the scores for each
   // kind of prediction, so figure out what the highest scoring category was.
   TfLiteTensor* output = interpreter->output(0);
 
- const char* found_command = nullptr;
+  const char* found_command = nullptr;
   uint8_t score = 0;
   bool is_new_command = false;
   TfLiteStatus process_status = recognizer->ProcessLatestResults(
@@ -210,6 +201,4 @@ frame_counter++;
                    is_new_command);
 
   return retVal;
-
 }
-
