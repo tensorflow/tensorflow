@@ -346,8 +346,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<AvgPoolGlobalOpData*>(node->user_data);
 
   op->bias = unpack<4, int32_t>(&bss->data.uint8[0]);
-  uint32_t shift = unpack<2, uint32_t>(&bss->data.uint8[5]);
-  uint32_t scale = unpack<1, uint32_t>(&bss->data.uint8[4]);
+  // uint32_t shift = unpack<2, uint32_t>(&bss->data.uint8[5]);
+  // uint32_t scale = unpack<1, uint32_t>(&bss->data.uint8[4]);
 
   // setup kernel parameters
   nn_image_params_t in_params = {(uint32_t)input->dims->data[1],
@@ -374,10 +374,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // initialize the kernel
   avgpool2d_global_init(&op->plan, op->jobs, &in_params, &job_params[0],
                         n_jobs);
-  // NOTE: Overriding the plan's shift and scale is temporary.
-  //       See issue #144
-  op->plan.shift = shift;
-  op->plan.scale = scale;
 
   return kTfLiteOk;
 }
