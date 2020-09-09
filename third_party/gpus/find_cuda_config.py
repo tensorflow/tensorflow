@@ -278,7 +278,14 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
         return match.group(1)
     return None
 
-  nvcc_name = "nvcc.exe" if _is_windows() else "nvcc"
+  def maybe_exe(path):
+    return ".exe" if _is_windows() else ""
+
+  nvcc_name      = "nvcc"      + maybe_exe()
+  bin2c_name     = "bin2c"     + maybe_exe()
+  fatbinary_name = "fatbinary" + maybe_exe()
+  nvlink_name    = "nvlink"    + maybe_exe()
+
   cuda_nvcc_path, nvcc_version = _find_versioned_file(base_paths, [
       "",
       "bin",
@@ -297,19 +304,19 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
       "",
       "bin",
       "lib/nvidia-cuda-toolkit/libdevice",
-  ], "bin2c")
+  ], bin2c_name)
 
   cuda_fatbinary_path = _find_file(base_paths, [
       "",
       "bin",
       "lib/nvidia-cuda-toolkit/libdevice",
-  ], "fatbinary")
+  ], fatbinary_name)
 
   cuda_nvlink_path = _find_file(base_paths, [
       "",
       "bin",
       "lib/nvidia-cuda-toolkit/libdevice",
-  ], "nvlink")
+  ], nvlink_name)
 
   cuda_link_stub_path = _find_file(base_paths, [
       "",
