@@ -32,6 +32,7 @@ cuda_py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",

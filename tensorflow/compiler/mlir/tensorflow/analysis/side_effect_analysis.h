@@ -130,7 +130,7 @@ class SideEffectAnalysis : public detail::PerFunctionAggregateAnalysis<
                                detail::SideEffectAnalysisInfo> {
  public:
   // Constructs analysis by analyzing the given module operation.
-  explicit SideEffectAnalysis(Operation* op);
+  explicit SideEffectAnalysis(ModuleOp module);
 };
 
 }  // namespace TF

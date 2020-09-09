@@ -428,7 +428,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10), 'float32'))
     model = MyModel()
     model(x)
     self.assertEqual(1, len(model.trainable_weights))
@@ -444,7 +444,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10), 'float32'))
     model = MyModelCustomBuild()
     model(x)
     self.assertEqual(1, len(model.trainable_weights))
@@ -467,7 +467,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         self.add_update(self.c.assign(inputs[1, :]))
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10), 'float32'))
     model = MyModel()
     model(x)
 
@@ -706,32 +706,33 @@ class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
       m.predict_on_batch(x)
 
   def test_deepcopy(self):
-    with context.eager_mode():
+    if not context.executing_eagerly():
+      self.skipTest('Run in eager mode only.')
 
-      class MyModel(keras.Model):
+    class MyModel(keras.Model):
 
-        def __init__(self):
-          super(MyModel, self).__init__()
-          self.my_variable = variables_lib.Variable(0.0, trainable=False)
-          self.layer = keras.layers.Dense(4)
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.my_variable = variables_lib.Variable(0.0, trainable=False)
+        self.layer = keras.layers.Dense(4)
 
-        def call(self, obs):
-          return self.layer(obs)
+      def call(self, obs):
+        return self.layer(obs)
 
-      model = MyModel()
-      model.my_variable.assign_add(1.0)
+    model = MyModel()
+    model.my_variable.assign_add(1.0)
 
-      new_model = copy.deepcopy(model)
-      self.assertEqual(model.my_variable.numpy(), 1.0)
-      self.assertEqual(new_model.my_variable.numpy(), 1.0)
+    new_model = copy.deepcopy(model)
+    self.assertEqual(model.my_variable.numpy(), 1.0)
+    self.assertEqual(new_model.my_variable.numpy(), 1.0)
 
-      model.my_variable.assign_add(1.0)
-      self.assertEqual(model.my_variable.numpy(), 2.0)
-      self.assertEqual(new_model.my_variable.numpy(), 1.0)
+    model.my_variable.assign_add(1.0)
+    self.assertEqual(model.my_variable.numpy(), 2.0)
+    self.assertEqual(new_model.my_variable.numpy(), 1.0)
 
-      # Check that Trackable logic still works.
-      self.assertLen(new_model.variables, 1)
-      self.assertLen(new_model.layers, 1)
+    # Check that Trackable logic still works.
+    self.assertLen(new_model.variables, 1)
+    self.assertLen(new_model.layers, 1)
 
   def test_batch_counters_not_in_variables(self):
 

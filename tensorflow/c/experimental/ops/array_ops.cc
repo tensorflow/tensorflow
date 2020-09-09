@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ops {
-// Creates an Identity op.
+
 Status Identity(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {
@@ -33,6 +33,20 @@ Status Identity(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(identity_op->AddInput(inputs[0]));
   int num_retvals = 1;
   return identity_op->Execute(outputs, &num_retvals);
+}
+
+Status ZerosLike(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> inputs,
+                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr z_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(z_op->Reset("ZerosLike", /*raw_device_name=*/nullptr));
+  if (isa<tensorflow::tracing::TracingOperation>(z_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(z_op.get())->SetOpName(name));
+  }
+  TF_RETURN_IF_ERROR(z_op->AddInput(inputs[0]));
+  int num_retvals = 1;
+  return z_op->Execute(outputs, &num_retvals);
 }
 
 }  // namespace ops

@@ -44,7 +44,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -130,10 +129,11 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = object_identity.ObjectIdentitySet(
-        trackable_util.list_objects(model))
+    checkpointed_object_ids = {
+        id(o) for o in trackable_util.list_objects(model)
+    }
     for v in model.variables:
-      self.assertIn(v, checkpointed_objects)
+      self.assertIn(id(v), checkpointed_object_ids)
 
   def test_timedistributed_static_batch_size(self):
     model = keras.models.Sequential()
@@ -492,10 +492,11 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
       # check whether the model variables are present in the
       # trackable list of objects
-      checkpointed_objects = object_identity.ObjectIdentitySet(
-          trackable_util.list_objects(model))
+      checkpointed_object_ids = {
+          id(o) for o in trackable_util.list_objects(model)
+      }
       for v in model.variables:
-        self.assertIn(v, checkpointed_objects)
+        self.assertIn(id(v), checkpointed_object_ids)
 
       # test compute output shape
       ref_shape = model.layers[-1].output.shape
@@ -1030,10 +1031,11 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = object_identity.ObjectIdentitySet(
-        trackable_util.list_objects(model))
+    checkpointed_object_ids = {
+        id(o) for o in trackable_util.list_objects(model)
+    }
     for v in model.variables:
-      self.assertIn(v, checkpointed_objects)
+      self.assertIn(id(v), checkpointed_object_ids)
 
     # test compute output shape
     ref_shape = model.layers[-1].output.shape
@@ -1152,7 +1154,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         epochs=1,
         batch_size=10)
 
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_wrapped_rnn_cell(self):
     # See https://github.com/tensorflow/tensorflow/issues/26581.
     batch = 20

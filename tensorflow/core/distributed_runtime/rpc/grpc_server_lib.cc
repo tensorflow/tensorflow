@@ -249,7 +249,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
 
-  profiler_service_ = CreateProfilerService();
+  profiler_service_ = profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
 
   // extra service:
@@ -279,8 +279,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     }
   } else {
     std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-        new DeviceResolverDistributed(worker_env_.device_mgr, worker_cache,
-                                      default_worker_name));
+        new DeviceResolverDistributed(worker_env_.device_mgr));
     std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
         new CollectiveParamResolverDistributed(config, worker_env_.device_mgr,
                                                dev_resolver.get(), worker_cache,
@@ -448,8 +447,7 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
     return errors::Internal("Could not parse worker name.");
   }
   std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-      new DeviceResolverDistributed(worker_env_.device_mgr, worker_cache,
-                                    default_worker_name));
+      new DeviceResolverDistributed(worker_env_.device_mgr));
   std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
       new CollectiveParamResolverDistributed(
           server_def_.default_session_config(), worker_env_.device_mgr,

@@ -32,6 +32,13 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+namespace {
+
+// The maximum number of Kernels displayed on Kernel Stats page.
+const int kMaxNumOfKernels = 1000;
+
+}  // namespace
+
 void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
                              KernelReport* kernel) {
   const std::vector<absl::string_view> params =
@@ -203,26 +210,66 @@ bool KernelReportEqualToComparator::operator()(const KernelReport& lhs,
   // clang-format on
 }
 
-void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db) {
-  // Sort kernel reports by total duration descendingly.
-  std::sort(kernel_stats_db->mutable_reports()->begin(),
-            kernel_stats_db->mutable_reports()->end(),
-            [](const KernelReport& lhs, const KernelReport& rhs) {
-              return lhs.total_duration_ns() > rhs.total_duration_ns() ||
-                     (lhs.total_duration_ns() == rhs.total_duration_ns() &&
-                      KernelReportLessThanComparator()(lhs, rhs));
-            });
+void SortAndKeepTopKDurationKernelReportsInDb(KernelStatsDb* kernel_stats_db) {
+  auto comp = [](const KernelReport& lhs, const KernelReport& rhs) {
+    return lhs.total_duration_ns() > rhs.total_duration_ns() ||
+           (lhs.total_duration_ns() == rhs.total_duration_ns() &&
+            KernelReportLessThanComparator()(lhs, rhs));
+  };
+
+  // Sort and keep at most <kMaxNumOfKernels> kernel reports.
+  if (kernel_stats_db->reports_size() > kMaxNumOfKernels) {
+    std::partial_sort(
+        kernel_stats_db->mutable_reports()->begin(),
+        kernel_stats_db->mutable_reports()->begin() + kMaxNumOfKernels,
+        kernel_stats_db->mutable_reports()->end(), comp);
+    kernel_stats_db->mutable_reports()->erase(
+        kernel_stats_db->mutable_reports()->begin() + kMaxNumOfKernels,
+        kernel_stats_db->mutable_reports()->end());
+  } else {
+    std::sort(kernel_stats_db->mutable_reports()->begin(),
+              kernel_stats_db->mutable_reports()->end(), comp);
+  }
 }
 
-void CopyKernelReportsToDb(const KernelReportMap& reports, KernelStatsDb* dst) {
+void CopyTopKDurationKernelReportsToDb(const KernelReportMap& reports,
+                                       KernelStatsDb* dst) {
+  std::vector<std::pair<const KernelReport*, const KernelReportValue*>>
+      kernels_to_sort;
+  kernels_to_sort.reserve(reports.size());
   for (const auto& report_value : reports) {
+    kernels_to_sort.push_back(
+        std::make_pair(&report_value.first, &report_value.second));
+  }
+
+  auto comp =
+      [](const std::pair<const KernelReport*, const KernelReportValue*>& lhs,
+         const std::pair<const KernelReport*, const KernelReportValue*>& rhs) {
+        return lhs.second->total_duration_ns > rhs.second->total_duration_ns ||
+               (lhs.second->total_duration_ns ==
+                    rhs.second->total_duration_ns &&
+                KernelReportLessThanComparator()(*lhs.first, *rhs.first));
+      };
+
+  // Sort and copy at most <kMaxNumOfKernels> kernels to <dst>.
+  if (kernels_to_sort.size() > kMaxNumOfKernels) {
+    absl::c_partial_sort(kernels_to_sort,
+                         kernels_to_sort.begin() + kMaxNumOfKernels, comp);
+  } else {
+    absl::c_sort(kernels_to_sort, comp);
+  }
+
+  int copy_size =
+      std::min(kMaxNumOfKernels, static_cast<int>(kernels_to_sort.size()));
+  for (int i = 0; i < copy_size; i++) {
     KernelReport* report = dst->add_reports();
-    *report = report_value.first;
+    *report = *kernels_to_sort[i].first;
+    const KernelReportValue& kernel_value = *kernels_to_sort[i].second;
     // Set value using KernelReportValue.
-    report->set_occurrences(report_value.second.occurrences);
-    report->set_min_duration_ns(report_value.second.min_duration_ns);
-    report->set_max_duration_ns(report_value.second.max_duration_ns);
-    report->set_total_duration_ns(report_value.second.total_duration_ns);
+    report->set_occurrences(kernel_value.occurrences);
+    report->set_min_duration_ns(kernel_value.min_duration_ns);
+    report->set_max_duration_ns(kernel_value.max_duration_ns);
+    report->set_total_duration_ns(kernel_value.total_duration_ns);
   }
 }
 

@@ -24,13 +24,13 @@ import tempfile
 
 import numpy as np
 
-from tensorflow.python.framework import test_util
+from tensorflow.python.data import Dataset
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.preprocessing import image as preprocessing_image
 from tensorflow.python.platform import test
-from tensorflow.python.data import Dataset
 
 try:
   import PIL  # pylint:disable=g-import-not-at-top
@@ -58,7 +58,7 @@ def _generate_test_images():
 
 class TestImage(keras_parameterized.TestCase):
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_smart_resize(self):
     test_input = np.random.random((20, 40, 3))
     output = preprocessing_image.smart_resize(test_input, size=(50, 50))
@@ -71,7 +71,7 @@ class TestImage(keras_parameterized.TestCase):
     output = preprocessing_image.smart_resize(test_input, size=(5, 15))
     self.assertListEqual(list(output.shape), [5, 15, 3])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_smart_resize_tf_dataset(self):
     test_input_np = np.random.random((2, 20, 40, 3))
     test_ds = Dataset.from_tensor_slices(test_input_np)

@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -139,6 +140,13 @@ bool IsResourceOutputShapesAttribute(const AttrValue& attr_value,
   if (attr_name == "_handle_dtypes" || attr_name == "_handle_shapes")
     return attr_value.value_case() == AttrValue::kList;
   return false;
+}
+
+void LoadImporterDialects(mlir::MLIRContext& context) {
+  // Load dialects involved in the conversion
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  registry.loadAll(&context);
 }
 
 // This class is used to generate new MLIR function name strings that are both
@@ -2136,6 +2144,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs, llvm::StringRef func_name) {
+  LoadImporterDialects(*context);
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -3192,6 +3201,7 @@ Status CreateSavedModelIR(
 StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
     SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
     mlir::MLIRContext* context, bool add_default_attributes) {
+  LoadImporterDialects(*context);
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
       saved_model->debug_info() ? *saved_model->debug_info() : dummy_debug_info;
@@ -3271,6 +3281,7 @@ class SavedModelSignatureDefImporter {
   static StatusOr<mlir::OwningModuleRef> Convert(
       const SavedModelBundle& bundle, absl::Span<std::string> exported_names,
       mlir::MLIRContext* context, bool upgrade_legacy) {
+    LoadImporterDialects(*context);
     SavedModelSignatureDefImporter importer(bundle, exported_names, context);
     TF_RETURN_IF_ERROR(importer.InitializeGraph(upgrade_legacy));
     return importer.ConvertSignatures();

@@ -88,7 +88,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
     const int input_channels =
         conv_op.lhs().getType().cast<ShapedType>().getDimSize(
             input_feature_dimension);
-    int feature_group_count = conv_op.feature_group_count().getSExtValue();
+    int feature_group_count = conv_op.feature_group_count();
 
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;
@@ -250,7 +250,7 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
         strides.getSplatValue().cast<IntegerAttr>().getInt() != 1)
       return failure();
 
-    rewriter.setInsertionPointAfter(slice_op);
+    rewriter.setInsertionPointAfter(slice_op.getOperation());
     auto start_indices = slice_op.start_indices();
     auto limit_indices = slice_op.limit_indices();
     std::vector<int64_t> size_values;
@@ -615,6 +615,10 @@ class ConvertReduceOpToTfMin : public OpConversionPattern<mhlo::ReduceOp> {
 };
 
 class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<TF::TensorFlowDialect>();
+  }
+
  public:
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}

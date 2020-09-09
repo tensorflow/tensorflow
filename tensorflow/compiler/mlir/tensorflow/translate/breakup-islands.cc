@@ -43,6 +43,10 @@ namespace {
 
 class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
                            BreakUpIslands, TF::SideEffectAnalysis> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<tf_executor::TensorFlowExecutorDialect>();
+  }
+
  public:
   void runOnFunction(FuncOp func,
                      const TF::SideEffectAnalysis::Info& side_effect_analysis);

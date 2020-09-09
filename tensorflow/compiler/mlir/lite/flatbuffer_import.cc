@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -479,7 +480,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
   } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
-    auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
+    auto dialect = elem_type.getContext()->getLoadedDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
@@ -783,7 +784,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
         auto new_output_type = new_qtype.castFromExpressedType(
             mlir::quant::UniformQuantizedType::castToExpressedType(
                 value.getType()));
-        builder.setInsertionPointAfter(cst);
+        builder.setInsertionPointAfter(cst.getOperation());
         auto new_op = builder.create<tfl::QConstOp>(
             cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
             cst.valueAttr());
@@ -1072,6 +1073,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
+  context->loadDialect<
+      mlir::StandardOpsDialect, mlir::quant::QuantizationDialect,
+      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
   if (nullptr == model_ptr) {

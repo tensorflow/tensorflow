@@ -130,6 +130,7 @@ class BatchMatmulOpTest(test.TestCase):
 
 def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
 
+  @test_util.run_without_tensor_float_32("Tests batch matmul")
   def Test(self):
     np.random.seed(42)
     self._testNonEmpty(dtype, adjoint_a, adjoint_b, use_static_shape)
@@ -141,6 +142,7 @@ def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
 def _GetBatchMatmulOpBroadcastingTest(dtype, adjoint_a, adjoint_b,
                                       use_static_shape):
 
+  @test_util.run_without_tensor_float_32("Tests batch matmul")
   def Test(self):
     np.random.seed(42)
     self._testBroadcasting(dtype, adjoint_a, adjoint_b, use_static_shape)

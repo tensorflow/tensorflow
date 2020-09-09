@@ -1881,6 +1881,10 @@ tf_module {
     argspec: "args=[\'images\', \'transforms\', \'output_shape\', \'interpolation\', \'fill_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\'], "
   }
   member_method {
+    name: "ImageProjectiveTransformV3"
+    argspec: "args=[\'images\', \'transforms\', \'output_shape\', \'fill_value\', \'interpolation\', \'fill_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\'], "
+  }
+  member_method {
     name: "ImageSummary"
     argspec: "args=[\'tag\', \'tensor\', \'max_images\', \'bad_color\', \'name\'], varargs=None, keywords=None, defaults=[\'3\', \'dtype: DT_UINT8\\ntensor_shape {\\n  dim {\\n    size: 4\\n  }\\n}\\nint_val: 255\\nint_val: 0\\nint_val: 0\\nint_val: 255\\n\', \'None\'], "
   }
@@ -1995,6 +1999,10 @@ tf_module {
   member_method {
     name: "IsVariableInitialized"
     argspec: "args=[\'ref\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "IsotonicRegression"
+    argspec: "args=[\'input\', \'output_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "Iterator"
@@ -2418,7 +2426,7 @@ tf_module {
   }
   member_method {
     name: "MaxPool"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'NHWC\', \'None\'], "
   }
   member_method {
     name: "MaxPool3D"
@@ -2434,7 +2442,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGrad"
-    argspec: "args=[\'orig_input\', \'orig_output\', \'grad\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'orig_input\', \'orig_output\', \'grad\', \'ksize\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'NHWC\', \'None\'], "
   }
   member_method {
     name: "MaxPoolGradGrad"
@@ -2510,7 +2518,7 @@ tf_module {
   }
   member_method {
     name: "ModelDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'algorithm\', \'cpu_budget\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'algorithm\', \'cpu_budget\', \'ram_budget\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "Mul"

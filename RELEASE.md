@@ -37,6 +37,15 @@
 * XLA:CPU and XLA:GPU devices are no longer registered by default. Use
   `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
   removed).
+* `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type
+  `tf.complex64` or `tf.complex128`, because the behavior of these ops is not
+  well defined for complex types.
+* `tf.data.experimental.service.DispatchServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
+* `tf.data.experimental.service.WorkerServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.WorkerServer(worker_config)`.
 
 ## Known Caveats
 
@@ -81,6 +90,12 @@
       server and set `dispatcher_fault_tolerance=True`. The dispatcher will
       store its state to `work_dir`, so that on restart it can continue from its
       previous state after restart.
+    * Added tf.data service support for sharing dataset graphs via shared
+      filesystem instead of over RPC. This reduces load on the dispatcher,
+      improving performance of distributing datasets. For this to work, the
+      dispatcher's `work_dir` must be accessible from workers. If the worker
+      fails to read from the `work_dir`, it falls back to using RPC for dataset
+      graph transfer.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
       the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding
@@ -89,6 +104,9 @@
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
     * `tf.data.Options` were previously immutable and can now be overriden.
+    * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
+      with a new `output_signature` argument, which allows `from_generator` to
+      produce any type describable by a `tf.TypeSpec`.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op
@@ -114,6 +132,13 @@
       customization of how gradients are aggregated across devices, as well as
       `gradients_transformers` to allow for custom gradient transformations
       (such as gradient clipping).
+    * The `steps_per_execution` argument in `compile()` is no longer
+      experimental; if you were passing `experimental_steps_per_execution`,
+      rename it to `steps_per_execution` in your code. This argument controls
+      the number of batches to run during each `tf.function` call when calling
+      `fit()`. Running multiple batches inside a single `tf.function` call can
+      greatly improve performance on TPUs or small models with a large Python
+      overhead.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
@@ -141,6 +166,8 @@
     * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
       * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
     * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
+    * TFLite Profiler for Android is available. See the detailed
+      [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android).
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
@@ -165,11 +192,13 @@
       checkpoint saved in the `variables/` folder in the SavedModel.
     * When restoring, `save_path` can be a path to a SavedModel. The function
       will automatically find the checkpoint in the SavedModel.
+*   `tf.nn`:
+    * `tf.nn.max_pool2d` now supports explicit padding.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
   https://developers.google.com/style/word-list#blacklist for more context.
-    * <ADD RELEASE NOTES HERE>
+  <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 
@@ -261,6 +290,7 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Mutable tables now restore checkpointed values when loaded from SavedModel.
   * GPU
     * TF 2.3 includes PTX kernels only for [compute capability](https://developer.nvidia.com/cuda-gpus) 7.0 to reduce the TF pip binary size.  Earlier releases included PTX for a variety of older compute capabilities.
+    * Remove environmental variable `TF_USE_CUDNN`.
   * Others
     * Retain parent namescope for ops added inside `tf.while_loop`/`tf.cond`/`tf.switch_case`.
     * Update `tf.vectorized_map` to support vectorizing `tf.while_loop` and TensorList operations.
@@ -1592,6 +1622,7 @@ Yuan (Terry) Tang, Yuchen Ying, Yves-Noel Weweler, zhangyujing, zjjott, zyeric,
         color palette of the frame. This has been fixed now
     *   image.resize now considers proper pixel centers and has new kernels
         (incl. anti-aliasing).
+    *   Added an isotonic regression solver (tf.nn.isotonic_regression).
 *   Performance
     *   Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically
         dispatches the best kernel implementation based on CPU vector

@@ -53,8 +53,8 @@ class GrpcDataServerBase {
   int BoundPort();
 
  protected:
-  virtual void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) = 0;
-  void AddProfilerServiceToBuilder(::grpc::ServerBuilder* builder);
+  virtual void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) = 0;
+  void AddProfilerServiceToBuilder(::grpc::ServerBuilder& builder);
   // Starts the service. This will be called after building the service, so
   // bound_port() will return the actual bound port.
   virtual Status StartServiceInternal() = 0;
@@ -84,7 +84,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   Status NumWorkers(int* num_workers);
 
  protected:
-  void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) override;
+  void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
   Status StartServiceInternal() override;
 
  private:
@@ -99,7 +99,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   ~WorkerGrpcDataServer() override;
 
  protected:
-  void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) override;
+  void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
   Status StartServiceInternal() override;
 
  private:
@@ -108,13 +108,13 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   GrpcWorkerImpl* service_;
 };
 
-// Creates a dispatch tf.data server and stores it in `*out_server`.
+// Creates a dispatch tf.data server and stores it in `out_server`.
 Status NewDispatchServer(const experimental::DispatcherConfig& config,
-                         std::unique_ptr<DispatchGrpcDataServer>* out_server);
+                         std::unique_ptr<DispatchGrpcDataServer>& out_server);
 
-// Creates a worker tf.data server and stores it in `*out_server`.
+// Creates a worker tf.data server and stores it in `out_server`.
 Status NewWorkerServer(const experimental::WorkerConfig& config,
-                       std::unique_ptr<WorkerGrpcDataServer>* out_server);
+                       std::unique_ptr<WorkerGrpcDataServer>& out_server);
 
 }  // namespace data
 }  // namespace tensorflow

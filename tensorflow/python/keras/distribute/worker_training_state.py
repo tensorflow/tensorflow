@@ -112,12 +112,12 @@ class WorkerTrainingState(object):
     successfully finishes.
     """
     # pylint: disable=protected-access
-    for pathname in file_io.get_matching_files(
+    for pathname in file_io.get_matching_files_v2(
         self.write_checkpoint_manager._prefix + '*'):
-      file_io.delete_recursively(pathname)
-    for pathname in file_io.get_matching_files(
+      file_io.delete_recursively_v2(pathname)
+    for pathname in file_io.get_matching_files_v2(
         os.path.join(self.write_checkpoint_manager.directory, 'checkpoint')):
-      file_io.delete_recursively(pathname)
+      file_io.delete_recursively_v2(pathname)
 
   def maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.

@@ -800,6 +800,9 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 
     TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
     infer->setGpuAllocator(allocator);
+    // Need to initialize plugins in order to deserialize engines that contain
+    // plugins.
+    MaybeInitializeTrtPlugins(&logger);
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(), nullptr));

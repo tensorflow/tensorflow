@@ -19124,6 +19124,54 @@ op {
   }
 }
 op {
+  name: "ImageProjectiveTransformV3"
+  input_arg {
+    name: "images"
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "transforms"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_shape"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "fill_value"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "transformed_images"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "interpolation"
+    type: "string"
+  }
+  attr {
+    name: "fill_mode"
+    type: "string"
+    default_value {
+      s: "CONSTANT"
+    }
+  }
+}
+op {
   name: "ImageSummary"
   input_arg {
     name: "tag"
@@ -19862,6 +19910,56 @@ op {
     type: "type"
   }
   allows_uninitialized_input: true
+}
+op {
+  name: "IsotonicRegression"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "output_dtype"
+  }
+  output_arg {
+    name: "segments"
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "output_dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "Iterator"
@@ -23584,17 +23682,17 @@ op {
         type: DT_UINT8
         type: DT_INT16
         type: DT_INT8
-        type: DT_COMPLEX64
         type: DT_INT64
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
         type: DT_BFLOAT16
         type: DT_UINT16
-        type: DT_COMPLEX128
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
       }
     }
   }
@@ -23690,6 +23788,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -23958,6 +24065,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -24742,17 +24858,17 @@ op {
         type: DT_UINT8
         type: DT_INT16
         type: DT_INT8
-        type: DT_COMPLEX64
         type: DT_INT64
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
         type: DT_BFLOAT16
         type: DT_UINT16
-        type: DT_COMPLEX128
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
       }
     }
   }
@@ -24959,6 +25075,13 @@ op {
   }
   attr {
     name: "cpu_budget"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "ram_budget"
     type: "int"
     default_value {
       i: 0
@@ -41393,6 +41516,7 @@ op {
     type: "list(type)"
     has_minimum: true
   }
+  is_stateful: true
 }
 op {
   name: "SaveSlices"
@@ -53140,10 +53264,6 @@ op {
     name: "output_handle"
     type: DT_VARIANT
   }
-  output_arg {
-    name: "value"
-    type_attr: "value_dtype"
-  }
   attr {
     name: "key_dtype"
     type: "type"
@@ -53161,14 +53281,14 @@ op {
   }
   input_arg {
     name: "key"
-    type_attr: "element_dtype"
+    type_attr: "key_dtype"
   }
   output_arg {
     name: "has_key"
     type: DT_BOOL
   }
   attr {
-    name: "element_dtype"
+    name: "key_dtype"
     type: "type"
   }
 }
@@ -53231,6 +53351,21 @@ op {
   output_arg {
     name: "size"
     type: DT_INT32
+  }
+}
+op {
+  name: "TensorMapStackKeys"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "keys"
+    type_attr: "key_dtype"
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
   }
 }
 op {

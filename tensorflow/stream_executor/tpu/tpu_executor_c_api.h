@@ -65,6 +65,8 @@ bool TpuExecutor_CreateStreamDependency(SE_StreamExecutor* executor,
 void TpuExecutor_GetStatus(SE_StreamExecutor* executor, SE_Stream* stream,
                            SE_Status* status);
 
+SE_TpuTopology_Core* TpuExecutor_GetCoreLocation(SE_StreamExecutor* executor);
+
 void TpuExecutor_AllocateEvent(SE_StreamExecutor* executor, SE_Event* event,
                                SE_Status* status);
 void TpuExecutor_DeallocateEvent(SE_StreamExecutor* executor, SE_Event* event,
@@ -125,6 +127,14 @@ void TpuStream_Free(SE_Stream*);
 void* TpuStream_Stream(SE_Stream*);
 bool TpuStream_Status(SE_Stream*);
 bool TpuStream_IsSameSharedMemoryLocation(SE_Stream*, SE_Stream*);
+void TpuStream_EnqueueTransferHostToDevice(SE_Stream* stream,
+                                           SE_DeviceMemoryBase device_dst,
+                                           void* host_src, uint64_t size,
+                                           SE_Status* status);
+void TpuStream_EnqueueTransferDeviceToHost(SE_Stream* stream,
+                                           SE_DeviceMemoryBase device_src,
+                                           void* host_dst, uint64_t size,
+                                           SE_Status* status);
 void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
                                                SE_DeviceMemoryBase send_buffer,
                                                SE_DeviceMemoryBase recv_buffer,
@@ -178,6 +188,9 @@ void TpuTransferManager_TransferLiteralFromDevice(
     XLA_StatusCallbackFn callback, void* ctx);
 int64_t TpuTransferManager_GetByteSizeRequirement(XLA_TransferManager* manager,
                                                   XLA_Shape* shape);
+bool TpuTransferManager_CanShapedBufferBeAccessedNow(
+    XLA_TransferManager* manager, SE_StreamExecutor* executor,
+    XLA_ShapedBuffer* device_buffer);
 void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
     SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
@@ -210,6 +223,18 @@ void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
+// `assignment` should be a preallocated array of size `replicate_count` *
+// `computation_count`. The assignment will be constructed as a 2D array where
+// assignment[replica][computation] = device_id.
+void TpuComputationPlacer_AssignDevices(XLA_ComputationPlacer* placer,
+                                        int replica_count,
+                                        int computation_count, int* assignment,
+                                        SE_Status* status);
+void TpuComputationPlacer_AssignLocalDevices(SE_TpuTopology_Host* host,
+                                             int replica_count,
+                                             int computation_count,
+                                             int* assignment,
+                                             SE_Status* status);
 
 int TpuTopology_LogicalDevicesPerHost(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
@@ -238,6 +263,12 @@ int TpuCoreLocation_Index(SE_TpuTopology_Core* tpu_core_location);
 int TpuCoreLocation_Id(SE_TpuTopology_Core* tpu_core_location);
 
 int TpuHostLocation_Id(SE_TpuTopology_Host* tpu_host_location);
+int TpuHostLocation_NumCores(SE_TpuTopology_Host* tpu_host_location,
+                             TpuCoreTypeEnum tpu_core_type);
+// 'cores' should be a preallocated array of size TpuHostLocation_NumCores.
+void TpuHostLocation_Cores(SE_TpuTopology_Host* tpu_host_location,
+                           TpuCoreTypeEnum tpu_core_type,
+                           SE_TpuTopology_Core** cores);
 
 // C API for XLA::Compiler interface
 
@@ -304,6 +335,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_CreateStreamDependency);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetStatus);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetCoreLocation);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PollForEventStatus);
@@ -331,6 +363,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_Stream);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_Status);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_IsSameSharedMemoryLocation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_EnqueueTransferHostToDevice);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_EnqueueTransferDeviceToHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_TpuEnqueueOnDeviceSendRecvLocal);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_New);
@@ -368,6 +402,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralToDeviceAsync);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_CanShapedBufferBeAccessedNow);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetInfeedLayout);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_LinearizeToBuffers);
@@ -379,6 +414,8 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_AssignDevices);
+  TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_AssignLocalDevices);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);
@@ -398,6 +435,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuHostLocation_Id);
+  TFTPU_ADD_FN_IN_STRUCT(TpuHostLocation_NumCores);
+  TFTPU_ADD_FN_IN_STRUCT(TpuHostLocation_Cores);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Free);

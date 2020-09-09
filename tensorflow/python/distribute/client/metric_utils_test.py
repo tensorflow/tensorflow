@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import time
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import client
 from tensorflow.python.distribute.client import metric_utils
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -44,7 +45,9 @@ class MetricUtilsTest(test.TestCase):
     ]
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer=self.get_rpc_layer())
-    cluster = client.Cluster(cluster_resolver)
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        cluster_resolver)
+    cluster = client.Cluster(strategy)
 
     @def_function.function
     def func():

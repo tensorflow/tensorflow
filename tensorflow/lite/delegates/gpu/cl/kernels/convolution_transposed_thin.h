@@ -47,17 +47,15 @@ class ConvolutionTransposedThin : public GPUOperation {
       delete;
 
  private:
-  friend absl::Status CreateConvolutionTransposedThin(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr,
-      ConvolutionTransposedThin* result);
+  friend ConvolutionTransposedThin CreateConvolutionTransposedThin(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
   ConvolutionTransposedThin(const OperationDef& definition,
                             const ConvolutionTransposedAttributes& attr,
                             const DeviceInfo& device_info);
   template <DataType T>
-  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
-                          const tflite::gpu::Tensor<Linear, T>& biases,
-                          CLContext* context);
+  void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                  const tflite::gpu::Tensor<Linear, T>& biases);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -68,50 +66,43 @@ class ConvolutionTransposedThin : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposedThin::UploadData(
+void ConvolutionTransposedThin::UploadData(
     const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
+    const tflite::gpu::Tensor<Linear, T>& biases) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int flt4_count =
       weights.shape.w * weights.shape.h * src_depth * weights.shape.o;
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
+  desc.size = flt4_size * (flt4_count + 1);
+  desc.data.resize(desc.size);
 
-  Buffer weights_buffer;
   if (f32_weights) {
-    std::vector<float4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    float4* gpu_data = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     float4 bias_value(0.0f);
     for (int i = 0; i < weights.shape.o; ++i) {
       bias_value[i] = biases.data[i];
     }
-    gpu_data.push_back(bias_value);
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(float4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
+    gpu_data[flt4_count] = bias_value;
   } else {
-    std::vector<half4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    half4* gpu_data = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     half4 bias_value(0.0f);
     for (int i = 0; i < weights.shape.o; ++i) {
       bias_value[i] = biases.data[i];
     }
-    gpu_data.push_back(bias_value);
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(half4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
+    gpu_data[flt4_count] = bias_value;
   }
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
-
-  return absl::OkStatus();
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 template <DataType S, typename T>
@@ -147,12 +138,11 @@ void ConvolutionTransposedThin::RearrangeWeightsData(
 }
 
 bool IsConvolutionTransposedThinSupported(
-    const CLDevice& device, const ConvolutionTransposedAttributes& attr);
+    const ConvolutionTransposedAttributes& attr);
 
-absl::Status CreateConvolutionTransposedThin(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposedThin* result);
+ConvolutionTransposedThin CreateConvolutionTransposedThin(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

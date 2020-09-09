@@ -146,6 +146,27 @@ class LinearOperator(module.Module):
   * If `is_X == False`, callers should expect the operator to not have `X`.
   * If `is_X == None` (the default), callers should have no expectation either
     way.
+
+  #### Initialization parameters
+
+  All subclasses of `LinearOperator` are expected to pass a `parameters`
+  argument to `super().__init__()`.  This should be a `dict` containing
+  the unadulterated arguments passed to the subclass `__init__`.  For example,
+  `MyLinearOperator` with an initializer should look like:
+
+  ```python
+  def __init__(self, operator, is_square=False, name=None):
+     parameters = dict(
+         operator=operator,
+         is_square=is_square,
+         name=name
+     )
+     ...
+     super().__init__(..., parameters=parameters)
+   ```
+
+   Users can then access `my_linear_operator.parameters` to see all arguments
+   passed to its initializer.
   """
 
   # TODO(b/143910018) Remove graph_parents in V3.
@@ -158,7 +179,8 @@ class LinearOperator(module.Module):
                is_self_adjoint=None,
                is_positive_definite=None,
                is_square=None,
-               name=None):
+               name=None,
+               parameters=None):
     r"""Initialize the `LinearOperator`.
 
     **This is a private method for subclass use.**
@@ -179,6 +201,8 @@ class LinearOperator(module.Module):
         https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
+      parameters: Python `dict` of parameters used to instantiate this
+        `LinearOperator`.
 
     Raises:
       ValueError:  If any member of graph_parents is `None` or not a `Tensor`.
@@ -210,6 +234,8 @@ class LinearOperator(module.Module):
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
     self._is_positive_definite = is_positive_definite
+    self._parameters = self._no_dependency(parameters)
+    self._parameters_sanitized = False
     self._name = name or type(self).__name__
 
   @contextlib.contextmanager
@@ -220,6 +246,11 @@ class LinearOperator(module.Module):
       full_name += "/" + name
     with ops.name_scope(full_name) as scope:
       yield scope
+
+  @property
+  def parameters(self):
+    """Dictionary of parameters used to instantiate this `LinearOperator`."""
+    return dict(self._parameters)
 
   @property
   def dtype(self):

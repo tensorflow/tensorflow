@@ -46,7 +46,7 @@ using gpusparseSpMMAlg_t = cusparseSpMMAlg_t;
 
 #elif TENSORFLOW_USE_ROCM
 
-#include "rocm/include/hipsparse/hipsparse.h"
+#include "tensorflow/stream_executor/rocm/hipsparse_wrapper.h"
 
 using gpusparseStatus_t = hipsparseStatus_t;
 using gpusparseOperation_t = hipsparseOperation_t;
@@ -485,7 +485,7 @@ class GpuSparseMatrixDescriptor {
 #if GOOGLE_CUDA
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descr_));
 #elif TENSORFLOW_USE_ROCM
-    TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descr_));
+    TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descr_));
 #endif
     initialized_ = true;
     return Status::OK();
@@ -507,7 +507,7 @@ class GpuSparseMatrixDescriptor {
 #if GOOGLE_CUDA
       cusparseDestroyMatDescr(descr_);
 #elif TENSORFLOW_USE_ROCM
-      hipsparseDestroyMatDescr(descr_);
+      wrap::hipsparseDestroyMatDescr(descr_);
 #endif
       initialized_ = false;
     }

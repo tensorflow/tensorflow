@@ -143,7 +143,7 @@ class ExponentialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
+      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -237,11 +237,11 @@ class PiecewiseConstantDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PiecewiseConstant"):
-      boundaries = nest.map_structure(ops.convert_to_tensor_v2,
+      boundaries = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
                                       nest.flatten(self.boundaries))
-      values = nest.map_structure(ops.convert_to_tensor_v2,
+      values = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
                                   nest.flatten(self.values))
-      x_recomp = ops.convert_to_tensor_v2(step)
+      x_recomp = ops.convert_to_tensor_v2_with_dispatch(step)
       for i, b in enumerate(boundaries):
         if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
           # We cast the boundaries to have the same type as the step
@@ -374,7 +374,7 @@ class PolynomialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
+      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       end_learning_rate = math_ops.cast(self.end_learning_rate, dtype)
@@ -494,7 +494,7 @@ class InverseTimeDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
+      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -588,7 +588,7 @@ class CosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "CosineDecay"):
-      initial_learning_rate = ops.convert_to_tensor_v2(
+      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -687,7 +687,7 @@ class CosineDecayRestarts(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "SGDRDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
+      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       first_decay_steps = math_ops.cast(self.first_decay_steps, dtype)
@@ -824,7 +824,7 @@ class LinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
+      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -950,7 +950,7 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
+      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)

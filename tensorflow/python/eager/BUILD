@@ -5,6 +5,9 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -74,6 +77,36 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "pywrap_tensor_test_util",
+    testonly = True,
+    srcs = ["pywrap_tensor_test_util.cc"],
+    module_name = "pywrap_tensor_test_util",
+    deps = [
+        ":pywrap_tfe_lib",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/python:pybind11_lib",
+        "@pybind11",
+    ],
+)
+
+cuda_py_test(
+    name = "pywrap_tensor_test",
+    size = "small",
+    srcs = ["pywrap_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",  # TODO(b/168051787): Enable.
+        "no_pip",  # TODO(b/168051787): Enable.
+    ],
+    deps = [
+        ":pywrap_tensor_test_util",
+        ":test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -449,7 +482,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 15,
     tags = [
-        "nogpu",  # TODO(b/162544929): segfault
         "nomac",  # b/157056289
     ],
     deps = [
@@ -577,6 +609,16 @@ py_library(
         "//tensorflow/python/saved_model:save_options",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+pybind_extension(
+    name = "_concrete_function",
+    srcs = ["function.cc"],
+    module_name = "_concrete_function",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

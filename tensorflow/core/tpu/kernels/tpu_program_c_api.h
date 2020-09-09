@@ -17,12 +17,28 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 typedef struct XLA_TpuProgram XLA_TpuProgram;
 
 // Enum for choosing sharding/unsharding program from a `XLA_TpuProgram` obj.
 enum TpuProgramShardingType { kInvalid = 0, kMain, kSharding, kUnsharding };
+
+struct TpuExecutableSerializedProto {
+  const char* bytes;
+  size_t size;
+};
+
+struct CompilerMetadataSerializedProto {
+  const char* bytes;
+  size_t size;
+};
+
+struct HostComputeMetadataSerializedProto {
+  const char* bytes;
+  size_t size;
+};
 
 extern "C" {
 
@@ -53,21 +69,24 @@ TFTPU_CAPI_EXPORT bool TpuProgram_LogProgramMemorySummary(
 
 // Gets TPU program executable info from the `tpu_program`.
 TFTPU_CAPI_EXPORT void TpuProgram_GetExecutableInfo(
-    const XLA_TpuProgram* tpu_program, TpuSerializedProto* executable_info);
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* executable_info,
+    SE_Status* status);
 
 // Gets host transfer info proto.
 TFTPU_CAPI_EXPORT void TpuProgram_GetHostTransferInfo(
-    const XLA_TpuProgram* tpu_program, TpuSerializedProto* host_transfer_info);
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* host_transfer_info,
+    SE_Status* status);
 
 // Gets HLO metadata proto.
 TFTPU_CAPI_EXPORT void TpuProgram_GetHloMetadata(
-    const XLA_TpuProgram* tpu_program, TpuSerializedProto* hlo_metadata);
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* hlo_metadata,
+    SE_Status* status);
 
 // Gets may modify variables boolean value.
 TFTPU_CAPI_EXPORT void TpuProgram_GetMayModifyVariables(
     const XLA_TpuProgram* tpu_program, bool* may_modify_variables);
 
-// Check if TPU program has sharding.
+// Checks if TPU program has sharding.
 TFTPU_CAPI_EXPORT bool TpuProgram_HasSharding(
     const XLA_TpuProgram* tpu_program);
 
@@ -75,6 +94,27 @@ TFTPU_CAPI_EXPORT bool TpuProgram_HasSharding(
 // `status.status()` returns `OK`.
 TFTPU_CAPI_EXPORT XLA_TpuProgram* TpuProgram_GetTpuProgram(
     XLA_TpuProgram* tpu_program, TpuProgramShardingType type);
+
+// Gets TPU executable proto from a `tpu_program`.
+TFTPU_CAPI_EXPORT void TpuProgram_SerializeTpuExecutable(
+    const XLA_TpuProgram* tpu_program, TpuExecutableSerializedProto* executable,
+    SE_Status* status);
+
+// Gets compilation metadata proto from a `tpu_program`.
+TFTPU_CAPI_EXPORT void TpuProgram_SerializeCompilerMetadata(
+    const XLA_TpuProgram* tpu_program,
+    CompilerMetadataSerializedProto* compiler_metadata, SE_Status* status);
+
+// Gets host transfer metadata proto from a `tpu_program`.
+TFTPU_CAPI_EXPORT void TpuProgram_SerializeHostComputeMetadata(
+    const XLA_TpuProgram* tpu_program,
+    HostComputeMetadataSerializedProto* host_compute_metadata,
+    SE_Status* status);
+
+// Deserializes the `GetTpuProgramResponse` proto into an `XLA_TpuProgram`.
+TFTPU_CAPI_EXPORT void TpuProgram_DeserializeFromGetTpuProgramResponseProto(
+    TpuSerializedProto get_tpu_program_response, XLA_TpuProgram* tpu_program,
+    SE_Status* status);
 
 struct TfTpu_TpuProgramApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_New);
@@ -90,6 +130,10 @@ struct TfTpu_TpuProgramApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetMayModifyVariables);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_HasSharding);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetTpuProgram);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeTpuExecutable);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeCompilerMetadata);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeHostComputeMetadata);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_DeserializeFromGetTpuProgramResponseProto);
 };
 
 }  // extern "C"

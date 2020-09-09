@@ -122,8 +122,8 @@ template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
                          const std::array<const char*, SIZE>& arr) {
   for (const auto& dataset_op_name : arr) {
-    if (tensorflow::data::MatchesAnyVersionRE(/*op_prefix=*/dataset_op_name,
-                                              /*op_to_match=*/node.op())) {
+    if (tensorflow::data::MatchesAnyVersion(/*op_prefix=*/dataset_op_name,
+                                            /*op_to_match=*/node.op())) {
       return true;
     }
   }
@@ -561,7 +561,8 @@ Status ShardByData(const NodeDef& sink_node, int64 num_workers, int64 index,
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
                      AutoShardPolicy policy, int64 num_replicas,
                      GraphDef* output) {
-  if (policy == AutoShardPolicy::OFF || (num_workers == 1 && index == 0)) {
+  if (policy == AutoShardPolicy::OFF ||
+      (policy == AutoShardPolicy::FILE && num_workers == 1 && index == 0)) {
     return Status::OK();
   }
 

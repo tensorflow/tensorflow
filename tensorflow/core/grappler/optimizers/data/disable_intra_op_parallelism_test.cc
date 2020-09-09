@@ -52,29 +52,37 @@ TEST_P(IntraOpAlreadySetTest, IntraOpParallelism) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
 
-  NodeDef *max_parallelism_val =
+  NodeDef *parallelism_val =
       graph_utils::AddScalarConstNode<int64>(value, &graph);
   std::vector<string> parallelism_inputs(2);
   parallelism_inputs[0] = range_node->name();
-  parallelism_inputs[1] = max_parallelism_val->name();
+  parallelism_inputs[1] = parallelism_val->name();
   std::vector<std::pair<string, AttrValue>> parallelism_attrs;
-  graph_utils::AddNode("", op, parallelism_inputs, parallelism_attrs, &graph);
+  NodeDef *parallelism_node = graph_utils::AddNode(
+      "max_parallelism", op, parallelism_inputs, parallelism_attrs, &graph);
+
+  std::vector<string> sink_inputs(1);
+  sink_inputs[0] = parallelism_node->name();
+  std::vector<std::pair<string, AttrValue>> sink_attrs;
+  NodeDef *sink_node =
+      graph_utils::AddNode("Sink", "Identity", sink_inputs, sink_attrs, &graph);
+  item.fetch.push_back(sink_node->name());
 
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp(op, item.graph));
-  EXPECT_EQ(item.graph.node_size(), 6);
-  EXPECT_EQ(max_parallelism_val->attr().at("value").tensor().int64_val(0),
-            value);
+  EXPECT_EQ(item.graph.node_size(), 7);
+  EXPECT_EQ(parallelism_val->attr().at("value").tensor().int64_val(0), value);
 
   DisableIntraOpParallelism optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  EXPECT_EQ(output.node_size(), 6);
+  EXPECT_EQ(output.node_size(), 7);
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp(op, output));
-  NodeDef parallelism_node =
+  NodeDef new_parallelism_node =
       output.node(graph_utils::FindGraphNodeWithOp(op, output));
-  NodeDef parallelism_val = output.node(
-      graph_utils::FindGraphNodeWithName(parallelism_node.input(1), output));
-  EXPECT_EQ(parallelism_val.attr().at("value").tensor().int64_val(0), value);
+  NodeDef new_parallelism_val = output.node(graph_utils::FindGraphNodeWithName(
+      new_parallelism_node.input(1), output));
+  EXPECT_EQ(new_parallelism_val.attr().at("value").tensor().int64_val(0),
+            value);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -84,8 +92,15 @@ INSTANTIATE_TEST_SUITE_P(
                           "ExperimentalMaxIntraOpParallelismDataset"),
         ::testing::Values(1, 5)));
 
-// If the user hasn't set intra op parallelism, we insert the op to disable it.
-TEST(IntraOpNotSetTest, IntraOpParallelism) {
+// Test the case if the user hasn't set intra op parallelism.
+//
+// If we can not find the sink node or sink node op is "_Retval", we don't apply
+// the optimization; otherwise, we insert the op to disable intra op
+// parallelism.
+class IntraOpNotSetTest : public ::testing::TestWithParam<string> {};
+
+TEST_P(IntraOpNotSetTest, IntraOpParallelism) {
+  const string op = GetParam();
   GrapplerItem item;
 
   item.graph = test::function::GDef(
@@ -95,14 +110,28 @@ TEST(IntraOpNotSetTest, IntraOpParallelism) {
        NDef("range", "RangeDataset", {"start", "stop", "step"},
             {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
              {"output_types", gtl::ArraySlice<DataType>{}}}),
-       NDef("Sink", "Identity", {"range"}, {})});
+       NDef("Sink", op, {"range"}, {})});
   EXPECT_FALSE(graph_utils::ContainsNodeWithOp("MaxIntraOpParallelismDataset",
                                                item.graph));
   EXPECT_EQ(item.graph.node_size(), 5);
+  item.fetch.push_back("Sink_fake");
 
   DisableIntraOpParallelism optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  EXPECT_FALSE(
+      graph_utils::ContainsNodeWithOp("MaxIntraOpParallelismDataset", output));
+  EXPECT_EQ(output.node_size(), 5);
+
+  item.fetch[0] = "Sink";
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  if (op == "_Retval") {
+    EXPECT_FALSE(graph_utils::ContainsNodeWithOp("MaxIntraOpParallelismDataset",
+                                                 output));
+    EXPECT_EQ(output.node_size(), 5);
+    return;
+  }
+
   EXPECT_EQ(output.node_size(), 7);
   EXPECT_TRUE(
       graph_utils::ContainsNodeWithOp("MaxIntraOpParallelismDataset", output));
@@ -120,6 +149,9 @@ TEST(IntraOpNotSetTest, IntraOpParallelism) {
       graph_utils::FindGraphNodeWithName(parallelism_node.input(1), output));
   EXPECT_EQ(parallelism_val.attr().at("value").tensor().int64_val(0), 1);
 }
+
+INSTANTIATE_TEST_SUITE_P(Test, IntraOpNotSetTest,
+                         ::testing::Values("Identity", "_Retval"));
 
 }  // namespace
 }  // namespace grappler

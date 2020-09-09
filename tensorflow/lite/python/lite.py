@@ -548,33 +548,7 @@ class TFLiteConverterBase(object):
 
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
-  """Converter subclass to share functionality between V2 converters.
-
-  Attributes:
-    allow_custom_ops: Boolean indicating whether to allow custom operations.
-      When False, any unknown operation is an error. When True, custom ops are
-      created for any op that is unknown. The developer needs to provide these
-      to the TensorFlow Lite runtime with a custom resolver. (default False)
-    optimizations: Experimental flag, subject to change. A list of optimizations
-      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
-    representative_dataset: A representative dataset that can be used to
-      generate input and output samples for the model. The converter can use the
-      dataset to evaluate different optimizations. Note that this is an optional
-      attribute but it is necessary if INT8 is the only support builtin ops in
-      target ops.
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
-    inference_input_type: Data type of the input layer. Note that integer types
-      (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization. (default tf.float32, must be in {tf.float32,
-      tf.int8, tf.uint8})
-    inference_output_type: Data type of the output layer. Note that integer
-      types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization. (default tf.float32, must be in
-      {tf.float32, tf.int8, tf.uint8})
-    experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion. (default True)
-  """
+  """Converter subclass to share functionality between V2 converters."""
 
   def __init__(self):
     """Constructor for TFLiteConverter."""
@@ -962,12 +936,12 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       device.
     inference_input_type: Data type of the input layer. Note that integer types
       (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization. (default tf.float32, must be in {tf.float32,
-      tf.int8, tf.uint8})
+      integer quantization and quantization aware training. (default tf.float32,
+      must be in {tf.float32, tf.int8, tf.uint8})
     inference_output_type: Data type of the output layer. Note that integer
       types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization. (default tf.float32, must be in
-      {tf.float32, tf.int8, tf.uint8})
+      training integer quantization and quantization aware training. (default
+      tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
 
@@ -1119,78 +1093,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
 
 
 class TFLiteConverterBaseV1(TFLiteConverterBase):
-  """Converter subclass to share functionality between V1 converters.
-
-  Attributes:
-    inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8}`. If `optimzations` are provided, this
-      parameter is ignored. (default tf.float32)
-    inference_input_type: Target data type of real-number input arrays. Allows
-      for a different type for input arrays. If an integer type is provided and
-      `optimizations` are not used, `quantized_input_stats` must be provided.
-      If `inference_type` is tf.uint8, signaling conversion to a fully quantized
-      model from a quantization-aware trained input model, then
-      `inference_input_type` defaults to tf.uint8. In all other cases,
-      `inference_input_type` defaults to tf.float32. Must be `{tf.float32,
-      tf.uint8, tf.int8}`
-    inference_output_type: Target data type of real-number output arrays. Allows
-      for a different type for output arrays. If `inference_type` is tf.uint8,
-      signaling conversion to a fully quantized model from a quantization-aware
-      trained output model, then `inference_output_type` defaults to tf.uint8.
-      In all other cases, `inference_output_type` must be tf.float32, an error
-      will be thrown otherwise. Must be `{tf.float32, tf.uint8, tf.int8}`
-    output_format: Output file format. Currently must be `{TFLITE,
-      GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: Dict of strings representing input tensor names
-      mapped to tuple of floats representing the mean and standard deviation
-      of the training data (e.g., {"foo" : (0., 1.)}). Only need if
-        `inference_input_type` is `QUANTIZED_UINT8`. real_input_value =
-        (quantized_input_value - mean_value) / std_dev_value. (default {})
-    default_ranges_stats: Tuple of integers representing (min, max) range values
-      for all arrays without a specified range. Intended for experimenting with
-      quantization via "dummy quantization". (default None)
-    drop_control_dependency: Boolean indicating whether to drop control
-      dependencies silently. This is due to TFLite not supporting control
-      dependencies. (default True)
-    reorder_across_fake_quant: Boolean indicating whether to reorder FakeQuant
-      nodes in unexpected locations. Used when the location of the FakeQuant
-      nodes is preventing graph transformations necessary to convert the graph.
-      Results in a graph that differs from the quantized training graph,
-      potentially causing differing arithmetic behavior. (default False)
-    change_concat_input_ranges: Boolean to change behavior of min/max ranges for
-      inputs and outputs of the concat operator for quantized models. Changes
-      the ranges of concat operator overlap when true. (default False)
-    allow_custom_ops: Boolean indicating whether to allow custom operations.
-      When false any unknown operation is an error. When true, custom ops are
-      created for any op that is unknown. The developer will need to provide
-      these to the TensorFlow Lite runtime with a custom resolver. (default
-      False)
-    post_training_quantize: Deprecated. Please specify `[Optimize.DEFAULT]` for
-      `optimizations` instead. Boolean indicating whether to quantize the
-      weights of the converted float model.  Model size will be reduced and
-      there will be latency improvements (at the cost of accuracy). (default
-      False)
-    dump_graphviz_dir: Full filepath of folder to dump the graphs at various
-      stages of processing GraphViz .dot files. Preferred over
-      --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
-      output file. (default None)
-    dump_graphviz_video: Boolean indicating whether to dump the graph after
-      every graph transformation. (default False)
-    conversion_summary_dir: A string indicating the path to the generated
-      conversion logs.
-    target_ops: Deprecated. Please specify `target_spec.supported_ops` instead.
-      Set of OpsSet options indicating which converter to use. (default
-      set([OpsSet.TFLITE_BUILTINS]))
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
-    optimizations: Experimental flag, subject to change. A list of optimizations
-      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
-    representative_dataset: A representative dataset that can be used to
-      generate input and output samples for the model. The converter can use the
-      dataset to evaluate different optimizations.
-    experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion. (default True)
-  """
+  """Converter subclass to share functionality between V1 converters."""
 
   def __init__(self, experimental_debug_info_func):
     """Constructor for TFLiteConverter.
@@ -1752,24 +1655,26 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
     ```python
     # Converting a GraphDef from session.
-    converter = tf.compat.v1.TFLiteConverter.from_session(
+    converter = tf.compat.v1.lite.TFLiteConverter.from_session(
       sess, in_tensors, out_tensors)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a GraphDef from file.
-    converter = tf.compat.v1.TFLiteConverter.from_frozen_graph(
+    converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
       graph_def_file, input_arrays, output_arrays)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a SavedModel.
-    converter = tf.compat.v1.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = tf.compat.v1.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a tf.keras model.
-    converter = tf.compat.v1.TFLiteConverter.from_keras_model_file(keras_model)
+    converter = tf.compat.v1.lite.TFLiteConverter.from_keras_model_file(
+        keras_model)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
     ```

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
 namespace tensorflow {

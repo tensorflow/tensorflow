@@ -313,21 +313,15 @@ bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
          attr.padding.appended.h == 1;
 }
 
-absl::Status CreateDepthwiseConv3x3(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result) {
-  if (!IsDepthwiseConv3x3Supported(attr)) {
-    return absl::InvalidArgumentError(
-        "DepthwiseConv3x3 doesn't support this attributes");
-  }
-  bool weights_are_buffer =
-      creation_context.device->IsPowerVR() || creation_context.device->IsMali();
-  bool local_mem_uploads =
-      weights_are_buffer && creation_context.device->IsPowerVR();
-  *result = DepthwiseConv3x3(definition, weights_are_buffer, local_mem_uploads,
-                             creation_context.device->info_);
-  return result->UploadWeightsAndBiases(
-      attr.weights, attr.bias, weights_are_buffer, creation_context.context);
+DepthwiseConv3x3 CreateDepthwiseConv3x3(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr) {
+  bool weights_are_buffer = device_info.IsPowerVR() || device_info.IsMali();
+  bool local_mem_uploads = weights_are_buffer && device_info.IsPowerVR();
+  DepthwiseConv3x3 result(definition, weights_are_buffer, local_mem_uploads,
+                          device_info);
+  result.UploadWeightsAndBiases(attr.weights, attr.bias, weights_are_buffer);
+  return result;
 }
 
 }  // namespace cl

@@ -692,6 +692,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
     return struct(
         cuda_toolkit_path = toolkit_path,
         cuda_version = cuda_version,
+        cuda_version_major = cuda_major,
         cublas_version = cublas_version,
         cusolver_version = cusolver_version,
         curand_version = curand_version,
@@ -776,6 +777,7 @@ def _create_dummy_repository(repository_ctx):
             "%{curand_lib}": lib_name("curand", cpu_value),
             "%{cupti_lib}": lib_name("cupti", cpu_value),
             "%{cusparse_lib}": lib_name("cusparse", cpu_value),
+            "%{cub_actual}": ":cuda_headers",
             "%{copy_rules}": """
 filegroup(name="cuda-include")
 filegroup(name="cublas-include")
@@ -1122,6 +1124,10 @@ def _create_local_cuda_repository(repository_ctx):
         },
     )
 
+    cub_actual = "@cub_archive//:cub"
+    if int(cuda_config.cuda_version_major) >= 11:
+        cub_actual = ":cuda_headers"
+
     repository_ctx.template(
         "cuda/BUILD",
         tpl_paths["cuda:BUILD"],
@@ -1137,6 +1143,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{curand_lib}": _basename(repository_ctx, cuda_libs["curand"]),
             "%{cupti_lib}": _basename(repository_ctx, cuda_libs["cupti"]),
             "%{cusparse_lib}": _basename(repository_ctx, cuda_libs["cusparse"]),
+            "%{cub_actual}": cub_actual,
             "%{copy_rules}": "\n".join(copy_rules),
         },
     )

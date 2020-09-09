@@ -356,19 +356,19 @@ absl::optional<HloInstruction*> PadFromPartialReplicateShape(
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
 
-// Get the compatible sharding from a partial replicate sharding to a given
-// target tile dimensions.
+// Get the compatible sharding from a partial replicate sharding to a desired
+// target tiled sharding.
 // Compatible means replicate sharding can transform to the target tile
 // dimensions by dynamic slice.
 // For example, if partial_sharding is
 // {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
-// Target tile dims is {2, 2}, the returned compatible sharding will be
-// sharding={devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}.
+// Target sharding is {devices=[2,2]0,1,2,3}, the returned compatible sharding
+// will be sharding={devices=[2,2]0,2,1,3}.
 // If patial replicate sharding is not partial replicate or can't reshard to
 // target_tile_dims by dynamic slice, return absl::nullopt.
-absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
-    const HloSharding& partial_sharding,
-    const std::vector<int64>& target_tile_dims);
+// If target_sharding is already compatible, returns it.
+absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
+    const HloSharding& partial_sharding, const HloSharding& target_sharding);
 
 // Do left halo exchange if all-reduce directly from tile sharding to partial
 // replicate sharding will remove useful data from the source.
@@ -378,6 +378,12 @@ absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
     const std::vector<int64>& replicate_dims,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+
+// Finds a list of dimensions that can be grouped on such that it will have the
+// specified device groups. Group order and dimension order are ignored.
+absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
+    const HloSharding& sharding,
+    const std::vector<std::vector<int64>>& device_groups);
 
 }  // namespace spmd
 }  // namespace xla

@@ -167,6 +167,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                               absl::Span<const int64>(fft_length));
       break;
     }
+    case HloOpcode::kCopyStart: {
+      instruction = CreateCopyStart(shape, operands(0),
+                                    proto.is_cross_program_prefetch());
+      break;
+    }
     case HloOpcode::kCompare: {
       // Auto-upgraded from deprecated opcode skips the following.
       if (!comparison_direction) {
@@ -839,7 +844,6 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCeil:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
-    case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kClz:
@@ -944,6 +948,13 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     absl::Span<const int64> fft_length) {
   return absl::make_unique<HloFftInstruction>(shape, operand, fft_type,
                                               fft_length);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
+    const Shape& shape, HloInstruction* operand,
+    bool is_cross_program_prefetch) {
+  return absl::make_unique<HloCopyStartInstruction>(shape, operand,
+                                                    is_cross_program_prefetch);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
@@ -3359,6 +3370,11 @@ class HloInstruction::FusionReusesParamElements {
         // that.
         value_it = cache->find(&hlo);
         value_it->second = new_val;
+        // Fold() minimizes the UseKind value. If it is already minimum, we can
+        // break the loop early.
+        if (new_val == UseKind::kReuse) {
+          break;
+        }
       }
     }
     return value_it->second;
@@ -4116,6 +4132,10 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+bool HloInstruction::is_cross_program_prefetch() const {
+  return Cast<HloCopyStartInstruction>(this)->is_cross_program_prefetch();
 }
 
 ComparisonDirection HloInstruction::comparison_direction() const {

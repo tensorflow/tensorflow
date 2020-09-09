@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 
-// Internal structures used by the C API. These are likely to change and should
-// not be depended on directly by any C API clients.
+// Internal structures and subroutines used by the C API. These are likely to
+// change and should not be depended on directly by any C API clients.
 //
 // NOTE: This header does not follow C conventions and does not define a C API.
 // It is effectively an (internal) implementation detail of the C API.
@@ -65,5 +65,33 @@ struct TfLiteInterpreter {
 
   std::unique_ptr<tflite::Interpreter> impl;
 };
+
+namespace tflite {
+namespace internal {
+
+// This adds the builtin and/or custom operators specified in options in
+// `optional_options` (if any) to `mutable_resolver`, and then returns a newly
+// created TfLiteInterpreter using `mutable_op_resolver` as the OpResolver, and
+// using any other options in `optional_options`, and using the provided
+// `model`.
+//
+// * `model` must be a valid model instance. The caller retains ownership of the
+//   object, and can destroy it immediately after creating the interpreter; the
+//   interpreter will maintain its own reference to the underlying model data.
+// * `optional_options` may be null. The caller retains ownership of the object,
+//   and can safely destroy it immediately after creating the interpreter.
+// * `mutable_resolver` must not be null. The caller retains ownership of the
+//   MutableOpResolver object, and can safely destroy it immediately after
+//   creating the interpreter.
+//
+// NOTE: The client *must* explicitly allocate tensors before attempting to
+// access input tensor data or invoke the interpreter.
+
+TfLiteInterpreter* InterpreterCreateWithOpResolver(
+    const TfLiteModel* model, const TfLiteInterpreterOptions* optional_options,
+    tflite::MutableOpResolver* mutable_resolver);
+
+}  // namespace internal
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_C_C_API_INTERNAL_H_

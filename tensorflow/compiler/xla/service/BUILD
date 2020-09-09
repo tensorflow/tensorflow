@@ -1843,6 +1843,7 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
+        ":op_expander_pass",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
@@ -2339,9 +2340,11 @@ cc_library(
         ":call_inliner",
         ":hlo",
         ":hlo_casting_utils",
+        ":hlo_cse",
         ":hlo_dce",
         ":hlo_pass",
         ":hlo_pass_pipeline",
+        ":hlo_verifier",
         ":tuple_simplifier",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -3433,6 +3436,26 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+    ],
+)
+
+cc_library(
+    name = "memory_space_assignment_best_fit_repacker",
+    srcs = ["memory_space_assignment_best_fit_repacker.cc"],
+    hdrs = ["memory_space_assignment_best_fit_repacker.h"],
+    deps = [
+        ":heap_simulator",
+        ":memory_space_assignment_repacking",
+    ],
+)
+
+tf_cc_test(
+    name = "memory_space_assignment_best_fit_repacker_test",
+    srcs = ["memory_space_assignment_best_fit_repacker_test.cc"],
+    deps = [
+        ":memory_space_assignment_best_fit_repacker",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 

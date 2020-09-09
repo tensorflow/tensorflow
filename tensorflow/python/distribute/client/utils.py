@@ -28,8 +28,11 @@ def start_server(cluster_resolver, protocol):
   """Start a server and block the process from exiting."""
   # This function is for multi-processing test or users who would like to have
   # every job run the same binary for simplicity.
-  assert (cluster_resolver.task_type == 'worker' or
-          cluster_resolver.task_type == 'ps')
+  if not (cluster_resolver.task_type == 'worker' or
+          cluster_resolver.task_type == 'ps'):
+    raise ValueError('Unexpected task_type to start a server: {}'.format(
+        cluster_resolver.task_type))
+
   server = server_lib.Server(
       cluster_resolver.cluster_spec().as_cluster_def(),
       job_name=cluster_resolver.task_type,

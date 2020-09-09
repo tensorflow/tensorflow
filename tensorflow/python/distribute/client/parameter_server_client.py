@@ -49,7 +49,7 @@ class ParameterServerClient(client.Client):
 
   """
 
-  def __init__(self, cluster_resolver):
+  def __init__(self, cluster_resolver, variable_partitioner=None):
     super(ParameterServerClient, self).__init__(
         parameter_server_strategy_v2.ParameterServerStrategyV2(
-            cluster_resolver))
+            cluster_resolver, variable_partitioner))

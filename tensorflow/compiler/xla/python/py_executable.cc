@@ -58,10 +58,10 @@ PyExecutable::~PyExecutable() {
   }
 }
 
-std::vector<ClientAndPtr<Device>> PyExecutable::LocalDevices() const {
-  std::vector<ClientAndPtr<Device>> devices;
+std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::LocalDevices() const {
+  std::vector<ClientAndPtr<PjRtDevice>> devices;
   devices.reserve(executable_->local_devices().size());
-  for (Device* device : executable_->local_devices()) {
+  for (PjRtDevice* device : executable_->local_devices()) {
     devices.push_back(WrapWithClient(client_, device));
   }
   return devices;

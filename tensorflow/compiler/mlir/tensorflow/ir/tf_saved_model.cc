@@ -115,6 +115,11 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
 TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf_saved_model", context,
               TypeID::get<TensorFlowSavedModelDialect>()) {
+  // The TensorFlow Dialect is needed in the verifier and other routines
+  // associated to this dialect. It makes little sense anyway to use the
+  // SavedModel dialect without the TensorFlow Dialect.
+  context->loadDialect<TF::TensorFlowDialect>();
+
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"

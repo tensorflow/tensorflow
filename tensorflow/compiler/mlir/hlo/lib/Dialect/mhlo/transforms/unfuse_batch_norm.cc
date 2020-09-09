@@ -122,7 +122,7 @@ class UnfuseBatchNormInferencePattern
     if (!fp_type) {
       return failure();
     }
-    int64_t feature_dim = bn_op.feature_index().getSExtValue();
+    int64_t feature_dim = bn_op.feature_index();
 
     // Add epsilon to the variance and sqrt to get stddev:
     // stddev = sqrt(variance + epsilon)

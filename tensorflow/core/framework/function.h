@@ -403,6 +403,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // are no longer in use.
   Status RemoveFunction(const std::string& func) TF_LOCKS_EXCLUDED(mu_);
 
+  // Removes all the functions and gradient functions.
+  void Clear() TF_LOCKS_EXCLUDED(mu_);
+
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
@@ -611,6 +614,9 @@ class FunctionLibraryRuntime {
     // runtime will leave device specification empty and will rely on Placer to
     // infer correct device.
     std::vector<string> output_devices;
+
+    // If set, it indicates the original output indices of a component function.
+    absl::optional<std::vector<int>> ret_indices = absl::nullopt;
 
     // Maps from a CompositeDevice name to a list of underlying physical
     // devices.

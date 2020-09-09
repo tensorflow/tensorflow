@@ -29,6 +29,7 @@ cc_library(
         ":gcs_helper",
         ":ram_file_block_cache",
         "//tensorflow/c:env",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
@@ -59,6 +60,7 @@ cc_library(
     deps = [
         ":cleanup",
         "//tensorflow/c:env",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",

@@ -51,12 +51,12 @@ PyBuffer::~PyBuffer() {
   }
 }
 
-ClientAndPtr<Device> PyBuffer::device() const {
+ClientAndPtr<PjRtDevice> PyBuffer::device() const {
   return WrapWithClient(client_, buffer_->device());
 }
 
 StatusOr<std::unique_ptr<PyBuffer>> PyBuffer::CopyToDevice(
-    const ClientAndPtr<Device>& dst_device) const {
+    const ClientAndPtr<PjRtDevice>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
   GlobalPyRefManager()->CollectGarbage();
   std::unique_ptr<PjRtBuffer> out;

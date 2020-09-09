@@ -10,6 +10,14 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = [
+        "//tensorflow/python/keras/google/private_tf_api_test:__pkg__",
+    ],
+)
+
 py_library(
     name = "keras",
     srcs = [
@@ -307,6 +315,7 @@ py_library(
     deps = [
         ":backend",
         ":models",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",

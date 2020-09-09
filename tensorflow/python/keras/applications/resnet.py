@@ -79,9 +79,6 @@ def ResNet(stack_fn,
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.resnet.preprocess_input` for an example.
-
   Arguments:
     stack_fn: a function that returns output tensor for the
       stacked residual blocks.
@@ -137,7 +134,7 @@ def ResNet(stack_fn,
     layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -545,9 +542,10 @@ DOC = """
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.resnet.preprocess_input` for an example.
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For ResNet, call `tf.keras.applications.resnet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     include_top: whether to include the fully-connected

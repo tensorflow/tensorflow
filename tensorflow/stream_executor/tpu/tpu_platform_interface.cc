@@ -26,7 +26,7 @@ namespace tpu {
 
 namespace {
 TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
-                                                  int tries_left = 3) {
+                                                  int tries_left = 5) {
   if (tries_left <= 0) {
     LOG(ERROR) << "Unable to find a TPU platform after exhausting all tries. "
                   "Returning nullptr...";
@@ -60,7 +60,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
   if (!status_or_other_tpu_platforms.ok() &&
       status_or_other_tpu_platforms.status().code() != error::NOT_FOUND) {
     LOG(WARNING) << "Error when getting other TPU platforms: "
-                 << status_or_tpu_platform.status();
+                 << status_or_other_tpu_platforms.status();
     return nullptr;
   }
 

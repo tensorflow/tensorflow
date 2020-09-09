@@ -40,8 +40,7 @@ class EagerOpRewriteTest : public ::testing::Test {
     tensorflow::EagerContext* eager_ctx = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        tensorflow::ContextMirroringPolicy::MIRRORING_NONE, async,
-        lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous,
+        async, lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous,
         GetDefaultCustomKernelCreator());
 
     EagerExecutor executor_(false);
@@ -74,7 +73,7 @@ class EagerOpRewriteTest : public ::testing::Test {
     auto orig_op = CreateOp("Conv2D");                \
     orig_op->MutableAttrs()->Set("T", T);             \
     orig_op->MutableAttrs()->Set("padding", "VALID"); \
-    CheckRewrite(orig_op.get(), "_MklEagerConv2D");   \
+    CheckRewrite(orig_op.get(), "_MklNativeConv2D");  \
   }
 REGISTER_TEST_ALL_TYPES(Conv2D);
 #undef REGISTER_TEST
@@ -89,22 +88,22 @@ REGISTER_TEST_ALL_TYPES(Conv2D);
 REGISTER_TEST_ALL_TYPES(Conv2D_Explicit_Padding);
 #undef REGISTER_TEST
 
-#define REGISTER_TEST(NAME, T, INPUT)                            \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {                       \
-    auto orig_op = CreateOp("Conv2DBackpropInput");              \
-    orig_op->MutableAttrs()->Set("T", T);                        \
-    orig_op->MutableAttrs()->Set("padding", "VALID");            \
-    CheckRewrite(orig_op.get(), "_MklEagerConv2DBackpropInput"); \
+#define REGISTER_TEST(NAME, T, INPUT)                             \
+  TEST_F(EagerOpRewriteTest, NAME##_##T) {                        \
+    auto orig_op = CreateOp("Conv2DBackpropInput");               \
+    orig_op->MutableAttrs()->Set("T", T);                         \
+    orig_op->MutableAttrs()->Set("padding", "VALID");             \
+    CheckRewrite(orig_op.get(), "_MklNativeConv2DBackpropInput"); \
   }
 REGISTER_TEST_ALL_TYPES(Conv2DBackpropInput);
 #undef REGISTER_TEST
 
-#define REGISTER_TEST(NAME, T, INPUT)                             \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {                        \
-    auto orig_op = CreateOp("Conv2DBackpropFilter");              \
-    orig_op->MutableAttrs()->Set("T", T);                         \
-    orig_op->MutableAttrs()->Set("padding", "VALID");             \
-    CheckRewrite(orig_op.get(), "_MklEagerConv2DBackpropFilter"); \
+#define REGISTER_TEST(NAME, T, INPUT)                              \
+  TEST_F(EagerOpRewriteTest, NAME##_##T) {                         \
+    auto orig_op = CreateOp("Conv2DBackpropFilter");               \
+    orig_op->MutableAttrs()->Set("T", T);                          \
+    orig_op->MutableAttrs()->Set("padding", "VALID");              \
+    CheckRewrite(orig_op.get(), "_MklNativeConv2DBackpropFilter"); \
   }
 REGISTER_TEST_ALL_TYPES(Conv2DBackpropFilter);
 #undef REGISTER_TEST

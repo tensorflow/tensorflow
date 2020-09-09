@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
 constexpr int kFracBitsQ15 = 15;
+constexpr int kFracBitsQ31 = 31;
 
 namespace tflite {
 namespace ops {
@@ -50,14 +51,14 @@ static void ConvertToMliQuantParams(const TfLiteTensor* tfT, mli_tensor* mliT) {
   float fscale = tfT->params.scale;
   int exp;
   frexpf(fscale, &exp);
-  int frac_bits = kFracBitsQ15 - exp;
-  int32_t iscale = (1 << frac_bits) * fscale + 0.5f;
+  int frac_bits = kFracBitsQ31 - exp;
+  int32_t iscale = (int32_t)((1ll << frac_bits) * fscale + 0.5f);
   mliT->el_params.asym.scale_frac_bits = frac_bits;
-  mliT->el_params.asym.scale.i16 = (int16_t)iscale;
+  mliT->el_params.asym.scale.i32 = (int32_t)iscale;
 }
 
-static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
-                                              mli_tensor* mliT) {
+static inline void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
+                                                     mli_tensor* mliT) {
   // mli tensor scale and zero_point arrays should be allocated at this point
   TFLITE_DCHECK_NE(mliT->el_params.asym.scale.pi16, 0);
   TFLITE_DCHECK_NE(mliT->el_params.asym.zero_point.pi16, 0);
@@ -75,7 +76,7 @@ static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
   for (int i = 0; i < num_channels; i++) {
     int exp;
     frexpf(fscale[i], &exp);
-    int cur_frac_bits = kFracBitsQ15 - exp;
+    int cur_frac_bits = kFracBitsQ31 - exp;
     if (i == 0) {
       min_frac_bits = cur_frac_bits;
     } else {
@@ -86,8 +87,8 @@ static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
   mliT->el_params.asym.scale_frac_bits = min_frac_bits;
 
   for (int i = 0; i < num_channels; i++) {
-    int16_t iscale = (int16_t)((1 << min_frac_bits) * fscale[i] + 0.5f);
-    mliT->el_params.asym.scale.pi16[i] = iscale;
+    int32_t iscale = (int32_t)((1ll << min_frac_bits) * fscale[i] + 0.5f);
+    mliT->el_params.asym.scale.pi32[i] = iscale;
   }
 }
 

@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -1143,6 +1144,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
+      [&opts] {
+        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+      },
+      profiler::ContextType::kTfExecutor, opts.step_id,
+      profiler::TraceMeLevel::kInfo);
+
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
 
@@ -1206,6 +1215,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     run_opts.runner = &default_runner_;
   }
   DCHECK(run_opts.runner != nullptr);
+
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
+      [&opts] {
+        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+      },
+      profiler::ContextType::kTfExecutor, opts.step_id,
+      profiler::TraceMeLevel::kInfo);
 
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
