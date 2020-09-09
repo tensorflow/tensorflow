@@ -1375,44 +1375,6 @@ Both input and output have a range `(-inf, inf)`.
   let hasCanonicalizer = 1;
 }
 
-def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
-  let summary = "Creates a handle to an in-scope variable.";
-
-  let description = [{
-Used by internal passes for temporary representation of local state, which will
-be eventually removed.
-  }];
-
-  let arguments = (ins);
-
-  let results = (outs
-    Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
-  );
-}
-
-def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
-  let summary = [{
-Op that reshards on-device TPU variables to specified state. Internal use only.
-  }];
-
-  let description = [{
-The sharding state is represented as the key of the compilation that generated
-the sharding/unsharding programs along with the main program. new_format_key
-specifies the desired state, and format_state_var is the current state of the
-variables.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_ResourceTensor>, "", [TF_VariableRead,TF_VariableWrite]>:$vars,
-    TF_StrTensor:$new_format_key,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$format_state_var
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-}
-
 def TF_StatefulStandardNormalV2Op : TF_Op<"StatefulStandardNormalV2", []> {
   let summary = "Outputs random values from a normal distribution.";
 
