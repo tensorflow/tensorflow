@@ -1163,7 +1163,7 @@ class DnnSupport {
   //   that if the inverse of the filter is applied to the output in VALID mode
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
-  virtual port::Status DoFusedConvolve(
+  virtual bool DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<double>& conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -1176,12 +1176,11 @@ class DnnSupport {
       DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
+    return false;
   }
 
   // This is the float version of DoFusedConvolve.
-  virtual port::Status DoFusedConvolve(
+  virtual bool DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<float>& conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -1194,13 +1193,12 @@ class DnnSupport {
       DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
+    return false;
   }
 
   // This is the Eigen::half version of DoFusedConvolve.
   // The scaling parameters are still floats.
-  virtual port::Status DoFusedConvolve(
+  virtual bool DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<Eigen::half>& conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -1215,13 +1213,12 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
+    return false;
   }
 
   // This is the int8 version of DoFusedConvolve.
   // The bias input and scaling parameters are floats.
-  virtual port::Status DoFusedConvolve(
+  virtual bool DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -1234,13 +1231,12 @@ class DnnSupport {
       DeviceMemory<int8>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
+    return false;
   }
 
   // This is the int8 version of DoFusedConvolve.
   // The output, bias input and scaling parameters are floats.
-  virtual port::Status DoFusedConvolve(
+  virtual bool DoFusedConvolve(
       Stream* /*stream*/, const dnn::BatchDescriptor& /*conv_input_descriptor*/,
       const DeviceMemory<int8>& /*conv_input_data*/, float /*conv_input_scale*/,
       const dnn::FilterDescriptor& /*filter_descriptor*/,
@@ -1256,8 +1252,7 @@ class DnnSupport {
       ScratchAllocator* /*scratch_allocator*/,
       const dnn::AlgorithmConfig& /*algorithm_config*/,
       dnn::ProfileResult* /*output_profile_result*/) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
+    return false;
   }
 
   template <typename ElementType, typename OutputType>

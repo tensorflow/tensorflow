@@ -2026,7 +2026,7 @@ class Stream {
 
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);
-    return !status_.ok();
+    return !ok_;
   }
 
   // Sets the error state if operation_retcode is false.
@@ -2036,7 +2036,7 @@ class Stream {
       return;
     }
     absl::MutexLock lock(&mu_);
-    status_ = port::InternalError("Unknown error");
+    ok_ = false;
   }
 
   // Checks the status and logs the error message, if any.
@@ -2070,8 +2070,9 @@ class Stream {
   // See StreamExecutor::AllocateStream.
   bool allocated_ TF_GUARDED_BY(mu_);
 
-  // The last error (if any) of all method calls.
-  port::Status status_ TF_GUARDED_BY(mu_);
+  // Whether all operations have entrained successfully to the current program
+  // point.
+  bool ok_ TF_GUARDED_BY(mu_);
 
   // Sub-streams that are generated from this stream. Each element has a pointer
   // to sub-stream and a boolean value indicating if this substream is ready to
