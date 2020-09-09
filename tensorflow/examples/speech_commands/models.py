@@ -293,14 +293,11 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
     first_dropout = tf.nn.dropout(first_relu, rate=dropout_rate)
   else:
     first_dropout = first_relu
-  print()
-  print(">>> first_conv_shape:", first_dropout.shape)
-  
   max_pool = tf.nn.max_pool2d(input=first_dropout,
-                              # ksize=[1, 2, 2, 1],
-                              # strides=[1, 2, 2, 1],
-                              ksize=[1, 1, 4, 1],
-                              strides=[1, 1, 4, 1],
+                              ksize=[1, 2, 2, 1],
+                              strides=[1, 2, 2, 1],
+                              # ksize=[1, 1, 4, 1],
+                              # strides=[1, 1, 4, 1],
                               padding='SAME')
   
   second_filter_width = 4
@@ -348,8 +345,7 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
       initializer=tf.compat.v1.zeros_initializer,
       shape=[label_count])
   final_fc = tf.matmul(flattened_second_conv, final_fc_weights) + final_fc_bias
-  print(">>> final_fc_weights:", final_fc_weights.get_shape())
-  print()
+
 
   if is_training:
     return final_fc, dropout_rate

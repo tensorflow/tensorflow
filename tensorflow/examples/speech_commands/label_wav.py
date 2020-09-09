@@ -64,7 +64,6 @@ def run_graph(wav_data, labels, input_layer_name, output_layer_name,
     for n in tf.get_default_graph().as_graph_def().node:
       print(n.name, n.op, n.input) #, dir(n))
     softmax_tensor = sess.graph.get_tensor_by_name(output_layer_name)
-    print(">>>:", input_layer_name, output_layer_name)
     predictions, = sess.run(softmax_tensor, {input_layer_name: wav_data})
 
     # Sort to show labels in order of confidence
