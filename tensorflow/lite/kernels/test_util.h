@@ -105,6 +105,7 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 // the actual data is known. This mimics what happens in practice: quantization
 // parameters are calculated during training or post training..
 struct TensorData {
+  // NOLINTNEXTLINE
   TensorData(TensorType type = TensorType_FLOAT32, std::vector<int> shape = {},
              float min = 0.0f, float max = 0.0f, float scale = 0.0f,
              int32_t zero_point = 0, bool per_channel_quantization = false,
@@ -933,7 +934,9 @@ struct TypeUnion;
 template <>
 struct TypeUnion<float> {
  public:
+  // NOLINTNEXTLINE
   static constexpr TensorType tensor_type = TensorType::TensorType_FLOAT32;
+  // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteFloat32;
   typedef float ScalarType;
 };
@@ -941,7 +944,9 @@ struct TypeUnion<float> {
 template <>
 struct TypeUnion<int32_t> {
  public:
+  // NOLINTNEXTLINE
   static constexpr TensorType tensor_type = TensorType::TensorType_INT32;
+  // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt32;
   typedef int32_t ScalarType;
 };
@@ -949,7 +954,9 @@ struct TypeUnion<int32_t> {
 template <>
 struct TypeUnion<int16_t> {
  public:
+  // NOLINTNEXTLINE
   static constexpr TensorType tensor_type = TensorType::TensorType_INT16;
+  // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
   typedef int16_t ScalarType;
 };
@@ -957,7 +964,9 @@ struct TypeUnion<int16_t> {
 template <>
 struct TypeUnion<int8_t> {
  public:
+  // NOLINTNEXTLINE
   static constexpr TensorType tensor_type = TensorType::TensorType_INT8;
+  // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt8;
   typedef int8_t ScalarType;
 };
@@ -965,7 +974,9 @@ struct TypeUnion<int8_t> {
 template <>
 struct TypeUnion<uint8_t> {
  public:
+  // NOLINTNEXTLINE
   static constexpr TensorType tensor_type = TensorType::TensorType_UINT8;
+  // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
   typedef uint8_t ScalarType;
 };
