@@ -57,6 +57,23 @@ class HorizontalInputFusionImpl {
   HloComputation* computation_;
 };  // HorizontalInputFusionImpl
 
+// Compares one-by-one the dimensions of `shape_a` and `shape_b` from left to
+// right.
+bool CompareShapeDimsFromLeftToRight(const Shape& shape_a,
+                                     const Shape& shape_b) {
+  if (shape_a.rank() != shape_b.rank()) {
+    return shape_a.rank() < shape_b.rank();
+  }
+  auto dims_a = shape_a.dimensions();
+  auto dims_b = shape_b.dimensions();
+  for (size_t i = 0; i < dims_a.size(); ++i) {
+    if (dims_a[i] != dims_b[i]) {
+      return dims_a[i] < dims_b[i];
+    }
+  }
+  return true;
+}
+
 std::vector<HloInstruction*> FindAndSortFusionCandidates(
     HloInstruction* consumer) {
   absl::flat_hash_set<HloInstruction*> fusion_instr_set;
@@ -79,20 +96,15 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
             [&](const HloInstruction* a, const HloInstruction* b) {
               Shape shape_a = GetInputShapeForMultiOutputFusion(*a);
               Shape shape_b = GetInputShapeForMultiOutputFusion(*b);
-              if (shape_a.rank() != shape_b.rank()) {
-                return shape_a.rank() < shape_b.rank();
-              } else if (ShapeUtil::ElementsIn(shape_a) !=
-                         ShapeUtil::ElementsIn(shape_b)) {
-                // Sort according to element size so that roughly the same input
-                // shape will be placed adjacent.
-                return ShapeUtil::ElementsIn(shape_a) <
-                       ShapeUtil::ElementsIn(shape_b);
-              } else {
-                // Sort `fusion_instrs` according to instruction counts, because
-                // we'd like to fuse together computations of similar sizes.
-                return a->fused_instruction_count() <
-                       b->fused_instruction_count();
+              if (!ShapeUtil::EqualIgnoringElementType(shape_a, shape_b)) {
+                // Sort shapes according to dimensions, so that the same input
+                // shape will be placed adjacent each other.
+                return CompareShapeDimsFromLeftToRight(shape_a, shape_b);
               }
+              // Sort `fusion_instrs` according to instruction counts, because
+              // we'd like to fuse together computations of similar sizes.
+              return a->fused_instruction_count() <
+                     b->fused_instruction_count();
             });
 
   return fusion_instrs;
