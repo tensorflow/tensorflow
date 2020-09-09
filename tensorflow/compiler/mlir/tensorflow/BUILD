@@ -1555,6 +1555,16 @@ cc_library(
 )
 
 cc_library(
+    name = "compile_mlir_util_pass",
+    srcs = ["utils/compile_mlir_util_pass.cc"],
+    deps = [
+        ":compile_mlir_util",
+        "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tf_xla_mlir_translate",
     srcs = ["utils/tf_xla_mlir_translate.cc"],
     deps = [
@@ -1576,6 +1586,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
