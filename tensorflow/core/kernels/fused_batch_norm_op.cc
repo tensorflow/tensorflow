@@ -1241,7 +1241,7 @@ class FusedBatchNormOpBase : public OpKernel {
   // If use_reserved_space is false, we don't have 5th output.
   virtual void ComputeWithReservedSpace(OpKernelContext* context,
                                         bool use_reserved_space) {
-    const Tensor& x = context->input(0);
+    Tensor x = context->input(0);
     const Tensor& scale = context->input(1);
     const Tensor& offset = context->input(2);
     const Tensor& estimated_mean = context->input(3);
@@ -1267,7 +1267,6 @@ class FusedBatchNormOpBase : public OpKernel {
     bool use_reshape = (x.dims() == 5);
     auto x_shape = x.shape();
     TensorShape dest_shape;
-    Tensor reshaped_x;
     if (use_reshape) {
       const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
       int64 in_planes = GetTensorDim(x, tensor_format_, '0');
@@ -1276,40 +1275,31 @@ class FusedBatchNormOpBase : public OpKernel {
       const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
       dest_shape = ShapeFromFormat(
           tensor_format_, in_batch, {{in_planes, in_rows * in_cols}}, in_depth);
-      OP_REQUIRES_OK(context, context->allocate_temp(
-          DataTypeToEnum<T>::value, dest_shape, &reshaped_x));
-      CHECK(reshaped_x.CopyFrom(x, dest_shape));
-    } else {
-      reshaped_x = x;
+      CHECK(x.CopyFrom(x, dest_shape));
     }
 
     if (has_side_input_) {
-      OP_REQUIRES(context, side_input->shape() == reshaped_x.shape(),
+      OP_REQUIRES(context, side_input->shape() == x.shape(),
                   errors::InvalidArgument(
                       "side_input shape must be equal to input shape: ",
                       side_input->shape().DebugString(),
-                      " != ", reshaped_x.shape().DebugString()));
+                      " != ", x.shape().DebugString()));
     }
 
     if (activation_mode_ != FbnActivationMode::kIdentity) {
       // NOTE(ezhulenev): This requirement is coming from implementation
       // details of cudnnBatchNormalizationForwardTrainingEx.
       OP_REQUIRES(
-          context, !is_training_ || reshaped_x.dim_size(3) % 4 == 0,
+          context, !is_training_ || x.dim_size(3) % 4 == 0,
           errors::InvalidArgument("FusedBatchNorm with activation requires "
                                   "channel dimension to be a multiple of 4."));
     }
 
     Tensor* y = nullptr;
+    auto alloc_shape = use_reshape ? dest_shape : x_shape;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 0, x_shape, &y));
-    Tensor reshaped_y;
-    if (use_reshape) {
-      OP_REQUIRES_OK(context, context->allocate_temp(
-          DataTypeToEnum<T>::value, dest_shape, &reshaped_y));
-    } else {
-      reshaped_y = *y;
-    }
+                                {0}, 0, alloc_shape, &y));
+
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {3}, 1, scale.shape(), &batch_mean));
@@ -1325,19 +1315,19 @@ class FusedBatchNormOpBase : public OpKernel {
 
     if (is_training_) {
       functor::FusedBatchNorm<Device, T, U, true>()(
-          context, reshaped_x, scale, offset, estimated_mean,
+          context, x, scale, offset, estimated_mean,
           estimated_variance, side_input, epsilon_, exponential_avg_factor_,
-          activation_mode_, &reshaped_y, batch_mean, batch_var, saved_mean,
+          activation_mode_, y, batch_mean, batch_var, saved_mean,
           saved_maybe_inv_var, tensor_format_, use_reserved_space);
     } else {
       functor::FusedBatchNorm<Device, T, U, false>()(
-          context, reshaped_x, scale, offset, estimated_mean,
+          context, x, scale, offset, estimated_mean,
           estimated_variance, side_input, epsilon_, exponential_avg_factor_,
-          activation_mode_, &reshaped_y, batch_mean, batch_var, saved_mean,
+          activation_mode_, y, batch_mean, batch_var, saved_mean,
           saved_maybe_inv_var, tensor_format_, use_reserved_space);
     }
     if (use_reshape) {
-      CHECK(y->CopyFrom(reshaped_y, x_shape));
+      CHECK(y->CopyFrom(*y, x_shape));
     }
   }
 
@@ -1404,8 +1394,8 @@ class FusedBatchNormGradOpBase : public OpKernel {
 
   virtual void ComputeWithReservedSpace(OpKernelContext* context,
                                         bool use_reserved_space) {
-    const Tensor& y_backprop = context->input(0);
-    const Tensor& x = context->input(1);
+    Tensor y_backprop = context->input(0);
+    Tensor x = context->input(1);
     const Tensor& scale = context->input(2);
     // When is_training=True, batch mean and variance/inverted variance are
     // saved in the forward pass to be reused here. When is_training=False,
@@ -1436,8 +1426,6 @@ class FusedBatchNormGradOpBase : public OpKernel {
     bool use_reshape = (x.dims() == 5);
     auto x_shape = x.shape();
     TensorShape dest_shape;
-    Tensor reshaped_x;
-    Tensor reshaped_y_backprop;
     if (use_reshape) {
       const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
       int64 in_planes = GetTensorDim(x, tensor_format_, '0');
@@ -1446,27 +1434,14 @@ class FusedBatchNormGradOpBase : public OpKernel {
       const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
       dest_shape = ShapeFromFormat(
           tensor_format_, in_batch, {{in_planes, in_rows * in_cols}}, in_depth);
-      OP_REQUIRES_OK(context, context->allocate_temp(
-          DataTypeToEnum<T>::value, dest_shape, &reshaped_x));
-      OP_REQUIRES_OK(context, context->allocate_temp(
-          DataTypeToEnum<T>::value, dest_shape, &reshaped_y_backprop));
-      CHECK(reshaped_x.CopyFrom(x, dest_shape));
-      CHECK(reshaped_y_backprop.CopyFrom(y_backprop, dest_shape));
-    } else {
-      reshaped_x = x;
-      reshaped_y_backprop = y_backprop ;
+      CHECK(x.CopyFrom(x, dest_shape));
+      CHECK(y_backprop.CopyFrom(y_backprop, dest_shape));
     }
 
     Tensor* x_backprop = nullptr;
+    auto alloc_shape = use_reshape ? dest_shape : x_shape;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, x_shape, &x_backprop));
-    Tensor reshaped_x_backprop;
-    if (use_reshape) {
-      OP_REQUIRES_OK(context, context->allocate_temp(
-          DataTypeToEnum<T>::value, dest_shape, &reshaped_x_backprop));
-    } else {
-      reshaped_x_backprop = *x_backprop;
-    }
+                   context->allocate_output(0, alloc_shape, &x_backprop));
 
     const TensorShape& scale_offset_shape = scale.shape();
     Tensor* scale_backprop = nullptr;
@@ -1486,7 +1461,7 @@ class FusedBatchNormGradOpBase : public OpKernel {
         context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
 
     // If input is empty, set gradients w.r.t scale/offset to zero.
-    if (reshaped_x.shape().num_elements() == 0) {
+    if (x.shape().num_elements() == 0) {
       functor::SetZeroFunctor<Device, U> f;
       f(context->eigen_device<Device>(), scale_backprop->flat<U>());
       f(context->eigen_device<Device>(), offset_backprop->flat<U>());
@@ -1495,9 +1470,9 @@ class FusedBatchNormGradOpBase : public OpKernel {
 
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(
-          context, reshaped_y_backprop, reshaped_x, scale,
+          context, y_backprop, x, scale,
           saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var, epsilon_,
-          &reshaped_x_backprop, scale_backprop, offset_backprop, use_reserved_space,
+          x_backprop, scale_backprop, offset_backprop, use_reserved_space,
           tensor_format_);
     } else {
       // Necessary layout conversion is currently done in python.
@@ -1506,12 +1481,12 @@ class FusedBatchNormGradOpBase : public OpKernel {
              "only support "
           << "NHWC tensor format for now.";
       functor::FusedBatchNormFreezeGrad<Device, T, U>()(
-          context, reshaped_y_backprop, reshaped_x, scale,
+          context, y_backprop, x, scale,
           saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var, epsilon_,
-          &reshaped_x_backprop, scale_backprop, offset_backprop);
+          x_backprop, scale_backprop, offset_backprop);
     }
     if (use_reshape) {
-      CHECK(x_backprop->CopyFrom(reshaped_x_backprop, x_shape));
+      CHECK(x_backprop->CopyFrom(*x_backprop, x_shape));
     }
   }
 
