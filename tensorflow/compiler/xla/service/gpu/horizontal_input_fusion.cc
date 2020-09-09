@@ -98,7 +98,7 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
               Shape shape_b = GetInputShapeForMultiOutputFusion(*b);
               if (!ShapeUtil::EqualIgnoringElementType(shape_a, shape_b)) {
                 // Sort shapes according to dimensions, so that the same input
-                // shape will be placed adjacent each other.
+                // shapes will be placed adjacent each other.
                 return CompareShapeDimsFromLeftToRight(shape_a, shape_b);
               }
               // Sort `fusion_instrs` according to instruction counts, because
