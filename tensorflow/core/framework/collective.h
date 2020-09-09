@@ -154,22 +154,18 @@ class DeviceResolverInterface {
  public:
   virtual ~DeviceResolverInterface() {}
 
-  // Collects DeviceAttributes protobufs from all of the devices identified
-  // in 'col_params'.
-  virtual void GetAllDeviceAttributesAsync(
-      const std::vector<string>& devices, const std::vector<string>& tasks,
-      std::vector<DeviceAttributes>* attributes,
-      const StatusCallback& done) = 0;
-
   // Populates *attributes with the DeviceAttributes of the specified device.
-  virtual void GetDeviceAttributesAsync(const string& device,
-                                        const string& task,
-                                        DeviceAttributes* attributes,
-                                        const StatusCallback& done) = 0;
+  virtual Status GetDeviceAttributes(const string& device,
+                                     DeviceAttributes* attributes) = 0;
 
-  // Returns the cached device attributes of a task.
-  virtual Status GetTaskCached(const string& task,
-                               std::vector<DeviceAttributes>* attributes) = 0;
+  // Returns all device attributes of a task.
+  virtual Status GetAllDeviceAttributes(
+      const string& task, std::vector<DeviceAttributes>* attributes) = 0;
+
+  // Updates device attributes. It returns error if any device already
+  // exists in the DeviceResolver and has a different incarnation.
+  virtual Status UpdateDeviceAttributes(
+      const std::vector<DeviceAttributes>& attributes) = 0;
 };
 
 // Interface that provides resolution of shared CollectiveParams fields.
