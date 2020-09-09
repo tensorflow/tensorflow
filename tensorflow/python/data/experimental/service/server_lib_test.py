@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tempfile
+import portpicker
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.platform import test
 
@@ -30,30 +31,30 @@ class ServerLibTest(test.TestCase):
     dispatcher.start()
 
   def testStartDispatcherWithPortConfig(self):
-    config = server_lib.DispatcherConfig(port=5000)
-    dispatcher = server_lib.DispatchServer(config=config, start=False)
-    dispatcher.start()
-    assert dispatcher.target == "grpc://localhost:5000"
+    port = portpicker.pick_unused_port()
+    config = server_lib.DispatcherConfig(port=port)
+    dispatcher = server_lib.DispatchServer(config=config, start=True)
+    self.assertEqual(dispatcher.target, "grpc://localhost:{}".format(port))
 
   def testStartDispatcherWithWorkDirConfig(self):
     temp_dir = tempfile.mkdtemp()
     config = server_lib.DispatcherConfig(work_dir=temp_dir)
-    dispatcher = server_lib.DispatchServer(config=config, start=False)
-    dispatcher.start()
+    dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
+        config=config, start=True)
 
   def testStartDispatcherWithFaultTolerantConfig(self):
     temp_dir = tempfile.mkdtemp()
     config = server_lib.DispatcherConfig(work_dir=temp_dir,
                                          fault_tolerant_mode=True)
-    dispatcher = server_lib.DispatchServer(config=config, start=False)
-    dispatcher.start()
+    dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
+        config=config, start=True)
 
   def testStartDispatcherWithWrongFaultTolerantConfig(self):
     config = server_lib.DispatcherConfig(fault_tolerant_mode=True)
     error = "Cannot enable fault tolerant mode without configuring a work_dir"
     with self.assertRaisesRegex(ValueError, error):
-      dispatcher = server_lib.DispatchServer(config=config, start=False)
-      dispatcher.start()
+      dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
+          config=config, start=True)
 
   def testMultipleStartDispatcher(self):
     dispatcher = server_lib.DispatchServer(start=True)
@@ -67,10 +68,10 @@ class ServerLibTest(test.TestCase):
 
   def testStartWorkerWithPortConfig(self):
     dispatcher = server_lib.DispatchServer()
+    port = portpicker.pick_unused_port()
     worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address, port=5005), start=False)
-    worker.start()
-    assert worker._address == "localhost:5005"
+        server_lib.WorkerConfig(dispatcher._address, port=port), start=True)
+    self.assertEqual(worker._address, "localhost:{}".format(port))
 
   def testMultipleStartWorker(self):
     dispatcher = server_lib.DispatchServer()

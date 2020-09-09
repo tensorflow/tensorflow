@@ -38,7 +38,7 @@ class DispatcherConfig(
     port: Specifies the port to bind to. A value of 0 indicates that the server
       may bind to any available port.
     protocol: The protocol to use for communicating with the tf.data service.
-      Defaults to the only acceptable value of `"grpc"`.
+      Defaults to `"grpc"`.
     work_dir: A directory to store dispatcher state in. This
       argument is required for the dispatcher to be able to recover from
       restarts.
@@ -206,7 +206,7 @@ class WorkerConfig(
     port: Specifies the port to bind to. A value of 0 indicates that the worker
       can bind to any available port.
     protocol: (Optional.) Specifies the protocol to be used by the server.
-      Defaults to the only acceptable value of `"grpc"`.
+      Defaults to `"grpc"`.
   """
 
   def __new__(cls,
