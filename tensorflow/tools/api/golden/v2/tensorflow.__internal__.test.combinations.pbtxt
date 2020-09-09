@@ -1,4 +1,4 @@
-path: "tensorflow.__internal__.test.combinatioins"
+path: "tensorflow.__internal__.test.combinations"
 tf_module {
   member {
     name: "NamedObject"

@@ -83,4 +83,4 @@ combine = test_combinations.combine
 times = test_combinations.times
 NamedObject = test_combinations.NamedObject
 
-tf_export("__internal__.test.combinatioins.generate", v1=[])(generate)
+tf_export("__internal__.test.combinations.generate", v1=[])(generate)

@@ -1,4 +1,4 @@
-path: "tensorflow.__internal__.test.combinatioins.TestCombination"
+path: "tensorflow.__internal__.test.combinations.TestCombination"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.test_combinations.TestCombination\'>"
   is_instance: "<type \'object\'>"
