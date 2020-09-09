@@ -385,7 +385,6 @@ tf_cuda_cc_test(
     ],
 )
 
-
 tf_cuda_cc_test(
     name = "mnist_gradients_test",
     size = "small",
