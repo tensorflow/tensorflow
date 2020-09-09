@@ -124,8 +124,9 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       reference_integer_ops::Tanh(
           data.input_zero_point, data.input_range_radius, data.input_multiplier,
-          data.input_left_shift, NumElements(input->dims),
+          data.input_left_shift, tflite::micro::GetTensorShape(input),
           tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
           tflite::micro::GetTensorData<int8_t>(output));
       return kTfLiteOk;
     } break;

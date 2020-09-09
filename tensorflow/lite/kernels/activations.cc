@@ -298,7 +298,6 @@ void HardSwishFree(TfLiteContext* context, void* buffer) {
   delete static_cast<HardSwishData*>(buffer);
 }
 
-
 TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(GenericPrepare(context, node));
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -865,12 +864,10 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       TanhParams params;
       params.input_left_shift = data->input_left_shift;
       if (kernel_type == kReference || (data->input_multiplier > 0)) {
-        const int size =
-            MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
-
         reference_integer_ops::Tanh(
-            data->input_multiplier, data->input_left_shift, size,
-            GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
+            data->input_multiplier, data->input_left_shift,
+            GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Tanh(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
