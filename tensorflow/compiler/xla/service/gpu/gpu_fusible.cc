@@ -143,7 +143,7 @@ bool IsInputFusibleReduction(const HloInstruction& instr) {
          IsReductionFromOrToContiguousDimensions(instr);
 }
 
-const HloInstruction* GetMajorNodeForMultiOutputFusion(
+const HloInstruction* GetRealHeroForMultiOutputFusion(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
     return &instr;
@@ -152,8 +152,8 @@ const HloInstruction* GetMajorNodeForMultiOutputFusion(
   if (!instr.IsMultiOutputFusion()) {
     return fused_expression_root;
   }
-  // If possible, we want to pick a reduction-to-vector operand of the
-  // fusion root, because it has the most constraints.
+  // If possible, we want to pick a reduction-from-or-to-contiguous-dims
+  // operand of the fusion root, because it has the most constraints.
   for (const auto* inst : fused_expression_root->operands()) {
     if (IsReductionFromOrToContiguousDimensions(*inst)) {
       return inst;
@@ -179,8 +179,8 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // root ops should have equal output shapes. An exception are
   // reduction-to-vector ops. Here the input shapes of the reduction (first
   // operand shape) and the reduction dimensions need to match.
-  auto* instr_1 = GetMajorNodeForMultiOutputFusion(instr1);
-  auto* instr_2 = GetMajorNodeForMultiOutputFusion(instr2);
+  auto* instr_1 = GetRealHeroForMultiOutputFusion(instr1);
+  auto* instr_2 = GetRealHeroForMultiOutputFusion(instr2);
   if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
       IsReductionFromOrToContiguousDimensions(*instr_2) &&
       !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
@@ -510,16 +510,16 @@ bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
     if (user->opcode() == HloOpcode::kGetTupleElement) {
       // Skip GTE.
       return IsConsumerTheOnlyNonRootUser(*user, consumer);
-    } else if (user == &consumer) {
+    }
+    if (user == &consumer) {
       // `user` is `consumer`.
       return true;
-    } else if (user == user->parent()->root_instruction()) {
-      // Consumed by ROOT is always fine, since it is impossible to create
-      // cycles through ROOT.
-      return true;
-    } else {
-      return false;
     }
+    if (user == user->parent()->root_instruction()) {
+      // Consumed by ROOT.
+      return true;
+    }
+    return false;
   });
 }
 
