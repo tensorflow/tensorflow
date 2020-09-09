@@ -74,30 +74,39 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+OPTIMIZATION_LEVEL := -O3
+
 CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
                -Wshadow -Wunused-variable -Wmissing-field-initializers \
-               -Wunused-function
+               -Wunused-function -Wswitch
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
-# TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
-# this flag is for an optimized micro runtime.
-CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
-CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
+	          $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
 TARGET_TOOLCHAIN_ROOT :=
 
-OPTIMIZATION_LEVEL := -O3
 ifeq ($(BUILD_TYPE), debug)
-	CXXFLAGS += -DDEBUG -g $(OPTIMIZATION_LEVEL)
-	CCFLAGS  += -DDEBUG -g $(OPTIMIZATION_LEVEL)
+	CXXFLAGS += -DDEBUG -g
+	CCFLAGS  += -DDEBUG -g
 else ifeq ($(BUILD_TYPE), release)
-	CXXFLAGS += -DNDEBUG $(OPTIMIZATION_LEVEL) -DTF_LITE_STRIP_ERROR_STRINGS
-	CCFLAGS  += -DNDEBUG $(OPTIMIZATION_LEVEL) -DTF_LITE_STRIP_ERROR_STRINGS
+	CXXFLAGS += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+	CCFLAGS  += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+else ifeq ($(BUILD_TYPE), no_tf_lite_static_memory)
+	# This build should not be used to run any binaries/tests since
+	# TF_LITE_STATIC_MEMORY should be defined for all micro builds. However,
+	# having a build without TF_LITE_STATIC_MEMORY is useful to catch errors in
+	# code that is shared between TfLite Mobile and TfLite Micro. See this issue
+	# for more details:
+	# https://github.com/tensorflow/tensorflow/issues/43076
+	CXXFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CXXFLAGS))
+	CCFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CCFLAGS))
 else
-	CXXFLAGS += -DNDEBUG $(OPTIMIZATION_LEVEL)
-	CCFLAGS  += -DNDEBUG $(OPTIMIZATION_LEVEL)
+	CXXFLAGS += -DNDEBUG
+	CCFLAGS  += -DNDEBUG
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
@@ -184,7 +193,6 @@ tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h \
-tensorflow/lite/kernels/internal/reference/integer_ops/mean.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
@@ -220,11 +228,8 @@ tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/version.h
 
-# TODO(b/165940489): Figure out how to avoid including fixed point
-# platform-specific headers.
 THIRD_PARTY_CC_HDRS := \
 third_party/gemmlowp/fixedpoint/fixedpoint.h \
-third_party/gemmlowp/fixedpoint/fixedpoint_neon.h \
 third_party/gemmlowp/fixedpoint/fixedpoint_sse.h \
 third_party/gemmlowp/internal/detect_platform.h \
 third_party/gemmlowp/LICENSE \
@@ -268,8 +273,6 @@ THIRD_PARTY_DOWNLOADS :=
 $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
 $(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),flatbuffers,))
 $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
-$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-$(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
