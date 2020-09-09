@@ -13,10 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
-#include "tensorflow/core/platform/tf32_utils.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
-PYBIND11_MODULE(_pywrap_tf32_execution, m) {
-  m.def("allow", &tensorflow::allow_tf32_execution);
-  m.def("is_allowed", &tensorflow::tf32_execution_allowed);
+#include <atomic>
+
+namespace tensorflow {
+
+// Whether TensorFloat-32 should be used where supported.
+static std::atomic<bool> tensor_float_32_enabled{true};
+
+void enable_tensor_float_32_execution(bool enabled) {
+  tensor_float_32_enabled = enabled;
 }
+
+bool tensor_float_32_execution_enabled() { return tensor_float_32_enabled; }
+
+}  // namespace tensorflow
