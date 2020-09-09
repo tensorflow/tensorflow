@@ -149,10 +149,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
 #if defined(PLATFORM_WINDOWS)
   ptxas_binary_name += ".exe";
 #endif
+  const std::string preferred_ptxas_dir =
+      tensorflow::io::JoinPath(options.preferred_cuda_dir, "bin");
 
-  for (const std::string& cuda_root :
-       tensorflow::CandidateCudaRoots(options.preferred_cuda_dir)) {
-    ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", ptxas_binary_name);
+  for (const std::string& candidate_ptxas_dir :
+       tensorflow::CandidateCudaRoots(preferred_ptxas_dir)) {
+    ptxas_path = tensorflow::io::JoinPath(candidate_ptxas_dir, ptxas_binary_name);
     VLOG(2) << "Looking for ptxas at " << ptxas_path;
     if (env->FileExists(ptxas_path).ok()) {
       break;
