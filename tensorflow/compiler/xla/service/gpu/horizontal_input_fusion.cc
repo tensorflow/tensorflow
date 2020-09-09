@@ -33,8 +33,8 @@ namespace {
 
 // Gets the representative input shape of the multi-output fusion.
 Shape GetInputShapeForMultiOutputFusion(const HloInstruction& instr) {
-  // Get the major node used in the emitter.
-  const HloInstruction* real_hero = GetMajorNodeForMultiOutputFusion(instr);
+  // Get the HLO that determines the emitter used for lowering.
+  const HloInstruction* real_hero = GetRealHeroForMultiOutputFusion(instr);
   if (real_hero->operands().empty()) {
     // Simply return an empty shape if the representative node has no input
     // operands.
@@ -118,15 +118,13 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
       HloInstruction* fused = candidates[j];
       if (ShapesCompatibleForMultiOutputFusion(*fusion_anchor, *fused) &&
           !FusionWouldBeTooLarge(*fusion_anchor, *fused)) {
-        VLOG(3) << absl::StrCat("Fuse ", fused->ToString(), " into ",
-                                fusion_anchor->ToString());
+        VLOG(3) << "Fuse " << fused->ToString() << " into " << fusion_anchor->ToString();
         fusion_anchor->MergeFusionInstructionIntoMultiOutput(fused);
         changed = true;
       } else {
         // Update the `fusion_anchor_id` since `fused` is either not
         // compatible or not beneficial to be fused with current fusion anchor.
-        VLOG(3) << absl::StrCat(j - fusion_anchor_id - 1,
-                                " instructions are fused");
+        VLOG(3) << j - fusion_anchor_id - 1 << " instructions are fused.";
         fusion_anchor_id = j;
       }
     }
