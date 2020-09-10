@@ -69,6 +69,7 @@ cuda_py_test(
         # exported as part of the pip package yet so
         # this test is disabled.
         "no_pip",
+        "no_windows",  # b/168218876
     ],
     deps = [
         ":_unified_api",
