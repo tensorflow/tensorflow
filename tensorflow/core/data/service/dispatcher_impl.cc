@@ -119,6 +119,7 @@ Status DataServiceDispatcherImpl::Start() {
   if (!config_.fault_tolerant_mode()) {
     LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
                  "not be able to recover its state on restart.";
+    started_ = true;
     return Status::OK();
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
@@ -142,11 +143,13 @@ Status DataServiceDispatcherImpl::Start() {
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
+  started_ = true;
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(3) << "Received worker heartbeat request from worker "
           << request->worker_address();
   mutex_lock l(mu_);
@@ -205,6 +208,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
 Status DataServiceDispatcherImpl::WorkerUpdate(
     const WorkerUpdateRequest* request, WorkerUpdateResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   for (auto& update : request->updates()) {
     int64 task_id = update.task_id();
@@ -228,6 +232,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
 
 Status DataServiceDispatcherImpl::GetDatasetDef(
     const GetDatasetDefRequest* request, GetDatasetDefResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
@@ -241,6 +246,7 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
 Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   uint64 fingerprint;
   const GraphDef& graph = request->dataset().graph();
   TF_RETURN_IF_ERROR(HashGraph(graph, &fingerprint));
@@ -286,6 +292,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
 
 Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
                                             CreateJobResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(3) << "Received create job request for dataset id "
           << request->dataset_id();
   ProcessingMode processing_mode = ProcessingMode(request->processing_mode());
@@ -309,6 +316,7 @@ Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
 
 Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(3) << "Received get or create job request for dataset id "
           << request->dataset_id() << " with name " << request->job_name()
           << " and index " << request->job_name_index();
@@ -348,6 +356,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
 Status DataServiceDispatcherImpl::ReleaseJobClient(
     const ReleaseJobClientRequest* request,
     ReleaseJobClientResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   int64 job_client_id = request->job_client_id();
   std::shared_ptr<const Job> job;
@@ -554,6 +563,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
 
 Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
                                            GetTasksResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
   std::shared_ptr<const Job> job;
@@ -574,6 +584,7 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
 
 Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
                                              GetWorkersResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(3) << "Enter GetWorkers";
   std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
@@ -583,6 +594,14 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   }
   VLOG(3) << "Returning list of " << response->workers_size()
           << " workers from GetWorkers";
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::CheckStarted() LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  if (!started_) {
+    return errors::Unavailable("Dispatcher has not started yet.");
+  }
   return Status::OK();
 }
 
