@@ -195,8 +195,25 @@ def get_optimizer_experimental_options():
 def set_optimizer_experimental_options(options):
   """Set experimental optimizer options.
 
-  Note that optimizations are only applied in graph mode, (within tf.function).
-  In addition, as these are experimental options, the list is subject to change.
+  **Note:** Optimizations are only applied in graph mode,
+  (within `tf.function`).
+
+  By default all of the optimizers are set to False.
+  In order to enable the optimizer of your choice specify it as a dictionry
+  in the parameters. There are various optimizers that you may enable.
+  To view all of the options head to
+  [TensorFlow graph optimization with Grappler]
+  (https://www.tensorflow.org/guide/graph_optimization).
+  Be aware, as these are experimental options, the list is subject to change.
+
+  For example:
+
+  >>> tf.config.optimizer.get_experimental_options()
+  {'disable_model_pruning': False, 'disable_meta_optimizer': False}
+  >>> tf.config.optimizer.set_experimental_options({'constant_folding': True})
+  >>> tf.config.optimizer.get_experimental_options()
+  {'constant_folding': True, 'disable_model_pruning': False,
+  'disable_meta_optimizer': False}
 
   Args:
     options: Dictionary of experimental optimizer options to configure.
