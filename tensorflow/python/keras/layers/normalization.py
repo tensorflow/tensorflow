@@ -330,13 +330,13 @@ class BatchNormalizationBase(Layer):
       # output back to its original shape accordingly.
       if self._USE_V2_BEHAVIOR:
         if self.fused is None:
-          self.fused = (ndims == 4) or (ndims == 5)
-        elif self.fused and (ndims != 4 and ndims != 5):
+          self.fused = ndims in (4, 5)
+        elif self.fused and ndims not in (4, 5):
           raise ValueError('Batch normalization layers with fused=True only '
                            'support 4D or 5D input tensors.')
       else:
         assert self.fused is not None
-        self.fused = ((ndims == 4 or ndims == 5) and self._fused_can_be_used())
+        self.fused = (ndims in (4, 5) and self._fused_can_be_used())
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping

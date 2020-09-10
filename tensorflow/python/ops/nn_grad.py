@@ -900,8 +900,8 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     elif data_format == b"NCDHW":
       x = array_ops.transpose(x, [0, 2, 3, 4, 1])
       grad_y = array_ops.transpose(grad_y, [0, 2, 3, 4, 1])
-    target_data_format = ("NHWC" if data_format == b"NCHW" or
-                          data_format == b"NHWC" else "NDHWC")
+    target_data_format = ("NHWC" if data_format in (b"NCHW", b"NHWC")
+                          else "NDHWC")
     args = {
         "y_backprop": grad_y,
         "x": x,
