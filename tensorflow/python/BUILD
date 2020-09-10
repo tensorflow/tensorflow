@@ -5938,6 +5938,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/experimental/ops",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
@@ -7431,6 +7433,36 @@ tf_python_pybind_extension(
     ],
 )
 
+cc_library(
+    name = "unified_api_pywrap_required_headers",
+    textual_hdrs = [
+        "lib/core/numpy.h",
+        "lib/core/py_exception_registry.h",
+        "lib/core/pybind11_status.h",
+        "lib/core/bfloat16.h",
+        "lib/core/ndarray_tensor.h",
+        "lib/core/ndarray_tensor_bridge.h",
+        "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime:core_cpu_lib_headers",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
+    ],
+    visibility = ["//tensorflow/python/framework/experimental:__pkg__"],
+    deps = [
+        "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/core/framework:pywrap_required_hdrs",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
 py_library(
     name = "pywrap_tfe",
     srcs = ["pywrap_tfe.py"],
@@ -7445,6 +7477,7 @@ tf_python_pybind_extension(
     name = "_pywrap_tfe",
     srcs = ["tfe_wrapper.cc"],
     hdrs = [
+        "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
         "util/util.h",
         ":py_exception_registry_hdr",
@@ -7460,6 +7493,7 @@ tf_python_pybind_extension(
     deps = [
         ":safe_pyobject_ptr",
         ":pybind11_lib",
+        "//third_party/py/numpy:headers",
         ":pybind11_status",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",

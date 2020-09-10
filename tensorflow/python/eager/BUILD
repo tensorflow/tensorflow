@@ -113,6 +113,7 @@ cuda_py_test(
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
+        "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
     ],

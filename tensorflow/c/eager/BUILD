@@ -101,6 +101,7 @@ filegroup(
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
+        "c_api_unified_experimental_internal.h",
         "dlpack.h",
         "immediate_execution_context.h",
         "immediate_execution_operation.h",

@@ -17,24 +17,12 @@ tf_python_pybind_extension(
     features = ["-layering_check"],
     module_name = "_unified_api",
     deps = [
-        "//tensorflow/c/eager:abstract_context",
-        "//tensorflow/c/eager:abstract_function",
-        "//tensorflow/c/eager:abstract_operation",
-        "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:c_api_experimental",
-        "//tensorflow/c/eager:c_api_unified_internal",
-        "//tensorflow/c/eager:immediate_execution_context",
-        "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
-        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
-        "//tensorflow/python:safe_ptr",
-        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python:unified_api_pywrap_required_headers",
         "@pybind11",
     ],
 )
@@ -44,11 +32,13 @@ tf_python_pybind_extension(
     srcs = ["math_ops.cc"],
     module_name = "_math_ops",
     deps = [
-        "//tensorflow/c/eager:abstract_context",
-        "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python:unified_api_pywrap_required_headers",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -75,8 +65,10 @@ cuda_py_test(
     size = "small",
     srcs = ["unified_api_test.py"],
     tags = [
-        "no_oss",  # TODO(srbs): Enable.
-        "no_pip",  # TODO(srbs): Enable.
+        # Note(srbs): These python bindings are not
+        # exported as part of the pip package yet so
+        # this test is disabled.
+        "no_pip",
     ],
     deps = [
         ":_unified_api",
