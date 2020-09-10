@@ -12,29 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Thread-local context manager stack."""
+"""Thread-local stack."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
-from tensorflow.python.framework.experimental import thread_local_stack
-
-_default_ctx_stack = thread_local_stack.ThreadLocalStack()
+import threading
 
 
-def get_default():
-  """Returns the default execution context."""
-  return _default_ctx_stack.peek()
+# TODO(srbs): Move this to C++.
+class ThreadLocalStack(threading.local):
+  """A thread-local stack of objects for providing implicit defaults."""
 
+  def __init__(self):
+    super(ThreadLocalStack, self).__init__()
+    self._stack = []
 
-@contextlib.contextmanager
-def set_default(ctx):
-  """Returns a contextmanager with `ctx` as the default execution context."""
-  try:
-    _default_ctx_stack.push(ctx)
-    yield
-  finally:
-    _default_ctx_stack.pop()
+  def peek(self):
+    return self._stack[-1] if self._stack else None
+
+  def push(self, ctx):
+    return self._stack.append(ctx)
+
+  def pop(self):
+    self._stack.pop()

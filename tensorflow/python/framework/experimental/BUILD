@@ -56,8 +56,14 @@ py_library(
 )
 
 py_library(
+    name = "thread_local_stack",
+    srcs = ["thread_local_stack.py"],
+)
+
+py_library(
     name = "context_stack",
     srcs = ["context_stack.py"],
+    deps = [":thread_local_stack"],
 )
 
 cuda_py_test(
