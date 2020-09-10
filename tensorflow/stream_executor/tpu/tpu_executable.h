@@ -46,6 +46,8 @@ class TpuExecutable : public TpuExecutableInterface {
 
   const XLA_TpuProgram* core_program() const { return core_program_; }
 
+  absl::string_view fingerprint() const override;
+
  private:
   Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,

@@ -137,6 +137,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuCompiler_Compile);
   TFTPU_SET_FN(executor_fn, TpuCompiler_ShapeSize);
   TFTPU_SET_FN(executor_fn, TpuExecutable_ExecuteAsyncOnStream);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_Fingerprint);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Free);
 
   TFTPU_SET_FN(executor_fn, XlaShapeToTpuShapeRepresentation);
