@@ -27,14 +27,13 @@ limitations under the License.
 
 namespace mlir {
 namespace kernel_gen {
-namespace tf_framework {
+namespace transforms {
 namespace {
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-class TestTFFrameworkToLLVMPass
-    : public TestTFFrameworkLegalizeToLLVMPassBase<TestTFFrameworkToLLVMPass> {
+class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<LLVM::LLVMDialect>();
   }
@@ -52,7 +51,8 @@ class TestTFFrameworkToLLVMPass
     // Populate patterns.
     OwningRewritePatternList patterns;
     populateStdToLLVMConversionPatterns(type_converter, patterns);
-    PopulateTFFrameworkToLLVMConversionPatterns(&type_converter, &patterns);
+    tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
+                                                              &patterns);
     populateGpuToLLVMConversionPatterns(type_converter, patterns, "gpu.binary");
     lmhlo::PopulateLhloToLLVMConversionPatterns(&type_converter, &patterns);
 
@@ -71,11 +71,10 @@ class TestTFFrameworkToLLVMPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> >
-createTestTFFrameworkLegalizeToLLVMPass() {
-  return std::make_unique<TestTFFrameworkToLLVMPass>();
+std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass() {
+  return std::make_unique<TFKernelToLLVMPass>();
 }
 
-}  // namespace tf_framework
+}  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir
