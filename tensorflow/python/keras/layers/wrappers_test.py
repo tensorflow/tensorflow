@@ -471,7 +471,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     inputs = keras.Input(batch_shape=(1, None, 32, 32, 1))
     outputs = layer(inputs)
     # Make sure the batch dim is not lost after array_ops.reshape.
-    self.assertEqual(outputs.shape, [1, None, 30, 30, 16])
+    self.assertListEqual(outputs.shape.as_list(), [1, None, 30, 30, 16])
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
