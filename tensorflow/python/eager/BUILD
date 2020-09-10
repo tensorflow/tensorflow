@@ -80,6 +80,36 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "pywrap_tensor_test_util",
+    testonly = True,
+    srcs = ["pywrap_tensor_test_util.cc"],
+    module_name = "pywrap_tensor_test_util",
+    deps = [
+        ":pywrap_tfe_lib",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/python:pybind11_lib",
+        "@pybind11",
+    ],
+)
+
+cuda_py_test(
+    name = "pywrap_tensor_test",
+    size = "small",
+    srcs = ["pywrap_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",  # TODO(b/168051787): Enable.
+        "no_pip",  # TODO(b/168051787): Enable.
+    ],
+    deps = [
+        ":pywrap_tensor_test_util",
+        ":test",
+        "//third_party/py/numpy",
+    ],
+)
+
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
@@ -452,7 +482,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 15,
     tags = [
-        "nogpu",  # TODO(b/162544929): segfault
         "nomac",  # b/157056289
     ],
     deps = [

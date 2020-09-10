@@ -25,13 +25,14 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.ops import math_ops
@@ -224,7 +225,7 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
     np.random.seed(_RANDOM_SEED)
     random_seed.set_random_seed(_RANDOM_SEED)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
           optimizer_fn=optimizer_combinations.optimizers_v2,
@@ -277,4 +278,4 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
 
 
 if __name__ == '__main__':
-  combinations.main()
+  ds_combinations.main()

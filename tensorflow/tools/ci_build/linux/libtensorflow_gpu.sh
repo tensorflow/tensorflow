@@ -19,4 +19,5 @@
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export TF_NEED_CUDA=1
+export TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
 "${SCRIPT_DIR}/libtensorflow_docker.sh"

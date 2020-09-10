@@ -19,12 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -32,13 +32,13 @@ from tensorflow.python.platform import test
 
 class OptimizerTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           combinations.combine(
               distribution=strategy_combinations.multidevice_strategies,
               mode=["eager"],
           ),
-          combinations.concat(
+          ds_combinations.concat(
               combinations.combine(
                   experimental_aggregate_gradients=True,
                   expected=[[[-0.3, -0.3], [-0.3, -0.3]]]),
@@ -71,7 +71,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(optimize(), expected)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.one_device_strategy,
           mode=["eager"],
@@ -98,7 +98,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(optimize(), [[-0.1, -0.1]])
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(distribution=[
           strategy_combinations.central_storage_strategy_with_gpu_and_cpu
       ]))

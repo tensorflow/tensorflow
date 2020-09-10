@@ -2298,6 +2298,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def weights(self):
     """Returns the list of all layer variables/weights.
 
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
+
     Returns:
       A list of variables.
     """

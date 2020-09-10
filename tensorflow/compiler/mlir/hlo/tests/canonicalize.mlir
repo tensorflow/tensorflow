@@ -665,3 +665,172 @@ func @fold_select_vector(%arg0 : tensor<4xf32>, %arg1 : tensor<4xf32>) -> tensor
   return %1 : tensor<4xf32>
 }
 
+// CHECK-LABEL: gather_to_slice
+func @gather_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<3x6x5xf32> {
+  %0 = constant dense<[1, 2]> : tensor<2xi32>
+  %1 = "mhlo.gather"(%arg0, %0) {
+    dimension_numbers = {collapsed_slice_dims = dense<> : tensor<0xi64>,
+                         index_vector_dim = 0 : i64,
+                         offset_dims = dense<[0, 1, 2]> : tensor<3xi64>,
+                         start_index_map = dense<[0, 2]> : tensor<2xi64>},
+    indices_are_sorted = false,
+    slice_sizes = dense<[3, 6, 5]> : tensor<3xi64>} : (tensor<5x6x7xf32>, tensor<2xi32>) -> tensor<3x6x5xf32>
+  return %1 : tensor<3x6x5xf32>
+  // CHECK:  %[[RET:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[4, 6, 7]> : tensor<3xi64>, start_indices = dense<[1, 0, 2]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<5x6x7xf32>) -> tensor<3x6x5xf32>
+  // CHECK: return %[[RET]] : tensor<3x6x5xf32>
+}
+
+// CHECK-LABEL: gather_scalar_index_to_slice
+func @gather_scalar_index_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<5x6x4xf32> {
+  %0 = constant dense<1> : tensor<i32>
+  %1 = "mhlo.gather"(%arg0, %0) {
+    dimension_numbers = {collapsed_slice_dims = dense<> : tensor<0xi64>,
+                         index_vector_dim = 0 : i64,
+                         offset_dims = dense<[0, 1, 2]> : tensor<3xi64>,
+                         start_index_map = dense<[2]> : tensor<1xi64>},
+    indices_are_sorted = false,
+    slice_sizes = dense<[5, 6, 4]> : tensor<3xi64>} : (tensor<5x6x7xf32>, tensor<i32>) -> tensor<5x6x4xf32>
+  return %1 : tensor<5x6x4xf32>
+  // CHECK:  %[[RET:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[5, 6, 5]> : tensor<3xi64>, start_indices = dense<[0, 0, 1]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<5x6x7xf32>) -> tensor<5x6x4xf32>
+  // CHECK: return %[[RET]] : tensor<5x6x4xf32>
+}
+
+// CHECK-LABEL: func @fold_and_same
+func @fold_and_same(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = "mhlo.and"(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %arg0
+  return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_and_ones
+func @fold_and_ones(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<-1> : tensor<4xi32>
+  %1 = "mhlo.and"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %arg0
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_and_zeros
+func @fold_and_zeros(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<0> : tensor<4xi32>
+  %1 = "mhlo.and"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %0
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_and_constant
+func @fold_and_constant(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<7> : tensor<4xi32>
+  // CHECK: mhlo.and
+  %1 = "mhlo.and"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_and_constants
+func @fold_and_constants() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[0, 1, 6, 3]> : tensor<4xi32>
+  %1 = mhlo.constant dense<[7, 3, 7, 2]> : tensor<4xi32>
+  %2 = "mhlo.and"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: %0 = mhlo.constant dense<[0, 1, 6, 2]> : tensor<4xi32>
+  // CHECK: return %0
+  return %2 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_or_same
+func @fold_or_same(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = "mhlo.or"(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %arg0
+  return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_or_ones
+func @fold_or_ones(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<-1> : tensor<4xi32>
+  %1 = "mhlo.or"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %0
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_or_zeros
+func @fold_or_zeros(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<0> : tensor<4xi32>
+  %1 = "mhlo.or"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %arg0
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_or_constant
+func @fold_or_constant(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<7> : tensor<4xi32>
+  // CHECK: mhlo.or
+  %1 = "mhlo.or"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_or_zeros_right
+func @fold_or_zeros_right(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<0> : tensor<4xi32>
+  %1 = "mhlo.or"(%arg0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %arg0
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_or_zeros_constants
+func @fold_or_zeros_constants() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[0, 1, 6, 3]> : tensor<4xi32>
+  %1 = mhlo.constant dense<[7, 3, 7, 2]> : tensor<4xi32>
+  %2 = "mhlo.or"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: %0 = mhlo.constant dense<[7, 3, 7, 3]> : tensor<4xi32>
+  // CHECK: return %0
+  return %2 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_xor_same
+func @fold_xor_same(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = "mhlo.xor"(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: %0 = mhlo.constant dense<0> : tensor<4xi32>
+  // CHECK: return %0
+  return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_xor_ones_left
+func @fold_xor_ones_left(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<-1> : tensor<4xi32>
+  // CHECK: mhlo.xor
+  %1 = "mhlo.xor"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_xor_ones_right
+func @fold_xor_ones_right(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<-1> : tensor<4xi32>
+  // CHECK: mhlo.xor
+  %1 = "mhlo.xor"(%arg0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_xor_zeros_left
+func @fold_xor_zeros_left(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<0> : tensor<4xi32>
+  %1 = "mhlo.xor"(%0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %arg0
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_xor_zeros_right
+func @fold_xor_zeros_right(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.constant dense<0> : tensor<4xi32>
+  %1 = "mhlo.xor"(%arg0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %arg0
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_xor_zeros_constants
+func @fold_xor_zeros_constants() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[0, 1, 6, 3]> : tensor<4xi32>
+  %1 = mhlo.constant dense<[7, 3, 7, 2]> : tensor<4xi32>
+  %2 = "mhlo.xor"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: %0 = mhlo.constant dense<[7, 2, 1, 1]> : tensor<4xi32>
+  // CHECK: return %0
+  return %2 : tensor<4xi32>
+}

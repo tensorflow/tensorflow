@@ -98,6 +98,8 @@ message OpStats {
   // The database for the op metrics collected from the device over the entire
   // profiling session including incomplete steps.
   OpMetricsDb device_op_metrics_db = 2;
+  // The result for the HLO-metric database over the complete steps only.
+  OpMetricsDb hlo_metrics_db_complete_steps_only = 10;
   // Performance environment of the op metrics collected.
   PerfEnv perf_env = 3;
   // The database of step sequences.

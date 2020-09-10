@@ -255,6 +255,7 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":framework_combinations",
         ":no_contrib",
     ],
 )
@@ -794,10 +795,10 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
-    name = "_pywrap_tf32_execution",
-    srcs = ["util/tf32.cc"],
-    hdrs = ["//tensorflow/core/platform:tf32_hdr"],
-    module_name = "_pywrap_tf32_execution",
+    name = "_pywrap_tensor_float_32_execution",
+    srcs = ["util/tensor_float_32.cc"],
+    hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
+    module_name = "_pywrap_tensor_float_32_execution",
     deps = [
         "@pybind11",
     ],
@@ -2167,6 +2168,7 @@ py_library(
     name = "is_mlir_bridge_test_true",
     srcs = ["framework/is_mlir_bridge_test_true.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility,
 )
 
 # Including this as a dependency will result in tests to use TFRT.
@@ -5555,7 +5557,7 @@ py_library(
         "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
-        ":_pywrap_tf32_execution",
+        ":_pywrap_tensor_float_32_execution",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
@@ -5971,7 +5973,7 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tf32_utils"]),
+    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 # ** Targets for Windows build (start) **
@@ -6024,7 +6026,7 @@ filegroup(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
-        "//tensorflow/core/platform:tf32_utils",  # tf32
+        "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler

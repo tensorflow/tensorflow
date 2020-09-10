@@ -166,6 +166,57 @@ static LogicalResult Verify(DotGeneralOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// GatherOp
+//===----------------------------------------------------------------------===//
+
+// Converts gather ops to slice ops in case we have a single set of constant
+// indices.
+struct GatherSlice : public OpRewritePattern<GatherOp> {
+  using OpRewritePattern<GatherOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GatherOp gather,
+                                PatternRewriter& rewriter) const override {
+    DenseIntElementsAttr index;
+    if (!matchPattern(gather.start_indices(), m_Constant(&index)))
+      return failure();
+
+    const auto& dnums = gather.dimension_numbers();
+    if (dnums.collapsed_slice_dims().getNumElements() != 0 ||
+        dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
+      return failure();
+
+    // TODO(tberghammer): Remove when the verifier catches this case what is
+    // invalid if all previous condition holds.
+    if (index.getNumElements() != dnums.start_index_map().getNumElements())
+      return failure();
+
+    auto slice_end =
+        llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
+    llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
+    for (auto it : llvm::zip(dnums.start_index_map().getIntValues(),
+                             index.getIntValues())) {
+      int64_t map_index = std::get<0>(it).getSExtValue();
+      int64_t offset = std::get<1>(it).getSExtValue();
+      slice_start[map_index] += offset;
+      slice_end[map_index] += offset;
+    }
+
+    llvm::SmallVector<int64_t, 8> slice_stride(slice_end.size(), 1);
+    rewriter.replaceOpWithNewOp<SliceOp>(
+        gather, gather.getType(), gather.getOperand(0),
+        GetI64ElementsAttr(slice_start, &rewriter),
+        GetI64ElementsAttr(slice_end, &rewriter),
+        GetI64ElementsAttr(slice_stride, &rewriter));
+    return success();
+  }
+};
+
+void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<GatherSlice>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // GetDimensionSizeOp
 //===----------------------------------------------------------------------===//
 
@@ -1214,6 +1265,130 @@ static LogicalResult Verify(InfeedOp op) {
                                "be of token type, but got "
                             << subtypes[1];
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Logical Ops
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto rType = getType().cast<ShapedType>();
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return rhs();
+    }
+
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhsVal;
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return lhs();
+    }
+
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhsVal;
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) & std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
+}
+
+OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto rType = getType().cast<ShapedType>();
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return lhsVal;
+    }
+
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return rhsVal;
+    }
+
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) | std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
+}
+
+OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
+  auto rType = getType().cast<ShapedType>();
+  if (lhs() == rhs()) {
+    return DenseIntElementsAttr::get(rType, 0);
+  }
+
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) ^ std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
 }
 
 //===----------------------------------------------------------------------===//

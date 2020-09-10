@@ -379,6 +379,8 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
     HLO_PredOrIntTensor:$lhs,
     HLO_PredOrIntTensor:$rhs
   );
+
+  let hasFolder = 1;
 }
 
 def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and">, BASE_HLO_AndOp;
@@ -1065,6 +1067,8 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasCanonicalizer = 1;
 }
 
 def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,

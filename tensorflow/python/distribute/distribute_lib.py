@@ -872,13 +872,13 @@ class StrategyBase(object):
       `model.evaluate`, `model.predict` and `model.save` can all be called
       inside or outside the scope.
     * The following can be either inside or outside the scope:
-      ** Creating the input datasets
-      ** Defining `tf.function`s that represent your training step
-      ** Saving APIs such as `tf.saved_model.save`. Loading creates variables,
-         so that should go inside the scope if you want to train the model in a
-         distributed way.
-      ** Checkpoint saving. As mentioned above - `checkpoint.restore` may
-         sometimes need to be inside scope if it creates variables.
+        * Creating the input datasets
+        * Defining `tf.function`s that represent your training step
+        * Saving APIs such as `tf.saved_model.save`. Loading creates variables,
+          so that should go inside the scope if you want to train the model in a
+          distributed way.
+        * Checkpoint saving. As mentioned above - `checkpoint.restore` may
+          sometimes need to be inside scope if it creates variables.
 
     Returns:
       A context manager.

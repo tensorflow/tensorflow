@@ -21,8 +21,9 @@ import os
 import sys
 
 from absl.testing import parameterized
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
@@ -33,7 +34,7 @@ from tensorflow.python.platform import test
 class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
                           parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['graph'],
           required_gpus=[0, 1],

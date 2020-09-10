@@ -321,7 +321,8 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
                       DLDataTypeToPrimitiveType(dlmt->dl_tensor.dtype));
 
   std::vector<int64> minor_to_major;
-  if (dlmt->dl_tensor.strides && !absl::c_find(dimensions, 0)) {
+  if (dlmt->dl_tensor.strides &&
+      absl::c_find(dimensions, 0) == dimensions.end()) {
     absl::Span<int64 const> strides(
         reinterpret_cast<int64*>(dlmt->dl_tensor.strides),
         dlmt->dl_tensor.ndim);

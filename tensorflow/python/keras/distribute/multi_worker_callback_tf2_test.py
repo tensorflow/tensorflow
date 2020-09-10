@@ -24,10 +24,11 @@ import os
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.lib.io import file_io
@@ -79,7 +80,7 @@ def _get_task_config():
 
 class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['eager'],
           file_format=['h5', 'tf'],
@@ -137,7 +138,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, file_format))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_model_checkpoint_works_with_same_file_path(self, mode):
 
     def proc_model_checkpoint_works_with_same_file_path(
@@ -163,7 +164,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, saving_filepath))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_backupandrestore_checkpoint_works_with_interruption(self, mode):
 
     class InterruptingCallback(callbacks.Callback):
@@ -228,7 +229,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, saving_filepath))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_saves_on_chief_but_not_otherwise(self, mode):
 
     def proc_tensorboard_saves_on_chief_but_not_otherwise(test_obj):
@@ -266,7 +267,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self,))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_can_still_save_to_temp_even_if_it_exists(self, mode):
 
     def proc_tensorboard_can_still_save_to_temp_even_if_it_exists(test_obj):
@@ -295,7 +296,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self,))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_works_with_same_file_path(self, mode):
 
     def proc_tensorboard_works_with_same_file_path(test_obj, saving_filepath):
@@ -324,7 +325,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, saving_filepath))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_early_stopping(self, mode):
 
     def proc_early_stopping(test_obj):

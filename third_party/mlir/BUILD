@@ -599,7 +599,6 @@ cc_library(
         ":SCFToGPUPass",
         ":SCFToStandard",
         ":SPIRVToLLVM",
-        ":ShapeToSCF",
         ":ShapeToStandard",
         ":StandardToLLVM",
         ":StandardToSPIRVTransforms",
@@ -804,30 +803,12 @@ cc_library(
     includes = ["include"],
     deps = [
         ":ConversionPassIncGen",
-        ":Pass",
-        ":SCFDialect",
-        ":Shape",
-        ":StandardOps",
-        ":Support",
-        ":Transforms",
-    ],
-)
-
-cc_library(
-    name = "ShapeToSCF",
-    srcs = glob([
-        "lib/Conversion/ShapeToSCF/*.cpp",
-        "lib/Conversion/ShapeToSCF/*.h",
-    ]) + ["lib/Conversion/PassDetail.h"],
-    hdrs = ["include/mlir/Conversion/ShapeToSCF/ShapeToSCF.h"],
-    includes = ["include"],
-    deps = [
-        ":ConversionPassIncGen",
         ":IR",
         ":Pass",
         ":SCFDialect",
         ":Shape",
         ":StandardOps",
+        ":Support",
         ":Transforms",
     ],
 )
@@ -2899,7 +2880,6 @@ cc_library(
         ":Parser",
         ":Pass",
         ":SCFTransforms",
-        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":StandardOpsTransforms",
@@ -3007,7 +2987,6 @@ cc_library(
         ":SPIRVPassIncGen",
         ":SPIRVToLLVM",
         ":Shape",
-        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":ShapeTransformsPassIncGen",

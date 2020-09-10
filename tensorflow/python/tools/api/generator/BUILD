@@ -85,6 +85,7 @@ py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/tools/api/generator:create_python_api",
     ],

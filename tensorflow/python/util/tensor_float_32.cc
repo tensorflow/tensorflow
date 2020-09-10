@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/core/platform/tf32_utils.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
-PYBIND11_MODULE(_pywrap_tf32_execution, m) {
-  m.def("allow", &tensorflow::allow_tf32_execution);
-  m.def("is_allowed", &tensorflow::tf32_execution_allowed);
+PYBIND11_MODULE(_pywrap_tensor_float_32_execution, m) {
+  m.def("enable", &tensorflow::enable_tensor_float_32_execution);
+  m.def("is_enabled", &tensorflow::tensor_float_32_execution_enabled);
 }

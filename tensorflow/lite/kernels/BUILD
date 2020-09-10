@@ -258,11 +258,12 @@ cc_library(
         "eigen_support.h",
     ],
     copts = tflite_copts() + EXTRA_EIGEN_COPTS,
+    visibility = ["//visibility:private"],
     deps = [
         ":op_macros",
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:optimized",
+        "//tensorflow/lite/kernels/internal:optimized_eigen",
         "//third_party/eigen3",
     ],
 )
@@ -274,7 +275,7 @@ cc_test(
     deps = [
         ":eigen_support",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:optimized",
+        "//tensorflow/lite/kernels/internal:optimized_eigen",
         "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
@@ -604,7 +605,6 @@ BUILTIN_KERNEL_DEPS = [
     ":cpu_backend_context",
     ":cpu_backend_gemm",
     ":cpu_backend_threadpool",
-    ":eigen_support",
     ":kernel_util",
     ":lstm_eval",
     ":lstm_shared",
@@ -621,7 +621,6 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:compatibility",
     "//tensorflow/lite/kernels/internal:cpu_check",
     "//tensorflow/lite/kernels/internal:kernel_utils",
-    "//tensorflow/lite/kernels/internal:optimized",
     "//tensorflow/lite/kernels/internal:optimized_base",
     "//tensorflow/lite/kernels/internal:quantization_util",
     "//tensorflow/lite/kernels/internal:reference_base",
@@ -629,7 +628,14 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:tensor",
     "//tensorflow/lite/kernels/internal:tensor_utils",
     "//tensorflow/lite/kernels/internal:types",
-]
+] + select({
+    ":tflite_with_ruy_explicit_true": [],
+    # Eigen multi-therading optimizations are only used when ruy is disabled.
+    "//conditions:default": [
+        ":eigen_support",
+        "//tensorflow/lite/kernels/internal:optimized_eigen",
+    ],
+})
 
 cc_library(
     name = "builtin_op_kernels",

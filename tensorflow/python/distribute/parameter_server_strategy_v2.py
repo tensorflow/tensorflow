@@ -21,17 +21,19 @@ This is currently under development and the API is subject to change.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+import os
 from absl import logging
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
@@ -53,6 +55,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   def __init__(self, cluster_resolver, variable_partitioner=None):
     """Initializes the V2 parameter server strategy.
 
+    This also connects to the remote server cluster.
+
     Args:
       cluster_resolver: a `tf.distribute.cluster_resolver.ClusterResolver`
         object.
@@ -60,27 +64,25 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
         fn(shape, dtype)`, where `num_partitions` is a list/tuple representing
         the number of partitions on each axis, and `shape` and `dtype` are of
         types `tf.TensorShape` and `tf.dtypes.Dtype`. If None, variables will
-        not be partitioned.
-        * `variable_partitioner` will be called for all variables created under
-        strategy `scope` to instruct how the variables should be partitioned.
-        Variables will be partitioned if there are more than one partitions
-        along the partitioning axis, otherwise it falls back to normal
-        `tf.Variable`.
-        * Only the first / outermost axis partitioning is supported, namely,
-        elements in `num_partitions` must be 1 other than the first element.
-        * Partitioner like `min_max_variable_partitioner`,
+        not be partitioned. * `variable_partitioner` will be called for all
+        variables created under strategy `scope` to instruct how the variables
+        should be partitioned. Variables will be partitioned if there are more
+        than one partitions along the partitioning axis, otherwise it falls back
+        to normal `tf.Variable`. * Only the first / outermost axis partitioning
+        is supported, namely, elements in `num_partitions` must be 1 other than
+        the first element. * Partitioner like `min_max_variable_partitioner`,
         `variable_axis_size_partitioner` and `fixed_size_partitioner` are also
-        supported since they conform to the required signature.
-        * Div partition strategy is used to partition variables.
-        Assuming we assign consecutive integer ids along the first axis of a
-        variable, then ids are assigned to shards in a contiguous manner, while
-        attempting to keep each shard size identical. If the ids do not evenly
-        divide the number of shards, each of the first several shards will be
-        assigned one more id. For instance, a variable whose first dimension is
-        13 has 13 ids, and they are split across 5 shards as:
-        `[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`.
-        * Variables created under `strategy.extended.colocate_vars_with` will
-        not be partitioned, e.g, optimizer's slot variables.
+        supported since they conform to the required signature. * Div partition
+        strategy is used to partition variables. Assuming we assign consecutive
+        integer ids along the first axis of a variable, then ids are assigned to
+        shards in a contiguous manner, while attempting to keep each shard size
+        identical. If the ids do not evenly divide the number of shards, each of
+        the first several shards will be assigned one more id. For instance, a
+        variable whose first dimension is
+        13 has 13 ids, and they are split across 5 shards as: `[[0, 1, 2], [3,
+          4, 5], [6, 7, 8], [9, 10], [11, 12]]`. * Variables created under
+          `strategy.extended.colocate_vars_with` will not be partitioned, e.g,
+          optimizer's slot variables.
     """
     self._cluster_resolver = cluster_resolver
     self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
@@ -89,7 +91,39 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     logging.info(
         "ParameterServerStrategyV2 is initialized with cluster_spec: "
         "%s", cluster_resolver.cluster_spec())
+
+    # TODO(b/167894802): Make chief, worker, and ps names customizable.
+    self._connect_to_cluster(client_name="chief")
     super(ParameterServerStrategyV2, self).__init__(self._extended)
+
+  def _connect_to_cluster(self, client_name):
+    if client_name in ["worker", "ps"]:
+      raise ValueError("Client name should not be 'worker' or 'ps'.")
+    cluster_spec = self._cluster_resolver.cluster_spec()
+    self._num_workers = len(cluster_spec.as_dict().get("worker", ()))
+    self._num_ps = len(cluster_spec.as_dict().get("ps", ()))
+
+    device_filters = server_lib.ClusterDeviceFilters()
+    # For any worker, only the devices on PS and chief nodes are visible
+    for i in range(self._num_workers):
+      device_filters.set_device_filters(
+          "worker", i, ["/job:ps", "/job:%s" % client_name])
+    # Similarly for any ps, only the devices on workers and chief are visible
+    for i in range(self._num_ps):
+      device_filters.set_device_filters(
+          "ps", i, ["/job:worker", "/job:%s" % client_name])
+
+    # Allow at most one outstanding RPC for each worker at a certain time. This
+    # is to simplify worker failure handling in the runtime
+    os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"
+
+    logging.info("%s is now connecting to cluster with cluster_spec: %r",
+                 self.__class__.__name__, cluster_spec)
+    remote.connect_to_cluster(
+        cluster_spec,
+        job_name=client_name,
+        protocol=self._cluster_resolver.rpc_layer,
+        cluster_device_filters=device_filters)
 
   def _verify_args_and_config(self, cluster_resolver):
     if not cluster_resolver.cluster_spec():

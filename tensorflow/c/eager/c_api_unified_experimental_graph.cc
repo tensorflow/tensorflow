@@ -365,9 +365,10 @@ class GraphContext : public TracingContext {
     }
 
     auto s = TF_NewStatus();
-    func->func = TF_GraphToFunction(
-        graph_.get(), name_, 0, -1, nullptr, inputs_.size(), inputs_.data(),
-        graph_outputs.size(), graph_outputs.data(), nullptr, nullptr, name_, s);
+    func->func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
+                                    inputs_.size(), inputs_.data(),
+                                    graph_outputs.size(), graph_outputs.data(),
+                                    nullptr, nullptr, name_.data(), s);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
     *f = func.release();
@@ -391,7 +392,7 @@ class GraphContext : public TracingContext {
  private:
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> graph_;
   std::vector<TF_Output> inputs_;
-  const char* name_;
+  string name_;
 };
 
 static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
@@ -401,7 +402,7 @@ static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
 // Register the tracing implemented in this file as the default tracing engine.
 static bool register_tracing = [] {
   RegisterTracingEngineFactory("graphdef", GraphTracingFactory);
-  SetDefaultTracingEngine("graphdef");
+  SetDefaultTracingEngine("graphdef").IgnoreError();
   return true;
 }();
 

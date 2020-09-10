@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/tf32_utils.h"
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 
-#include <atomic>
+namespace {
+void CreateConvertMlirToXlaHloPipelineWithDefaults(mlir::OpPassManager& pm) {
+  tensorflow::CreateConvertMlirToXlaHloPipeline(
+      pm, /*device_type=*/"XLA_CPU_JIT",
+      /*custom_legalization_passes=*/{});
+}
 
-namespace tensorflow {
-
-// Whether TensorFloat-32 should be used where supported.
-// TODO(reedwm): Change word "allow" to "enable" in all TensorFloat-32 functions
-static std::atomic<bool> tf32_allowed{true};
-
-void allow_tf32_execution(bool allowed) { tf32_allowed = allowed; }
-
-bool tf32_execution_allowed() { return tf32_allowed; }
-
-}  // namespace tensorflow
+mlir::PassPipelineRegistration<> pipeline(
+    "tf-to-hlo-pipeline",
+    "Convert TF dialect to HLO dialect (used for compilation in bridge).",
+    CreateConvertMlirToXlaHloPipelineWithDefaults);
+}  // anonymous namespace

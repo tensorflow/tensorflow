@@ -23,10 +23,51 @@
 
 #include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/gpu_binary_creator.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
+
+namespace tensorflow {
+namespace kernel_gen {
+namespace {
+
+xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
+                int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
+                llvm::ArrayRef<uint32_t> same_shape,
+                llvm::ArrayRef<uint32_t> unroll_factors) {
+#if TENSORFLOW_USE_ROCM
+  std::pair<int32_t, int32_t> compute_capability(architecture, 0);
+#else
+  std::pair<int32_t, int32_t> compute_capability(architecture / 10,
+                                                 architecture % 10);
+#endif
+
+  // Read TF code.
+  std::string tf_code;
+  TF_RETURN_IF_ERROR(
+      ReadFileToString(Env::Default(), input_file.str(), &tf_code));
+  // Compile.
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningModuleRef module,
+      GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/true,
+                              compute_capability, tile_sizes, same_shape,
+                              unroll_factors));
+  // Extract gpu_binary.
+  TF_ASSIGN_OR_RETURN(std::string gpu_binary, ExtractGpuBinary(*module));
+
+  // Write gpu_binary blob.
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(Env::Default(), output_file.str(), gpu_binary));
+  return xla::Status::OK();
+}
+
+}  // namespace
+}  // namespace kernel_gen
+}  // namespace tensorflow
 
 int main(int argc, char** argv) {
   llvm::cl::opt<std::string> input_file("input", llvm::cl::desc("input file"),
@@ -51,42 +92,15 @@ int main(int argc, char** argv) {
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
 
   tensorflow::InitMlir y(&argc, &argv);
+  mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
-#if TENSORFLOW_USE_ROCM
-  std::pair<int32_t, int32_t> compute_capability(architecture, 0);
-#else
-  std::pair<int32_t, int32_t> compute_capability(architecture / 10,
-                                                 architecture % 10);
-#endif
-
-  std::string tf_code;
-  auto read_status = tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  input_file, &tf_code);
-  if (!read_status.ok()) {
-    LOG(ERROR) << read_status;
-    return 1;
-  }
-
-  auto cubin = tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
-      tf_code, compute_capability, tile_sizes, same_shape, unroll_factors);
-
-  if (!cubin.ok()) {
-    LOG(ERROR) << cubin.status();
-    return 1;
-  }
-
-  std::vector<uint8_t> cubin_data = cubin.ConsumeValueOrDie();
-
-  auto status = tensorflow::WriteStringToFile(
-      tensorflow::Env::Default(), output_file,
-      absl::string_view{reinterpret_cast<char*>(cubin_data.data()),
-                        cubin_data.size()});
-
+  auto status =
+      tensorflow::kernel_gen::Run(input_file, output_file, architecture,
+                                  tile_sizes, same_shape, unroll_factors);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;
   }
-
   return 0;
 }
