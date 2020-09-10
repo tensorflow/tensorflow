@@ -653,25 +653,6 @@ ENTRY %slice {
               op::Sharding("{devices=[2,1]0,1}"));
 }
 
-TEST_F(ShardingPropagationTest, PartialReplicatedStridedSlice) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %slice {
-  %param = f32[17,13]{1,0} parameter(0),
-    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
-  %slice = f32[7,5]{1,0} slice(%param), slice={[1:15:2], [5:10:1]}
-  ROOT %tuple = (f32[7,5]{1,0}) tuple(%slice)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          ShardingPropagation().Run(module.get()));
-  EXPECT_TRUE(changed);
-  EXPECT_THAT(FindInstruction(module.get(), "slice"),
-              op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"));
-}
-
 TEST_F(ShardingPropagationTest, ReduceWindowBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module

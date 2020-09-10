@@ -2060,61 +2060,6 @@ ENTRY entry {
             op::Shape("f32[63,14,126]")));
 }
 
-TEST_F(SpmdPartitioningTest,
-       PartialReplicateSliceAlongNonPartitionedDimension) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}
-  ROOT %slice = f32[128,11,257] slice(%param0),
-    slice={[0:128:1], [2:13:1], [0:257:1]}, sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/4));
-  VLOG(1) << module->ToString();
-
-  auto root = module->entry_computation()->root_instruction();
-  auto param0 = AllOf(op::Parameter(), op::Shape("f32[128,14,129]"));
-  EXPECT_THAT(root, AllOf(op::Slice(param0), op::Shape("f32[128,11,129]")));
-}
-
-TEST_F(SpmdPartitioningTest, PartialReplicateSliceAlongPartitionedDimension) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}
-  ROOT %slice = f32[63,14,251] slice(%param0),
-    slice={[2:128:2], [0:14:1], [5:256:1]}, sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/2));
-  VLOG(1) << module->ToString();
-
-  auto root = module->entry_computation()->root_instruction();
-  auto param0 = AllOf(op::Parameter(), op::Shape("f32[128,14,129]"));
-  EXPECT_THAT(
-      root,
-      AllOf(
-          op::Slice(AllOf(
-              op::DynamicSlice(
-                  AllOf(op::Concatenate(
-                            param0,
-                            AllOf(op::CollectivePermute(op::Slice(param0)),
-                                  op::Shape("f32[128,14,2]"))),
-                        op::Shape("f32[128,14,131]")),
-                  op::Constant(), op::Constant(),
-                  op::Add(op::Multiply(op::Reshape(op::DynamicSlice(
-                                           op::Constant(), op::PartitionId())),
-                                       op::Constant()),
-                          op::Constant())),
-              op::Shape("f32[128,14,126]"))),
-          op::Shape("f32[63,14,126]")));
-}
-
 TEST_F(SpmdPartitioningTest, SortAlongNonPartitionedDimension) {
   const char* const hlo_string = R"(
 HloModule module
