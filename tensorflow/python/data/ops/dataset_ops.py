@@ -417,7 +417,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       RuntimeError: If not inside of tf.function and not executing eagerly.
     """
     if context.executing_eagerly() or ops.inside_function():
-      return iterator_ops.OwnedIterator(self)
+      with ops.device(self._variant_tensor.device):
+        return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
@@ -2271,7 +2272,8 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      return iterator_ops.OwnedIterator(self)
+      with ops.device(self._variant_tensor.device):
+        return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -2313,12 +2315,13 @@ class DatasetV1(DatasetV2):
       else:
         six.reraise(ValueError, err)
 
-    # pylint: disable=protected-access
-    return iterator_ops.Iterator(
-        gen_dataset_ops.one_shot_iterator(
-            dataset_factory=_make_dataset, **self._flat_structure), None,
-        get_legacy_output_types(self), get_legacy_output_shapes(self),
-        get_legacy_output_classes(self))
+    with ops.device(self._variant_tensor.device):
+      # pylint: disable=protected-access
+      return iterator_ops.Iterator(
+          gen_dataset_ops.one_shot_iterator(
+              dataset_factory=_make_dataset, **self._flat_structure), None,
+          get_legacy_output_types(self), get_legacy_output_shapes(self),
+          get_legacy_output_classes(self))
 
   @deprecation.deprecated(
       None, "This is a deprecated API that should only be used in TF 1 graph "
@@ -2378,16 +2381,20 @@ class DatasetV1(DatasetV2):
     dataset = self._apply_options()
     if shared_name is None:
       shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator_v2(
-        container="", shared_name=shared_name, **self._flat_structure)
-    with ops.colocate_with(iterator_resource):
+
+    with ops.device(self._variant_tensor.device):
+      iterator_resource = gen_dataset_ops.iterator_v2(
+          container="", shared_name=shared_name, **self._flat_structure)
+
       initializer = gen_dataset_ops.make_iterator(
           dataset._variant_tensor,  # pylint: disable=protected-access
           iterator_resource)
-    # pylint: disable=protected-access
-    return iterator_ops.Iterator(
-        iterator_resource, initializer, get_legacy_output_types(dataset),
-        get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
+
+      # pylint: disable=protected-access
+      return iterator_ops.Iterator(iterator_resource, initializer,
+                                   get_legacy_output_types(dataset),
+                                   get_legacy_output_shapes(dataset),
+                                   get_legacy_output_classes(dataset))
 
   @property
   @deprecation.deprecated(
