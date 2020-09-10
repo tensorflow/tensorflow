@@ -48,6 +48,8 @@ class DataServiceDispatcherImpl {
   explicit DataServiceDispatcherImpl(
       const experimental::DispatcherConfig& config);
 
+  ~DataServiceDispatcherImpl();
+
   // Starts the dispatcher. If there is a journal, this will read from the
   // journal to restore the dispatcher's state.
   Status Start();
@@ -55,8 +57,8 @@ class DataServiceDispatcherImpl {
   // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
-  Status RegisterWorker(const RegisterWorkerRequest* request,
-                        RegisterWorkerResponse* response);
+  Status WorkerHeartbeat(const WorkerHeartbeatRequest* request,
+                         WorkerHeartbeatResponse* response);
   Status WorkerUpdate(const WorkerUpdateRequest* request,
                       WorkerUpdateResponse* response);
   Status GetDatasetDef(const GetDatasetDefRequest* request,
@@ -92,6 +94,8 @@ class DataServiceDispatcherImpl {
                    absl::optional<DispatcherState::NamedJobKey> named_job_key,
                    std::shared_ptr<const DispatcherState::Job>& job)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Creates tasks for the specified worker, one task for every unfinished job.
+  Status CreateTasksForWorker(const std::string& worker_address);
   // Acquires a job client id to read from the given job and sets
   // `job_client_id`.
   Status AcquireJobClientId(
@@ -128,12 +132,16 @@ class DataServiceDispatcherImpl {
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // A thread which periodically checks for jobs to clean up.
+  void JobGcThread();
+  // Scans for old jobs and marks them as finished.
+  Status GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig& config_;
+  Env* env_;
 
   mutex mu_;
-
-  int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
 
   // Cached worker stubs for communicating with workers.
   absl::flat_hash_map<std::string, std::unique_ptr<WorkerService::Stub>>
@@ -144,6 +152,9 @@ class DataServiceDispatcherImpl {
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
+  // Condition variable for waking up the job gc thread.
+  condition_variable job_gc_thread_cv_;
+  std::unique_ptr<Thread> job_gc_thread_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

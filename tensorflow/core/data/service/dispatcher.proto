@@ -4,21 +4,21 @@ package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
 
-message RegisterWorkerRequest {
-  // The address of the registering worker.
-  string worker_address = 1;
-}
-
-message RegisterWorkerResponse {
-  // Tasks to begin processing.
-  repeated TaskDef tasks = 2;
-}
-
 message TaskProgress {
   // The task that this message is about.
   int64 task_id = 1;
   // Whether the task has completed.
   bool completed = 2;
+}
+
+message WorkerHeartbeatRequest {
+  string worker_address = 1;
+  repeated int64 current_tasks = 2;
+}
+
+message WorkerHeartbeatResponse {
+  repeated TaskDef new_tasks = 1;
+  repeated int64 tasks_to_delete = 2;
 }
 
 message WorkerUpdateRequest {
@@ -110,8 +110,8 @@ message GetWorkersResponse {
 }
 
 service DispatcherService {
-  // Registers a worker with the dispatcher.
-  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  // Performs a periodic worker heartbeat.
+  rpc WorkerHeartbeat(WorkerHeartbeatRequest) returns (WorkerHeartbeatResponse);
 
   // Updates the dispatcher with information about the worker's state.
   rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
