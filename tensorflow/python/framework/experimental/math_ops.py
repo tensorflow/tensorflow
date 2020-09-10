@@ -35,7 +35,7 @@ def matmul(a, b, name=None):
   ctx = context.get_default()
   return _math_ops.matmul(ctx, a, b, name)
 
-def relu(a, b, name=None):
+def relu(a, name=None):
   ctx = context.get_default()
   return _math_ops.relu(ctx, a, name)
 
