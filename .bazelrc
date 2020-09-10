@@ -336,6 +336,11 @@ build:windows --host_copt=-DWIN32_LEAN_AND_MEAN
 build:windows --copt=-DNOGDI
 build:windows --host_copt=-DNOGDI
 
+# MSVC (Windows): Standards-conformant preprocessor mode
+# See https://docs.microsoft.com/en-us/cpp/preprocessor/preprocessor-experimental-overview
+build:windows --copt=/experimental:preprocessor
+build:windows --host_copt=/experimental:preprocessor
+
 # Misc build options we need for windows.
 build:windows --linkopt=/DEBUG
 build:windows --host_linkopt=/DEBUG
