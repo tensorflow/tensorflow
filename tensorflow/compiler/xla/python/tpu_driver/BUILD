@@ -119,10 +119,11 @@ cc_library(
     name = "pod_tpu_driver",
     srcs = ["pod_tpu_driver.cc"],
     deps = [
-        ":tpu_driver",
         ":grpc_tpu_driver",
+        ":tpu_driver",
         ":tpu_driver_proto_cc",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/compiler/xla/pjrt:semaphore",
         "//tensorflow/compiler/xla/pjrt:worker_thread",
         "//tensorflow/core:lib",

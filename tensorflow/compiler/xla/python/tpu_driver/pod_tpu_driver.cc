@@ -15,6 +15,7 @@
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
@@ -37,7 +38,7 @@ class PodTpuDriver;
 
 class PodEvent : public Event {
  public:
-  explicit PodEvent(PodTpuDriver* driver, int64 operation_id)
+  explicit PodEvent(PodTpuDriver* driver, int64_t operation_id)
       : driver_(driver), operation_id_(operation_id) {}
   int64_t operation_id() const { return operation_id_; }
 
@@ -55,7 +56,7 @@ class PodEvent : public Event {
 
 class CombinedEvent : public PodEvent {
  public:
-  explicit CombinedEvent(PodTpuDriver* driver, int64 operation_id,
+  explicit CombinedEvent(PodTpuDriver* driver, int64_t operation_id,
                          std::vector<std::shared_ptr<Event>> events)
       : PodEvent(driver, operation_id), events_(events) {}
 
@@ -629,9 +630,9 @@ class PodTpuDriver : public TpuDriver {
   std::shared_ptr<::grpc::ChannelCredentials> creds_;
 
   std::vector<std::unique_ptr<TpuDriver>> drivers_;
-  std::vector<int32> core_to_driver_id_;
+  std::vector<int32_t> core_to_driver_id_;
   std::vector<TpuDriver*> core_to_driver_;
-  std::vector<int32> core_to_driver_core_;
+  std::vector<int32_t> core_to_driver_core_;
   SystemInfo pod_info_;
 
   absl::Mutex mu_;
