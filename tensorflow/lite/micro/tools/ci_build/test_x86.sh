@@ -44,8 +44,6 @@ readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile test
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=debug test
 
-
-
 if [[ ${1} != "PRESUBMIT" ]]; then
   # Most of TFLM external contributors only use make. We are building a subset of
   # targets with bazel as part of this script to make it easier for external
