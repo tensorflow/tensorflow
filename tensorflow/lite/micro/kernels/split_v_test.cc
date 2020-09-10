@@ -32,8 +32,8 @@ struct OutputTensors {
 };
 template <int N>
 void TestSplitVFloat(const int* input_dims_data, const float* input_data,
-                     const int* axis_dims_data, const int* axis_data,
-                     const int* split_dims_data, const int* split_data,
+                     const int* axis_dims_data, const int32_t* axis_data,
+                     const int* split_dims_data, const int32_t* split_data,
                      const OutputTensors<N>& output_tensors) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
@@ -74,23 +74,12 @@ void TestSplitVFloat(const int* input_dims_data, const float* input_data,
   tensors[2].allocation_type = kTfLiteMmapRo;
   tensors[1].allocation_type = kTfLiteMmapRo;
 
-    TfLiteSplitVParams builtin;
-  builtin.num_splits = N;
   int inputs_array_data[] = {3, 0, 1, 2};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[N + 1];
   outputs_array_data[0] = N;
   for (int i = 0; i < N; i++) outputs_array_data[i + 1] = i + 3;
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-
-  node.user_data = nullptr;
-  node.builtin_data = reinterpret_cast<void*>(&builtin);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
 
   const TfLiteRegistration registration =
       tflite::ops::micro::Register_SPLIT_V();
@@ -124,9 +113,9 @@ TF_LITE_MICRO_TEST(SPLIT_V_ThreeOutputs) {
   int input_shape[] = {2, 4, 3};
   float input_values[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int axis_shape[] = {1, 1};
-  int axis_values[] = {0};
+  int32_t axis_values[] = {0};
   int split_shape[] = {1, 3};
-  int split_values[] = {1, 1, 2};
+  int32_t split_values[] = {1, 1, 2};
   int output1_shape[] = {2, 1, 3};
   float output1_values[] = {1, 2, 3};
   int output2_shape[] = {2, 1, 3};
@@ -162,9 +151,9 @@ TF_LITE_MICRO_TEST(SPLIT_V_FourDimensionalFloatAxis0) {
   float input_values[] = {1, 2,  3,  4,  5,  6,  7,  8,
                           9, 10, 11, 12, 13, 14, 15, 16};
   int axis_shape[] = {1, 1};
-  int axis_values[] = {0};
+  int32_t axis_values[] = {0};
   int split_shape[] = {1, 2};
-  int split_values[] = {1, 1};
+  int32_t split_values[] = {1, 1};
   int output1_shape[] = {4, 1, 2, 2, 2};
   float output1_values[] = {1, 2, 3, 4, 5, 6, 7, 8};
   int output2_shape[] = {4, 1, 2, 2, 2};
@@ -196,9 +185,9 @@ TF_LITE_MICRO_TEST(SPLIT_V_FourDimensionalFloatAxis1) {
   float input_values[] = {1, 2,  3,  4,  5,  6,  7,  8,
                           9, 10, 11, 12, 13, 14, 15, 16};
   int axis_shape[] = {1, 1};
-  int axis_values[] = {1};
+  int32_t axis_values[] = {1};
   int split_shape[] = {1, 2};
-  int split_values[] = {1, 1};
+  int32_t split_values[] = {1, 1};
   int output1_shape[] = {4, 2, 1, 2, 2};
   float output1_values[] = {1, 2, 3, 4, 9, 10, 11, 12};
   int output2_shape[] = {4, 2, 1, 2, 2};
@@ -230,9 +219,9 @@ TF_LITE_MICRO_TEST(SPLIT_VFourDimensionalFloatAxis2) {
   float input_values[] = {1, 2,  3,  4,  5,  6,  7,  8,
                           9, 10, 11, 12, 13, 14, 15, 16};
   int axis_shape[] = {1, 1};
-  int axis_values[] = {2};
+  int32_t axis_values[] = {2};
   int split_shape[] = {1, 2};
-  int split_values[] = {1, 1};
+  int32_t split_values[] = {1, 1};
   int output1_shape[] = {4, 2, 2, 1, 2};
   float output1_values[] = {1, 2, 5, 6, 9, 10, 13, 14};
   int output2_shape[] = {4, 2, 2, 1, 2};
@@ -263,9 +252,9 @@ TF_LITE_MICRO_TEST(SPLIT_V_FourDimensionalFloatAxis3) {
   float input_values[] = {1, 2,  3,  4,  5,  6,  7,  8,
                           9, 10, 11, 12, 13, 14, 15, 16};
   int axis_shape[] = {1, 1};
-  int axis_values[] = {3};
+  int32_t axis_values[] = {3};
   int split_shape[] = {1, 2};
-  int split_values[] = {1, 1};
+  int32_t split_values[] = {1, 1};
   int output1_shape[] = {4, 2, 2, 2, 1};
   float output1_values[] = {1, 3, 5, 7, 9, 11, 13, 15};
   int output2_shape[] = {4, 2, 2, 2, 1};
@@ -297,9 +286,9 @@ TF_LITE_MICRO_TEST(SPLIT_V_FourDimensionalFloatNegativeAxis) {
   float input_values[] = {1, 2,  3,  4,  5,  6,  7,  8,
                           9, 10, 11, 12, 13, 14, 15, 16};
   int axis_shape[] = {1, 1};
-  int axis_values[] = {-4};
+  int32_t axis_values[] = {-4};
   int split_shape[] = {1, 2};
-  int split_values[] = {1, 1};
+  int32_t split_values[] = {1, 1};
   int output1_shape[] = {4, 1, 2, 2, 2};
   float output1_values[] = {1, 2, 3, 4, 5, 6, 7, 8};
   int output2_shape[] = {4, 1, 2, 2, 2};
@@ -342,9 +331,9 @@ TF_LITE_MICRO_TEST(SPLIT_V_OneDimensionalFloatAxis0) {
   int input_shape[] = {1, 8};
   float input_values[] = {1, 2, 3, 4, 5, 6, 7, 8};
   int axis_shape[] = {1, 1};
-  int axis_value[] = {0};
+  int32_t axis_value[] = {0};
   int split_size_shape[] = {1, 8};
-  int split[] = {1, 1, 1, 1, 1, 1, 1, 1};
+  int32_t split[] = {1, 1, 1, 1, 1, 1, 1, 1};
   int output1_shape[] = {1, 1};
   float output1_values[] = {1};
   int output2_shape[] = {1, 1};
@@ -419,9 +408,9 @@ TF_LITE_MICRO_TEST(SPLIT_V_OneDimensionalFloatTest2) {
   int input_shape[] = {1, 8};
   float input_values[] = {1, 2, 3, 4, 5, 6, 7, 8};
   int axis_shape[] = {1, 1};
-  int axis_value[] = {0};
+  int32_t axis_value[] = {0};
   int split_size_shape[] = {1, 8};
-  int split[] = {1, 1, 1, 1, 1, 1, 2, -1};
+  int32_t split[] = {1, 1, 1, 1, 1, 1, 2, -1};
   int output1_shape[] = {1, 1};
   float output1_values[] = {1};
   int output2_shape[] = {1, 1};
