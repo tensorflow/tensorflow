@@ -38,14 +38,13 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
               distribution=strategy_combinations.multidevice_strategies,
               mode=["eager"],
           ),
-          ds_combinations.concat(
-              combinations.combine(
-                  experimental_aggregate_gradients=True,
-                  expected=[[[-0.3, -0.3], [-0.3, -0.3]]]),
-              combinations.combine(
-                  experimental_aggregate_gradients=False,
-                  expected=[[[-0.1, -0.1], [-0.2, -0.2]]]),
-          )))
+          combinations.combine(
+              experimental_aggregate_gradients=True,
+              expected=[[[-0.3, -0.3], [-0.3, -0.3]]]) +
+          combinations.combine(
+              experimental_aggregate_gradients=False,
+              expected=[[[-0.1, -0.1], [-0.2, -0.2]]])
+      ))
   def test_custom_aggregation(self, distribution,
                               experimental_aggregate_gradients, expected):
 
