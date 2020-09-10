@@ -35,6 +35,8 @@ from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import,g-bad-import-order
 
+from tensorflow.python.util import tf_decorator
+
 import sys
 from tensorflow.python.util.tf_export import tf_export
 if sys.version_info.major == 2:
@@ -95,12 +97,22 @@ def is_built_with_rocm():
   """Returns whether TensorFlow was built with ROCm (GPU) support."""
   return _test_util.IsBuiltWithROCm()
 
+@tf_export('test.disable_for_rocm')
+def disable_for_rocm(skip_message):
+  """Disables the test if TensorFlow was built with ROCm (GPU) support."""
+  def decorator_disable_for_rocm(func):
+    def wrapper_disable_for_rocm(self, *args, **kwargs):
+      if is_built_with_rocm():
+        self.skipTest(skip_message)
+      else:
+        return func(self, *args, **kwargs)
+    return tf_decorator.make_decorator(func, wrapper_disable_for_rocm)
+  return decorator_disable_for_rocm
 
 @tf_export('test.is_built_with_gpu_support')
 def is_built_with_gpu_support():
   """Returns whether TensorFlow was built with GPU (i.e. CUDA or ROCm) support."""
   return is_built_with_cuda() or is_built_with_rocm()
-
 
 @tf_export('test.is_built_with_xla')
 def is_built_with_xla():

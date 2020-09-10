@@ -254,10 +254,10 @@ class LSTMV2Test(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([inputs] + initial_state, targets)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'padded input yet.')
   def test_return_state(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
     num_states = 2
     timesteps = 3
     embedding_dim = 4
@@ -324,11 +324,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([main_inputs] + initial_state, targets)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'padded input yet.')
   @test_util.run_v2_only
   def test_lstm_v2_feature_parity_with_canonical_lstm(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -371,11 +371,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_1, y_3, rtol=1e-5, atol=2e-5)
     self.assertAllClose(y_2, y_4, rtol=1e-5, atol=2e-5)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'padded input yet.')
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
   def test_implementation_mode_LSTM(self, implementation_mode):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -417,10 +417,10 @@ class LSTMV2Test(keras_parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'padded input yet.')
   def test_masking_with_stacking_LSTM(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
@@ -592,11 +592,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'float64 yet.')
   @test_util.run_v2_only
   def test_float64_LSTM(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support float64 yet.')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -632,10 +632,10 @@ class LSTMV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'padded input yet.')
   def test_statefulness_LSTM(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -767,12 +767,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
     model.evaluate(x, y)
     model.predict(x)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'padded input yet.')
   @test_util.run_v2_only
   def test_explicit_device_with_go_backward_and_mask(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     batch_size = 8
     timestep = 7
     masksteps = 5
@@ -896,12 +895,11 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+                                      'MIOpen does not support '
+                                      'padded input yet.')
   @test_util.run_v2_only
   def test_LSTM_runtime_with_mask(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     # Masking will affect which backend is selected based on whether the mask
     # is strictly right padded.
     layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
