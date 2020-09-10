@@ -25,11 +25,12 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.module import module
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -52,7 +53,7 @@ class CustomModel(module.Module):
     return x
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
         distribution=(strategy_combinations.all_strategies +
                       strategy_combinations.multiworker_strategies),
@@ -414,7 +415,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
 class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
   def test_tf_function_experimental_compile(self, distribution):
@@ -474,4 +475,4 @@ def _get_model():
 
 
 if __name__ == "__main__":
-  combinations.main()
+  ds_combinations.main()
