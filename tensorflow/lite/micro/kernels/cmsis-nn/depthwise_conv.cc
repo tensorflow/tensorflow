@@ -130,10 +130,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int filter_height = SizeOfDimension(filter, 1);
 
   if (input->type == kTfLiteInt8) {
-    // Allocate memory for per-channel quantization parameters
-    const int num_channels =
-        filter->dims->data[kDepthwiseConvQuantizedDimension];
-
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -152,8 +148,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       affine_quantization->zero_point->size);
   }
 
-  // Dynamically allocate per-channel quantization parameters.
-  const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
+  // Allocate memory for per-channel quantization parameters
+  const int num_channels =
+      filter->dims->data[kDepthwiseConvQuantizedDimension];
 
   data->per_channel_output_multiplier =
     reinterpret_cast<int32_t*>(
