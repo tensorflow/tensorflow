@@ -330,7 +330,7 @@ ResizeBilinearOpTest/ResizeBilinearOpTest/.+/0,29
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*/0,30
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*/0,30
 // 16-bit tests are not supported
--ResizeNearestNeighborOpTest/.+Int16
+-ResizeNearestNeighborOpTest.+Int16/.+
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
 
