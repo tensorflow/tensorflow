@@ -620,6 +620,9 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
   for (const auto& b : shared_buffers_) {
     total_memory += b.GetMemorySizeInBytes();
   }
+  for (const auto& t : variable_tensors_) {
+    total_memory += t.second.GetMemorySizeInBytes();
+  }
 
   return total_memory;
 }
