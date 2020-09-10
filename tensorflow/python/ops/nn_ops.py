@@ -5143,13 +5143,6 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     if not x_dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going "
                        "to be scaled. Got a %s tensor instead." % x_dtype)
-    if is_rate_number and rate == 0:
-      # Fast-path: Return the input immediately if rate is non-tensor & is `0`.
-      # We trigger this after all error checking
-      # and after `x` has been converted to a tensor, to prevent inconsistent
-      # tensor conversions/error raising if rate is changed to/from 0.
-      return x
-
     is_executing_eagerly = context.executing_eagerly()
     if not tensor_util.is_tensor(rate):
       if is_rate_number:
