@@ -94,7 +94,7 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
 
 void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
                        const int* axis_dims_data, const int32_t* axis_data,
-                       const int* output_dims_data,
+                       const int* output_dims_data, float* output_data,
                        const float* expected_output_data,
                        const TfLiteRegistration& registration,
                        TfLiteReducerParams* params, float tolerance = 1e-5) {
@@ -105,8 +105,6 @@ void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
 
   constexpr int num_of_inputs = 2;   // input and axis
   constexpr int num_of_outputs = 1;  // output
-
-  float output_data[output_dims_count];
 
   constexpr int tensors_size = num_of_inputs + num_of_outputs;
   TfLiteTensor tensors[tensors_size] = {
@@ -351,8 +349,10 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestNotKeepDims) {
 
   TfLiteReducerParams params = {false};
 
+  float output_data[2];
+
   tflite::testing::TestReduceOpFloat(
-      input_shape, input_data, axis_shape, axis_data, output_shape,
+      input_shape, input_data, axis_shape, axis_data, output_shape, output_data,
       expected_output_data, tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
@@ -368,8 +368,10 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestKeepDims) {
 
   TfLiteReducerParams params = {true};
 
+  float output_data[2];
+
   tflite::testing::TestReduceOpFloat(
-      input_shape, input_data, axis_shape, axis_data, output_shape,
+      input_shape, input_data, axis_shape, axis_data, output_shape, output_data,
       expected_output_data, tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
