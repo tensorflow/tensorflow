@@ -355,6 +355,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_SPLIT(), ParseSplit);
   }
 
+  TfLiteStatus AddSplitV() {
+    return AddBuiltin(BuiltinOperator_SPLIT_V,
+                      tflite::ops::micro::Register_SPLIT_V(), ParseSplitV);
+  }
+
   TfLiteStatus AddSqrt() {
     return AddBuiltin(BuiltinOperator_SQRT, tflite::ops::micro::Register_SQRT(),
                       ParseSqrt);
