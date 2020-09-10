@@ -28,6 +28,22 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_tape",
+    srcs = ["tape.cc"],
+    features = ["-layering_check"],
+    module_name = "_tape",
+    deps = [
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:unified_api_pywrap_required_headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_math_ops",
     srcs = ["math_ops.cc"],
     module_name = "_math_ops",
@@ -45,9 +61,30 @@ tf_python_pybind_extension(
 )
 
 py_library(
+    name = "gradient_registry",
+    srcs = ["gradient_registry.py"],
+    deps = [":_tape"],
+)
+
+py_library(
     name = "math_ops",
     srcs = ["math_ops.py"],
-    deps = ["_math_ops"],
+    deps = [
+        ":_math_ops",
+        ":gradient_registry",
+        ":tape_stack",
+    ],
+)
+
+py_library(
+    name = "tape",
+    srcs = ["tape.py"],
+    deps = [
+        ":_tape",
+        ":context_stack",
+        ":tape_stack",
+        "//tensorflow/python/data/util:nest",
+    ],
 )
 
 py_library(
@@ -63,6 +100,12 @@ py_library(
 py_library(
     name = "context_stack",
     srcs = ["context_stack.py"],
+    deps = [":thread_local_stack"],
+)
+
+py_library(
+    name = "tape_stack",
+    srcs = ["tape_stack.py"],
     deps = [":thread_local_stack"],
 )
 
@@ -82,6 +125,7 @@ cuda_py_test(
         ":context_stack",
         ":def_function",
         ":math_ops",
+        ":tape",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

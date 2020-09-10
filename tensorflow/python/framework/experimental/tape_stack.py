@@ -12,20 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental impl for gen_*_ops.py using unified APIs, for testing only."""
+"""Thread-local context manager stack."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework.experimental import _math_ops
-from tensorflow.python.framework.experimental import context_stack as context
-from tensorflow.python.framework.experimental import gradient_registry
-from tensorflow.python.framework.experimental import tape_stack
+from tensorflow.python.framework.experimental import thread_local_stack
+
+_default_tape_stack = thread_local_stack.ThreadLocalStack()
 
 
-def add(a, b, name=None):
-  ctx = context.get_default()
-  tape = tape_stack.get_default()
-  grad_registry = gradient_registry.get_global_registry()
-  return _math_ops.add(ctx, a, b, name, tape, grad_registry)
+def get_default():
+  return _default_tape_stack.peek()
+
+
+def push(tape):
+  _default_tape_stack.push(tape)
+
+
+def pop():
+  _default_tape_stack.pop()
