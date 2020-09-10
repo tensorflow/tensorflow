@@ -44,6 +44,7 @@ readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile test
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=debug test
 
-# Most of TFLM external contributors only use make so also building with bazel
-# so that bazel errors can be reproduced externally as well.
+# Most of TFLM external contributors only use make. So, we are building
+# with bazel as part of this script to make it easier for externally
+# contributors to fix these errors prior to creating a pull request.
 readable_run bazel build tensorflow/lite/micro:all
