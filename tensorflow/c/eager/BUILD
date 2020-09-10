@@ -399,9 +399,9 @@ tf_cuda_cc_test(
     deps = [
         ":abstract_tensor_handle",
         ":c_api_experimental",
-        ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
+        ":gradients_util",
         ":mnist_gradients_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
