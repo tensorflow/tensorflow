@@ -1,7 +1,7 @@
 # Microspeech Example
 
 ```
-$ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=xcore micro_speech
+$ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" micro_speech
 ```
 
 This example is for the **XCOREAI Explorer Board**.
@@ -13,7 +13,7 @@ This example is for the **XCOREAI Explorer Board**.
     && source SetEnv && popd $ make -f tensorflow/lite/micro/tools/make/Makefile
     TARGET="xcore" test`
 
-*   In addition to setting up the environment variables, copy XMOS dependency libraies to tensorflow/lite/micro/tools/make/downloads:
+*   In addition to setting up the environment variables, copy XMOS dependency libraries to tensorflow/lite/micro/tools/make/downloads:
   - [lib_dsp](https://github.com/xmos/lib_dsp)
   - [lib_logging](https://github.com/xmos/lib_logging)
   - [lib_mic_array](https://github.com/xmos/lib_mic_array)

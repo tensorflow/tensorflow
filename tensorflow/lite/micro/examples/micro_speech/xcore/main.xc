@@ -11,8 +11,6 @@
 /*-----------------------------------------------------------*/
 /* Setup resources */
 /*-----------------------------------------------------------*/
-out port p_gpio_leds = PORT_LEDS;
-
 #define MIC_TILE_NO 1
 #define MIC_TILE tile[MIC_TILE_NO]
 
@@ -71,78 +69,6 @@ void mic_array_setup_ddr(
 	start_clock(pdmclk);
 }
 
-
-#define MIC_FRAME_BUFFER_COUNT  5
-
-unsafe {
-static int32_t mic_samples[MIC_FRAME_BUFFER_COUNT][(1 << MIC_ARRAY_MAX_FRAME_SIZE_LOG2)];
-static microspeech_device_t mic_device;
-
-static int32_t* unsafe mic_samples_ptr = NULL;
-static fifo_t* unsafe fifo_ptr = NULL;
-static microspeech_device_t* unsafe device = NULL;
-
-static fifo_t sample_fifo;
-
-static int buf_num = 0;
-
-microspeech_device_t* unsafe get_microspeech_device() {
-    return device;
-}
-}
-
-unsafe {
-void mic_decoupler(streaming chanend c_ds_output[], chanend c_gpio) {
-	int tmp;
-
-    fifo_init(sample_fifo, MIC_FRAME_BUFFER_COUNT-1,
-              sizeof(int32_t), 1);
-
-    mic_samples_ptr = &mic_samples[0][0];
-    fifo_ptr = &sample_fifo;
-
-    mic_device.sample_fifo = fifo_ptr;
-    mic_device.sample_buffer = mic_samples_ptr;
-
-    device = &mic_device;
-
-	while (1) {
-		select {
-			case c_ds_output[0] :> tmp:
-			unsafe {
-				int* unsafe mic_sample_block;
-				mic_sample_block = (int*)tmp;
-
-				for(int i=0; i< (1 << MIC_ARRAY_MAX_FRAME_SIZE_LOG2); i++) {
-					mic_samples[buf_num][i] = mic_sample_block[4*i];
-				}
-
-                fifo_put(sample_fifo, &buf_num);
-                if (++buf_num == MIC_FRAME_BUFFER_COUNT) {
-                    buf_num = 0;
-                }
-                increment_timestamp( 16 );
-
-                c_gpio <: get_led_status();
-			}
-			break;
-		}
-	}
-}
-}
-
-void tile0(chanend c_gpio) {
-  int tmp;
-
-  while(1) {
-    select {
-      case c_gpio :> tmp:
-        p_gpio_leds <: tmp;
-      break;
-    }
-  }
-}
-
 void tile1(chanend c_gpio) {
   streaming chan c_ds_output[1];
   streaming chan c_4x_pdm_mic_0[1];
@@ -151,13 +77,14 @@ void tile1(chanend c_gpio) {
   mic_array_setup_ddr(pdmclk, pdmclk2, p_mclk, p_pdm_clk, p_pdm_mics, 8);
 
   par {
-    mic_decoupler(c_ds_output, c_gpio);
+    mic_decoupler(c_ds_output[0], c_gpio);
     mic_dual_pdm_rx_decimate(p_pdm_mics, c_ds_output[0], c_4x_pdm_mic_0);
   }
 }
 
 int main() {
     chan c_gpio;
+
     par {
         on tile[0]: {
               tile0(c_gpio);

@@ -2,9 +2,9 @@ ifeq ($(TARGET), xcore)
 
   override PLATFORM_FLAGS = -target=XCORE-AI-EXPLORER -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -report -fxscope -DDEBUG_PRINT_ENABLE=1  -DMIC_DUAL_ENABLED=1
   override CXXFLAGS := -std=c++11 -g -DTF_LITE_STATIC_MEMORY -DNDEBUG
-  override CXXFLAGS += $(PLATFORM_FLAGS) 
+  override CXXFLAGS += $(PLATFORM_FLAGS)
   override CCFLAGS := -g -DTF_LITE_STATIC_MEMORY -DNDEBUG
-  override CCFLAGS += $(PLATFORM_FLAGS)  
+  override CCFLAGS += $(PLATFORM_FLAGS)
 
 # Recipe to make xc objects
 $(OBJDIR)%.xo: %.xc $(THIRD_PARTY_TARGETS)
@@ -12,8 +12,9 @@ $(OBJDIR)%.xo: %.xc $(THIRD_PARTY_TARGETS)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 MICRO_SPEECH_SRCS += \
-	tensorflow/lite/micro/examples/micro_speech/xcore/main.xo           \
-	tensorflow/lite/micro/examples/micro_speech/xcore/fifo.c
+	tensorflow/lite/micro/examples/micro_speech/xcore/main.xo                      \
+	tensorflow/lite/micro/examples/micro_speech/xcore/fifo.c                       \
+	tensorflow/lite/micro/examples/micro_speech/xcore/microspeech_xcore_support.c
 
 MICRO_SPEECH_HDRS += \
 	tensorflow/lite/micro/examples/micro_speech/xcore/main_support.h    \
@@ -36,4 +37,3 @@ INCLUDES += \
     -I$(MAKEFILE_DIR)/downloads/lib_logging/lib_logging/api
 
 endif
-

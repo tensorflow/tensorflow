@@ -23,8 +23,12 @@ typedef struct microspeech_device {
 
 #if __XC__
 microspeech_device_t* unsafe get_microspeech_device();
+void mic_decoupler(streaming chanend c_ds_output, chanend c_gpio);
+void tile0(chanend c_gpio);
 #else
 microspeech_device_t* get_microspeech_device();
+void mic_decoupler( chanend_t c_ds_output, chanend_t c_gpio);
+void tile0(chanend_t c_gpio);
 #endif
 
 void increment_timestamp(int32_t increment);
