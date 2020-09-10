@@ -447,6 +447,13 @@ static LogicalResult Verify(BiasAddOp op) {
   return success();
 }
 
+Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
+  // Only NHWC in f32 is supported for fusion.
+  if (data_format() != "NHWC" || !T().isF32()) return None;
+
+  return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
+}
+
 //===----------------------------------------------------------------------===//
 // BiasAddGradOp
 //===----------------------------------------------------------------------===//

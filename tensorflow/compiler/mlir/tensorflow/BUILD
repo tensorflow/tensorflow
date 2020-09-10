@@ -741,6 +741,7 @@ cc_library(
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
         "transforms/collection_ops_util.cc",
+        "transforms/contraction_fusion.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_index_selector.cc",
         "transforms/einsum.cc",
