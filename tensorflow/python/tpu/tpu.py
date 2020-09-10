@@ -604,6 +604,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
+    if not self._outer_context:
+      return val
+
     if val.name in self._values:
       # Use the real value if it comes from outer context.
       result = self._external_values.get(val.name)

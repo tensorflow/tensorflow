@@ -115,7 +115,7 @@ TF_Bool host_callback(SP_Device* const device, SP_Stream stream,
 }
 
 void PopulateDefaultStreamExecutor(SP_StreamExecutor* se) {
-  se->struct_size = SP_STREAMEXECUTOR_STRUCT_SIZE;
+  *se = {SP_STREAMEXECUTOR_STRUCT_SIZE};
   se->allocate = allocate;
   se->deallocate = deallocate;
   se->host_memory_allocate = host_memory_allocate;
@@ -177,7 +177,7 @@ void destroy_device(const SP_Platform* platform, SP_Device* device) {}
 
 void PopulateDefaultPlatform(SP_Platform* platform,
                              SP_PlatformFns* platform_fns) {
-  platform->struct_size = SP_PLATFORM_STRUCT_SIZE;
+  *platform = {SP_PLATFORM_STRUCT_SIZE};
   platform->name = DEVICE_NAME;
   platform->type = DEVICE_TYPE;
   platform->visible_device_count = DEVICE_COUNT;
@@ -201,7 +201,7 @@ TEST(StreamExecutor, SuccessfulRegistration) {
     params->destroy_platform = destroy_platform;
     params->destroy_platform_fns = destroy_platform_fns;
   };
-  port::Status status = RegisterDevicePlugin(plugin_init);
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
   TF_ASSERT_OK(status);
   port::StatusOr<Platform*> maybe_platform =
       MultiPlatformManager::PlatformWithName("MyDevice");
@@ -227,7 +227,7 @@ TEST(StreamExecutor, NameNotSet) {
     params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = RegisterDevicePlugin(plugin_init);
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.error_message(), "'name' field in SP_Platform must be set.");
 }
@@ -242,7 +242,7 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
     params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = RegisterDevicePlugin(plugin_init);
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.error_message(),
             "'create_device' field in SP_PlatformFns must be set.");
@@ -258,7 +258,7 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
     params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = RegisterDevicePlugin(plugin_init);
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
       status.error_message(),
@@ -799,6 +799,31 @@ TEST_F(StreamExecutorTest, BlockHostForEvent) {
   ASSERT_FALSE(block_host_for_event_called);
   TF_ASSERT_OK(stream.BlockHostUntilDone());
   ASSERT_TRUE(block_host_for_event_called);
+}
+
+TEST_F(StreamExecutorTest, BlockHostUntilDone) {
+  static bool block_host_until_done_called = false;
+  se_.create_stream = [](const SP_Device* const device, SP_Stream* stream,
+                         TF_Status* const status) {
+    *stream = new SP_Stream_st(58);
+  };
+  se_.destroy_stream = [](const SP_Device* const device, SP_Stream stream) {
+    delete stream;
+  };
+  se_.block_host_until_done = [](const SP_Device* const device,
+                                 SP_Stream stream,
+                                 TF_Status* const status) -> void {
+    ASSERT_EQ(stream->stream_id, 58);
+    TF_SetStatus(status, TF_OK, "");
+    block_host_until_done_called = true;
+  };
+
+  StreamExecutor* executor = GetExecutor(0);
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_FALSE(block_host_until_done_called);
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  ASSERT_TRUE(block_host_until_done_called);
 }
 
 TEST_F(StreamExecutorTest, SynchronizeAllActivity) {

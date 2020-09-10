@@ -760,17 +760,18 @@ class TensorFloat32Test(test.TestCase):
     super(TensorFloat32Test, self).tearDown()
     config.enable_tensor_float_32_execution(True)
 
-  def test_tf32_enabled(self):
+  def test_tensor_float_32_enabled(self):
     self.assertTrue(config.tensor_float_32_execution_enabled())
 
     x = array_ops.fill((8, 8), 1 + 2**-20)
     y = array_ops.ones((8, 8))
     out = math_ops.matmul(x, y)
-    # In tf32, each element of x is rounded to 1, so the output will be 8s.
+    # In TensorFloat-32, each element of x is rounded to 1, so the output will
+    # be 8s.
     expected = array_ops.fill((8, 8), 8)
     self.assertAllEqual(out, expected)
 
-  def test_tf32_disabled(self):
+  def test_tensor_float_32_disabled(self):
     self.assertTrue(config.tensor_float_32_execution_enabled())
     config.enable_tensor_float_32_execution(False)
     self.assertFalse(config.tensor_float_32_execution_enabled())

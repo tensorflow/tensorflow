@@ -791,7 +791,7 @@ Example:
   );
 
   let results = (outs
-    TF_ResourceTensor:$resource
+    Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
   TF_DerivedOperandOrResultHandleTypeAttr dtype =
@@ -1373,6 +1373,125 @@ Both input and output have a range `(-inf, inf)`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_StatefulStandardNormalV2Op : TF_Op<"StatefulStandardNormalV2", []> {
+  let summary = "Outputs random values from a normal distribution.";
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatefulTruncatedNormalOp : TF_Op<"StatefulTruncatedNormal", []> {
+  let summary = "Outputs random values from a truncated normal distribution.";
+
+  let description = [{
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatefulUniformOp : TF_Op<"StatefulUniform", []> {
+  let summary = "Outputs random values from a uniform distribution.";
+
+  let description = [{
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatefulUniformFullIntOp : TF_Op<"StatefulUniformFullInt", []> {
+  let summary = "Outputs random integers from a uniform distribution.";
+
+  let description = [{
+The generated values are uniform integers covering the whole range of `dtype`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+// TODO(lyandy): Investigate supported dtypes (`minval`, `maxval`, `output`) for
+// `tf.StatefulUniformInt`. tf2xla kernels support i32, i64, ui32, and ui64
+// while TensorFlow CPU/GPU kernels only support i32 and i64.
+def TF_StatefulUniformIntOp : TF_Op<"StatefulUniformInt", []> {
+  let summary = "Outputs random integers from a uniform distribution.";
+
+  let description = [{
+The generated values are uniform integers in the range `[minval, maxval)`.
+The lower bound `minval` is included in the range, while the upper bound
+`maxval` is excluded.
+
+The random integers are slightly biased unless `maxval - minval` is an exact
+power of two.  The bias is small for values of `maxval - minval` significantly
+smaller than the range of the output (either `2^32` or `2^64`).
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape,
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$minval,
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$maxval
+  );
+
+  let results = (outs
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<3>;
 }
 
 #endif // TF_OPS

@@ -178,7 +178,7 @@ TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
   return result;
 }
 
-TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
+TfLiteTensor CreateQuantizedTensor(const float* data, uint8_t* quantized_data,
                                    TfLiteIntArray* dims, bool is_variable) {
   TfLiteTensor result;
   SymmetricQuantize(data, dims, quantized_data, &result.params.scale);
@@ -192,7 +192,7 @@ TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
   return result;
 }
 
-TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
+TfLiteTensor CreateQuantizedTensor(const float* data, int8_t* quantized_data,
                                    TfLiteIntArray* dims, bool is_variable) {
   TfLiteTensor result;
   SignedSymmetricQuantize(data, dims, quantized_data, &result.params.scale);
@@ -206,7 +206,7 @@ TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
   return result;
 }
 
-TfLiteTensor CreateQuantizedTensor(float* data, int16_t* quantized_data,
+TfLiteTensor CreateQuantizedTensor(const float* data, int16_t* quantized_data,
                                    TfLiteIntArray* dims, bool is_variable) {
   TfLiteTensor result;
   SignedSymmetricQuantize(data, dims, quantized_data, &result.params.scale);

@@ -54,19 +54,26 @@ std::string ProcessingModeToString(ProcessingMode mode) {
   }
 }
 
-Status DataServiceDispatcherClient::RegisterWorker(
-    const std::string& worker_address, std::vector<TaskDef>& tasks) {
+Status DataServiceDispatcherClient::WorkerHeartbeat(
+    const std::string& worker_address, const std::vector<int64>& current_tasks,
+    std::vector<TaskDef>& new_tasks, std::vector<int64>& tasks_to_delete) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  RegisterWorkerRequest req;
+  WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
-  RegisterWorkerResponse resp;
-  grpc::ClientContext client_ctx;
-  grpc::Status status = stub_->RegisterWorker(&client_ctx, req, &resp);
-  if (!status.ok()) {
-    return grpc_util::WrapError("Failed to register worker", status);
+  for (int64 task : current_tasks) {
+    req.add_current_tasks(task);
   }
-  for (const auto& task : resp.tasks()) {
-    tasks.push_back(task);
+  WorkerHeartbeatResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to perform worker heartbeat", status);
+  }
+  for (const auto& task : resp.new_tasks()) {
+    new_tasks.push_back(task);
+  }
+  for (int64 task_to_delete : resp.tasks_to_delete()) {
+    tasks_to_delete.push_back(task_to_delete);
   }
   return Status::OK();
 }

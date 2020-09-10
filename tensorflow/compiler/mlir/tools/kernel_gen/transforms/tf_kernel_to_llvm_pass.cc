@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -25,14 +27,13 @@ limitations under the License.
 
 namespace mlir {
 namespace kernel_gen {
-namespace tf_framework {
+namespace transforms {
 namespace {
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-class TestTFFrameworkToLLVMPass
-    : public TestTFFrameworkLegalizeToLLVMPassBase<TestTFFrameworkToLLVMPass> {
+class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<LLVM::LLVMDialect>();
   }
@@ -50,16 +51,19 @@ class TestTFFrameworkToLLVMPass
     // Populate patterns.
     OwningRewritePatternList patterns;
     populateStdToLLVMConversionPatterns(type_converter, patterns);
-    PopulateTFFrameworkToLLVMConversionPatterns(&type_converter, &patterns);
+    tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
+                                                              &patterns);
+    populateGpuToLLVMConversionPatterns(type_converter, patterns, "gpu.binary");
     lmhlo::PopulateLhloToLLVMConversionPatterns(&type_converter, &patterns);
 
     // Set target.
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<tf_framework::TFFrameworkDialect>();
-    target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
+    target
+        .addIllegalDialect<gpu::GPUDialect, tf_framework::TFFrameworkDialect>();
+    target.addIllegalOp<LLVM::DialectCastOp>();
 
-    if (failed(applyFullConversion(m, target, patterns))) {
+    if (failed(applyPartialConversion(m, target, patterns))) {
       signalPassFailure();
     }
   }
@@ -67,11 +71,10 @@ class TestTFFrameworkToLLVMPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> >
-createTestTFFrameworkLegalizeToLLVMPass() {
-  return std::make_unique<TestTFFrameworkToLLVMPass>();
+std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass() {
+  return std::make_unique<TFKernelToLLVMPass>();
 }
 
-}  // namespace tf_framework
+}  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir

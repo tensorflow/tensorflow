@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_TF32_UTILS_H_
-#define TENSORFLOW_CORE_PLATFORM_TF32_UTILS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
+#define TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
 
 namespace tensorflow {
 
-void allow_tf32_execution(bool allowed);
+void enable_tensor_float_32_execution(bool enabled);
 
-bool tf32_execution_allowed();
+bool tensor_float_32_execution_enabled();
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_TF32_UTILS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_

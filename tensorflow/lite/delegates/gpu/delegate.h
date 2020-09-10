@@ -111,7 +111,7 @@ typedef struct {
 TFL_CAPI_EXPORT TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default();
 
 // Creates a new delegate instance that need to be destroyed with
-// TfLiteGpuDelegateV2Delete when delegate is no longer used by TFLite.
+// TfLiteGpuDelegateV2Delete when delegate is no longer used by TfLite.
 //
 // This delegate encapsulates multiple GPU-acceleration APIs under the hood to
 // make use of the fastest available on a device.

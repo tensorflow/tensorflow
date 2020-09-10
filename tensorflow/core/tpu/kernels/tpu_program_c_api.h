@@ -69,15 +69,18 @@ TFTPU_CAPI_EXPORT bool TpuProgram_LogProgramMemorySummary(
 
 // Gets TPU program executable info from the `tpu_program`.
 TFTPU_CAPI_EXPORT void TpuProgram_GetExecutableInfo(
-    const XLA_TpuProgram* tpu_program, TpuSerializedProto* executable_info);
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* executable_info,
+    SE_Status* status);
 
 // Gets host transfer info proto.
 TFTPU_CAPI_EXPORT void TpuProgram_GetHostTransferInfo(
-    const XLA_TpuProgram* tpu_program, TpuSerializedProto* host_transfer_info);
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* host_transfer_info,
+    SE_Status* status);
 
 // Gets HLO metadata proto.
 TFTPU_CAPI_EXPORT void TpuProgram_GetHloMetadata(
-    const XLA_TpuProgram* tpu_program, TpuSerializedProto* hlo_metadata);
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* hlo_metadata,
+    SE_Status* status);
 
 // Gets may modify variables boolean value.
 TFTPU_CAPI_EXPORT void TpuProgram_GetMayModifyVariables(

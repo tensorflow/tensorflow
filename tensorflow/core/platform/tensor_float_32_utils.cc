@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
-// Static initialization for *HLO dialects registration.
-static mlir::DialectRegistration<mlir::mhlo::MhloDialect> mhlo_ops;
-static mlir::DialectRegistration<mlir::chlo::HloClientDialect> chlo_ops;
-static mlir::DialectRegistration<mlir::lmhlo::LmhloDialect> lmhlo_ops;
+#include <atomic>
+
+namespace tensorflow {
+
+// Whether TensorFloat-32 should be used where supported.
+static std::atomic<bool> tensor_float_32_enabled{true};
+
+void enable_tensor_float_32_execution(bool enabled) {
+  tensor_float_32_enabled = enabled;
+}
+
+bool tensor_float_32_execution_enabled() { return tensor_float_32_enabled; }
+
+}  // namespace tensorflow

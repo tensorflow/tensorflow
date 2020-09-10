@@ -41516,6 +41516,7 @@ op {
     type: "list(type)"
     has_minimum: true
   }
+  is_stateful: true
 }
 op {
   name: "SaveSlices"

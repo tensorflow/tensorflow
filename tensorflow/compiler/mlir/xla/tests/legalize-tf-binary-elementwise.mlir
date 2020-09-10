@@ -139,9 +139,9 @@ func @broadcast_shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<2x4xui8
 }
 
 // CHECK-LABEL: func @and
-func @and(%arg0: tensor<2xi1>) -> tensor<2xi1> {
+func @and(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
   // CHECK-NEXT:  mhlo.and
-  %0 = "tf.LogicalAnd"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  %0 = "tf.LogicalAnd"(%arg0, %arg1) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
@@ -153,9 +153,9 @@ func @and_unranked(%arg0: tensor<*xi1>, %arg1: tensor<*xi1>) -> tensor<*xi1> {
 }
 
 // CHECK-LABEL: func @or
-func @or(%arg0: tensor<2xi1>) -> tensor<2xi1> {
+func @or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
   // CHECK-NEXT:  mhlo.or
-  %0 = "tf.LogicalOr"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  %0 = "tf.LogicalOr"(%arg0, %arg1) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 

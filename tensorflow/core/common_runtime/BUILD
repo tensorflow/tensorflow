@@ -546,6 +546,9 @@ cc_library(
     deps = [
         ":device_mgr",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ],
 )
 

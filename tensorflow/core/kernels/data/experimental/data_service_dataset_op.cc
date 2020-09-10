@@ -200,6 +200,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& worker_thread : worker_threads_) {
         worker_thread.reset();
       }
+
+      VLOG(1) << "Destroyed data service dataset iterator for job id "
+              << job_client_id_;
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {

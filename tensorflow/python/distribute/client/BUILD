@@ -127,6 +127,7 @@ tf_py_test(
         ":metric_utils",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:test",
     ],

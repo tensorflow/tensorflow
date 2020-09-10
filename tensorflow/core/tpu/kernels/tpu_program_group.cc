@@ -98,50 +98,75 @@ StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
 }
 }  // namespace
 
+TPUExecutableInfoProto TpuProgramGroup::ConstructExecutableInfo(
+    const XLA_TpuProgram* xla_tpu_program) {
+  VLOG(1) << "ConstructExecutableInfo";
+  TpuSerializedProto serialized_executable_info = {};
+  StatusHelper status;
+  TpuProgramApiFn()->TpuProgram_GetExecutableInfoFn(
+      xla_tpu_program, &serialized_executable_info, status.c_status);
+  TPUExecutableInfoProto executable_info;
+  if (status.ok()) {
+    executable_info = se_tpu::DeserializeProto<TPUExecutableInfoProto>(
+        serialized_executable_info);
+    StreamExecutor_Tpu_FreeSerializedProto(&serialized_executable_info);
+  }
+  return executable_info;
+}
+
+TPUHostTransferInfoProto TpuProgramGroup::ConstructHostTransferInfo(
+    const XLA_TpuProgram* xla_tpu_program) {
+  VLOG(1) << "ConstructHostTransferInfo";
+  TpuSerializedProto serialized_host_transfer_info = {};
+  StatusHelper status;
+  TpuProgramApiFn()->TpuProgram_GetHostTransferInfoFn(
+      xla_tpu_program, &serialized_host_transfer_info, status.c_status);
+  TPUHostTransferInfoProto host_transfer_info;
+  if (status.ok()) {
+    host_transfer_info = se_tpu::DeserializeProto<TPUHostTransferInfoProto>(
+        serialized_host_transfer_info);
+    StreamExecutor_Tpu_FreeSerializedProto(&serialized_host_transfer_info);
+  }
+  return host_transfer_info;
+}
+
+xla::HloProto TpuProgramGroup::ConstructHloMetadata(
+    const XLA_TpuProgram* xla_tpu_program) {
+  VLOG(1) << "ConstructHloMetadata";
+  TpuSerializedProto serialized_hlo_metadata = {};
+  StatusHelper status;
+  TpuProgramApiFn()->TpuProgram_GetHloMetadataFn(
+      xla_tpu_program, &serialized_hlo_metadata, status.c_status);
+  xla::HloProto hlo_metadata;
+  if (status.ok()) {
+    hlo_metadata =
+        se_tpu::DeserializeProto<xla::HloProto>(serialized_hlo_metadata);
+    StreamExecutor_Tpu_FreeSerializedProto(&serialized_hlo_metadata);
+  }
+  return hlo_metadata;
+}
+
 void TpuProgramGroup::Initialize(
     absl::Span<XLA_TpuProgram* const> xla_tpu_programs) {
   CHECK_GT(xla_tpu_programs.size(), 0);
+  CHECK_EQ(program_count(), 0) << "Reinitialization of an existing "
+                                  "`TpuProgramGroup` instance is prohibited.";
   set_tpu_programs(xla_tpu_programs);
 
-  std::vector<bool> may_modify_variables_array(xla_tpu_programs.size(), false);
-  std::vector<TPUExecutableInfoProto> executable_infos(xla_tpu_programs.size());
+  std::vector<bool> may_modify_variables_array(tpu_programs_.size(), false);
+  std::vector<TPUExecutableInfoProto> executable_infos(tpu_programs_.size());
   std::vector<TPUHostTransferInfoProto> host_transfer_infos(
-      xla_tpu_programs.size());
-  std::vector<xla::HloProto> hlo_metadatas(xla_tpu_programs.size());
-  for (size_t i = 0; i < xla_tpu_programs.size(); ++i) {
+      tpu_programs_.size());
+  std::vector<xla::HloProto> hlo_metadatas(tpu_programs_.size());
+  for (size_t i = 0; i < tpu_programs_.size(); ++i) {
     const XLA_TpuProgram* xla_tpu_program = tpu_programs_[i];
     bool may_modify_variables;
     TpuProgramApiFn()->TpuProgram_GetMayModifyVariablesFn(
         xla_tpu_program, &may_modify_variables);
     may_modify_variables_array[i] = may_modify_variables;
-
-    TpuSerializedProto serialized_executable_info;
-    TpuProgramApiFn()->TpuProgram_GetExecutableInfoFn(
-        xla_tpu_program, &serialized_executable_info);
-    TPUExecutableInfoProto executable_info =
-        se_tpu::DeserializeProto<TPUExecutableInfoProto>(
-            serialized_executable_info);
-    executable_infos[i] = executable_info;
-    StreamExecutor_Tpu_FreeSerializedProto(&serialized_executable_info);
-
-    TPUHostTransferInfoProto host_transfer_info;
-    TpuSerializedProto serialized_host_transfer_info;
-    TpuProgramApiFn()->TpuProgram_GetHostTransferInfoFn(
-        xla_tpu_program, &serialized_host_transfer_info);
-    if (serialized_host_transfer_info.size > 0) {
-      host_transfer_info = se_tpu::DeserializeProto<TPUHostTransferInfoProto>(
-          serialized_host_transfer_info);
-      StreamExecutor_Tpu_FreeSerializedProto(&serialized_host_transfer_info);
-    }
-    host_transfer_infos[i] = host_transfer_info;
-
-    TpuSerializedProto serialized_hlo_metadata;
-    TpuProgramApiFn()->TpuProgram_GetHloMetadataFn(xla_tpu_program,
-                                                   &serialized_hlo_metadata);
-    xla::HloProto hlo_metadata =
-        se_tpu::DeserializeProto<xla::HloProto>(serialized_hlo_metadata);
-    hlo_metadatas[i] = hlo_metadata;
-    StreamExecutor_Tpu_FreeSerializedProto(&serialized_hlo_metadata);
+    executable_infos[i] = ConstructExecutableInfo(xla_tpu_program);
+    host_transfer_infos[i] = ConstructHostTransferInfo(xla_tpu_program);
+    hlo_metadatas[i] = ConstructHloMetadata(xla_tpu_program);
   }
 
   may_modify_variables_ = may_modify_variables_array;
@@ -190,18 +215,6 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
     }
   }
   tpu_programs_.clear();
-}
-
-/*static*/
-std::unique_ptr<TpuProgramGroup> TpuProgramGroup::Create(int count) {
-  auto tpu_program_group = std::make_unique<TpuProgramGroup>();
-  std::vector<XLA_TpuProgram*> tpu_programs;
-  tpu_programs.resize(count);
-  for (int i = 0; i < count; ++i) {
-    tpu_programs[i] = TpuProgramApiFn()->TpuProgram_NewFn();
-  }
-  tpu_program_group->set_tpu_programs(tpu_programs);
-  return tpu_program_group;
 }
 
 /*static*/
@@ -391,15 +404,25 @@ std::vector<XLA_TpuProgram*> TpuProgramGroup::tpu_programs(
   return tpu_programs;
 }
 
-Status TpuProgramGroup::DeserializeFromProto(int index,
-                                             TpuSerializedProto proto) {
-  CHECK_GE(index, 0);
-  CHECK_LT(index, tpu_programs_.size());
-  StatusHelper status;
-  CHECK_NE(tpu_programs_[index], nullptr);
-  TpuProgramApiFn()->TpuProgram_DeserializeFromGetTpuProgramResponseProtoFn(
-      proto, tpu_programs_[index], status.c_status);
-  return status.status();
+Status TpuProgramGroup::DeserializeFromRpcResponseProtos(
+    const std::vector<TpuSerializedProto>& rpc_response_protos) {
+  std::vector<XLA_TpuProgram*> tpu_programs;
+  tpu_programs.resize(rpc_response_protos.size());
+
+  for (size_t i = 0; i < rpc_response_protos.size(); ++i) {
+    StatusHelper status;
+    auto* xla_tpu_program = TpuProgramApiFn()->TpuProgram_NewFn();
+    TpuProgramApiFn()->TpuProgram_DeserializeFromGetTpuProgramResponseProtoFn(
+        rpc_response_protos[i], xla_tpu_program, status.c_status);
+    if (!status.status().ok()) {
+      TpuProgramApiFn()->TpuProgram_FreeFn(xla_tpu_program);
+      return status.status();
+    }
+    tpu_programs[i] = xla_tpu_program;
+  }
+
+  Initialize(tpu_programs);
+  return Status::OK();
 }
 
 Status TpuProgramGroup::SerializeExecutable(

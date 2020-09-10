@@ -20,9 +20,10 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
@@ -100,12 +101,12 @@ class TestDistributionStrategyDnnCorrectness(
     x_predict = np.array([[1.], [2.], [3.], [4.]], dtype=np.float32)
     return x_train, y_train, x_eval, y_eval, x_predict
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies())
   def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
@@ -113,7 +114,7 @@ class TestDistributionStrategyDnnCorrectness(
     self.run_correctness_test(
         distribution, use_numpy, use_validation_data, partial_last_batch='eval')
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base
       .strategy_minus_tpu_and_input_config_combinations_eager())
   def test_dnn_correctness_with_partial_last_batch(self, distribution,
@@ -127,7 +128,7 @@ class TestDistributionStrategyDnnCorrectness(
         partial_last_batch='train_and_eval',
         training_epochs=1)
 
-  @combinations.generate(all_strategy_combinations_with_graph_mode())
+  @ds_combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dnn_with_dynamic_learning_rate(self, distribution):
     self.run_dynamic_lr_test(distribution)
 
@@ -166,7 +167,8 @@ class TestDistributionStrategyDnnMetricCorrectness(
       history = model.fit(x=train_dataset, epochs=2, steps_per_epoch=10)
       self.assertEqual(history.history['binary_accuracy'], [1.0, 1.0])
 
-  @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
+  @ds_combinations.generate(
+      all_strategy_combinations_with_eager_and_graph_modes())
   def test_simple_dnn_metric_correctness(self, distribution):
     self.run_metric_correctness_test(distribution)
 
@@ -214,7 +216,8 @@ class TestDistributionStrategyDnnMetricEvalCorrectness(
       self.assertEqual(outs[1], 0.)
       self.assertEqual(outs[2], 0.)
 
-  @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
+  @ds_combinations.generate(
+      all_strategy_combinations_with_eager_and_graph_modes())
   def test_identity_model_metric_eval_correctness(self, distribution):
     self.run_eval_metrics_correctness_test(distribution)
 
@@ -261,7 +264,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
           metrics=['mse'])
       return model
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data):
     if (context.executing_eagerly()) or is_default_strategy(distribution):
@@ -280,7 +283,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
           '`input_dim` set in its first layer or a subclassed model.'):
         self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(all_strategy_combinations_with_graph_mode())
+  @ds_combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dnn_with_dynamic_learning_rate(self, distribution):
     if ((context.executing_eagerly() and not K.is_tpu_strategy(distribution)) or
         is_default_strategy(distribution)):
@@ -299,7 +302,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
           '`input_dim` set in its first layer or a subclassed model.'):
         self.run_dynamic_lr_test(distribution)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies())
   def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
