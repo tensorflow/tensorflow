@@ -94,6 +94,8 @@ ops.NotDifferentiable("ReduceDataset")
 
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
+tf_export("data.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
+# TODO(b/168128531): Deprecate and remove this symbol.
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 # Constants representing infinite and unknown cardinalities.
@@ -1700,7 +1702,7 @@ name=None))
 
     >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
     >>> dataset = dataset.map(lambda x: x + 1,
-    ...     num_parallel_calls=tf.data.experimental.AUTOTUNE,
+    ...     num_parallel_calls=tf.data.AUTOTUNE,
     ...     deterministic=False)
 
     Args:
@@ -1708,7 +1710,7 @@ name=None))
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
-        `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
+        `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
         should be traded for performance by allowing elements to be produced out
@@ -1821,7 +1823,7 @@ name=None))
     ...              "/var/data/file3.txt", "/var/data/file4.txt"]
     >>> dataset = tf.data.Dataset.from_tensor_slices(filenames)
     >>> dataset = dataset.interleave(lambda x: tf.data.TFRecordDataset(x),
-    ...     cycle_length=4, num_parallel_calls=tf.data.experimental.AUTOTUNE,
+    ...     cycle_length=4, num_parallel_calls=tf.data.AUTOTUNE,
     ...     deterministic=False)
 
     Args:
@@ -1829,7 +1831,7 @@ name=None))
       cycle_length: (Optional.) The number of input elements that will be
         processed concurrently. If not set, the tf.data runtime decides what it
         should be based on available CPU. If `num_parallel_calls` is set to
-        `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument identifies
+        `tf.data.AUTOTUNE`, the `cycle_length` argument identifies
         the maximum degree of parallelism.
       block_length: (Optional.) The number of consecutive elements to produce
         from each input element before cycling to another input element. If not
@@ -1838,7 +1840,7 @@ name=None))
         threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
         from cycle elements synchronously with no parallelism. If the value
-        `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
+        `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
         should be traded for performance by allowing elements to be produced out
@@ -2574,7 +2576,7 @@ class DatasetV1(DatasetV2):
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
-        `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
+        `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
         should be traded for performance by allowing elements to be produced out
