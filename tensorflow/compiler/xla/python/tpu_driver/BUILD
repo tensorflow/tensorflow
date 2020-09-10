@@ -115,6 +115,23 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "pod_tpu_driver",
+    srcs = ["pod_tpu_driver.cc"],
+    deps = [
+        ":tpu_driver",
+        ":grpc_tpu_driver",
+        ":tpu_driver_proto_cc",
+        "@com_google_absl//absl/container:btree",
+        "//tensorflow/compiler/xla/pjrt:semaphore",
+        "//tensorflow/compiler/xla/pjrt:worker_thread",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        tf_grpc_cc_dependency(),
+    ] + external_deps(),
+    alwayslink = 1,
+)
+
 go_proto_library(
     name = "tpu_service_go_proto",
     compatible_with = ["//buildenv/target:gce"],
