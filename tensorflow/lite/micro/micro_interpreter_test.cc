@@ -84,7 +84,7 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
     TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 928 + 100);
     TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.inputs_size());
     TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(2), interpreter.outputs_size());
-    TF_LITE_MICRO_EXPECT_GT(interpreter.tensors_size(), static_cast<size_t>(0));
+    TF_LITE_MICRO_EXPECT_GT(interpreter.tensors_size(), static_cast<size_t>(3));
 
     TfLiteTensor* input = interpreter.input(0);
     TF_LITE_MICRO_EXPECT_NE(nullptr, input);
