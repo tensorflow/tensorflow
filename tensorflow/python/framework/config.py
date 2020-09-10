@@ -199,10 +199,11 @@ def set_optimizer_experimental_options(options):
   (within `tf.function`).
 
   By default all of the optimizers are set to False.
-  In order to enable the optimizer of your choice specify it as a dictionry
-  in the parameters. There are various optimizers that you may enable.
-  To view all of the options head to
-  [TensorFlow graph optimization with Grappler]
+  In order to enable the optimizer of your choice, specify the name
+  of the optimizer followed by a boolean value `True` as a python
+  `dictionary` (`{layout_optimizer: True}`). There are various optimizers
+  that you may enable. To view all of the options and their specific
+  functionality head to [TensorFlow graph optimization with Grappler]
   (https://www.tensorflow.org/guide/graph_optimization).
   Be aware, as these are experimental options, the list is subject to change.
 
@@ -216,35 +217,37 @@ def set_optimizer_experimental_options(options):
   'disable_meta_optimizer': False}
 
   Args:
-    options: Dictionary of experimental optimizer options to configure.
+    options: `Dictionary` of experimental optimizer options to configure.
       Valid keys:
-      - layout_optimizer: Optimize tensor layouts
+      - `layout_optimizer`: Optimize tensor layouts
         e.g. This will try to use NCHW layout on GPU which is faster.
-      - constant_folding: Fold constants
+      - `constant_folding`: Fold constants
         Statically infer the value of tensors when possible, and materialize the
         result using constants.
-      - shape_optimization: Simplify computations made on shapes.
-      - remapping: Remap subgraphs onto more efficient implementations.
-      - arithmetic_optimization: Simplify arithmetic ops with common
+      - `shape_optimization`: Simplify computations made on shapes.
+      - `remapping`: Remap subgraphs onto more efficient implementations.
+      - `arithmetic_optimization`: Simplify arithmetic ops with common
         sub-expression elimination and arithmetic simplification.
-      - dependency_optimization: Control dependency optimizations. Remove
+      - `dependency_optimization`: Control dependency optimizations. Remove
         redundant control dependencies, which may enable other optimization.
         This optimizer is also essential for pruning Identity and NoOp nodes.
-      - loop_optimization: Loop optimizations.
-      - function_optimization: Function optimizations and inlining.
-      - debug_stripper: Strips debug-related nodes from the graph.
-      - disable_model_pruning: Disable removal of unnecessary ops from the graph
-      - scoped_allocator_optimization: Try to allocate some independent Op
+      - `loop_optimization`: Loop optimizations.
+      - `function_optimization`: Function optimizations and inlining.
+      - `debug_stripper`: Strips debug-related nodes from the graph.
+      - `disable_model_pruning`: Disable removal of
+        unnecessary ops from the graph
+      - `scoped_allocator_optimization`: Try to allocate some independent Op
         outputs contiguously in order to merge or eliminate downstream Ops.
-      - pin_to_host_optimization: Force small ops onto the CPU.
-      - implementation_selector: Enable the swap of kernel implementations based
-        on the device placement.
-      - auto_mixed_precision: Change certain float32 ops to float16 on Volta
-        GPUs and above. Without the use of loss scaling, this can cause
+      - `pin_to_host_optimization`: Force small ops onto the CPU.
+      - `implementation_selector`: Enable the swap of kernel
+        implementations based on the device placement.
+      - `auto_mixed_precision`: Change certain `float32`
+        ops to `float16` on Volta GPUs and above.
+        Without the use of loss scaling, this can cause
         numerical underflow (see
         `keras.mixed_precision.experimental.LossScaleOptimizer`).
-      - disable_meta_optimizer: Disable the entire meta optimizer.
-      - min_graph_nodes: The minimum number of nodes in a graph to optimizer.
+      - `disable_meta_optimizer`: Disable the entire meta optimizer.
+      - `min_graph_nodes`: The minimum number of nodes in a graph to optimizer.
         For smaller graphs, optimization is skipped.
   """
   context.context().set_optimizer_experimental_options(options)
