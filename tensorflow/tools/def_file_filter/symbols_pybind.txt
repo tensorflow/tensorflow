@@ -205,6 +205,9 @@ TFE_Py_TensorShapeOnDevice
 TFE_Py_EncodeArg
 TFE_Py_EnableInteractivePythonLogging
 TFE_Py_SetEagerContext
+tensorflow::MakeEagerContextThreadLocalData
+tensorflow::GetEagerContextThreadLocalData
+tensorflow::DestroyEagerContextThreadLocalData
 
 [eager_executor] # tfe
 tensorflow::EagerExecutor::~EagerExecutor
