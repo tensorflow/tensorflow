@@ -73,10 +73,15 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                               const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
-  // Registers a worker with the dispatcher. The dispatcher returns a list of
-  // initial tasks for the worker to run, storing them in `tasks`.
-  Status RegisterWorker(const std::string& worker_address,
-                        std::vector<TaskDef>& tasks);
+  // Sends a heartbeat to the dispatcher. If the worker wasn't already
+  // registered with the dispatcher, this will register the worker. The
+  // dispatcher will report which new tasks the worker should run, and which
+  // tasks it should delete. This is stored into `new_tasks` and
+  // `tasks_to_delete`.
+  Status WorkerHeartbeat(const std::string& worker_address,
+                         const std::vector<int64>& current_tasks,
+                         std::vector<TaskDef>& new_tasks,
+                         std::vector<int64>& tasks_to_delete);
 
   // Updates the dispatcher with information about the worker's state.
   Status WorkerUpdate(const std::string& worker_address,

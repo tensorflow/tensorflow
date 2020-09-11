@@ -139,7 +139,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
 
   // Embed TF Framework ops.
   if (!gpu_binary_only) {
-    pm.addPass(mlir::kernel_gen::tf_framework::createEmbedTFFrameworkPass());
+    pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   }
 
   // Some basic cleanup.
@@ -190,12 +190,10 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
       gpu_binary_attr_name, compute_capability));
 
   if (!gpu_binary_only) {
-    pm.addPass(mlir::kernel_gen::tf_framework::
-                   createTestTFFrameworkLegalizeToLLVMPass());
+    pm.addPass(mlir::kernel_gen::transforms::CreateTFKernelToLLVMPass());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
-
   return failed(pm.run(module)) ? InternalError("Lowering to LLVM IR failed.")
                                 : Status::OK();
 }

@@ -297,11 +297,11 @@ namespace {
 class EagerContextThreadLocalDataWrapper {
  public:
   explicit EagerContextThreadLocalDataWrapper(py::handle py_eager_context,
-                                              bool is_eager,
+                                              py::handle is_eager,
                                               py::handle device_spec)
       : py_eager_context_(py_eager_context.ptr()) {
-    tensorflow::MakeEagerContextThreadLocalData(py_eager_context.ptr(),
-                                                is_eager, device_spec.ptr());
+    tensorflow::MakeEagerContextThreadLocalData(
+        py_eager_context.ptr(), is_eager.ptr(), device_spec.ptr());
   }
 
   ~EagerContextThreadLocalDataWrapper() {
@@ -356,7 +356,12 @@ class EagerContextThreadLocalDataWrapper {
 
  private:
   tensorflow::EagerContextThreadLocalData* GetData() const {
-    return tensorflow::GetEagerContextThreadLocalData(py_eager_context_);
+    auto* result =
+        tensorflow::GetEagerContextThreadLocalData(py_eager_context_);
+    if (!result) {
+      throw py::error_already_set();
+    }
+    return result;
   }
 
   py::handle GetPyObject(tensorflow::Safe_PyObjectPtr* obj) const {
@@ -1362,7 +1367,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   py::class_<EagerContextThreadLocalDataWrapper>(m,
                                                  "EagerContextThreadLocalData")
-      .def(py::init<py::handle, bool, py::handle>(),
+      .def(py::init<py::handle, py::handle, py::handle>(),
            py::arg("py_eager_context"), py::arg("is_eager"),
            py::arg("device_spec"))
       .def_property("is_eager",

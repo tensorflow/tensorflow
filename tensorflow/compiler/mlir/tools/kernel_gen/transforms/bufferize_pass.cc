@@ -75,15 +75,12 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
   void runOnOperation() override {
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<lmhlo::LmhloDialect>();
-    target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalDialect<scf::SCFDialect>();
-    target.addLegalOp<ModuleOp>();
-    target.addLegalOp<ModuleTerminatorOp>();
+    target.addLegalDialect<lmhlo::LmhloDialect, scf::SCFDialect,
+                           StandardOpsDialect>();
+    target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<TensorFromElementsOp>();
-    target.addIllegalOp<ExtractElementOp>();
-    target.addIllegalOp<TensorLoadOp>();
+    target.addIllegalOp<DynamicTensorFromElementsOp, ExtractElementOp,
+                        TensorFromElementsOp, TensorLoadOp, YieldOp>();
     target.addDynamicallyLegalOp<TensorStoreOp>([&](TensorStoreOp op) {
       return !op.tensor().getType().isa<UnrankedTensorType>();
     });

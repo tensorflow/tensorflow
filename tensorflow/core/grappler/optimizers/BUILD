@@ -536,7 +536,7 @@ tf_cuda_cc_test(
     srcs = ["memory_optimizer_test.cc"],
     tags = [
         "no_cuda_on_cpu_tap",  # Do not re-enable again without actually testing.
-        "nowindows",
+        "no_windows",
     ],
     deps = [
         ":gpu_swapping_kernels",

@@ -29,6 +29,9 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
 
+# Next, build w/o TF_LITE_STATIC_MEMORY to catch additional build errors.
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=no_tf_lite_static_memory build
+
 # First make sure that the release build succeeds.
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release build
 

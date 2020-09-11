@@ -28,6 +28,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
@@ -63,7 +64,7 @@ cc_library(
         "bufferize_pass.cc",
         "embed_tf_framework_pass.cc",
         "shape_to_descriptors_pass.cc",
-        "tf_framework_legalize_to_llvm_pass.cc",
+        "tf_kernel_to_llvm_pass.cc",
     ],
     hdrs = ["passes.h"],
     deps = [

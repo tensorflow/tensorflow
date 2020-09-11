@@ -25,19 +25,18 @@ namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 
-// Test pass for applying TF Framework -> LLVM patterns.
-std::unique_ptr<OperationPass<ModuleOp> >
-createTestTFFrameworkLegalizeToLLVMPass();
-
 // Pass to replace some of the Standard ops with TF Framework ops.
 // * adds tf_framework::OpKernelContextType argument to the function
 // * std.alloc becomes tf_framework.alloc_raw
 // * std.dealloc becomes tf_framework.dealloc_raw
-std::unique_ptr<OperationPass<ModuleOp> > createEmbedTFFrameworkPass();
+std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass();
 
 }  // namespace tf_framework
 
 namespace transforms {
+
+// Pass for applying LLVM legalization patterns.
+std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
 
 // Pass to tranform shape computations in shape dialect to standard and scf
 // using memref descriptors.

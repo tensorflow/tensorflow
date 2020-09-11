@@ -20,8 +20,12 @@ from __future__ import print_function
 
 from tensorflow.python.framework.experimental import _math_ops
 from tensorflow.python.framework.experimental import context_stack as context
+from tensorflow.python.framework.experimental import gradient_registry
+from tensorflow.python.framework.experimental import tape_stack
 
 
 def add(a, b, name=None):
   ctx = context.get_default()
-  return _math_ops.add(ctx, a, b, name)
+  tape = tape_stack.get_default()
+  grad_registry = gradient_registry.get_global_registry()
+  return _math_ops.add(ctx, a, b, name, tape, grad_registry)

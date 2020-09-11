@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python import keras
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
@@ -96,12 +96,12 @@ class DistributionStrategyCnnCorrectnessTest(
     x_eval, y_eval = self._get_data(count=1000)
     return x_train, y_train, x_eval, y_eval, x_eval
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_correctness(self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
                                            use_validation_data):
@@ -112,7 +112,7 @@ class DistributionStrategyCnnCorrectnessTest(
         use_validation_data,
         with_batch_norm='regular')
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_with_sync_batch_norm_correctness(self, distribution, use_numpy,
                                                 use_validation_data):
@@ -125,7 +125,7 @@ class DistributionStrategyCnnCorrectnessTest(
         use_validation_data,
         with_batch_norm='sync')
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies() +
       keras_correctness_test_base
       .strategy_minus_tpu_and_input_config_combinations_eager())
@@ -139,7 +139,7 @@ class DistributionStrategyCnnCorrectnessTest(
         partial_last_batch=True,
         training_epochs=1)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies() +
       keras_correctness_test_base
       .strategy_minus_tpu_and_input_config_combinations_eager())

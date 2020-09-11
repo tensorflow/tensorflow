@@ -406,7 +406,8 @@ class Context(object):
 
     self._config = config
     self._thread_local_data = pywrap_tfe.EagerContextThreadLocalData(
-        self, is_eager=default_execution_mode == EAGER_MODE,
+        self,
+        is_eager=lambda: default_execution_mode == EAGER_MODE,
         device_spec=_starting_device_spec)
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None

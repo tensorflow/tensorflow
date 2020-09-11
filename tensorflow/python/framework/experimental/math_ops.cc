@@ -23,22 +23,39 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
+
+// This library provides helpers for running ops and recording them on a
+// GradientTape. This is currently needed because the tape does not provide
+// an implementation of the abstract execution APIs but that will change.
+// TODO(b/168209775): Remove this and its imported symbols once the tape
+// execution context is ready.
+#include "tensorflow/c/eager/mnist_gradients_testutil.h"
 
 using tensorflow::AbstractContext;
 using tensorflow::AbstractTensorHandle;
-using tensorflow::ops::Add;
+using tensorflow::gradients::GradientRegistry;
+using tensorflow::gradients::Tape;
 
+namespace tensorflow {
 PYBIND11_MODULE(_math_ops, m) {
   m.def("add", [](AbstractContext* ctx, AbstractTensorHandle* a,
-                  AbstractTensorHandle* b, const char* name) {
+                  AbstractTensorHandle* b, const char* name, Tape* tape,
+                  GradientRegistry* registry) {
     int num_outputs = 1;
     std::vector<AbstractTensorHandle*> outputs(1);
     if (!name) {
       name = "Add";
     }
-    MaybeRaiseRegisteredFromStatus(
-        Add(ctx, {a, b}, absl::MakeSpan(outputs), name));
+    if (!tape) {
+      MaybeRaiseRegisteredFromStatus(
+          ops::Add(ctx, {a, b}, absl::MakeSpan(outputs), name));
+    } else {
+      MaybeRaiseRegisteredFromStatus(gradients::internal::Add(
+          ctx, tape, {a, b}, absl::MakeSpan(outputs), *registry));
+    }
     return outputs[0];
   });
 }
+}  // namespace tensorflow

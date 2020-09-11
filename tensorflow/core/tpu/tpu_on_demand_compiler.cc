@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
+#include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
@@ -97,11 +98,11 @@ void XLA_HloModuleConfig_Free(XLA_HloModuleConfig* module_config) {
   }
 }
 
-class TpuExecutable : public Executable {
+class TpuExecutable : public TpuExecutableInterface {
  public:
   TpuExecutable(SE_Executable* se_executable,
                 std::shared_ptr<HloModule> hlo_module)
-      : Executable(std::move(hlo_module), nullptr, nullptr),
+      : TpuExecutableInterface(std::move(hlo_module), nullptr, nullptr),
         se_executable_(se_executable) {}
 
   ~TpuExecutable() override {
@@ -192,7 +193,31 @@ class TpuExecutable : public Executable {
     return output;
   }
 
+  absl::string_view fingerprint() const override {
+    const char* data;
+    size_t size;
+    ExecutorApiFn()->TpuExecutable_FingerprintFn(se_executable_, &data, &size);
+    return absl::string_view(data, size);
+  }
+
  private:
+  Status LoadProgramAndEnqueueToStream(
+      const ServiceExecutableRunOptions& run_options,
+      absl::Span<const stream_executor::DeviceMemoryBase> arguments,
+      stream_executor::DeviceMemoryBase result,
+      absl::optional<stream_executor::DeviceMemoryBase>
+          cross_program_prefetch_addr) override {
+    LOG(FATAL) << "LoadProgramAndEnqueueToStream unimplemented";
+  }
+
+  Shape HostShapeToDeviceShape(const Shape& host_shape) override {
+    LOG(FATAL) << "HostShapeToDeviceShape unimplemented";
+  }
+
+  int64 ShapeSize(const Shape& shape) override {
+    LOG(FATAL) << "ShapeSize unimplemented";
+  }
+
   SE_Executable* se_executable_;
 };
 

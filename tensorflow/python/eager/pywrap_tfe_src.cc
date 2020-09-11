@@ -4228,7 +4228,7 @@ namespace {
 
 // Default values for thread_local_data fields.
 struct EagerContextThreadLocalDataDefaults {
-  bool is_eager;
+  tensorflow::Safe_PyObjectPtr is_eager;
   tensorflow::Safe_PyObjectPtr device_spec;
 };
 
@@ -4253,7 +4253,8 @@ EagerContextThreadLocalDataDefaultsMap*
 
 namespace tensorflow {
 
-void MakeEagerContextThreadLocalData(PyObject* py_eager_context, bool is_eager,
+void MakeEagerContextThreadLocalData(PyObject* py_eager_context,
+                                     PyObject* is_eager,
                                      PyObject* device_spec) {
   DCheckPyGilState();
   if (eager_context_thread_local_data_defaults == nullptr) {
@@ -4268,7 +4269,8 @@ void MakeEagerContextThreadLocalData(PyObject* py_eager_context, bool is_eager,
 
   auto& defaults =
       (*eager_context_thread_local_data_defaults)[py_eager_context];
-  defaults.is_eager = is_eager;
+  Py_INCREF(is_eager);
+  defaults.is_eager.reset(is_eager);
   Py_INCREF(device_spec);
   defaults.device_spec.reset(device_spec);
 }
@@ -4299,7 +4301,10 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
   if (!thread_local_data) {
     thread_local_data.reset(new EagerContextThreadLocalData());
 
-    thread_local_data->is_eager = defaults->second.is_eager;
+    Safe_PyObjectPtr is_eager(PyObject_CallFunctionObjArgs(
+        defaults->second.is_eager.get(), nullptr));
+    if (!is_eager) return nullptr;
+    thread_local_data->is_eager = PyObject_IsTrue(is_eager.get());
 
 #if PY_MAJOR_VERSION >= 3
     PyObject* scope_name = PyUnicode_FromString("");

@@ -19,12 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
@@ -50,7 +50,7 @@ class MiniModel(keras_training.Model):
     return self.fc(inputs)
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,

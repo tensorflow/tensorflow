@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -1003,18 +1004,39 @@ class HardSwishOperationParser : public TFLiteOperationParser {
 //                 /      \
 //           new_state1    activation0
 //
+// For full LSTM cells, see this blog post:
+// https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+// In addition to Peephole connections and Combined Input Forget Gates (CIFG)
+// described in that post, this code also adds the following optional features:
+// - Configurable activations (sigmoid or TANH)
+// - L2 Normalization of gates: https://arxiv.org/abs/1607.06450
+// - Output projection:
+//     https://www.isca-speech.org/archive/interspeech_2014/i14_0338.html
+// - Configurable clipping of cell state and output state.
 class LSTMOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     const TfLiteLSTMParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     switch (tf_options->kernel_type) {
-      case kTfLiteLSTMFullKernel:
-        // TODO(b/157166356): Add check for input/output tensor counts.
+      case kTfLiteLSTMFullKernel: {
+        const int inputs = NumInputs(tflite_node);
+        if (inputs != 20 && inputs != 24) {
+          return absl::InternalError(
+              absl::StrCat("Expected 20 or 24 input tensors, but node has ",
+                           inputs, " input(s)."));
+        }
+        const int runtime_outputs = NumOutputs(tflite_node);
+        if (runtime_outputs != 1) {
+          return absl::InternalError(
+              absl::StrCat("Expected 1 output tensor, but node has ",
+                           runtime_outputs, " output(s)."));
+        }
         return CheckFullParameters(tf_options);
+      }
       case kTfLiteLSTMBasicKernel:
         RETURN_IF_ERROR(
             CheckInputsConstsOutputs(context, tflite_node, /*runtime_inputs=*/3,
@@ -1034,6 +1056,11 @@ class LSTMOperationParser : public TFLiteOperationParser {
       case kTfLiteLSTMBasicKernel:
         return ParseBasic(tflite_node, registration, graph, reader, tf_options);
     }
+  }
+
+  absl::flat_hash_map<int, ValueId> GetNewValueIdsForVariableInputNodes()
+      final {
+    return new_variable_input_value_map_;
   }
 
  private:
@@ -1108,14 +1135,24 @@ class LSTMOperationParser : public TFLiteOperationParser {
                          const TfLiteRegistration* registration,
                          GraphFloat32* graph, ObjectReader* reader,
                          const TfLiteLSTMParams* tf_options) {
-    return absl::UnimplementedError(
-        "Full LSTM support is not yet implemented.");
+    // Invoke full LSTM parser
+    RETURN_IF_ERROR(ParseLSTMAttributes(tflite_node, registration, graph,
+                                        reader, tf_options,
+                                        &new_variable_input_value_map_));
+    return absl::OkStatus();
   }
 
   absl::Status CheckFullParameters(const TfLiteLSTMParams* tf_options) {
-    return absl::UnimplementedError(
-        "Full LSTM support is not yet implemented.");
+    if (tf_options->activation != kTfLiteActSigmoid &&
+        tf_options->activation != kTfLiteActTanh) {
+      return absl::UnimplementedError(
+          "Only sigmoid or tanh activation is supported.");
+    }
+
+    return absl::OkStatus();
   }
+
+  absl::flat_hash_map<int, ValueId> new_variable_input_value_map_;
 };
 
 class MulOperationParser : public TFLiteOperationParser {

@@ -442,3 +442,12 @@ cc_library(
         "//tensorflow/core:lib",
     ],
 )
+
+cc_library(
+    name = "file_system_utils",
+    hdrs = ["file_system_utils.h"],
+    deps = [
+        "//tensorflow/core/platform",
+        "@com_google_absl//absl/strings",
+    ],
+)

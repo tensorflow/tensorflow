@@ -65,3 +65,33 @@ cc_library(
         "//tensorflow/core/platform:errors",
     ],
 )
+
+cc_library(
+    name = "ops",
+    hdrs = [
+        "array_ops.h",
+        "math_ops.h",
+        "nn_ops.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":array_ops",
+        ":math_ops",
+        ":nn_ops",
+    ],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "array_ops.h",
+        "math_ops.h",
+        "nn_ops.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
