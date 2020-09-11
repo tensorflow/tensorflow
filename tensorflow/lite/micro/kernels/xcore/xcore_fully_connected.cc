@@ -82,12 +82,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       &op->stack_scratch_index));
 
   // allocate scratch buffers for weights and biases (if necessary)
-  if (IS_NOT_RAM(weights)) {
+  if (IS_NOT_RAM(weights->data.int8)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetWeightsScratchSize(),
         &op->weights_scratch_index));
   }
-  if (IS_NOT_RAM(bso)) {
+  if (IS_NOT_RAM(bso->data.i16)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetBiasScratchSize(),
         &op->bias_scratch_index));
