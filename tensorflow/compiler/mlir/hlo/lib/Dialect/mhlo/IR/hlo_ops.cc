@@ -1362,7 +1362,8 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
 OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
   auto rType = getType().cast<ShapedType>();
   if (lhs() == rhs()) {
-    return DenseIntElementsAttr::get(rType, 0);
+    Builder builder(getContext());
+    return builder.getZeroAttr(rType);
   }
 
   auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
