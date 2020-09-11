@@ -150,6 +150,7 @@ std::string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kResizeNearestNeighbor, 1}, "1.13.1"},
           {{OperatorType::kResizeNearestNeighbor, 2}, "1.14.0"},
           {{OperatorType::kResizeNearestNeighbor, 3}, kPendingReleaseOpVersion},
+          {{OperatorType::kResizeNearestNeighbor, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kSqueeze, 1}, "1.6.0"},
           {{OperatorType::kSplit, 1}, "1.5.0"},
           {{OperatorType::kSplit, 2}, "1.14.0"},
