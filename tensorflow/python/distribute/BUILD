@@ -1786,13 +1786,15 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":distribute_lib",
+        ":distribute_utils",
         ":parameter_server_strategy",
         ":sharded_variable",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_decorator",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:remote",
         "@absl_py//absl/logging",
     ],
 )
