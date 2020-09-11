@@ -29,16 +29,22 @@ def add(a, b, name=None):
   tape = tape_stack.get_default()
   grad_registry = gradient_registry.get_global_registry()
   return _math_ops.add(ctx, a, b, name, tape, grad_registry)
-  #return _math_ops.add(ctx, a, b, name)
+  
 
 def matmul(a, b, name=None):
   ctx = context.get_default()
-  return _math_ops.matmul(ctx, a, b, name)
+  tape = tape_stack.get_default()
+  grad_registry = gradient_registry.get_global_registry()
+  return _math_ops.matmul(ctx, a, b, name, tape, grad_registry)
 
 def relu(a, name=None):
   ctx = context.get_default()
-  return _math_ops.relu(ctx, a, name)
+  tape = tape_stack.get_default()
+  grad_registry = gradient_registry.get_global_registry()
+  return _math_ops.relu(ctx, a, name, tape, grad_registry)
 
 def softmax_loss(features, labels, name=None):
   ctx = context.get_default()
-  return _math_ops.softmax_loss(ctx, features, labels, name)
+  tape = tape_stack.get_default()
+  grad_registry = gradient_registry.get_global_registry()
+  return _math_ops.softmax_loss(ctx, features, labels, name, tape, grad_registry)

@@ -60,38 +60,68 @@ PYBIND11_MODULE(_math_ops, m) {
   });
 
   m.def("matmul", [](AbstractContext* ctx, AbstractTensorHandle* a,
-                  AbstractTensorHandle* b, const char* name) {
+                     AbstractTensorHandle* b, const char* name, Tape* tape,
+                     GradientRegistry* registry) {
     int num_outputs = 1;
     std::vector<AbstractTensorHandle*> outputs(1);
     if (!name) {
       name = "MatMul";
     }
-    MaybeRaiseRegisteredFromStatus(
-        MatMul(ctx, {a, b}, absl::MakeSpan(outputs), name, /*t_a=*/false, /*t_b=*/false));
+    if (!tape) {
+      MaybeRaiseRegisteredFromStatus(
+        ops::MatMul(ctx, {a, b}, absl::MakeSpan(outputs), name, /*t_a=*/false, /*t_b=*/false));
+    } else {
+      MaybeRaiseRegisteredFromStatus(gradients::internal::MatMul(
+          ctx, tape, {a, b}, absl::MakeSpan(outputs), name, /*t_a=*/false, /*t_b=*/false, *registry));
+    }
     return outputs[0];
   });
 
   m.def("relu", [](AbstractContext* ctx, AbstractTensorHandle* a,
-                   const char* name) {
+                   const char* name, Tape* tape,
+                   GradientRegistry* registry) {
     int num_outputs = 1;
     std::vector<AbstractTensorHandle*> outputs(1);
     if (!name) {
       name = "Relu";
     }
-    MaybeRaiseRegisteredFromStatus(
-        Relu(ctx, {a}, absl::MakeSpan(outputs), name));
+    if (!tape) {
+      MaybeRaiseRegisteredFromStatus(
+        ops::Relu(ctx, {a}, absl::MakeSpan(outputs), name));
+    } else {
+      MaybeRaiseRegisteredFromStatus(gradients::internal::Relu(
+          ctx, tape, {a}, absl::MakeSpan(outputs), name, *registry));
+    }
     return outputs[0];
   });
 
+  // m.def("softmax_loss", [](AbstractContext* ctx, AbstractTensorHandle* features,
+  //                 AbstractTensorHandle* labels, const char* name) {
+  //   int num_outputs = 2;
+  //   std::vector<AbstractTensorHandle*> outputs(2);
+  //   if (!name) {
+  //     name = "SparseSoftmaxCrossEntropyWithLogits";
+  //   }
+  //   MaybeRaiseRegisteredFromStatus(
+  //       SparseSoftmaxCrossEntropyLoss(ctx, {features, labels}, absl::MakeSpan(outputs), name));
+  //   return outputs[0]; // Only return the loss vals, not the backprop.
+  // });
+
   m.def("softmax_loss", [](AbstractContext* ctx, AbstractTensorHandle* features,
-                  AbstractTensorHandle* labels, const char* name) {
+                           AbstractTensorHandle* labels, const char* name, Tape* tape,
+                           GradientRegistry* registry) {
     int num_outputs = 2;
     std::vector<AbstractTensorHandle*> outputs(2);
     if (!name) {
       name = "SparseSoftmaxCrossEntropyWithLogits";
     }
-    MaybeRaiseRegisteredFromStatus(
-        SparseSoftmaxCrossEntropyLoss(ctx, {features, labels}, absl::MakeSpan(outputs), name));
+    if (!tape) {
+      MaybeRaiseRegisteredFromStatus(
+        ops::SparseSoftmaxCrossEntropyLoss(ctx, {features, labels}, absl::MakeSpan(outputs), name));
+    } else {
+      MaybeRaiseRegisteredFromStatus(gradients::internal::SparseSoftmaxCrossEntropyLoss(
+          ctx, tape, {features, labels}, absl::MakeSpan(outputs), name, *registry));
+    }
     return outputs[0]; // Only return the loss vals, not the backprop.
   });
 }

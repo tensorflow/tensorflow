@@ -76,6 +76,11 @@ using tensorflow::TFE_TensorHandleToNumpy;
 using tensorflow::errors::Internal;
 using tensorflow::errors::InvalidArgument;
 
+void PyMemReleaser(void* data, size_t len, void* obj) {
+  /* do nothing */
+}
+
+
 PYBIND11_MODULE(_unified_api, m) {
   // Context creation functions.
   m.def("SetTracingImplementation", [](const char* impl) {
