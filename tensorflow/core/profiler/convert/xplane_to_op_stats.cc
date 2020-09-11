@@ -193,8 +193,9 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   if (options.generate_step_db) {
     StepEvents nonoverlapped_step_events =
         ToNonOverlappedStepEvents(step_events);
-    *op_stats.mutable_step_db() =
-        ConvertStepEventsToStepDb(has_device, nonoverlapped_step_events);
+    *op_stats.mutable_step_db() = ConvertStepEventsToStepDb(
+        has_device, options.maybe_drop_incomplete_steps,
+        nonoverlapped_step_events);
     *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
         ComputePrecisionStats(nonoverlapped_step_events);
   }
