@@ -18,10 +18,42 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import tempfile
-import portpicker
+import threading
+import unittest
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.platform import test
+
+_portpicker_import_error = None
+try:
+  import portpicker  # pylint: disable=g-import-not-at-top
+except ImportError as _error:  # pylint: disable=invalid-name
+  _portpicker_import_error = _error
+  portpicker = None
+
+ASSIGNED_PORTS = set()
+lock = threading.Lock()
+
+
+def pick_unused_port():
+  """Returns an unused and unassigned local port."""
+
+  if _portpicker_import_error:
+    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+
+  global ASSIGNED_PORTS
+  with lock:
+    while True:
+      try:
+        port = portpicker.pick_unused_port()
+      except portpicker.NoFreePortFoundError:
+        raise unittest.SkipTest('Flakes in portpicker library do not represent '
+                                'TensorFlow errors.')
+      if port > 10000 and port not in ASSIGNED_PORTS:
+        ASSIGNED_PORTS.add(port)
+        logging.info('Using local port %r', port)
+        return port
 
 
 class ServerLibTest(test.TestCase):
@@ -31,7 +63,7 @@ class ServerLibTest(test.TestCase):
     dispatcher.start()
 
   def testStartDispatcherWithPortConfig(self):
-    port = portpicker.pick_unused_port()
+    port = pick_unused_port()
     config = server_lib.DispatcherConfig(port=port)
     dispatcher = server_lib.DispatchServer(config=config, start=True)
     self.assertEqual(dispatcher.target, "grpc://localhost:{}".format(port))
@@ -68,7 +100,7 @@ class ServerLibTest(test.TestCase):
 
   def testStartWorkerWithPortConfig(self):
     dispatcher = server_lib.DispatchServer()
-    port = portpicker.pick_unused_port()
+    port = pick_unused_port()
     worker = server_lib.WorkerServer(
         server_lib.WorkerConfig(dispatcher._address, port=port), start=True)
     self.assertEqual(worker._address, "localhost:{}".format(port))
