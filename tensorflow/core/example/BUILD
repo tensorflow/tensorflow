@@ -100,6 +100,9 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
 )
 
 tf_proto_library(
@@ -121,6 +124,9 @@ tf_proto_library(
     protodeps = [
         ":example_protos",
         ":example_parser_configuration_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )
 
