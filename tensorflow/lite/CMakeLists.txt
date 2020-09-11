@@ -177,7 +177,11 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DNOMINMAX" "-DNOGDI")
   # lite/kernels/conv.cc has more than 64k sections so enable /bigobj to
   # support compilation with MSVC2015.
-  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "/bigobj")
+  if(MSVC)
+    list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "/bigobj")
+  elseif(CMAKE_COMPILER_IS_GNUCXX)
+    list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-Wa,-mbig-obj")
+  endif()
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)

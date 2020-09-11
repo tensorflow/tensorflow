@@ -44,21 +44,20 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
   if (response->is_empty()) {
     entry.size = 0;
   } else {
-    // When we lookup from remote cache, we fetch a TPU program for a specific
-    // core hence we allocate TPU program group for a single program.
-    entry.tpu_program_group = TpuProgramGroup::Create(/*count=*/1);
-
     TpuSerializedProto serialized_response_proto =
         stream_executor::tpu::SerializeProto(*response);
     auto cleanup = xla::MakeCleanup([&serialized_response_proto]() {
       stream_executor::tpu::SerializedProto_Free(serialized_response_proto);
     });
+    // When we lookup from remote cache, we fetch a TPU program for a specific
+    // core, hence we allocate TPU program group for a single program.
+    auto tpu_program_group = absl::make_unique<TpuProgramGroup>();
+
     // TODO(b/166575150): can be optimized by sending the buffer over the gRPC
     // without an extra deserializing.
-    TpuProgramGroup* tpu_program_group =
-        tensorflow::down_cast<TpuProgramGroup*>(entry.tpu_program_group.get());
-    TF_RETURN_IF_ERROR(tpu_program_group->DeserializeFromProto(
-        /*index=*/0, serialized_response_proto));
+    TF_RETURN_IF_ERROR(tpu_program_group->DeserializeFromRpcResponseProtos(
+        {serialized_response_proto}));
+    entry.tpu_program_group = std::move(tpu_program_group);
     entry.size = entry.tpu_program_group->program_size();
   }
 
@@ -106,7 +105,10 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
 
   // Encode and serialize header fields.
   GetTpuProgramResponseExternal header;
-  header.mutable_proto()->ParseFromArray(executable.bytes, executable.size);
+  if (!header.mutable_proto()->ParseFromArray(executable.bytes,
+                                              executable.size)) {
+    return errors::Internal("Failed to serialize TPU program.");
+  }
   header.set_is_empty(false);
 
   HostComputeMetadataSerializedProto host_compute_metadata;
@@ -122,11 +124,10 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   if (!get_host_compute_metadata_status.ok()) {
     return errors::Internal("Failed to serialize host compute metadata.");
   }
-  tf2xla::HostComputeMetadata host_compute_metadata_proto =
-      stream_executor::tpu::DeserializeProto<tf2xla::HostComputeMetadata>(
-          host_compute_metadata);
-  *header.mutable_host_compute_metadata() =
-      std::move(host_compute_metadata_proto);
+  if (!header.mutable_host_compute_metadata()->ParseFromArray(
+          host_compute_metadata.bytes, host_compute_metadata.size)) {
+    return errors::Internal("Failed to deserialize host compute metadata.");
+  }
 
   bool may_modify_variables =
       tpu_program_group->may_modify_variables(cache_entry.core_index());
@@ -144,9 +145,10 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   if (!get_compiler_metadata_status.ok()) {
     return errors::Internal("Failed to serialize compiler metadata.");
   }
-  header.mutable_compiler_metadata()->mutable_data()->assign(
-      compiler_metadata.bytes, compiler_metadata.size);
-
+  if (!header.mutable_compiler_metadata()->ParseFromArray(
+          compiler_metadata.bytes, compiler_metadata.size)) {
+    return errors::Internal("Failed to deserialize compiler metadata.");
+  }
   std::string encoded_header;
   if (!header.AppendToString(&encoded_header)) {
     return errors::Internal("Failed to serialize TPU program metadata.");

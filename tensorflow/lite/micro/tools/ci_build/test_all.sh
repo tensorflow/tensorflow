@@ -35,7 +35,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile \
 echo "Starting to run micro tests at `date`"
 
 echo "Running x86 tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_x86.sh
+tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
 
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh

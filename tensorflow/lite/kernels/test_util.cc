@@ -79,12 +79,23 @@ std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
   return matchers;
 }
 
-int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
+int SingleOpModel::AddInput(const TensorData& t) {
   int id = 0;
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {}, is_variable);
+    id = AddTensor<float>(t, {});
+  }
+  inputs_.push_back(id);
+  return id;
+}
+
+int SingleOpModel::AddVariableInput(const TensorData& t) {
+  int id = 0;
+  if (t.per_channel_quantization) {
+    id = AddTensorPerChannelQuant(t);
+  } else {
+    id = AddTensor<float>(t, {}, true);
   }
   inputs_.push_back(id);
   return id;

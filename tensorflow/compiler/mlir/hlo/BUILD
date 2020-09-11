@@ -312,17 +312,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_dialect_force_registration",
-    srcs = ["lib/Dialect/mhlo/IR/dialect_registration.cc"],
-    deps = [
-        ":hlo",
-        ":lhlo",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "hlo_dialect_registration",
     srcs = ["lib/Dialect/mhlo/IR/init.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],

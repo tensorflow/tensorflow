@@ -665,7 +665,8 @@ class Callback(object):
         epoch: Integer, index of epoch.
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
-          are prefixed with `val_`.
+          are prefixed with `val_`. For training epoch, the values of the  
+         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'acc': 0.7}`.
     """
 
   @doc_controls.for_subclass_implementers
@@ -1191,7 +1192,7 @@ class ModelCheckpoint(Callback):
         could reflect as little as 1 batch, since the metrics get reset every
         epoch). Defaults to `'epoch'`.
       options: Optional `tf.train.CheckpointOptions` object if
-        `save_weights_only` is true or optional `tf.saved_model.SavedOptions`
+        `save_weights_only` is true or optional `tf.saved_model.SaveOptions`
         object if `save_weights_only` is false.
       **kwargs: Additional arguments for backwards compatibility. Possible key
         is `period`.

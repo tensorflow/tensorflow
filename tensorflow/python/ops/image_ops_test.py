@@ -4406,17 +4406,6 @@ class PngTest(test_util.TensorFlowTestCase):
         self.assertEqual(image.get_shape().as_list(),
                          [None, None, channels or None])
 
-  def testPaletteOnly(self):
-    filename = "tensorflow/core/lib/png/testdata/palette_only.png"
-    expected = np.zeros((20, 20, 1), np.uint8)
-    expected[1, 1:19, :] = 1
-    expected[3, 1:19, :] = 2
-    with self.cached_session(use_gpu=True):
-      channels = 1
-      png = image_ops.decode_png(io_ops.read_file(filename), channels=channels)
-      png = self.evaluate(png)
-      self.assertAllEqual(expected, png)
-
 
 class GifTest(test_util.TensorFlowTestCase):
 

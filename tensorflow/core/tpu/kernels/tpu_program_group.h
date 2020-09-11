@@ -104,9 +104,6 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
       TpuProgramGroupInterface* tpu_program_group_interface);
 
-  // Creates the `count` instances of uninitialized `XLA_TpuPrograms`.
-  static std::unique_ptr<TpuProgramGroup> Create(int count);
-
   // Initializes `TpuProgramGroup` object with `xla_tpu_programs`.
   void Initialize(absl::Span<XLA_TpuProgram* const> xla_tpu_programs);
 
@@ -143,9 +140,9 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 
-  // Deserializes `GetTpuProgramResponse` proto into an `XLA_TpuProgram` for
-  // the given core `index`.
-  Status DeserializeFromProto(int index, TpuSerializedProto proto);
+  // Deserializes `GetTpuProgramResponse` protos from remote cache.
+  Status DeserializeFromRpcResponseProtos(
+      const std::vector<TpuSerializedProto>& rpc_response_protos);
 
   // Serializes executable proto from the TPU program for the given core
   // `index`.
@@ -163,6 +160,14 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       HostComputeMetadataSerializedProto* host_compute_metadata) const;
 
  private:
+  TPUExecutableInfoProto ConstructExecutableInfo(
+      const XLA_TpuProgram* tpu_program);
+  TPUHostTransferInfoProto ConstructHostTransferInfo(
+      const XLA_TpuProgram* tpu_program);
+  xla::HloProto ConstructHloMetadata(const XLA_TpuProgram* tpu_program);
+
+  // Update `hlo_metadatas__ptrs_` array from `hlo_metadatas_`. This needs to be
+  // called on `hlo_metadatas_` change(s).
   void RefreshHloMetadatasPtrs();
 
   std::vector<bool> may_modify_variables_;

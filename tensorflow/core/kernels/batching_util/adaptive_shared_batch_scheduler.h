@@ -464,7 +464,7 @@ void AdaptiveSharedBatchScheduler<
        it != batches_.end() && available_threads > 0;) {
     if ((*it)->IsClosed()) {
       const internal::ASBSBatch<TaskType>* batch = *it;
-      batches_.erase(it++);
+      it = batches_.erase(it);
       batch->queue()->ReleaseBatch(batch);
       batch_thread_pool_->Schedule(
           std::bind(&AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper,

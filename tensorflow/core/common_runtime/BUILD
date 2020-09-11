@@ -546,6 +546,9 @@ cc_library(
     deps = [
         ":device_mgr",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -2220,6 +2223,7 @@ tf_cuda_cc_test(
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["notsan"],  # b/168317266
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

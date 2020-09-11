@@ -101,10 +101,15 @@ filegroup(
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
+        "c_api_unified_experimental_internal.h",
         "dlpack.h",
+        "gradients.h",
+        "gradients_internal.h",
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
+        "mnist_gradients_testutil.h",
+        "tape.h",
         "tfe_cancellation_manager_internal.h",
         "tfe_executor_internal.h",
         "tfe_monitoring_internal.h",
@@ -160,31 +165,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
-    name = "gradients",
-    srcs = [
-        "gradients.cc",
-        "gradients_internal.h",
-    ],
-    hdrs = [
-        "gradients.h",
-    ],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-    deps = [
-        ":abstract_context",
-        ":abstract_operation",
-        ":abstract_tensor_handle",
-        ":c_api_unified_internal",
-        ":tape",
-        "//tensorflow/core/common_runtime/eager:attr_builder",
-        "//tensorflow/core/lib/llvm_rtti",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -265,9 +245,7 @@ cc_library(
         ":gradients_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor",
-        "//tensorflow/c/experimental/ops:array_ops",
-        "//tensorflow/c/experimental/ops:math_ops",
-        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/c/experimental/ops",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -647,6 +625,7 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
     tags = [
+        "no_oss",  # b/168323632
         "no_windows",
         "noasan",  # leaks gRPC server instances
     ],
@@ -797,6 +776,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -816,6 +796,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",

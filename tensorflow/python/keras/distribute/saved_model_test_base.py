@@ -24,9 +24,9 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import model_combinations
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test

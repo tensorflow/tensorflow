@@ -23,6 +23,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
 
+namespace tensorflow {
+namespace tpu {
+
 class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
   using Status = stream_executor::port::Status;
@@ -37,6 +40,26 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return tensorflow::tpu::ExecutorApiFn()
         ->TpuStream_IsSameSharedMemoryLocationFn(
             stream_, static_cast<TpuStream*>(other)->stream_);
+  }
+
+  Status EnqueueTransferHostToDevice(
+      stream_executor::DeviceMemoryBase device_dst, const void* host_src,
+      uint64 size) {
+    StatusHelper status;
+    tensorflow::tpu::ExecutorApiFn()->TpuStream_EnqueueTransferHostToDeviceFn(
+        stream_, ApiConverter::ToC(device_dst), const_cast<void*>(host_src),
+        size, status.c_status);
+    return status.status();
+  }
+
+  Status EnqueueTransferDeviceToHost(
+      stream_executor::DeviceMemoryBase device_src, void* host_dst,
+      uint64 size) {
+    StatusHelper status;
+    tensorflow::tpu::ExecutorApiFn()->TpuStream_EnqueueTransferDeviceToHostFn(
+        stream_, ApiConverter::ToC(device_src), host_dst, size,
+        status.c_status);
+    return status.status();
   }
 
   Status EnqueueOnTpuDeviceSendRecvLocal(
@@ -55,5 +78,8 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  private:
   mutable SE_Stream* stream_;
 };
+
+}  // namespace tpu
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_

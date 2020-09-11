@@ -800,7 +800,6 @@ class Trackable(object):
         # then we'll catch that when we call _track_trackable. So this is
         # "best effort" to set the initializer with the highest restore UID.
         initializer = checkpoint_initializer
-        shape = None
     new_variable = getter(
         name=name,
         shape=shape,

@@ -179,7 +179,7 @@ class RNNOpModel : public SingleOpModel {
     weights_ = AddInput(weights);
     recurrent_weights_ = AddInput(recurrent_weights);
     bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddInput(TensorType_FLOAT32, true);
+    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
                  CreateRNNOptions(builder_, ActivationFunctionType_RELU,

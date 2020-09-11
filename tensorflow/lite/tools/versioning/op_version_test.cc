@@ -709,6 +709,15 @@ TEST(OpVersionTest, VersioningResizeNearestNeighborTest) {
 
   fake_op_sig.options.resize.align_corners = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  // int16 input is version 4.
+  fake_op_sig = {
+      .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningAbsTest) {
   // Default.
