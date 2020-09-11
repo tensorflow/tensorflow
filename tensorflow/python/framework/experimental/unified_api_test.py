@@ -24,6 +24,7 @@ from tensorflow.python.framework.experimental import _unified_api
 from tensorflow.python.framework.experimental import context_stack as context_lib
 from tensorflow.python.framework.experimental import def_function
 from tensorflow.python.framework.experimental import math_ops
+from tensorflow.python.framework.experimental import tape as tape_lib
 from tensorflow.python.platform import test
 
 NewImmediateExecutionContext = _unified_api.NewImmediateExecutionContext
@@ -56,6 +57,38 @@ class UnifiedApiTest(test.TestCase, parameterized.TestCase):
 
       eager_output = model(a, b)
       self.assertAllEqual(eager_output.numpy(), 3.0)
+
+  @parameterized.named_parameters([
+      ("EagerGraph", False, False),
+      ("EagerMlir", False, True),
+      # TODO(srbs): Enable for TFRT. Segfaults right now.
+      # ("TfrtGraph", True, False),
+      # ("TfrtMlir", True, True),
+  ])
+  def testAddGrad(self, use_tfrt, use_mlir):
+    if use_mlir:
+      SetTracingImplementation("mlir")
+
+    def model(a, b):
+      with tape_lib.GradientTape() as tape:
+        tape.watch(a)
+        tape.watch(b)
+        result = math_ops.add(a, b)
+      grads = tape.gradient(result, [a, b])
+      return grads
+
+    eager_ctx = NewImmediateExecutionContext(use_tfrt)
+    with context_lib.set_default(eager_ctx):
+      a = eager_ctx.CreateFloatScalarHandle(1.)
+      b = eager_ctx.CreateFloatScalarHandle(2.)
+
+      func_outputs = def_function.function(model)(a, b)
+      self.assertAllEqual(func_outputs[0].numpy(), 1.0)
+      self.assertAllEqual(func_outputs[1].numpy(), 1.0)
+
+      eager_outputs = model(a, b)
+      self.assertAllEqual(eager_outputs[0].numpy(), 1.0)
+      self.assertAllEqual(eager_outputs[1].numpy(), 1.0)
 
 
 if __name__ == "__main__":

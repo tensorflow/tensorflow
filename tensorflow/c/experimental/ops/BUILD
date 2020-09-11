@@ -68,6 +68,11 @@ cc_library(
 
 cc_library(
     name = "ops",
+    hdrs = [
+        "array_ops.h",
+        "math_ops.h",
+        "nn_ops.h",
+    ],
     visibility = [
         "//tensorflow:internal",
     ],

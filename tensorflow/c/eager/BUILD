@@ -103,9 +103,13 @@ filegroup(
         "c_api_unified_experimental.h",
         "c_api_unified_experimental_internal.h",
         "dlpack.h",
+        "gradients.h",
+        "gradients_internal.h",
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
+        "mnist_gradients_testutil.h",
+        "tape.h",
         "tfe_cancellation_manager_internal.h",
         "tfe_executor_internal.h",
         "tfe_monitoring_internal.h",
@@ -161,31 +165,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
-    name = "gradients",
-    srcs = [
-        "gradients.cc",
-        "gradients_internal.h",
-    ],
-    hdrs = [
-        "gradients.h",
-    ],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-    deps = [
-        ":abstract_context",
-        ":abstract_operation",
-        ":abstract_tensor_handle",
-        ":c_api_unified_internal",
-        ":tape",
-        "//tensorflow/core/common_runtime/eager:attr_builder",
-        "//tensorflow/core/lib/llvm_rtti",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -757,6 +736,7 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
     tags = [
+        "no_oss",  # b/168323632
         "no_windows",
         "noasan",  # leaks gRPC server instances
     ],

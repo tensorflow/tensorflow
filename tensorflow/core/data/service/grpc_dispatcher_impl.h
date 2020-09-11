@@ -39,7 +39,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   ::grpc::Status method(::grpc::ServerContext* context, \
                         const method##Request* request, \
                         method##Response* response) override;
-  HANDLER(RegisterWorker);
+  HANDLER(WorkerHeartbeat);
   HANDLER(WorkerUpdate);
   HANDLER(GetDatasetDef);
   HANDLER(GetOrRegisterDataset);

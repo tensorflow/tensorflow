@@ -1044,9 +1044,7 @@ struct SoftmaxParams {
   int32_t zero_point;
   float scale;
   float* table;
-  // int16 LUT for exp(x), where x uniform distributed between [-10.0 , 0.0]
   int16_t* exp_lut;
-  // int16 LUT for 1 / (1 + x), where x uniform distributed between [0.0 , 1.0]
   int16_t* one_over_one_plus_x_lut;
   uint8_t* uint8_table1;
   uint8_t* uint8_table2;

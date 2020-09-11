@@ -506,7 +506,8 @@ def tf_proto_library(
         create_service = False,
         create_java_proto = False,
         make_default_target_header_only = False,
-        exports = []):
+        exports = [],
+        tags = []):
     """Make a proto library, possibly depending on other proto libraries."""
 
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
@@ -520,6 +521,7 @@ def tf_proto_library(
         deps = protodeps + well_known_proto_libs(),
         visibility = visibility,
         testonly = testonly,
+        tags = tags,
     )
 
     tf_proto_library_cc(

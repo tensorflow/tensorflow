@@ -745,6 +745,25 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "lstm_full_test",
+    srcs = ["lstm_full_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/kernels:test_main",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
 cc_library(
     name = "mean_stddev_normalization",
     srcs = ["mean_stddev_normalization.cc"],

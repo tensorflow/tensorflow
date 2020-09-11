@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EAGER_MNIST_GRADIENTS_TESTUTIL_H_
+#define TENSORFLOW_C_EAGER_MNIST_GRADIENTS_TESTUTIL_H_
 #include <memory>
 
 #include "absl/types/span.h"
@@ -136,6 +138,8 @@ Status SoftmaxModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);
 
-} // internal
-} // gradients
-} // tensorflow
+}  // namespace internal
+}  // namespace gradients
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_C_EAGER_MNIST_GRADIENTS_TESTUTIL_H_

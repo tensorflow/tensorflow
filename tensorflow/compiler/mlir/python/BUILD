@@ -37,6 +37,8 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )

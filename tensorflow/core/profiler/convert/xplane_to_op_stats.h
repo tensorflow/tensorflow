@@ -23,17 +23,16 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-enum OpStatsKind {
-  OP_METRICS_DB,
-  STEP_DB,
-  KERNEL_STATS_DB,
+struct OpStatsOptions {
+  bool maybe_drop_incomplete_steps = false;
+  bool generate_op_metrics_db = false;
+  bool generate_step_db = false;
+  bool generate_kernel_stats_db = false;
 };
-
-using OpStatsConfig = absl::flat_hash_set<OpStatsKind>;
 
 // NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
-                               const OpStatsConfig& config);
+                               const OpStatsOptions& config);
 
 // Propagate and dedup the diagnostics in XSpace and add to OpStats.
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,

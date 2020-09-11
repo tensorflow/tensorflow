@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
 namespace mlir {

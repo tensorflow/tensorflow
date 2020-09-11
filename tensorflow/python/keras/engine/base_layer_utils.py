@@ -33,7 +33,6 @@ from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
@@ -580,11 +579,7 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   """
   if (force_raise or
       (ops.executing_eagerly_outside_functions() and
-       hasattr(tensor, 'graph') and
-       isinstance(tensor.graph,
-                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
-                   control_flow_v2_func_graphs.WhileCondFuncGraph,
-                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
+       hasattr(tensor, 'graph') and tensor.graph.is_control_flow_graph)):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):

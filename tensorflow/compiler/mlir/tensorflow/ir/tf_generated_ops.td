@@ -957,7 +957,7 @@ beta function.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_ContractionFusableInterface]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -977,6 +977,11 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // TF_ContractionFusableInterface:
+    Optional<ContractionFusion> GetContractionFusion();
+  }];
 
   let verifier = [{
     return Verify(*this);

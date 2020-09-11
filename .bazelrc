@@ -162,13 +162,11 @@ build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl --define=build_with_mkl_dnn_v1_only=true
 build:mkl -c opt
 
 # config to build OneDNN backend with a user specified threadpool.
 build:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_threadpool --define=build_with_mkl_dnn_v1_only=true
 build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool --define=build_with_mkldnn_threadpool=true
 build:mkl_threadpool -c opt
@@ -176,7 +174,6 @@ build:mkl_threadpool -c opt
 # Config setting to build with oneDNN and without the binary blob
 build:mkl_opensource_only --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_opensource_only --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_opensource_only --define=build_with_mkl_dnn_v1_only=true
 build:mkl_opensource_only --define=build_with_mkl_opensource=true
 build:mkl_opensource_only -c opt
 
@@ -335,6 +332,11 @@ build:windows --copt=-DWIN32_LEAN_AND_MEAN
 build:windows --host_copt=-DWIN32_LEAN_AND_MEAN
 build:windows --copt=-DNOGDI
 build:windows --host_copt=-DNOGDI
+
+# MSVC (Windows): Standards-conformant preprocessor mode
+# See https://docs.microsoft.com/en-us/cpp/preprocessor/preprocessor-experimental-overview
+build:windows --copt=/experimental:preprocessor
+build:windows --host_copt=/experimental:preprocessor
 
 # Misc build options we need for windows.
 build:windows --linkopt=/DEBUG

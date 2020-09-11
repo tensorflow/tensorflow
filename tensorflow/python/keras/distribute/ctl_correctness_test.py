@@ -26,6 +26,7 @@ from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
@@ -278,4 +279,4 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
 
 
 if __name__ == '__main__':
-  ds_combinations.main()
+  multi_process_runner.test_main()
