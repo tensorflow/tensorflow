@@ -3386,6 +3386,7 @@ cc_library(
         "lib/Target/PowerPC/*.c",
         "lib/Target/PowerPC/*.cpp",
         "lib/Target/PowerPC/*.inc",
+        "lib/Target/PowerPC/GISel/*.cpp",
     ]),
     hdrs = glob([
         "include/llvm/Target/PowerPC/*.h",
