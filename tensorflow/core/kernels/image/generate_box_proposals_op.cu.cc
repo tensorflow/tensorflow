@@ -347,11 +347,20 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     size_t cub_sort_temp_storage_bytes = 0;
     float* flt_ptr = nullptr;
     int* int_ptr = nullptr;
+<<<<<<< HEAD
     cudaError_t cuda_ret = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
         nullptr, cub_sort_temp_storage_bytes, flt_ptr, flt_ptr, int_ptr,
         int_ptr, num_images * conv_layer_nboxes, num_images, int_ptr, int_ptr,
         0, 8 * sizeof(float),  // sort all bits
         cuda_stream);
+=======
+    cudaError_t cuda_ret =
+        gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
+            nullptr, cub_sort_temp_storage_bytes, flt_ptr, flt_ptr, int_ptr,
+            int_ptr, num_images * conv_layer_nboxes, num_images, int_ptr,
+            int_ptr, 0, 8 * sizeof(float),  // sort all bits
+            cuda_stream);
+>>>>>>> upstream/master
     TF_OP_REQUIRES_CUDA_SUCCESS(context, cuda_ret);
     // get the size of select temp buffer
     size_t cub_select_temp_storage_bytes = 0;

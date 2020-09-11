@@ -87,6 +87,7 @@ class CloudTpuClientTest(test.TestCase):
     if 'TPU_NAME' in os.environ:
       del os.environ['TPU_NAME']
     self._time_now = 0
+    self.addCleanup(mock.patch.stopall)
 
   def _mock_time(self, *args, **kwargs):
     return self._time_now

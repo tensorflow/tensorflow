@@ -106,6 +106,9 @@ static mlir::LogicalResult GetXlaOp(
 // TODO(hpucha): This should be consolidated into a general place.
 static int ConvertAPInt(llvm::APInt i) { return i.getSExtValue(); }
 
+static uint32_t Convertuint32_t(uint32_t i) { return i; }
+static uint64_t Convertuint64_t(uint64_t i) { return i; }
+
 // Convert APFloat to double.
 static double ConvertAPFloat(llvm::APFloat value) {
   const auto& semantics = value.getSemantics();
@@ -783,7 +786,7 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
-                            op.iota_dimension().getSExtValue());
+                            op.iota_dimension());
   return success();
 }
 
@@ -909,8 +912,8 @@ LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
   auto result = op.getResult();
   auto xla_arg_1 = value_map[*op.getODSOperands(0).begin()];
   auto xla_result = xla::RngBitGenerator(
-      static_cast<xla::RandomAlgorithm>(op.rng_algorithm().getSExtValue()),
-      Unwrap(xla_arg_1), xla::TypeToShape(result.getType()).tuple_shapes(1));
+      static_cast<xla::RandomAlgorithm>(op.rng_algorithm()), Unwrap(xla_arg_1),
+      xla::TypeToShape(result.getType()).tuple_shapes(1));
   value_map[result] = xla_result;
   return mlir::success();
 }
@@ -1007,7 +1010,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
 
   auto& value_map = *ctx.values;
   value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
-                            op.dimension().getSExtValue(), op.is_stable());
+                            op.dimension(), op.is_stable());
   return success();
 }
 

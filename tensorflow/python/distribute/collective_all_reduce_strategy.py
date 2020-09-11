@@ -45,6 +45,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import base
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -188,10 +189,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   _check_health_interval = 30
   # Timeout in seconds for the first check health. The first check health needs
   # to wait for cluster, which may make a longer time.
-  #
-  # TODO(b/151232436): now the inital barrier may hang in a rare case, so we
-  # need a finite timeout.
-  _check_health_initial_timeout = 1200
+  _check_health_initial_timeout = 0
+  # Times to retry before considering the peer is down.
+  _check_health_retry_limit = 3
 
   def __init__(self,
                container_strategy,
@@ -436,6 +436,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           initial_value = kwargs["initial_value"]
           if callable(initial_value):
             initial_value = initial_value()
+          if isinstance(initial_value, base.CheckpointInitialValue):
+            initial_value = initial_value.wrapped_value
           assert not callable(initial_value)
           initial_value = ops.convert_to_tensor(
               initial_value, dtype=kwargs.get("dtype", None))
@@ -636,24 +638,40 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     while True:
       if self._check_health_thread_should_stop.is_set():
         return
-      try:
-        for job in self._cluster_spec.jobs:
-          for task_id in range(self._cluster_spec.num_tasks(job)):
-            context.context().check_collective_ops_peer_health(
-                "/job:{}/replica:0/task:{}".format(job, task_id))
-      except (errors.UnavailableError, errors.FailedPreconditionError) as e:
-        # TODO(b/151232436): Always raise UnavailableError when a peer fails.
-        # Now there could be many kinds of errors:
-        # - Unavailable: when the peer is not reachable, e.g. it's down.
-        # - FailedPrecondition: when the peer has restarted.
-        logging.error("Cluster check alive failed, aborting collectives")
-        context.context().abort_collective_ops(
-            errors.UNAVAILABLE, "cluster check alive failed: %s" % e)
-      except Exception as e:  # pylint: disable=broad-except
-        logging.exception("Unexpected exception in check alive.")
-        context.context().abort_collective_ops(
-            errors.INTERNAL, "unexecpted exception in check alive: %s" % e)
-        return
+      for job in self._cluster_spec.jobs:
+        for task_id in range(self._cluster_spec.num_tasks(job)):
+          peer = "/job:{}/replica:0/task:{}".format(job, task_id)
+          attempts = 0
+          while True:
+            attempts += 1
+            try:
+              context.context().check_collective_ops_peer_health(peer)
+              # If check_collective_ops_peer_health doesn't raise an Exception,
+              # the peer is healthy.
+              break
+            except (errors.UnavailableError,
+                    errors.FailedPreconditionError) as e:
+              # TODO(b/151232436): Always raise UnavailableError when a peer
+              # fails. Now there could be many kinds of errors:
+              # - Unavailable: when the peer is not reachable, e.g. it's down.
+              # - FailedPrecondition: when the peer has restarted.
+              if attempts < self._check_health_retry_limit:
+                logging.warning("%s seems down, retrying %d/%d", peer, attempts,
+                                self._check_health_retry_limit)
+                continue
+              logging.error(
+                  "Cluster check alive failed, %s is down, "
+                  "aborting collectives: %s", peer, e)
+              context.context().abort_collective_ops(
+                  errors.UNAVAILABLE,
+                  "cluster check alive failed, {} is down".format(peer))
+              return
+            except Exception as e:  # pylint: disable=broad-except
+              logging.error("Unexpected exception in check alive: %s", e)
+              context.context().abort_collective_ops(
+                  errors.INTERNAL,
+                  "unexecpted exception in check alive: %s" % e)
+              return
       time.sleep(self._check_health_interval)
 
   def _start_check_health_thread(self):
@@ -662,8 +680,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     #
     # TODO(b/151232436): change to an explicit barrier if we have it.
     dummy_value = ops.convert_to_tensor([])
-    logging.info("Waiting for the cluster, timeout = %d",
-                 self._check_health_initial_timeout)
+    logging.info("Waiting for the cluster, timeout = %s",
+                 self._check_health_initial_timeout or "inf")
     try:
       self._host_cross_device_ops.reduce(
           reduce_util.ReduceOp.SUM,

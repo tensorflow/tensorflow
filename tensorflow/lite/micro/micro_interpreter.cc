@@ -274,6 +274,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   // TODO(b/16157777): This call would not be needed if ContextHelper rolled
   // into the interpreter.
   context_helper_.SetTfLiteEvalTensors(eval_tensors_);
+  context_.tensors_size = subgraph_->tensors()->size();
 
   // If the system is big endian then convert weights from the flatbuffer from
   // little to big endian on startup so that it does not need to be done during

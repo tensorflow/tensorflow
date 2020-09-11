@@ -74,14 +74,15 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+OPTIMIZATION_LEVEL := -O3
+
 CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
                -Wshadow -Wunused-variable -Wmissing-field-initializers \
-               -Wunused-function
+               -Wunused-function -Wswitch -Wvla
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
-# TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
-# this flag is for an optimized micro runtime.
-CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
-CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
+	          $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
@@ -92,11 +93,20 @@ ifeq ($(BUILD_TYPE), debug)
 	CXXFLAGS += -DDEBUG -g
 	CCFLAGS  += -DDEBUG -g
 else ifeq ($(BUILD_TYPE), release)
-	CXXFLAGS += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
-	CCFLAGS  += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
+	CXXFLAGS += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+	CCFLAGS  += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+else ifeq ($(BUILD_TYPE), no_tf_lite_static_memory)
+	# This build should not be used to run any binaries/tests since
+	# TF_LITE_STATIC_MEMORY should be defined for all micro builds. However,
+	# having a build without TF_LITE_STATIC_MEMORY is useful to catch errors in
+	# code that is shared between TfLite Mobile and TfLite Micro. See this issue
+	# for more details:
+	# https://github.com/tensorflow/tensorflow/issues/43076
+	CXXFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CXXFLAGS))
+	CCFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CCFLAGS))
 else
-	CXXFLAGS += -DNDEBUG -O3
-	CCFLAGS  += -DNDEBUG -O3
+	CXXFLAGS += -DNDEBUG
+	CCFLAGS  += -DNDEBUG
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
@@ -106,11 +116,14 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # These two must be defined before we include the target specific Makefile.inc
 # because we filter out the examples that are not supported for those targets.
 # See targets/xtensa_xpg_makefile.inc for an example.
-# We limit max depth of directories to search to do not include
-# target specific Makefiles that are included directly by the
-# main example Makefile.
-# See examples/micro_speech/Makefile.inc for an example.
+#
+# We limit max depth of directories to search to not include target specific
+# Makefiles that are included directly by the main example Makefile. See
+# examples/micro_speech/Makefile.inc for an example. At the same time, we
+# search till an arbitrary depth for files named Makefile_internal.inc as a way
+# to bypass this check and allow for deeper directory structures.
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
+MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \

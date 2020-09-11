@@ -18,23 +18,22 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TestTFFrameworkLegalizeToLLVMPass
-    : Pass<"test-tf-framework-legalize-to-llvm", "ModuleOp"> {
-  let summary = "Test pass for applying TF Framework -> LLVM patterns.";
-  let constructor = "tf_framework::createTestTFFrameworkLegalizeToLLVMPass()";
+def TFKernelToLLVMPass : Pass<"tf-kernel-to-llvm", "ModuleOp"> {
+  let summary = "Pass for applying LLVM legalization patterns.";
+  let constructor = "transforms::CreateTFKernelToLLVMPass()";
 }
 
 def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
   let summary = "Pass to embed TF Framework for allocation and error reporting";
-  let constructor = "tf_framework::createEmbedTFFrameworkPass()";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
 }
 
-def ShapeToDescriptorsPass : Pass<"test-shape-to-descriptors", "ModuleOp"> {
+def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let summary = "Pass to transform shape computations to descriptors";
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def BufferizePass : Pass<"test-bufferize", "ModuleOp"> {
+def BufferizePass : Pass<"bufferize", "ModuleOp"> {
   let summary = "Pass to transform operations on values to buffer based ones";
   let constructor = "transforms::CreateBufferizePass()";
 }

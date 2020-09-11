@@ -599,7 +599,6 @@ cc_library(
         ":SCFToGPUPass",
         ":SCFToStandard",
         ":SPIRVToLLVM",
-        ":ShapeToSCF",
         ":ShapeToStandard",
         ":StandardToLLVM",
         ":StandardToSPIRVTransforms",
@@ -804,30 +803,12 @@ cc_library(
     includes = ["include"],
     deps = [
         ":ConversionPassIncGen",
-        ":Pass",
-        ":SCFDialect",
-        ":Shape",
-        ":StandardOps",
-        ":Support",
-        ":Transforms",
-    ],
-)
-
-cc_library(
-    name = "ShapeToSCF",
-    srcs = glob([
-        "lib/Conversion/ShapeToSCF/*.cpp",
-        "lib/Conversion/ShapeToSCF/*.h",
-    ]) + ["lib/Conversion/PassDetail.h"],
-    hdrs = ["include/mlir/Conversion/ShapeToSCF/ShapeToSCF.h"],
-    includes = ["include"],
-    deps = [
-        ":ConversionPassIncGen",
         ":IR",
         ":Pass",
         ":SCFDialect",
         ":Shape",
         ":StandardOps",
+        ":Support",
         ":Transforms",
     ],
 )
@@ -2899,7 +2880,6 @@ cc_library(
         ":Parser",
         ":Pass",
         ":SCFTransforms",
-        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":StandardOpsTransforms",
@@ -3007,7 +2987,6 @@ cc_library(
         ":SPIRVPassIncGen",
         ":SPIRVToLLVM",
         ":Shape",
-        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":ShapeTransformsPassIncGen",
@@ -3027,11 +3006,9 @@ cc_library(
 
 cc_library(
     name = "AllPassesAndDialects",
-    srcs = ["@org_tensorflow//third_party/mlir:mlir-auto-init.cpp"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
     ],
-    alwayslink = 1,
 )
 
 cc_binary(

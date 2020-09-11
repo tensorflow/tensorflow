@@ -7,7 +7,7 @@ func @sqr_transform_result(%a: tensor<*xf32>) -> tensor<*xf32> {
   // Flatten operand shape.
   %shape = shape.shape_of %a : tensor<*xf32> -> tensor<?xindex>
   %num_elements = shape.num_elements %shape : tensor<?xindex> -> index
-  %flat_shape = tensor_from_elements(%num_elements) : tensor<1xindex>
+  %flat_shape = tensor_from_elements %num_elements : tensor<1xindex>
   %flat_a = "mhlo.dynamic_reshape"(%a, %flat_shape)
       : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
 
@@ -29,7 +29,7 @@ func @sqr_transform_result(%a: tensor<*xf32>) -> tensor<*xf32> {
 func @sqrt(%a: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NEXT: %[[SHAPE:.*]] = shape.shape_of %[[A]] : tensor<*xf32> -> tensor<?xindex>
   // CHECK-NEXT: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
-  // CHECK-NEXT: %[[FLAT_SHAPE:.*]] = tensor_from_elements(%[[NUM_ELEMENTS]]) : tensor<1xindex>
+  // CHECK-NEXT: %[[FLAT_SHAPE:.*]] = tensor_from_elements %[[NUM_ELEMENTS]] : tensor<1xindex>
   // CHECK-NEXT: %[[FLAT_A:.*]] = "mhlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK-NEXT: %[[FLAT_B:.*]] = "mhlo.sqrt"(%[[FLAT_A]]) : (tensor<?xf32>) -> tensor<?xf32>
   // CHECK-NEXT: %[[B:.*]] = "mhlo.dynamic_reshape"(%[[FLAT_B]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
@@ -71,7 +71,7 @@ func @add_unranked(%a : tensor<*xf32>, %b : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SHAPE_B:.*]] = shape.shape_of %[[B]]
   // CHECK: %[[SHAPE:.*]] = shape.any %[[SHAPE_A]], %[[SHAPE_B]]
   // CHECK: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
-  // CHECK: %[[FLAT_SHAPE:.*]] = tensor_from_elements(%[[NUM_ELEMENTS]]) : tensor<1xindex>
+  // CHECK: %[[FLAT_SHAPE:.*]] = tensor_from_elements %[[NUM_ELEMENTS]] : tensor<1xindex>
   // CHECK: %[[FLAT_A:.*]] = "mhlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK: %[[FLAT_B:.*]] = "mhlo.dynamic_reshape"(%[[B]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK: %[[FLAT_RESULT:.*]] = mhlo.add %[[FLAT_A]], %[[FLAT_B]] : tensor<?xf32>

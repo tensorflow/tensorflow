@@ -434,3 +434,20 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "step_interval",
+    hdrs = ["step_interval.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "file_system_utils",
+    hdrs = ["file_system_utils.h"],
+    deps = [
+        "//tensorflow/core/platform",
+        "@com_google_absl//absl/strings",
+    ],
+)

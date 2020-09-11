@@ -913,7 +913,7 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
        (Match(lhs, m::Multiply(m::Op(&c), m::Op(&a))) &&
         Match(rhs, m::MultiplyAnyOrder(m::Op().Is(c), m::Op(&b))))) &&
       (ShapeUtil::ElementIsIntegral(add->shape()) ||
-       IsAllFpConstantPowerOf2(c))) {
+       options_.enable_floats_are_real() || IsAllFpConstantPowerOf2(c))) {
     return ReplaceWithNewInstruction(
         add, HloInstruction::CreateBinary(
                  add->shape(), HloOpcode::kMultiply,
@@ -1300,7 +1300,15 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
       auto replacement =
           computation_->AddInstruction(concatenate->CloneWithNewOperands(
               concatenate->shape(), new_operands));
-      ReplaceInstructionIfSameShape(concatenate, replacement);
+
+      // Recurse to handle multiple disjoint sequence of inputs. The
+      // logic above merge only 1 sequential series of
+      // inputs. Otherwise, it can lead to the FixPass optimization
+      // hitting its threshold.
+      if (ReplaceInstructionIfSameShape(concatenate, replacement)) {
+        return HandleConcatenate(replacement);
+      }
+
       return Status::OK();
     }
   }
@@ -2700,6 +2708,17 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
       primitive_util::IsIntegralType(multiply->shape().element_type()) &&
       ReplaceInstructionIfSameShape(multiply, rhs)) {
     return Status::OK();
+  }
+
+  {
+    HloInstruction* abs_operand;
+    if (lhs == rhs && Match(lhs, m::Abs(m::Op(&abs_operand))) &&
+        !ShapeUtil::ElementIsComplex(abs_operand->shape())) {
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(0, abs_operand));
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(1, abs_operand));
+      changed_ = true;
+      return Status::OK();
+    }
   }
 
   {
@@ -5252,10 +5271,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   if (!reverse_dimensions.empty()) {
     TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
   }
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_convolution,
-      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1, swapped_window,
-                      swapped_dnums, precision_config));
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_convolution,
+                      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1,
+                                      /*batch_group_count=*/1, swapped_window,
+                                      swapped_dnums, precision_config));
 
   convolution->SetupDerivedInstruction(new_convolution);
   TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));

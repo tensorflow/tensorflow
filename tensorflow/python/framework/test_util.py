@@ -2149,7 +2149,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
-    elif isinstance(expected_message_maybe_ascii, str):
+    elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,
@@ -3402,3 +3402,41 @@ class AbstractGradientTape:
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     self._tape_impl.__exit__(exc_type, exc_val, exc_tb)
+
+
+@contextlib.contextmanager
+def run_functions_eagerly(run_eagerly):
+  """Runs functions eagerly if `run_eagerly` is true.
+
+  WARNING: Setting `run_eagerly` to True in tests running in V1 graph mode
+  *WILL NOT* make the tf.function to run eagerly because eager is disabled by
+  default in V1. Instead, tf.function will run as a traced graph function.
+
+  Ensures that the state (for running functions eagerly) is back to the initial
+  `def_function.RUN_FUNCTIONS_EAGERLY` state.
+
+  Args:
+    run_eagerly: Boolean determining whether to run the function eagerly or not.
+
+  Raises:
+    ValueError if `run_eagerly` is not a boolean.
+
+  Yields:
+    Nothing.
+  """
+  if not isinstance(run_eagerly, bool):
+    raise ValueError(
+        "Expected bool for `run_eagerly` but got {}".format(run_eagerly))
+
+  is_eager = context.executing_eagerly()
+  if not is_eager and run_eagerly:
+    logging.warning(
+        "Running tf.function eagerly in V1 graph mode is not supported. "
+        "tf.function will be run as a traced graph function.")
+
+  initial_state = def_function.functions_run_eagerly()
+  def_function.run_functions_eagerly(run_eagerly)
+  try:
+    yield
+  finally:
+    def_function.run_functions_eagerly(initial_state)

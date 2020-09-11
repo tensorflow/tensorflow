@@ -1130,10 +1130,11 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     rets->resize(data->num_outputs_);
 
     auto component_fn_callback = [comp_rets, rets, comp_data, refcounted_done,
-                                  cm, local_cm, data,
+                                  cm, local_cm, data, handle,
                                   target](const Status& status) {
       if (!status.ok()) {
         VLOG(2) << "Component function execution on target " << target
+                << " from " << data->function_name_ << " with handle " << handle
                 << " failed: " << status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
@@ -1143,6 +1144,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
         cm->StartCancel();
       } else {
         VLOG(2) << "Component function execution on target " << target
+                << " from " << data->function_name_ << " with handle " << handle
                 << " succeeded.";
         for (int i = 0; i < comp_rets->size(); ++i) {
           (*rets)[comp_data.ret_indices[i]] = (*comp_rets)[i];
@@ -1161,8 +1163,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
       opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
 
-      VLOG(1) << "Running component function on device " << target
-              << " with handle " << handle;
+      VLOG(1) << "Running component function on device " << target << " from "
+              << data->function_name_ << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
       std::vector<Tensor>* comp_tensor_rets = new std::vector<Tensor>;
@@ -1173,8 +1175,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     } else {
       opts_copy.remote_execution = true;
 
-      VLOG(1) << "Running component function on device " << target
-              << " with handle " << handle;
+      VLOG(1) << "Running component function on device " << target << " from "
+              << data->function_name_ << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
       RunInternal(opts_copy, handle, comp_args.args, comp_rets, cleanup_items,

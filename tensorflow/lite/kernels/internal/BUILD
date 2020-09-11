@@ -339,7 +339,7 @@ cc_library(
 )
 
 cc_library(
-    name = "optimized",
+    name = "optimized_eigen",
     hdrs = [
         "optimized/eigen_spatial_convolutions.h",
         "optimized/eigen_tensor_reduced_instantiations_oss.h",

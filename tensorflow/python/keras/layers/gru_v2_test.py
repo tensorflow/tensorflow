@@ -34,7 +34,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -82,7 +81,7 @@ class GRUV2Test(keras_parameterized.TestCase):
                     reset_after=reset_after)
     self.assertFalse(layer._could_use_gpu_kernel)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_use_on_default_activation_with_gpu_kernel(self):
     layer = rnn.GRU(1, activation=nn.tanh)
     self.assertTrue(layer._could_use_gpu_kernel)
@@ -149,10 +148,14 @@ class GRUV2Test(keras_parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
+<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   @test_util.run_v2_only
+=======
+  @testing_utils.run_v2_only
+>>>>>>> upstream/master
   def test_gru_v2_feature_parity_with_canonical_gru(self):
     input_shape = 10
     rnn_state_size = 8
@@ -363,9 +366,13 @@ class GRUV2Test(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Double type is not '
                                       'yet supported in ROCm')
   @test_util.run_v2_only
+=======
+  @testing_utils.run_v2_only
+>>>>>>> upstream/master
   def test_float64_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -560,10 +567,14 @@ class GRUV2Test(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, epochs=1, shuffle=False)
 
+<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   @test_util.run_v2_only
+=======
+  @testing_utils.run_v2_only
+>>>>>>> upstream/master
   def test_explicit_device_with_go_backward_and_mask(self):
     batch_size = 8
     timestep = 7
@@ -697,7 +708,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime(self):
     layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
 
@@ -713,10 +724,14 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
+<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   @test_util.run_v2_only
+=======
+  @testing_utils.run_v2_only
+>>>>>>> upstream/master
   def test_GRU_runtime_with_mask(self):
     # Masking will affect which backend is selected based on whether the mask
     # is strictly right padded.
@@ -771,7 +786,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     _, runtime_value = model.predict(x_train)
     self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal

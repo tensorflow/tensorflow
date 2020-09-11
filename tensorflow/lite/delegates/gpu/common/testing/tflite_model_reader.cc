@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/model_transformations.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/model_builder.h"
@@ -95,8 +95,8 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
 
   NullTransformationReporter reporter;
   ModelTransformer transformer(graph, &reporter);
-  if (!ApplyGeneralTransformations(&transformer)) {
-    return absl::InternalError("Graph general transformations failed");
+  if (!ApplyModelTransformations(&transformer)) {
+    return absl::InternalError("Graph transformations failed");
   }
 
   return absl::OkStatus();

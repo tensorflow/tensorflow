@@ -158,9 +158,8 @@ LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
       tensorflow::random::PhiloxRandom, float>
       Distribution;
 
-  tensorflow::random::PhiloxRandom generator(
-      random_uniform_op.seed().getSExtValue(),
-      random_uniform_op.seed2().getSExtValue());
+  tensorflow::random::PhiloxRandom generator(random_uniform_op.seed(),
+                                             random_uniform_op.seed2());
   Distribution dist;
   size_t num_elements = 0;
   if (auto output_type =
@@ -284,7 +283,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
   auto output_type = tf_pack_op.output().getType();
   auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N());
   // Axis can be negative.
-  auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis().getSExtValue());
+  auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis());
 
   rewriter.replaceOpWithNewOp<PackOp>(op, output_type, values, values_count,
                                       axis);
@@ -381,27 +380,22 @@ LogicalResult ConvertTFStridedSliceOp::matchAndRewrite(
         op, tf_strided_slice_op.output().getType(), tf_strided_slice_op.input(),
         tf_strided_slice_op.begin(), tf_strided_slice_op.end(),
         tf_strided_slice_op.strides(),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.begin_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.end_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.ellipsis_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.new_axis_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.shrink_axis_mask().getSExtValue()));
+        rewriter.getI32IntegerAttr(tf_strided_slice_op.begin_mask()),
+        rewriter.getI32IntegerAttr(tf_strided_slice_op.end_mask()),
+        rewriter.getI32IntegerAttr(tf_strided_slice_op.ellipsis_mask()),
+        rewriter.getI32IntegerAttr(tf_strided_slice_op.new_axis_mask()),
+        rewriter.getI32IntegerAttr(tf_strided_slice_op.shrink_axis_mask()));
     return success();
   }
 
   int num_input_dims = ranked_input_type.getRank();
   // Pad `begin` array with zero values and update the `begin_mask`.
   SmallVector<int32_t, 8> begin_pad_val(num_input_dims, 0);
-  int begin_mask = tf_strided_slice_op.begin_mask().getSExtValue();
+  int begin_mask = tf_strided_slice_op.begin_mask();
   Value padded_begin = PadStridedSliceAttributeArray(
       op, rewriter, tf_strided_slice_op.begin(), begin_pad_val, &begin_mask);
   // Pad `end` array with `input_shape` and update the `end_mask`.
-  int end_mask = tf_strided_slice_op.end_mask().getSExtValue();
+  int end_mask = tf_strided_slice_op.end_mask();
   auto input_shape = ranked_input_type.getShape();
   SmallVector<int32_t, 8> end_pad_val(input_shape.begin(), input_shape.end());
   Value padded_end = PadStridedSliceAttributeArray(
@@ -415,12 +409,9 @@ LogicalResult ConvertTFStridedSliceOp::matchAndRewrite(
       padded_begin, padded_end, padded_strides,
       rewriter.getI32IntegerAttr(begin_mask),
       rewriter.getI32IntegerAttr(end_mask),
-      rewriter.getI32IntegerAttr(
-          tf_strided_slice_op.ellipsis_mask().getSExtValue()),
-      rewriter.getI32IntegerAttr(
-          tf_strided_slice_op.new_axis_mask().getSExtValue()),
-      rewriter.getI32IntegerAttr(
-          tf_strided_slice_op.shrink_axis_mask().getSExtValue()));
+      rewriter.getI32IntegerAttr(tf_strided_slice_op.ellipsis_mask()),
+      rewriter.getI32IntegerAttr(tf_strided_slice_op.new_axis_mask()),
+      rewriter.getI32IntegerAttr(tf_strided_slice_op.shrink_axis_mask()));
   return success();
 }
 
@@ -431,7 +422,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   auto input = tf_unpack_op.value();
   auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
   // Axis can be negative.
-  auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis().getSExtValue());
+  auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis());
 
   rewriter.replaceOpWithNewOp<UnpackOp>(op, tf_unpack_op.output().getTypes(),
                                         input, num, axis);

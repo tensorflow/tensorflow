@@ -429,23 +429,26 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
 
     # Check defaults
-    autotune, algorithm, cpu_budget = options._autotune_settings()
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,
                      optimization_options._AutotuneAlgorithm.HILL_CLIMB)
     self.assertEqual(cpu_budget, 0)
+    self.assertEqual(ram_budget, 0)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testAutotuningBufferSizes(self):
+  def testAutotuningSettings(self):
     options = dataset_ops.Options()
+    options.experimental_optimization.autotune_cpu_budget = 1000
+    options.experimental_optimization.autotune_ram_budget = 999999999
     options.experimental_optimization.autotune_buffers = True
     self.assertIn("inject_prefetch", options._graph_rewrites().enabled)
-    autotune, algorithm, cpu_budget = options._autotune_settings()
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,
                      optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
-    self.assertEqual(cpu_budget, 0)
-
+    self.assertEqual(cpu_budget, 1000)
+    self.assertEqual(ram_budget, 999999999)
 
 if __name__ == "__main__":
   test.main()

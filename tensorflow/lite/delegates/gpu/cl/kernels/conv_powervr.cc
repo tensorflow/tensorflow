@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -85,40 +86,40 @@ std::string GenerateBlockCoords(const int3& block_size,
       c += "  int linear_hw = get_group_id(" + std::to_string(launch_remap[0]) +
            ") * get_local_size(0) + get_local_id(0);\n";
     }
-    c += "  int Y = (linear_hw / args.task_size_x) * " +
+    c += "  int DST_Y = (linear_hw / args.task_size_x) * " +
          std::to_string(block_size.y) + ";\n";
-    c += "  int X = (linear_hw % args.task_size_x) * " +
+    c += "  int DST_X = (linear_hw % args.task_size_x) * " +
          std::to_string(block_size.x) + ";\n";
     if (work_group_launch_order[1] == 1) {
-      c += "  int Z = get_global_id(1) * " + std::to_string(block_size.z) +
+      c += "  int DST_S = get_global_id(1) * " + std::to_string(block_size.z) +
            ";\n";
     } else {
-      c += "  int Z = (get_group_id(" + std::to_string(launch_remap[1]) +
+      c += "  int DST_S = (get_group_id(" + std::to_string(launch_remap[1]) +
            ") * get_local_size(1) + get_local_id(1)) * " +
            std::to_string(block_size.z) + ";\n";
     }
   } else {
     if (work_group_launch_order[0] == 0) {
-      c += "  int X = get_global_id(0) * " + std::to_string(block_size.x) +
+      c += "  int DST_X = get_global_id(0) * " + std::to_string(block_size.x) +
            ";\n";
     } else {
-      c += "  int X = (get_group_id(" + std::to_string(launch_remap[0]) +
+      c += "  int DST_X = (get_group_id(" + std::to_string(launch_remap[0]) +
            ") * get_local_size(0) + get_local_id(0)) * " +
            std::to_string(block_size.x) + ";\n";
     }
     if (work_group_launch_order[1] == 1) {
-      c += "  int Y = get_global_id(1) * " + std::to_string(block_size.y) +
+      c += "  int DST_Y = get_global_id(1) * " + std::to_string(block_size.y) +
            ";\n";
     } else {
-      c += "  int Y = (get_group_id(" + std::to_string(launch_remap[1]) +
+      c += "  int DST_Y = (get_group_id(" + std::to_string(launch_remap[1]) +
            ") * get_local_size(1) + get_local_id(1)) * " +
            std::to_string(block_size.y) + ";\n";
     }
     if (work_group_launch_order[2] == 2) {
-      c += "  int Z = get_global_id(2) * " + std::to_string(block_size.z) +
+      c += "  int DST_S = get_global_id(2) * " + std::to_string(block_size.z) +
            ";\n";
     } else {
-      c += "  int Z = (get_group_id(" + std::to_string(launch_remap[2]) +
+      c += "  int DST_S = (get_group_id(" + std::to_string(launch_remap[2]) +
            ") * get_local_size(2) + get_local_id(2)) * " +
            std::to_string(block_size.z) + ";\n";
     }
@@ -320,7 +321,7 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
       conv_params.block_size.z * 4 * conv_params.src_depth_loop_size;
 
   const bool use_simd_broadcast = conv_params.IsPrivateMemBroadcast();
-  const int simd_size = conv_params.GetSimdSize();
+  const int simd_size = conv_params.simd_size;
 
   const bool late_oob_check = need_local_mem || use_simd_broadcast;
 
@@ -360,15 +361,16 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
                            conv_params.linear_hw);
   std::vector<std::string> dst_x(conv_params.block_size.x);
   for (int x = 0; x < conv_params.block_size.x; ++x) {
-    dst_x[x] = "(X + " + std::to_string(x) + ")";
+    dst_x[x] = "(DST_X + " + std::to_string(x) + ")";
   }
   std::vector<std::string> dst_y(conv_params.block_size.y);
   for (int y = 0; y < conv_params.block_size.y; ++y) {
-    dst_y[y] = "(Y + " + std::to_string(y) + ")";
+    dst_y[y] = "(DST_Y + " + std::to_string(y) + ")";
   }
   if (!late_oob_check) {
-    c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() "
-         "|| Z >= args.dst_tensor.Slices()) {\n";
+    c += "  if (DST_X >= args.dst_tensor.Width() || DST_Y >= "
+         "args.dst_tensor.Height() "
+         "|| DST_S >= args.dst_tensor.Slices()) {\n";
     c += "    return;\n";
     c += "  }\n";
   }
@@ -412,24 +414,32 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
   if (need_local_mem) {
     c += "  __local " + weights_data_type + " weights_cache[" +
          std::to_string(local_mem_size) + "];\n";
-  } else {
+  } else if (conv_params.AreWeightsBuffer()) {
     c += "    " + weights_global_ptr + " weights_cache;\n";
+  } else {
+    if (!is1x1) {
+      c += "  int filter_offset = 0;\n";
+    }
   }
-  if (is1x1) {
-    if (conv_params.different_weights_for_height) {
-      c += "  " + weights_global_ptr +
-           " filters_loc = args.weights.GetPtr() + (Z * "
-           "args.src_tensor.Height() + Y * " +
-           std::to_string(block_size.z) + ") * 4 * args.src_tensor.Slices();\n";
+  if (conv_params.AreWeightsBuffer()) {
+    if (is1x1) {
+      if (conv_params.different_weights_for_height) {
+        c += "  " + weights_global_ptr +
+             " filters_loc = args.weights.GetPtr() + (DST_S * "
+             "args.src_tensor.Height() + DST_Y * " +
+             std::to_string(block_size.z) +
+             ") * 4 * args.src_tensor.Slices();\n";
+      } else {
+        c += "  " + weights_global_ptr +
+             " filters_loc = args.weights.GetPtr() + DST_S * 4 * "
+             "args.src_tensor.Slices();\n";
+      }
     } else {
       c += "  " + weights_global_ptr +
-           " filters_loc = args.weights.GetPtr() + Z * 4 * "
-           "args.src_tensor.Slices();\n";
+           " filters_loc = args.weights.GetPtr() + DST_S * 4 * "
+           "args.src_tensor.Slices() * args.kernel_size_x * "
+           "args.kernel_size_y;\n";
     }
-  } else {
-    c += "  " + weights_global_ptr +
-         " filters_loc = args.weights.GetPtr() + Z * 4 * "
-         "args.src_tensor.Slices() *args.kernel_size_x * args.kernel_size_y;\n";
   }
   if (buffer_type) {
     c += "  const int src_layer_offset = args.src_tensor.SliceStride();\n";
@@ -552,9 +562,14 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
                 c += "    r" + std::to_string(z) + id + ".w += " + w_val_w +
                      " * src" + id + "." + channels[ch] + ";\n";
               } else {
-                std::string w_val = "weights_cache[" +
-                                    std::to_string(z * 4 + ch + shared_offset) +
-                                    "]";
+                const std::string weight_id =
+                    std::to_string(z * 4 + ch + shared_offset);
+                std::string w_val;
+                if (conv_params.AreWeightsBuffer()) {
+                  w_val = "weights_cache[" + weight_id + "]";
+                } else {
+                  w_val = "f" + weight_id;
+                }
                 c += "    r" + std::to_string(z) + id + " += " + w_val +
                      " * src" + id + "." + channels[ch] + ";\n";
               }
@@ -567,14 +582,18 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
             std::string id = std::to_string(y) + std::to_string(x);
             std::string R = "r" + std::to_string(z) + id;
             std::string S = "src" + id;
-            const int dz = z * 4 + shared_offset;
-            std::string f0 = "weights_cache[" + std::to_string(dz + 0) + "]";
-            std::string f1 = "weights_cache[" + std::to_string(dz + 1) + "]";
-            std::string f2 = "weights_cache[" + std::to_string(dz + 2) + "]";
-            std::string f3 = "weights_cache[" + std::to_string(dz + 3) + "]";
-            c += "    " + R + " += convert_float4(" + S + ".x * " + f0 + " + " +
-                 S + ".y * " + f1 + " + " + S + ".z * " + f2 + " + " + S +
-                 ".w * " + f3 + ");\n";
+            std::vector<std::string> F(4);
+            for (int i = 0; i < 4; ++i) {
+              std::string weight_id = std::to_string(z * 4 + i + shared_offset);
+              if (conv_params.AreWeightsBuffer()) {
+                F[i] = "weights_cache[" + weight_id + "]";
+              } else {
+                F[i] = "f" + weight_id;
+              }
+            }
+            c += "    " + R + " += convert_float4(" + S + ".x * " + F[0] +
+                 " + " + S + ".y * " + F[1] + " + " + S + ".z * " + F[2] +
+                 " + " + S + ".w * " + F[3] + ");\n";
           }
         }
       }
@@ -611,8 +630,26 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
            "];\n";
       c += "    }\n";
     }
-  } else {  // GLOBAL_MEM/CONSTANT_MEM
+  } else if (conv_params.AreWeightsBuffer()) {  // GLOBAL_MEM/CONSTANT_MEM
     c += "    weights_cache = filters_loc;\n";
+  } else {  // TEXTURES_MEM
+    for (int dst_s = 0; dst_s < block_size.z; ++dst_s) {
+      std::string f_y = is1x1 ? "s" : "filter_offset";
+      if (conv_params.different_weights_for_height) {
+        f_y = "DST_Y * args.src_tensor.Slices() + s";
+      }
+      c += absl::Substitute(
+          R"(    FLT4 f$2 = args.weights0.Read(DST_S + $0, $1);
+    FLT4 f$3 = args.weights1.Read(DST_S + $0, $1);
+    FLT4 f$4 = args.weights2.Read(DST_S + $0, $1);
+    FLT4 f$5 = args.weights3.Read(DST_S + $0, $1);
+)",
+          dst_s, f_y, dst_s * 4 + 0, dst_s * 4 + 1, dst_s * 4 + 2,
+          dst_s * 4 + 3);
+    }
+    if (!is1x1) {
+      c += "    filter_offset++;\n";
+    }
   }
   read_src();
   c += "    s += 1;\n";
@@ -626,41 +663,51 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
     conv_core(i * block_size.z * 4);
     c += "    s += 1;\n";
   }
-  c += "    filters_loc += " + std::to_string(local_mem_size) + ";\n";
+  if (conv_params.AreWeightsBuffer()) {
+    c += "    filters_loc += " + std::to_string(local_mem_size) + ";\n";
+  }
   c += "  } while (s < args.src_tensor.Slices());\n";
   if (!is1x1) {
     c += "  };\n";
     c += "  };\n";
   }
-  if (conv_params.weights_upload_type ==
-      ConvPowerVR::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP) {
-    c += GenerateAsyncUpload("weights_cache", "args.biases.GetPtr()", "Z",
-                             block_size.z);
-  } else if (conv_params.weights_upload_type ==
-             ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
-    c += GenerateUploadByThreads("weights_cache", "args.biases.GetPtr()", "Z",
-                                 "lid", total_work_items, block_size.z);
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
-  } else {
-    c += "    weights_cache = args.biases.GetPtr() + Z;\n";
+  if (conv_params.AreWeightsBuffer()) {
+    if (conv_params.weights_upload_type ==
+        ConvPowerVR::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP) {
+      c += GenerateAsyncUpload("weights_cache", "args.biases.GetPtr()", "DST_S",
+                               block_size.z);
+    } else if (conv_params.weights_upload_type ==
+               ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
+      c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+      c += GenerateUploadByThreads("weights_cache", "args.biases.GetPtr()",
+                                   "DST_S", "lid", total_work_items,
+                                   block_size.z);
+      c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+    } else {
+      c += "    weights_cache = args.biases.GetPtr() + DST_S;\n";
+    }
   }
   if (late_oob_check) {
-    c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() "
-         "|| Z >= args.dst_tensor.Slices()) {\n";
+    c += "  if (DST_X >= args.dst_tensor.Width() || DST_Y >= "
+         "args.dst_tensor.Height() "
+         "|| DST_S >= args.dst_tensor.Slices()) {\n";
     c += "    return;\n";
     c += "  }\n";
   }
   for (int z = 0; z < block_size.z; ++z) {
     const std::string sz = std::to_string(z);
-    c += "  if (Z + " + sz + " >= args.dst_tensor.Slices()) return;\n";
+    c += "  if (DST_S + " + sz + " >= args.dst_tensor.Slices()) return;\n";
     c += "  {\n";
-    c += "    FLT4 bias_val = TO_FLT4(weights_cache[" + sz + "]);\n";
+    if (conv_params.AreWeightsBuffer()) {
+      c += "    FLT4 bias_val = TO_FLT4(weights_cache[" + sz + "]);\n";
+    } else {
+      c += "    FLT4 bias_val = args.biases.Read(DST_S + " + sz + ");\n";
+    }
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
         const std::string xs = dst_x[x];
         const std::string ys = dst_y[y];
-        const std::string zs = "Z + " + sz;
+        const std::string zs = "DST_S + " + sz;
         const std::string r_id = sz + std::to_string(y) + std::to_string(x);
         bool need_x_check = x != 0;
         bool need_y_check = y != 0;
@@ -865,7 +912,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
-    conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    if (definition.src_tensors.size() == 2) {
+      // dynamic weights supported only with buffers.
+      conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    } else {
+      conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
+    }
   } else if (device_info.IsIntel()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);
@@ -879,13 +931,15 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     }
     conv_params.block_size = int3(1, 1, 4);
     conv_params.src_depth_loop_size = 1;
+    int sub_group_size = 16;
     if (definition.precision != CalculationsPrecision::F32_F16 &&
         device_info.SupportsExtension("cl_khr_subgroups") &&
         device_info.SupportsExtension("cl_intel_required_subgroup_size") &&
         device_info.IsCL20OrHigher() &&
-        device_info.SupportsSubGroupWithSize(16)) {
+        device_info.SupportsSubGroupWithSize(sub_group_size)) {
       conv_params.weights_upload_type =
-          WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST;
+          WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+      conv_params.simd_size = sub_group_size;
     } else {
       conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
     }

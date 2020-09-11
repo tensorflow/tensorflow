@@ -40,7 +40,7 @@ Status GrpcDispatcherImpl::Start() { return impl_.Start(); }
                                           method##Response* response) {   \
     return ToGrpcStatus(impl_.method(request, response));                 \
   }
-HANDLER(RegisterWorker);
+HANDLER(WorkerHeartbeat);
 HANDLER(WorkerUpdate);
 HANDLER(GetDatasetDef);
 HANDLER(GetOrRegisterDataset);

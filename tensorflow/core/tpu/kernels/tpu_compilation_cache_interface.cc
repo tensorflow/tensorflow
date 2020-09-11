@@ -497,7 +497,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
   *uid = entry->uid;
   // Let the caller know the keys for each of the cached protos.
   *proto_key = entry->proto_key;
-  *may_modify_variables = entry->tpu_program_group->may_modify_variables();
+  *may_modify_variables = entry->tpu_program_group->may_modify_variables_list();
   *hlo_metadatas = entry->tpu_program_group->hlo_metadatas();
 
   // If the caller didn't supply a per_step_ref_holder then the caller is going

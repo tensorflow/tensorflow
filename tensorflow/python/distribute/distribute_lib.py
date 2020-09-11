@@ -872,13 +872,13 @@ class StrategyBase(object):
       `model.evaluate`, `model.predict` and `model.save` can all be called
       inside or outside the scope.
     * The following can be either inside or outside the scope:
-      ** Creating the input datasets
-      ** Defining `tf.function`s that represent your training step
-      ** Saving APIs such as `tf.saved_model.save`. Loading creates variables,
-         so that should go inside the scope if you want to train the model in a
-         distributed way.
-      ** Checkpoint saving. As mentioned above - `checkpoint.restore` may
-         sometimes need to be inside scope if it creates variables.
+        * Creating the input datasets
+        * Defining `tf.function`s that represent your training step
+        * Saving APIs such as `tf.saved_model.save`. Loading creates variables,
+          so that should go inside the scope if you want to train the model in a
+          distributed way.
+        * Checkpoint saving. As mentioned above - `checkpoint.restore` may
+          sometimes need to be inside scope if it creates variables.
 
     Returns:
       A context manager.
@@ -2130,6 +2130,10 @@ class StrategyExtendedV2(object):
         checkpoint_restore_uid = kwargs[
             "initial_value"].checkpoint_position.restore_uid
         kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+      elif isinstance(kwargs["initial_value"],
+                      trackable.CheckpointInitialValueCallable):
+        checkpoint_restore_uid = kwargs[
+            "initial_value"].checkpoint_position.restore_uid
       else:
         checkpoint_restore_uid = None
 
@@ -2139,6 +2143,9 @@ class StrategyExtendedV2(object):
         # pylint: disable=protected-access
         # Let the checkpointing infrastructure know that the variable was
         # already restored so it doesn't waste memory loading the value again.
+        # In this case of CheckpointInitialValueCallable this may already be
+        # done by the final variable creator, but it doesn't hurt to do it
+        # again.
         created._maybe_initialize_trackable()
         created._update_uid = checkpoint_restore_uid
         # pylint: enable=protected-access
