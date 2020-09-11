@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/step_interval.h"
+#include "tensorflow/core/profiler/utils/step_intersection.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -54,7 +54,7 @@ void CombineCoreIdMap(int src_host_id, const CoreIdMap& src, CoreIdMap* dst) {
 // Combine the src OpStats into the dst OpStats.
 void CombineOpStats(
     bool no_accelerator_in_system, int src_host_id, HardwareType hardware_type,
-    StepInterval step_intersection, const OpStats& src, OpStats* dst,
+    const StepIntersection& step_intersection, const OpStats& src, OpStats* dst,
     OpMetricsDbCombiner* host_op_metrics_db_combiner,
     OpMetricsDbCombiner* device_op_metrics_db_combiner,
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
