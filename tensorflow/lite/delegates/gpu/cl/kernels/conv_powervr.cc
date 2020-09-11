@@ -204,14 +204,16 @@ void ConvPowerVR::GenerateCode(const DeviceInfo& device_info) {
 }
 
 absl::Status ConvPowerVR::BindArguments() {
-  if (!conv_params_.x_kernel_is_1 || !conv_params_.y_kernel_is_1) {
+  if (!conv_params_.x_kernel_is_1) {
     RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
-    RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
     RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
-    RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
     RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
-    RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
     RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
+  }
+  if (!conv_params_.y_kernel_is_1) {
+    RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
+    RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
+    RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
     RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
   }
   if (conv_params_.linear_spatial) {
@@ -314,31 +316,48 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
     return generate_id(x, y, z) + "_s" + s;
   };
 
+  auto generate_check = [&](const std::string& x, const std::string& y,
+                            const std::string& z) {
+    std::string check;
+    const std::vector<Axis> axes{Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH};
+    const std::vector<std::string> names{"in_x", "in_y", "in_z"};
+    const std::vector<bool> is_1{conv_params_.x_kernel_is_1,
+                                 conv_params_.y_kernel_is_1, false};
+    const std::vector<std::string> coords{x, y, z};
+    for (int i = 0; i < axes.size(); ++i) {
+      const auto& axis = axes[i];
+      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis) &&
+          !is_1[i]) {
+        if (!check.empty()) {
+          check += " && ";
+        }
+        check += names[i] + coords[i];
+      }
+    }
+    return check;
+  };
+
   auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
     dst_desc.SetStateVar("BatchedWidth", "true");
   }
   AddDstTensor("dst_tensor", dst_desc);
 
-  const bool is1x1 = conv_params_.x_kernel_is_1 && conv_params_.y_kernel_is_1;
-  if (!is1x1) {
+  if (!conv_params_.x_kernel_is_1) {
     args_.AddInt("stride_x");
-    args_.AddInt("stride_y");
     args_.AddInt("padding_x");
-    args_.AddInt("padding_y");
     args_.AddInt("kernel_size_x");
-    args_.AddInt("kernel_size_y");
     args_.AddInt("dilation_x");
+  }
+  if (!conv_params_.y_kernel_is_1) {
+    args_.AddInt("stride_y");
+    args_.AddInt("padding_y");
+    args_.AddInt("kernel_size_y");
     args_.AddInt("dilation_y");
   }
   if (conv_params_.linear_spatial) {
     args_.AddInt("task_size_x");
   }
-
-  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
-  const bool buffer_type = src_tensor_type == TensorStorageType::BUFFER ||
-                           src_tensor_type == TensorStorageType::IMAGE_BUFFER;
-  const bool manual_clamp = buffer_type && !is1x1;
 
   const bool need_local_mem =
       conv_params.weights_upload_type ==
@@ -388,14 +407,6 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
   c += GenerateBlockCoords(conv_params.block_size,
                            conv_params.work_group_launch_order,
                            conv_params.linear_spatial);
-  std::vector<std::string> dst_x(conv_params.block_size.x);
-  for (int x = 0; x < conv_params.block_size.x; ++x) {
-    dst_x[x] = "(DST_X + " + std::to_string(x) + ")";
-  }
-  std::vector<std::string> dst_y(conv_params.block_size.y);
-  for (int y = 0; y < conv_params.block_size.y; ++y) {
-    dst_y[y] = "(DST_Y + " + std::to_string(y) + ")";
-  }
   if (!late_oob_check) {
     c += "  if (DST_X >= args.dst_tensor.Width() || DST_Y >= "
          "args.dst_tensor.Height() "
@@ -429,98 +440,135 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
       }
     }
   }
-  if (!is1x1) {
+  if (!conv_params_.x_kernel_is_1) {
     for (int x = 0; x < block_size.x; ++x) {
+      const std::string xind = std::to_string(x);
+      const std::string xc = "(DST_X + " + xind + ")";
       if (stride_correction) {
-        c += "  int xc" + std::to_string(x) + " = " +
-             GetXStrideCorrected(dst_x[x], "args.src_tensor.Batch()",
-                                 "args.stride_x", "args.padding_x") +
+        c += "  int xc" + xind + " = " +
+             GetXStrideCorrected(xc, "args.src_tensor.Batch()", "args.stride_x",
+                                 "args.padding_x") +
              ";\n";
       } else {
-        c += "  int xc" + std::to_string(x) + " = " + dst_x[x] +
+        c += "  int xc" + xind + " = " + xc +
              " * args.stride_x + args.padding_x;\n";
       }
     }
-    for (int y = 0; y < block_size.y; ++y) {
-      c += "  int yc" + std::to_string(y) + " = " + dst_y[y] +
-           " * args.stride_y + args.padding_y;\n";
+  } else {
+    for (int x = 0; x < block_size.x; ++x) {
+      const std::string xind = std::to_string(x);
+      c += "  int xc" + xind + " = DST_X + " + xind + ";\n";
+      if (!src_def.CanReadOutOfBorder(Axis::WIDTH)) {
+        c += "  xc" + xind + " = clamp(xc" + xind +
+             ", 0, args.src_tensor.Width() - 1);\n";
+      }
     }
   }
+  if (!conv_params_.y_kernel_is_1) {
+    for (int y = 0; y < block_size.y; ++y) {
+      const std::string yind = std::to_string(y);
+      const std::string yc = "(DST_Y + " + yind + ")";
+      c += "  int yc" + yind + " = " + yc +
+           " * args.stride_y + args.padding_y;\n";
+    }
+  } else {
+    for (int y = 0; y < block_size.y; ++y) {
+      const std::string yind = std::to_string(y);
+      c += "  int yc" + yind + " = DST_Y + " + yind + ";\n";
+      if (!src_def.CanReadOutOfBorder(Axis::HEIGHT)) {
+        c += "  yc" + yind + " = clamp(yc" + yind +
+             ", 0, args.src_tensor.Height() - 1);\n";
+      }
+    }
+  }
+  const bool trivial_kernel_size =
+      conv_params_.x_kernel_is_1 && conv_params_.y_kernel_is_1;
   if (need_local_mem) {
     c += "  __local " + weights_data_type + " weights_cache[" +
          std::to_string(local_mem_size) + "];\n";
   } else if (conv_params.AreWeightsBuffer()) {
     c += "    " + weights_global_ptr + " weights_cache;\n";
-  } else {
-    if (!is1x1) {
-      c += "  int filter_offset = 0;\n";
-    }
+  } else if (!trivial_kernel_size) {
+    c += "  int filter_offset = 0;\n";
   }
   if (conv_params.AreWeightsBuffer()) {
-    if (is1x1) {
-      if (conv_params.different_weights_for_height) {
-        c += "  " + weights_global_ptr +
-             " filters_loc = args.weights.GetPtr() + (DST_S * "
-             "args.src_tensor.Height() + DST_Y * " +
-             std::to_string(block_size.w) +
-             ") * 4 * args.src_tensor.Slices();\n";
-      } else {
-        c += "  " + weights_global_ptr +
-             " filters_loc = args.weights.GetPtr() + DST_S * 4 * "
-             "args.src_tensor.Slices();\n";
-      }
+    if (conv_params.different_weights_for_height) {
+      c += "  " + weights_global_ptr +
+           " filters_loc = args.weights.GetPtr() + (DST_S * "
+           "args.src_tensor.Height() + DST_Y * " +
+           std::to_string(block_size.w) + ") * 4 * args.src_tensor.Slices();\n";
     } else {
+      std::string kernel_spatial_offset = "";
+      if (!conv_params_.x_kernel_is_1) {
+        kernel_spatial_offset += " * args.kernel_size_x";
+      }
+      if (!conv_params_.y_kernel_is_1) {
+        kernel_spatial_offset += " * args.kernel_size_y";
+      }
       c += "  " + weights_global_ptr +
            " filters_loc = args.weights.GetPtr() + DST_S * 4 * "
-           "args.src_tensor.Slices() * args.kernel_size_x * "
-           "args.kernel_size_y;\n";
+           "args.src_tensor.Slices()" +
+           kernel_spatial_offset + ";\n";
     }
   }
-  if (buffer_type) {
-    c += "  const int src_layer_offset = args.src_tensor.SliceStride();\n";
-  }
-  if (!is1x1) {
+  if (!conv_params_.y_kernel_is_1) {
     c += "  for (int ky = 0; ky < args.kernel_size_y; ++ky) {\n";
     for (int y = 0; y < block_size.y; ++y) {
       const std::string yck = "yck" + std::to_string(y);
       c += "  int " + yck + " = ky * args.dilation_y + yc" + std::to_string(y) +
            ";\n";
-      if (manual_clamp) {
-        c += "  bool my" + std::to_string(y) + " = " + yck + " >= 0 && " + yck +
-             " < args.src_tensor.Height();\n";
-        c += "  " + yck + " = clamp(" + yck +
-             ", 0, args.src_tensor.Height() - 1);\n";
+      if (!src_def.SupportsZeroClamp(Axis::HEIGHT)) {
+        c += "  bool in_y" + std::to_string(y) + " = " + yck + " >= 0 && " +
+             yck + " < args.src_tensor.Height();\n";
+        if (!src_def.CanReadOutOfBorder(Axis::HEIGHT)) {
+          c += "  " + yck + " = clamp(" + yck +
+               ", 0, args.src_tensor.Height() - 1);\n";
+        }
       }
     }
+  }
+  if (!conv_params_.x_kernel_is_1) {
     c += "  for (int kx = 0; kx < args.kernel_size_x; ++kx) {\n";
     for (int x = 0; x < block_size.x; ++x) {
       const std::string xck = "xck" + std::to_string(x);
       c += "  int xck" + std::to_string(x) + " = kx * args.dilation_x + xc" +
            std::to_string(x) + ";\n";
-      if (manual_clamp) {
-        c += "  bool mx" + std::to_string(x) + " = " + xck + " >= 0 && " + xck +
-             " < args.src_tensor.Width();\n";
-        c += "  " + xck + " = clamp(" + xck +
-             ", 0, args.src_tensor.Width() - 1);\n";
+      if (!src_def.SupportsZeroClamp(Axis::WIDTH)) {
+        c += "  bool in_x" + std::to_string(x) + " = " + xck + " >= 0 && " +
+             xck + " < args.src_tensor.Width();\n";
+        if (!src_def.CanReadOutOfBorder(Axis::WIDTH)) {
+          c += "  " + xck + " = clamp(" + xck +
+               ", 0, args.src_tensor.Width() - 1);\n";
+        }
       }
     }
   }
-  if (buffer_type) {
-    for (int y = 0; y < block_size.y; ++y) {
-      const std::string yind = std::to_string(y);
-      const std::string yck = "yck" + yind;
-      for (int x = 0; x < block_size.x; ++x) {
-        const std::string xind = std::to_string(x);
-        const std::string xck = "xck" + xind;
-        std::string xc =
-            is1x1 ? "min(" + dst_x[x] + ", args.src_tensor.Width() - 1)" : xck;
-        std::string yc =
-            is1x1 ? "min(" + dst_y[y] + ", args.src_tensor.Height() - 1)" : yck;
-        std::string id = generate_id(xind, yind, "");
-        c += "  int src_a" + id + " = " + yc + " * args.src_tensor.Width() + " +
-             xc + ";\n";
+  const bool need_multiple_slice_strides =
+      src_def.ReturnsZeroForNegOneRead() && !trivial_kernel_size;
+  for (int y = 0; y < block_size.y; ++y) {
+    const std::string yind = std::to_string(y);
+    for (int x = 0; x < block_size.x; ++x) {
+      const std::string xind = std::to_string(x);
+      std::string xc = conv_params.x_kernel_is_1 ? "xc" + xind : "xck" + xind;
+      std::string yc = conv_params.y_kernel_is_1 ? "yc" + yind : "yck" + yind;
+      const std::string id = generate_id(xind, yind, "");
+      std::string coords = "" + xc + ", " + yc;
+      if (src_def.IsLinear()) {
+        c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords +
+             ", 0);\n";
+        if (need_multiple_slice_strides) {
+          const std::string check = generate_check(xind, yind, "");
+          c += "  addr" + id + " = select(-1, addr" + id + ", (" + check +
+               "));\n";
+          c += "  int ds" + id +
+               " = select(0, args.src_tensor.SliceStride(), (" + check +
+               "));\n";
+        }
       }
     }
+  }
+  if (src_def.IsLinear() && !need_multiple_slice_strides) {
+    c += "  int ds = args.src_tensor.SliceStride();\n";
   }
 
   auto declare_src = [&]() {
@@ -541,28 +589,39 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
       for (int x = 0; x < block_size.x; ++x) {
         const std::string xind = std::to_string(x);
         std::string id = generate_id(xind, yind, "");
-        if (buffer_type) {
-          if (is1x1) {
-            c += "    src" + id + " = args.src_tensor.Read<" + cl_type +
-                 ">(src_a" + id + ");\n";
-          } else {
-            std::string condition =
-                "mx" + std::to_string(x) + " && my" + std::to_string(y);
+        const std::string check = generate_check(xind, yind, "");
+        std::string address;
+        if (src_def.IsLinear()) {
+          address = "addr" + id;
+        } else {
+          std::string xc =
+              conv_params.x_kernel_is_1 ? "xc" + xind : "xck" + xind;
+          std::string yc =
+              conv_params.y_kernel_is_1 ? "yc" + yind : "yck" + yind;
+          address = "" + xc + ", " + yc;
+          address += ", s";
+        }
+        if (src_def.ReturnsZeroForNegOneRead()) {
+          c += "    src" + id + " = args.src_tensor.Read<" + cl_type + ">(" +
+               address + ");\n";
+          const std::string ds = trivial_kernel_size ? "ds" : "ds" + id;
+          c += "    " + address + " += " + ds + ";\n";
+        } else {
+          if (!check.empty()) {
             if (conditional_read) {
-              c += "    src" + id + " = " + condition +
-                   " ? args.src_tensor.Read<" + cl_type + ">(src_a" + id +
-                   ") : (FLT4)(0.0f);\n";
+              c += "    src" + id + " = " + check + " ? args.src_tensor.Read<" +
+                   cl_type + ">(" + address + ") : (FLT4)(0.0f);\n";
             } else {
               c += "    src" + id + " = args.src_tensor.Read<" + cl_type +
-                   ">(src_a" + id + ") * (FLT)(" + condition + ");\n";
+                   ">(" + address + ") * (FLT)(" + check + ");\n";
             }
+          } else {
+            c += "    src" + id + " = args.src_tensor.Read<" + cl_type + ">(" +
+                 address + ");\n";
           }
-          c += "    src_a" + id + " += src_layer_offset;\n";
-        } else {
-          const std::string xc = is1x1 ? dst_x[x] : "xck" + std::to_string(x);
-          const std::string yc = is1x1 ? dst_y[y] : "yck" + std::to_string(y);
-          c += "    src" + id + " = args.src_tensor.Read<" + cl_type + ">(" +
-               xc + ", " + yc + ", s);\n";
+          if (src_def.IsLinear()) {
+            c += "    " + address + " += ds;\n";
+          }
         }
       }
     }
@@ -679,7 +738,7 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
     c += "    weights_cache = filters_loc;\n";
   } else {  // TEXTURES_MEM
     for (int dst_s = 0; dst_s < block_size.w; ++dst_s) {
-      std::string f_y = is1x1 ? "s" : "filter_offset";
+      std::string f_y = trivial_kernel_size ? "s" : "filter_offset";
       if (conv_params.different_weights_for_height) {
         f_y = "DST_Y * args.src_tensor.Slices() + s";
       }
@@ -692,7 +751,7 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
           dst_s, f_y, dst_s * 4 + 0, dst_s * 4 + 1, dst_s * 4 + 2,
           dst_s * 4 + 3);
     }
-    if (!is1x1) {
+    if (!trivial_kernel_size) {
       c += "    filter_offset++;\n";
     }
   }
@@ -712,8 +771,10 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
     c += "    filters_loc += " + std::to_string(local_mem_size) + ";\n";
   }
   c += "  } while (s < args.src_tensor.Slices());\n";
-  if (!is1x1) {
+  if (!conv_params.x_kernel_is_1) {
     c += "  };\n";
+  }
+  if (!conv_params.y_kernel_is_1) {
     c += "  };\n";
   }
   if (conv_params.AreWeightsBuffer()) {
@@ -723,13 +784,13 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
                                block_size.w);
     } else if (conv_params.weights_upload_type ==
                ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-      c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+      c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
       c += GenerateUploadByThreads("weights_cache", "args.biases.GetPtr()",
                                    "DST_S", "lid", total_work_items,
                                    block_size.w);
-      c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+      c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
     } else {
-      c += "    weights_cache = args.biases.GetPtr() + DST_S;\n";
+      c += "  weights_cache = args.biases.GetPtr() + DST_S;\n";
     }
   }
   if (late_oob_check) {
@@ -752,8 +813,8 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
       const std::string yind = std::to_string(y);
       for (int x = 0; x < block_size.x; ++x) {
         const std::string xind = std::to_string(x);
-        const std::string xs = dst_x[x];
-        const std::string ys = dst_y[y];
+        const std::string xs = "DST_X + " + xind;
+        const std::string ys = "DST_Y + " + yind;
         const std::string zs = "DST_S + " + sind;
         const std::string id = generate_id_full(xind, yind, "", sind);
         bool need_x_check = x != 0;
