@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
@@ -76,9 +75,9 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addPass(mlir::mhlo::createLegalizeTFPass(false));
   if (gpu_binary_only) {
     pm.addNestedPass<mlir::FuncOp>(
-        mlir::kernel_gen::createMaterializeBroadcastsPass());
+        mlir::kernel_gen::transforms::CreateMaterializeBroadcastsPass());
     pm.addNestedPass<mlir::FuncOp>(
-        mlir::kernel_gen::createUnfuseBatchNormPass());
+        mlir::kernel_gen::transforms::CreateUnfuseBatchNormPass());
     pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
         /*results_escape_functions=*/true));
     // Moving `AllocOp`s and inserting missing `DeallocOp`s
@@ -173,7 +172,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
 Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
                       llvm::ArrayRef<uint32_t> same_shape,
                       llvm::StringRef gpu_binary_attr_name,
-                      std::pair<int32_t, int32_t> compute_capability) {
+                      int32_t architecture) {
   mlir::PassManager pm(module.getContext());
   applyPassManagerCLOptions(pm);
 
@@ -182,12 +181,12 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
     // Grab the original signature from the single function.
     auto func = *module.getBody()->op_begin<mlir::FuncOp>();
     kernel_pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(
-        mlir::kernel_gen::createPropagateTensorFlowABIKnowledgePass(
+        mlir::kernel_gen::transforms::CreatePropagateTensorFlowABIKnowledgePass(
             func.getType(), same_shape));
   }
   kernel_pm.addPass(mlir::createStripDebugInfoPass());
-  kernel_pm.addPass(mlir::kernel_gen::createGpuKernelToBlobPass(
-      gpu_binary_attr_name, compute_capability));
+  kernel_pm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToBlobPass(
+      gpu_binary_attr_name, architecture));
 
   if (!gpu_binary_only) {
     pm.addPass(mlir::kernel_gen::transforms::CreateTFKernelToLLVMPass());
@@ -202,8 +201,8 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
 
 StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
-    std::pair<int32_t, int32_t> compute_capability,
-    llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
+    int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
+    llvm::ArrayRef<uint32_t> same_shape,
     llvm::ArrayRef<uint32_t> unroll_factors) {
   mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
@@ -221,7 +220,7 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
 #endif
   TF_RETURN_IF_ERROR(LowerGPUToLLVM(module.get(), gpu_binary_only, same_shape,
-                                    kGpuBinaryAttrName, compute_capability));
+                                    kGpuBinaryAttrName, architecture));
   return module;
 }
 

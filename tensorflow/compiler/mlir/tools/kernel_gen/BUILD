@@ -17,45 +17,11 @@ package_group(
 )
 
 cc_library(
-    name = "passes",
-    srcs = ["passes.cc"],
-    hdrs = ["passes.h"],
-    copts = if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]),
-    deps = [
-        "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:TargetNVVMIR",
-        "@llvm-project//mlir:TargetROCDLIR",
-        "@llvm-project//mlir:Transforms",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla/service/gpu:target_constants",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
-        "//tensorflow/core:cuda_libdevice_path",
-        "//tensorflow/core:lib",
-    ] + if_cuda([
-        "//tensorflow/stream_executor/gpu:asm_compiler",
-    ]) + if_rocm([
-        "//tensorflow/core/platform:rocm_rocdl_path",
-    ]),
-)
-
-cc_library(
     name = "kernel_creator",
     srcs = ["kernel_creator.cc"],
     hdrs = ["kernel_creator.h"],
     copts = if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
-        ":passes",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
