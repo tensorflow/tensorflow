@@ -35,7 +35,10 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} 
 # TODO(b/143286954): Run all the tests once they pass.
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
 
-# TODO(b/149597202): Disabled until we can get Docker running inside Docker.
-# Parallell builds doesn't work very well with this
-#readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
+# TODO(b/149597202): Running tests via renode are disabled as part of the
+# continuous integration until we can get Docker running inside Docker. However,
+# if this script is run locally, the tests will still be run.
+if [[ ${1} != "PRESUBMIT" ]]; then
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
+fi
 
