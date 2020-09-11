@@ -3202,31 +3202,28 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV2_Positive);
 
 // T, U combination is not supported by MKL. Node will not be rewritten
 // into MKL node.
-#define REGISTER_TEST(NAME, T, INPUT)                                         \
-  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
-    DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);      \
-    InitGraph(                                                                \
-      "node { name: 'A' op: 'HalfInput'}"                                     \
-      "node { name: 'B' op: 'HalfInput'}"                                     \
-      "node { name: 'C' op: 'Float32Input'}"                                  \
-      "node { name: 'D' op: 'Float32Input'}"                                  \
-      "node { name: 'E' op: 'Float32Input'}"                                  \
-      "node { name: 'F' op: 'FusedBatchNormGradV2'"                           \
-      " attr { key: 'T'            value { type: DT_HALF } }"                 \
-      " attr { key: 'U'            value { type: DT_FLOAT } }"                \
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"                     \
-      " attr { key: 'epsilon'      value { f: 0.0001 } }"                     \
-      " attr { key: 'is_training'  value { b: true } }"                       \
-      " input: ['A', 'B', 'C', 'D', 'E'] }"                                   \
-      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }" \
-      " input: ['A', 'F'] }");                                                \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-            "A(HalfInput);B(HalfInput);C(Float32Input);D(Float32Input);"      \
-            "E(Float32Input);F(FusedBatchNormGradV2);G(Zeta)|A->F;A->G;"      \
-            "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                            \
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormGradV2_Negative) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+    "node { name: 'A' op: 'HalfInput'}"
+    "node { name: 'B' op: 'HalfInput'}"
+    "node { name: 'C' op: 'Float32Input'}"
+    "node { name: 'D' op: 'Float32Input'}"
+    "node { name: 'E' op: 'Float32Input'}"
+    "node { name: 'F' op: 'FusedBatchNormGradV2'"
+    " attr { key: 'T'            value { type: DT_HALF } }"
+    " attr { key: 'U'            value { type: DT_FLOAT } }"
+    " attr { key: 'data_format'  value { s: 'NCHW' } }"
+    " attr { key: 'epsilon'      value { f: 0.0001 } }"
+    " attr { key: 'is_training'  value { b: true } }"
+    " input: ['A', 'B', 'C', 'D', 'E'] }"
+    "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }"
+    " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+          "A(HalfInput);B(HalfInput);C(Float32Input);D(Float32Input);"
+          "E(Float32Input);F(FusedBatchNormGradV2);G(Zeta)|A->F;A->G;"
+          "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
 }
-REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV2_Negative);
-#undef REGISTER_TEST
 
 #define REGISTER_TEST(NAME, T, INPUT)                                                \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                            \
@@ -3291,31 +3288,28 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV2_Positive);
 
 // T, U combination is not supported by MKL. Node will not be rewritten
 // into MKL node.
-#define REGISTER_TEST(NAME, T, INPUT)                                         \
-  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
-    DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);      \
-    InitGraph(                                                                \
-      "node { name: 'A' op: 'HalfInput'}"                                     \
-      "node { name: 'B' op: 'Float32Input'}"                                  \
-      "node { name: 'C' op: 'Float32Input'}"                                  \
-      "node { name: 'D' op: 'Float32Input'}"                                  \
-      "node { name: 'E' op: 'Float32Input'}"                                  \
-      "node { name: 'F' op: 'FusedBatchNormV2'"                               \
-      " attr { key: 'T'            value { type: DT_HALF } }"                 \
-      " attr { key: 'U'            value { type: DT_FLOAT } }"                \
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"                     \
-      " attr { key: 'epsilon'      value { f: 0.0001 } }"                     \
-      " attr { key: 'is_training'  value { b: true } }"                       \
-      " input: ['A', 'B', 'C', 'D', 'E'] }"                                   \
-      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }" \
-      " input: ['A', 'F'] }");                                                \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
-            "A(HalfInput);B(Float32Input);C(Float32Input);D(Float32Input);"   \
-            "E(Float32Input);F(FusedBatchNormV2);G(Zeta)|A->F;A->G;"          \
-            "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                            \
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_Negative) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+    "node { name: 'A' op: 'HalfInput'}"
+    "node { name: 'B' op: 'Float32Input'}"
+    "node { name: 'C' op: 'Float32Input'}"
+    "node { name: 'D' op: 'Float32Input'}"
+    "node { name: 'E' op: 'Float32Input'}"
+    "node { name: 'F' op: 'FusedBatchNormV2'"
+    " attr { key: 'T'            value { type: DT_HALF } }"
+    " attr { key: 'U'            value { type: DT_FLOAT } }"
+    " attr { key: 'data_format'  value { s: 'NCHW' } }"
+    " attr { key: 'epsilon'      value { f: 0.0001 } }"
+    " attr { key: 'is_training'  value { b: true } }"
+    " input: ['A', 'B', 'C', 'D', 'E'] }"
+    "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }"
+    " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+          "A(HalfInput);B(Float32Input);C(Float32Input);D(Float32Input);"
+          "E(Float32Input);F(FusedBatchNormV2);G(Zeta)|A->F;A->G;"
+          "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
 }
-REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV2_Negative);
-#undef REGISTER_TEST
 
 #define REGISTER_TEST(NAME, T, INPUT)                                                \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                            \
@@ -3348,31 +3342,28 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV2_Negative);
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_Positive);
 #undef REGISTER_TEST
 
-#define REGISTER_TEST(NAME, T, INPUT)                                         \
-  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
-    DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);      \
-    InitGraph(                                                                \
-      "node { name: 'A' op: 'HalfInput'}"                                     \
-      "node { name: 'B' op: 'Float32Input'}"                                  \
-      "node { name: 'C' op: 'Float32Input'}"                                  \
-      "node { name: 'D' op: 'Float32Input'}"                                  \
-      "node { name: 'E' op: 'Float32Input'}"                                  \
-      "node { name: 'F' op: 'FusedBatchNormV3'"                               \
-      " attr { key: 'T'            value { type: DT_HALF } }"                 \
-      " attr { key: 'U'            value { type: DT_FLOAT } }"                \
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"                     \
-      " attr { key: 'epsilon'      value { f: 0.0001 } }"                     \
-      " attr { key: 'is_training'  value { b: true } }"                       \
-      " input: ['A', 'B', 'C', 'D', 'E'] }"                                   \
-      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }" \
-      " input: ['A', 'F'] }");                                                \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
-            "A(HalfInput);B(Float32Input);C(Float32Input);D(Float32Input);"   \
-            "E(Float32Input);F(FusedBatchNormV3);G(Zeta)|A->F;A->G;"          \
-            "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                            \
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Negative) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+    "node { name: 'A' op: 'HalfInput'}"
+    "node { name: 'B' op: 'Float32Input'}"
+    "node { name: 'C' op: 'Float32Input'}"
+    "node { name: 'D' op: 'Float32Input'}"
+    "node { name: 'E' op: 'Float32Input'}"
+    "node { name: 'F' op: 'FusedBatchNormV3'"
+    " attr { key: 'T'            value { type: DT_HALF } }"
+    " attr { key: 'U'            value { type: DT_FLOAT } }"
+    " attr { key: 'data_format'  value { s: 'NCHW' } }"
+    " attr { key: 'epsilon'      value { f: 0.0001 } }"
+    " attr { key: 'is_training'  value { b: true } }"
+    " input: ['A', 'B', 'C', 'D', 'E'] }"
+    "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }"
+    " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+          "A(HalfInput);B(Float32Input);C(Float32Input);D(Float32Input);"
+          "E(Float32Input);F(FusedBatchNormV3);G(Zeta)|A->F;A->G;"
+          "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
 }
-REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_Negative);
-#undef REGISTER_TEST
 
 #ifdef ENABLE_MKLDNN_V1
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
@@ -3611,6 +3602,7 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Ctxbased_Slice_Negative);
       "E:control->DMT/_2:control;F->G:1;G->I:1;H->I");                       \
 }
 REGISTER_TEST_FLOAT32(MaxPoolLRN_Positive);
+// TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 #undef REGISTER_TEST
 
 /* Test LRN->LRNGrad replacement by workspace nodes. */
