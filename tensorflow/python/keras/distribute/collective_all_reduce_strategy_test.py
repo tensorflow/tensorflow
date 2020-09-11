@@ -147,8 +147,7 @@ class CollectiveAllReduceStrategyTestBase(
               activation=nn.relu), max_pool,
           l.Flatten(),
           l.Dense(1024, activation=nn.relu),
-          # ROCm dropout has GPU support only, disabling it now
-          #l.Dropout(0.4),
+          l.Dropout(0.4),
           l.Dense(10)
       ])
       image = random_ops.random_uniform([2, 28, 28])

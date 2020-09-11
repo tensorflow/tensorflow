@@ -5230,9 +5230,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_windows_gpu",
-    ],
+    tags = ["no_windows_gpu"],
     deps = [
         ":array_ops",
         ":errors",
@@ -6289,6 +6287,8 @@ tf_py_test(
     grpc_enabled = True,
     python_version = "PY3",
     tags = [
+        "no_gpu",
+        "no_oss",
         "no_pip",
         "no_pip_gpu",
         "notap",

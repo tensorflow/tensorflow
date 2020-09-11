@@ -513,7 +513,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_save_load_test",
-    size = "large",
+    size = "medium",
     srcs = ["keras_save_load_test.py"],
     disable_mlir_bridge = False,
     full_precision = True,
@@ -798,7 +798,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "saved_model_mixed_api_test",
-    size = "large",
+    size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
     disable_mlir_bridge = False,
     full_precision = True,

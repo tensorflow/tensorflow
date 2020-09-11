@@ -352,7 +352,7 @@ class SerializeKerasObjectTest(test.TestCase):
     input_data = np.random.normal(2, 1, (5, 784))
     output = old_model.predict(input_data)
     expected_output = new_model.predict(input_data)
-    self.assertAllClose(output, expected_output)
+    self.assertAllEqual(output, expected_output)
 
 
 class SliceArraysTest(test.TestCase):

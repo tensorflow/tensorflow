@@ -153,7 +153,8 @@ class GradientCheckpointTest(tf.test.TestCase):
       self.skipTest('No virtual GPUs found')
     if test_lib.is_built_with_rocm():
       self.skipTest('ROCm MIOpen does not support searching for memory-limited'
-                    'solvers yet so skip the subtest which would result in OOM.')
+                    'solvers yet so skip the subtest which would result in OOM.'
+                    )
     n_step = 2
     losses = _train_with_recompute(n_step)
     self.assertLen(losses, n_step)

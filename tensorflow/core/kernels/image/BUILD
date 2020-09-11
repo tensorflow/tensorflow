@@ -244,7 +244,7 @@ tf_kernel_library(
     deps = if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
         "//tensorflow/core/kernels:gpu_prim_hdrs",
-    ],
+    ]),
 )
 
 tf_kernel_library(
