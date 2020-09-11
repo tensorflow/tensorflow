@@ -32,7 +32,12 @@ TARGET=bluepill
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} third_party_downloads
 
-# TODO(b/143286954): Run all the tests once they pass.
+# check that the release build is ok.
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build BUILD_TYPE=release
+
+# TODO(b/168334217): enable debug build once it does not fail.
+#readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build BUILD_TYPE=debug
+
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
 
 # TODO(b/149597202): Running tests via renode are disabled as part of the
