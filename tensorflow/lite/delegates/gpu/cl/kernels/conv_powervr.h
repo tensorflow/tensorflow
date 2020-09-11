@@ -53,7 +53,7 @@ class ConvPowerVR : public GPUOperation {
   ConvWeightsDescription GetConvWeightsDescription() const {
     ConvWeightsDescription desc;
     desc.layout = ConvWeightsLayout::kOHWIOGroupI4O4;
-    desc.output_group_size = conv_params_.block_size.z;
+    desc.output_group_size = conv_params_.block_size.w;
     return desc;
   }
 
@@ -82,10 +82,10 @@ class ConvPowerVR : public GPUOperation {
     // weights, so for PowerVR in this kernel we have F32 weights for
     // F32_F16 precision mode
     DataType weights_data_type;  // used for weights and biases
-    int3 block_size;
+    int4 block_size;             // WHDS
     int3 work_group_launch_order;
     bool fixed_work_group_size;
-    bool linear_hw;
+    bool linear_spatial;  // spatial dimensions are Width/Height/Depth
     bool different_weights_for_height;
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
@@ -178,8 +178,10 @@ class ConvPowerVR : public GPUOperation {
                            const OperationDef& op_def, bool stride_correction,
                            const ConvParams& conv_params);
 
-  int4 stride_padding_;
-  int4 kernel_dilation_;
+  int4 stride_;
+  int4 padding_;
+  int4 kernel_size_;
+  int4 dilation_;
   ConvParams conv_params_;
 };
 
@@ -214,7 +216,7 @@ void ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
   const int float_size = conv_params_.weights_data_type == DataType::FLOAT32
                              ? sizeof(float)
                              : sizeof(half);
-  int aligned_channels = AlignByN(bias.shape.v, 4 * conv_params_.block_size.z);
+  int aligned_channels = AlignByN(bias.shape.v, 4 * conv_params_.block_size.w);
   desc.size = float_size * aligned_channels;
   desc.data.resize(desc.size);
   if (conv_params_.weights_data_type == DataType::FLOAT32) {
@@ -235,7 +237,7 @@ void ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
 template <DataType T>
 void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int dst_slices =
-      AlignByN(DivideRoundUp(weights.shape.o, 4), conv_params_.block_size.z);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), conv_params_.block_size.w);
   const int src_slices = DivideRoundUp(weights.shape.i, 4);
 
   const bool f32_weights = conv_params_.weights_data_type == DataType::FLOAT32;
@@ -249,19 +251,19 @@ void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   if (f32_weights) {
     float4* ptr = reinterpret_cast<float4*>(data.data());
     if (conv_params_.AreWeightsBuffer()) {
-      RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+      RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.w,
                                        absl::MakeSpan(ptr, elements_count));
     } else {
-      RearrangeWeightsToI4HWIOOGroupO4(weights, conv_params_.block_size.z,
+      RearrangeWeightsToI4HWIOOGroupO4(weights, conv_params_.block_size.w,
                                        absl::MakeSpan(ptr, elements_count));
     }
   } else {
     half4* ptr = reinterpret_cast<half4*>(data.data());
     if (conv_params_.AreWeightsBuffer()) {
-      RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+      RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.w,
                                        absl::MakeSpan(ptr, elements_count));
     } else {
-      RearrangeWeightsToI4HWIOOGroupO4(weights, conv_params_.block_size.z,
+      RearrangeWeightsToI4HWIOOGroupO4(weights, conv_params_.block_size.w,
                                        absl::MakeSpan(ptr, elements_count));
     }
   }
