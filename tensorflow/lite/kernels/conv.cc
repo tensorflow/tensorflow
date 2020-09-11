@@ -19,14 +19,21 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+// Only use multi-threaded Eigen if ruy is disabled.
+#if !defined(TFLITE_WITH_RUY)
+#define TFLITE_WITH_MULTITHREADED_EIGEN
+#endif
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
 #include "tensorflow/lite/kernels/eigen_support.h"
+#endif
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 // b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
-#ifndef TFLITE_WITH_RUY
+#if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #endif
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -122,12 +129,16 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to use as scratch space for im2col, and
   // to carry information from Prepare() to Eval().
   auto* data = new OpData;
+#if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
   eigen_support::IncrementUsageCounter(context);
+#endif
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
+#if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
   eigen_support::DecrementUsageCounter(context);
+#endif
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -765,12 +776,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       break;
     }
     case kMultithreadOptimized: {
-#ifdef TFLITE_WITH_RUY
-      // See Register_CONV_2D: we should never be here when TFLITE_WITH_RUY
-      // was enabled. We #if out this code in order to get the corresponding
-      // binary size benefits.
-      TFLITE_DCHECK(false);
-#else
+#if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
       const float* filter_data;
       if (data->need_hwcn_weights) {
         filter_data = GetTensorData<float>(hwcn_weights);
@@ -785,7 +791,12 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
           GetTensorData<float>(output), GetTensorShape(im2col),
           GetTensorData<float>(im2col));
       break;
-#endif
+#else  // !defined(TFLITE_WITH_MULTITHREADED_EIGEN)
+      // See Register_CONV_2D: we should never be here when TFLITE_WITH_RUY
+      // was enabled. We #if out this code in order to get the corresponding
+      // binary size benefits.
+      TFLITE_DCHECK(false);
+#endif  // defined(TFLITE_WITH_MULTITHREADED_EIGEN)
     }
   }
 }
@@ -1053,11 +1064,10 @@ TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
 TfLiteRegistration* Register_CONV_2D() {
 #if defined TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
   return Register_CONVOLUTION_CBLAS_OPT();
-#elif defined TFLITE_WITH_RUY
-  // TFLITE_WITH_RUY optimizes the generic kernel type.
-  return Register_CONVOLUTION_GENERIC_OPT();
-#else
+#elif defined TFLITE_WITH_MULTITHREADED_EIGEN
   return Register_CONVOLUTION_MULTITHREADED_OPT();
+#else
+  return Register_CONVOLUTION_GENERIC_OPT();
 #endif
 }
 

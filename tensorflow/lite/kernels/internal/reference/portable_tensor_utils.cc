@@ -182,7 +182,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 
   for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor = scaling_factors[batch];
-    const float batch_offset = input_offset[batch];
+    const int32_t batch_offset = input_offset[batch];
     const int8_t* row_ptr = matrix;
     for (int row = 0; row < m_rows; ++row) {
       int32_t dotprod = 0;

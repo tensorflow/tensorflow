@@ -176,6 +176,72 @@ static LogicalResult Verify(BatchMatMulV2Op op) {
   if (!HasRankAtLeast(op.y(), 2)) {
     return op.emitOpError("requires rhs operand to have rank at least two");
   }
+
+  RankedTensorType x_ty = GetRankedTensorTypeForOperand(op.x());
+  RankedTensorType y_ty = GetRankedTensorTypeForOperand(op.y());
+
+  if (!x_ty || !y_ty) return success();
+
+  ArrayRef<int64_t> x_shape = x_ty.getShape();
+  ArrayRef<int64_t> y_shape = y_ty.getShape();
+
+  // Check broadcast compatibility if both input shapes are known.
+  //
+  // The last two dimensions are non-batch dimensions that don't need to
+  // participate in batch dimension compatibility check.
+
+  llvm::SmallVector<int64_t, 4> result_batch_shape;
+  if (!OpTrait::util::getBroadcastedShape(
+          x_shape.drop_back(2), y_shape.drop_back(2), result_batch_shape))
+    return op.emitOpError()
+           << "found incompatible broadcast batch dimensions for lhs shape "
+           << x_ty << " and rhs shape " << y_ty;
+
+  RankedTensorType output_ty = GetRankedTensorTypeForOperand(op.output());
+  if (!output_ty) return success();
+
+  int64_t expected_output_rank = std::max(x_ty.getRank(), y_ty.getRank());
+  if (output_ty.getRank() != expected_output_rank)
+    return op.emitOpError()
+           << "found invalid output rank, expected " << expected_output_rank
+           << " but got " << output_ty.getRank();
+
+  // Check output batch dim with potential broadcasting.
+  ArrayRef<int64_t> output_shape = output_ty.getShape();
+  for (int i = 0; i < result_batch_shape.size(); ++i) {
+    if (output_shape[i] != ShapedType::kDynamicSize &&
+        output_shape[i] != result_batch_shape[i])
+      return op.emitOpError()
+             << "has mismatching input batch dimension "
+             << result_batch_shape[i] << " and output batch dimension "
+             << output_shape[i];
+  }
+
+  // Check output shape for non-batch dimension, following documentation below.
+  // https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-mat-mul
+  int64_t x_row_dim = x_shape[x_shape.size() - 2];
+  int64_t x_col_dim = x_shape[x_shape.size() - 1];
+  int64_t y_row_dim = y_shape[y_shape.size() - 2];
+  int64_t y_col_dim = y_shape[y_shape.size() - 1];
+  int64_t out_row_dim = output_shape[output_shape.size() - 2];
+  int64_t out_col_dim = output_shape[output_shape.size() - 1];
+
+  int64_t expected_out_row_dim = op.adj_x() ? x_col_dim : x_row_dim;
+  int64_t expected_out_col_dim = op.adj_y() ? y_row_dim : y_col_dim;
+
+  if (expected_out_row_dim != ShapedType::kDynamicSize &&
+      out_row_dim != ShapedType::kDynamicSize &&
+      out_row_dim != expected_out_row_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on row, expected "
+           << expected_out_row_dim << " but got " << out_row_dim;
+  if (expected_out_col_dim != ShapedType::kDynamicSize &&
+      out_col_dim != ShapedType::kDynamicSize &&
+      out_col_dim != expected_out_col_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on col, expected "
+           << expected_out_col_dim << " but got " << out_col_dim;
+
   return success();
 }
 
@@ -379,6 +445,13 @@ static LogicalResult Verify(BiasAddOp op) {
            << feature_dim << " and " << bias_len << ", respectively";
   }
   return success();
+}
+
+Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
+  // Only NHWC in f32 is supported for fusion.
+  if (data_format() != "NHWC" || !T().isF32()) return None;
+
+  return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
 }
 
 //===----------------------------------------------------------------------===//

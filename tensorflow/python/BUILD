@@ -255,6 +255,7 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":framework_combinations",
         ":no_contrib",
     ],
 )
@@ -681,6 +682,7 @@ tf_python_pybind_extension(
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
@@ -701,6 +703,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "@com_google_absl//absl/types:optional",
+        "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
@@ -794,10 +797,10 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
-    name = "_pywrap_tf32_execution",
-    srcs = ["util/tf32.cc"],
-    hdrs = ["//tensorflow/core/platform:tf32_hdr"],
-    module_name = "_pywrap_tf32_execution",
+    name = "_pywrap_tensor_float_32_execution",
+    srcs = ["util/tensor_float_32.cc"],
+    hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
+    module_name = "_pywrap_tensor_float_32_execution",
     deps = [
         "@pybind11",
     ],
@@ -2167,6 +2170,7 @@ py_library(
     name = "is_mlir_bridge_test_true",
     srcs = ["framework/is_mlir_bridge_test_true.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility,
 )
 
 # Including this as a dependency will result in tests to use TFRT.
@@ -5555,7 +5559,7 @@ py_library(
         "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
-        ":_pywrap_tf32_execution",
+        ":_pywrap_tensor_float_32_execution",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
@@ -5936,6 +5940,10 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/experimental/ops",
+        "//tensorflow/c/experimental/gradients",
+        "//tensorflow/c/eager:mnist_gradients_testutil",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
@@ -5971,7 +5979,7 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tf32_utils"]),
+    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 # ** Targets for Windows build (start) **
@@ -6024,7 +6032,7 @@ filegroup(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
-        "//tensorflow/core/platform:tf32_utils",  # tf32
+        "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
@@ -7429,6 +7437,37 @@ tf_python_pybind_extension(
     ],
 )
 
+cc_library(
+    name = "unified_api_pywrap_required_headers",
+    textual_hdrs = [
+        "lib/core/numpy.h",
+        "lib/core/py_exception_registry.h",
+        "lib/core/pybind11_status.h",
+        "lib/core/bfloat16.h",
+        "lib/core/ndarray_tensor.h",
+        "lib/core/ndarray_tensor_bridge.h",
+        "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/gradients:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime:core_cpu_lib_headers",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
+    ],
+    visibility = ["//tensorflow/python/framework/experimental:__pkg__"],
+    deps = [
+        "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/core/framework:pywrap_required_hdrs",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
 py_library(
     name = "pywrap_tfe",
     srcs = ["pywrap_tfe.py"],
@@ -7443,12 +7482,14 @@ tf_python_pybind_extension(
     name = "_pywrap_tfe",
     srcs = ["tfe_wrapper.cc"],
     hdrs = [
+        "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
         "util/util.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
@@ -7458,6 +7499,7 @@ tf_python_pybind_extension(
     deps = [
         ":safe_pyobject_ptr",
         ":pybind11_lib",
+        "//third_party/py/numpy:headers",
         ":pybind11_status",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -7475,6 +7517,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
+        "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",

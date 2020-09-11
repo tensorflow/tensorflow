@@ -70,9 +70,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   Status Initialize(
       const std::map<std::string, std::string>& platform_options) override;
 
-  Status Reset() override { return Reset(false); }
-
-  Status Reset(bool only_tear_down) override {
+  Status Reset(bool only_tear_down, absl::string_view reason) override {
     LOG(FATAL) << "Not yet implemented";
   }
 

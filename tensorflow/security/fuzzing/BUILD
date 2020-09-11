@@ -28,15 +28,6 @@ tf_fuzz_target(
 )
 
 tf_fuzz_target(
-    name = "consume_non_whitespace_fuzz",
-    srcs = ["consume_non_whitespace_fuzz.cc"],
-    deps = [
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:stringpiece",
-    ],
-)
-
-tf_fuzz_target(
     name = "consume_leading_digits_fuzz",
     srcs = ["consume_leading_digits_fuzz.cc"],
     deps = [

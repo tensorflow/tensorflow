@@ -119,14 +119,10 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     }
   }
 
-  // Get performance slowdown in seconds of prefetching current BufferInterval
-  // causing to other BufferIntervals.
-  float alternate_mem_slowdown =
-      GetInstructionElapsedDueToMemorySlowdown(interval.size);
-
-  // Divide by the size of the buffer to prioritize smaller buffers that will
-  // give the largest alternate memory benefit.
-  return (alternate_mem_benefit - alternate_mem_slowdown) / interval.size;
+  // Penalize larger buffers by dividing the benefit by the square root of the
+  // size. Empirically, we observed this resulted in better performance compared
+  // to dividing by the size.
+  return alternate_mem_benefit / std::sqrt(interval.size);
 }
 
 int MemorySpaceAssignmentCostAnalysis::CalculateWhileLoopNestLevel(
@@ -1033,6 +1029,12 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
                                      interval.buffer->index())) > 0) {
       VLOG(3) << "Skip " << interval.buffer->ToShortString()
               << " because it is cross-program prefetched.";
+      continue;
+    }
+
+    if (interval.size > available_heap_size()) {
+      VLOG(3) << "Skip " << interval.buffer->ToShortString()
+              << " because the buffer is larger than the heap size.";
       continue;
     }
 

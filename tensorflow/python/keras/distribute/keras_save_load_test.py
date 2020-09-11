@@ -17,9 +17,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import saved_model_test_base as test_base
 from tensorflow.python.keras.saving import save
@@ -46,13 +46,13 @@ class KerasSaveLoadTest(test_base.TestSavedModelBase):
     return restored_keras_model.predict(
         predict_dataset, steps=test_base.PREDICT_STEPS)
 
-  @combinations.generate(test_base.simple_models_with_strategies())
+  @ds_combinations.generate(test_base.simple_models_with_strategies())
   def test_save_no_strategy_restore_strategy(self, model_and_input,
                                              distribution):
     self.run_test_save_no_strategy_restore_strategy(
         model_and_input, distribution)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(test_base.simple_models_with_strategies(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_no_strategy(self, model_and_input,
@@ -60,7 +60,7 @@ class KerasSaveLoadTest(test_base.TestSavedModelBase):
     self.run_test_save_strategy_restore_no_strategy(
         model_and_input, distribution, save_in_scope)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(test_base.simple_models_with_strategy_pairs(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_strategy(self, model_and_input,

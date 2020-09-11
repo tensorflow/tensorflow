@@ -113,16 +113,17 @@ def _get_local_backends():
 
   _local_backends = collections.OrderedDict()
   for name, factory in _local_backend_factories.items():
-    logging.vlog(2, "Initializing backend '%s'" % name)
+    logging.vlog(1, "Initializing backend '%s'" % name)
     try:
       backend = factory()
-    except RuntimeError:
+    except RuntimeError as err:
       if name == 'cpu':
         # We always expect CPU to initialize successfully.
         raise
       else:
         # If the backend isn't built into the binary, or if it has no devices,
         # we expect a RuntimeError.
+        logging.vlog(1, "Error initializing backend '%s': %s" % (name, err))
         continue
     _local_backends[name] = backend
   return _local_backends

@@ -152,24 +152,22 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
 }
 
-const BufferAllocation* GetAllocation(
-    mlir::BlockArgument func_arg, const BufferAssignment& buffer_assignment) {
+int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
   auto func_op =
       mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
-  int64 allocation_index = func_op
-                               .getArgAttrOfType<mlir::IntegerAttr>(
-                                   func_arg.getArgNumber(), "lmhlo.alloc")
-                               .getValue()
-                               .getSExtValue();
-  return &buffer_assignment.GetAllocation(allocation_index);
+  return func_op
+      .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
+                                           "lmhlo.alloc")
+      .getValue()
+      .getSExtValue();
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
-    mlir::Value v, const BufferAssignment& buffer_assignment) {
+    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
   int64 size = v.getType().cast<mlir::MemRefType>().getSizeInBits() / 8;
 
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
-    return BufferAllocation::Slice(GetAllocation(arg, buffer_assignment), 0,
+    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
                                    size);
   }
 
@@ -186,8 +184,8 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
     }
     if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
       return BufferAllocation::Slice(
-          GetAllocation(view.source().cast<mlir::BlockArgument>(),
-                        buffer_assignment),
+          &allocations[GetAllocationIndex(
+              view.source().cast<mlir::BlockArgument>())],
           mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
               .value()
               .cast<mlir::IntegerAttr>()
@@ -1383,11 +1381,12 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
 
   result.thunk_info = GetThunkInfo(sort);
 
-  return EmitMlirSort(result);
+  return EmitSortFromMlir(result);
 }
 
-Status IrEmitterUnnested::EmitMlirSort(MlirEmitterInput input) {
-  const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
+Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
+  absl::Span<const BufferAllocation> allocations(
+      ir_emitter_context_->buffer_assignment().Allocations());
   auto sort_op = mlir::cast<mlir::lmhlo::SortOp>(input.op);
 
   int operand_count = sort_op.operands().size();
@@ -1409,7 +1408,7 @@ Status IrEmitterUnnested::EmitMlirSort(MlirEmitterInput input) {
     MlirBufferSlice slice;
     TF_ASSIGN_OR_RETURN(
         slice.buffer_slice,
-        GetAllocationSliceForMlir(sort_op.output()[i], buffer_assignment));
+        GetAllocationSliceForMlir(sort_op.output()[i], allocations));
     slice.written = true;
     slice.shape = operand_shapes[i];
     slices.push_back(slice);
@@ -1432,10 +1431,10 @@ Status IrEmitterUnnested::EmitMlirSort(MlirEmitterInput input) {
     // the values, because the emitter does the sorting in-place.
     TF_ASSIGN_OR_RETURN(
         auto destination_buffer,
-        GetAllocationSliceForMlir(sort_op.output()[i], buffer_assignment));
+        GetAllocationSliceForMlir(sort_op.output()[i], allocations));
     TF_ASSIGN_OR_RETURN(
         auto source_address,
-        GetAllocationSliceForMlir(sort_op.operands()[i], buffer_assignment));
+        GetAllocationSliceForMlir(sort_op.operands()[i], allocations));
     if (destination_buffer != source_address) {
       // TODO(b/26783907): Figure out why we never seem to share buffers for
       // key/value sort.

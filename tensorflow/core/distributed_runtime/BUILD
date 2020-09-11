@@ -574,6 +574,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -621,6 +622,8 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

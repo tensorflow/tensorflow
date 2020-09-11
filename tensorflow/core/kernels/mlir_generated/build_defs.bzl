@@ -35,6 +35,9 @@ def _gen_kernel_gpu_bin_impl(ctx):
     if ctx.attr.unroll_factors:
         cmd_args.append("--unroll_factors=%s" % ctx.attr.unroll_factors)
 
+    if ctx.attr.extra_args:
+        cmd_args.extend(ctx.attr.extra_args)
+
     gpu_bins = []
     for arch in ctx.attr.gpu_archs:
         # TODO(b/152737872): 'compute_' should generate both SASS and PTX.
@@ -64,6 +67,7 @@ _gen_kernel_gpu_bin_rule = rule(
         "same_shape": attr.string(),
         "unroll_factors": attr.string(),
         "gpu_archs": attr.string_list(mandatory = True),
+        "extra_args": attr.string_list(),
         "_tfso": attr.label(
             default = Label("//tensorflow:libtensorflow_framework.so.2"),
             cfg = "host",
@@ -169,7 +173,7 @@ _gen_kernel_image_hdr_rule = rule(
     },
 )
 
-def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, same_shape = None, unroll_factors = None):
+def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, same_shape = None, unroll_factors = None, extra_args = []):
     """Generates a C header with fatbin data from a Tensorflow op."""
     _gen_kernel_gpu_bin_rule(
         name = name + "_cubin",
@@ -178,6 +182,7 @@ def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, same_shape = None
         same_shape = same_shape,
         unroll_factors = unroll_factors,
         gpu_archs = gpu_archs,
+        extra_args = extra_args,
     )
     _gen_kernel_image_hdr_rule(
         name = name,
@@ -215,7 +220,7 @@ def _gen_mlir_op(name, type):
         out = "{name}_{type}.mlir".format(name = name, type = type),
     )
 
-def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None):
+def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
     """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
@@ -225,6 +230,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unr
       unroll_factors: The unrolling specification, e.g. "4,4"
       tags: The tags which should be added to the library.
       same_shape: The information about which shapes are the same, e.g. "0,1".
+      extra_args: Extra arguments to pass to the generator tool.
     """
 
     if cuda_gpu_architectures() or rocm_gpu_architectures():
@@ -240,6 +246,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unr
                 tile_size = tile_size,
                 same_shape = same_shape,
                 unroll_factors = unroll_factors,
+                extra_args = extra_args,
             )
 
     native.cc_library(
