@@ -3396,6 +3396,7 @@ cc_library(
         ":AsmPrinter",
         ":CodeGen",
         ":Core",
+        ":GlobalISel",
         ":MC",
         ":PowerPCDesc",
         ":PowerPCInfo",
