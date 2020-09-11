@@ -67,6 +67,7 @@ TfLiteRegistration Register_PAD();
 TfLiteRegistration Register_PADV2();
 TfLiteRegistration Register_PRELU();
 TfLiteRegistration Register_QUANTIZE();
+TfLiteRegistration Register_REDUCE_MAX();
 TfLiteRegistration Register_RELU();
 TfLiteRegistration Register_RELU6();
 TfLiteRegistration Register_RESHAPE();

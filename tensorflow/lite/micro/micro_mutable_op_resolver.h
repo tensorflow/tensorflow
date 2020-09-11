@@ -309,6 +309,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_QUANTIZE(), ParseQuantize);
   }
 
+  TfLiteStatus AddReduceMax() {
+    return AddBuiltin(BuiltinOperator_REDUCE_MAX,
+                      tflite::ops::micro::Register_REDUCE_MAX(), ParseReducer);
+  }
+
   TfLiteStatus AddRelu() {
     return AddBuiltin(BuiltinOperator_RELU, tflite::ops::micro::Register_RELU(),
                       ParseRelu);
