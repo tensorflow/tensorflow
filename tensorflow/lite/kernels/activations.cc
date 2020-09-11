@@ -667,8 +667,7 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   output->type = input->type;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      output->type == kTfLiteInt16) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     // prelu(x) = x if x >= 0 else x * alpha.
     // So if we translate that for quantized computation:
     //
