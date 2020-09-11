@@ -72,55 +72,34 @@ class MklRemapperTest : public GrapplerTest {
                     ops::Conv2D::Attrs().DataFormat(data_format));
     auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias,
                                  ops::BiasAdd::Attrs().DataFormat(data_format));
+
+    auto addfetch = [&](::tensorflow::Input addop) {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+      if (activation == "Relu") {
+        ops::Identity(fetch, ops::Relu(activate, addop));
+      } else if (activation == "Relu6") {
+        ops::Identity(fetch, ops::Relu6(activate, addop));
+      } else if (activation == "Elu") {
+        ops::Identity(fetch, ops::Elu(activate, addop));
+      } else if (activation == "LeakyRelu") {
+        ops::Identity(fetch, ops::internal::LeakyRelu(activate, addop));
+      } else {
+        DCHECK(activation == "None");
+        ops::Identity(fetch, addop);
+      }
+    };
+
     if (add_op == kAddNOp) {
       auto addn = ops::AddN(s.WithOpName(add_op),
                             std::initializer_list<Input>{input_addn, bias_add});
-      auto activate = s.WithOpName("activation");
-      auto fetch = s.WithOpName("fetch");
-      if (activation == "Relu") {
-        ops::Identity(fetch, ops::Relu(activate, addn));
-      } else if (activation == "Relu6") {
-        ops::Identity(fetch, ops::Relu6(activate, addn));
-      } else if (activation == "Elu") {
-        ops::Identity(fetch, ops::Elu(activate, addn));
-      } else if (activation == "LeakyRelu") {
-        ops::Identity(fetch, ops::internal::LeakyRelu(activate, addn));
-      } else {
-        DCHECK(activation == "None");
-        ops::Identity(fetch, addn);
-      }
+      addfetch(addn);
     } else if (add_op == kAddV2Op) {
       auto add = ops::AddV2(s.WithOpName(add_op), input_addn, bias_add);
-      auto activate = s.WithOpName("activation");
-      auto fetch = s.WithOpName("fetch");
-      if (activation == "Relu") {
-        ops::Identity(fetch, ops::Relu(activate, add));
-      } else if (activation == "Relu6") {
-        ops::Identity(fetch, ops::Relu6(activate, add));
-      } else if (activation == "Elu") {
-        ops::Identity(fetch, ops::Elu(activate, add));
-      } else if (activation == "LeakyRelu") {
-        ops::Identity(fetch, ops::internal::LeakyRelu(activate, add));
-      } else {
-        DCHECK(activation == "None");
-        ops::Identity(fetch, add);
-      }
+      addfetch(add);
     } else {
       auto add = ops::Add(s.WithOpName(add_op), input_addn, bias_add);
-      auto activate = s.WithOpName("activation");
-      auto fetch = s.WithOpName("fetch");
-      if (activation == "Relu") {
-        ops::Identity(fetch, ops::Relu(activate, add));
-      } else if (activation == "Relu6") {
-        ops::Identity(fetch, ops::Relu6(activate, add));
-      } else if (activation == "Elu") {
-        ops::Identity(fetch, ops::Elu(activate, add));
-      } else if (activation == "LeakyRelu") {
-        ops::Identity(fetch, ops::internal::LeakyRelu(activate, add));
-      } else {
-        DCHECK(activation == "None");
-        ops::Identity(fetch, add);
-      }
+      addfetch(add);
     }
     auto input_tensor = GenerateRandomTensor<DT_FLOAT>(
         TensorShape(input_shape.shape_.dim_sizes()));

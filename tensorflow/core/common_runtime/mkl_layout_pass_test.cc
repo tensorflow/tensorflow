@@ -1589,7 +1589,7 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive1);
               "i:1, i:1} } }"                                                 \
               " attr { key: 'fused_ops'        value { list: {s: 'Relu'} } }" \
               " attr { key: 'epsilon'          value { f: 0.001 }}"           \
-              " attr { key: 'leakyrelu_alpha'  value { f: 0.2 }}"                    \
+              " attr { key: 'leakyrelu_alpha'  value { f: 0.2 }}"             \
               " input: ['A', 'B', 'C']}"                                      \
               "node { name: 'E' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T " } }"                      \
