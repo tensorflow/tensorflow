@@ -192,6 +192,7 @@ class FuncGraph(ops.Graph):
     self.structured_outputs = None
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
+    self.is_control_flow_graph = False
 
     outer_graph = ops.get_default_graph()
     self._weak_outer_graph = weakref.ref(outer_graph)
@@ -582,14 +583,16 @@ class FuncGraph(ops.Graph):
     # backward accumulators in the original graph before we create placeholders
     # to capture the inputs.
     ctxt = ops.get_default_graph()._control_flow_context  # pylint: disable=protected-access
-    for i, inp in enumerate(inputs):
+    # Use a different list to avoid modifying the original inputs list.
+    captured_inputs = []
+    for inp in inputs:
       # TPU Estimator defines a control flow context with no AddValue method.
       if ctxt is not None and hasattr(ctxt, "AddValue"):
         inp = ctxt.AddValue(inp)
       inp = self.capture(inp)
-      inputs[i] = inp
+      captured_inputs.append(inp)
     return super(FuncGraph, self)._create_op_internal(  # pylint: disable=protected-access
-        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        op_type, captured_inputs, dtypes, input_types, name, attrs, op_def,
         compute_device)
 
   def capture(self, tensor, name=None, shape=None):

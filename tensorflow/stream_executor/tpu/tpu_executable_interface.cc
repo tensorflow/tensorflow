@@ -62,6 +62,24 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
           << " host_shape = " << ShapeUtil::HumanStringWithLayout(host_shape);
   Shape device_shape = HostShapeToDeviceShape(host_shape);
 
+  TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
+      [&](const ShapeIndex& output_index,
+          absl::optional<HloInputOutputAliasConfig::Alias> alias) {
+        if (alias && alias->must_alias()) {
+          VLOG(1) << alias->ToString();
+          const MaybeOwningDeviceMemory& original_input =
+              (*arguments)[alias->parameter_number].Buffers().element(
+                  alias->parameter_index);
+          if (!original_input.HasOwnership()) {
+            return InvalidArgument(
+                "An input was configured to be must-alias at "
+                "compile time but not donated at runtime: %s",
+                alias->ToString());
+          }
+        }
+        return Status::OK();
+      }));
+
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal
             << " host_shape = " << ShapeUtil::HumanStringWithLayout(host_shape);
@@ -176,8 +194,9 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   // Address of the buffer in TPU memory that is being speculated.
   absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr;
   if (hlo_module_) {
-    for (const auto& [parameter, index] :
-         hlo_module_->CrossProgramPrefetches()) {
+    for (const auto& prefetch : hlo_module_->CrossProgramPrefetches()) {
+      const auto& parameter = prefetch.first;
+      const auto& index = prefetch.second;
       CHECK_LT(parameter, arguments.size());
       // Ensure the cross program prefetched buffer doesn't alias with any
       // program outputs. If the input and output aliased, the buffer could be

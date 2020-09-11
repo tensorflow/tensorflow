@@ -15,16 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 
+#include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/matching.h"
 
 namespace tflite {
@@ -144,8 +150,8 @@ class MergePaddingWithAddOperation : public NodeTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    AddAttributes add_attr =
-        absl::any_cast<AddAttributes>(add_node->operation.attributes);
+    ElementwiseAttributes add_attr =
+        absl::any_cast<ElementwiseAttributes>(add_node->operation.attributes);
     const bool is_add_hwc =
         absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(add_attr.param);
     const bool is_add_linear =

@@ -27,7 +27,6 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import embeddings
@@ -53,7 +52,7 @@ class RNNV2Test(keras_parameterized.TestCase):
 
     # Test when GPU is available but not used, the graph should be properly
     # created with CPU ops.
-    with test_util.device(use_gpu=False):
+    with testing_utils.device(should_use_gpu=False):
       model = keras.Sequential([
           keras.layers.Embedding(vocab_size, embedding_dim,
                                  batch_input_shape=[batch_size, timestep]),

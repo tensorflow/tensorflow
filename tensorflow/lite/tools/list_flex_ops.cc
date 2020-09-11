@@ -19,9 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "json/json.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -34,14 +33,14 @@ namespace tflite {
 namespace flex {
 
 std::string OpListToJSONString(const OpKernelSet& flex_ops) {
-  return absl::StrCat("[",
-                      absl::StrJoin(flex_ops, ",\n",
-                                    [](std::string* out, const OpKernel& op) {
-                                      absl::StrAppend(out, "[\"", op.op_name,
-                                                      "\", \"", op.kernel_name,
-                                                      "\"]");
-                                    }),
-                      "]");
+  Json::Value result(Json::arrayValue);
+  for (const OpKernel& op : flex_ops) {
+    Json::Value op_kernel(Json::arrayValue);
+    op_kernel.append(Json::Value(op.op_name));
+    op_kernel.append(Json::Value(op.kernel_name));
+    result.append(op_kernel);
+  }
+  return Json::FastWriter().write(result);
 }
 
 // Find the class name of the op kernel described in the node_def from the pool

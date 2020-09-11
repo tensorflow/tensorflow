@@ -337,8 +337,8 @@ TfLiteStatus AllocationInfoBuilder::AddScratchBuffers(
     current->bytes = handle->bytes;
     current->first_created = handle->node_idx;
     current->last_used = handle->node_idx;
-    current->needs_allocating = true;
     current->offline_offset = kOnlinePlannedBuffer;
+    current->needs_allocating = true;
   }
   return kTfLiteOk;
 }
@@ -655,6 +655,7 @@ TfLiteStatus MicroAllocator::StartModelAllocation(
 
   model_is_allocating_ = true;
 
+  TF_LITE_ENSURE_STATUS(InitScratchBufferHandles());
   TF_LITE_ENSURE_STATUS(AllocateTfLiteEvalTensors(model, eval_tensors));
   TF_LITE_ENSURE_STATUS(
       AllocateNodeAndRegistrations(model, node_and_registrations));
@@ -665,7 +666,8 @@ TfLiteStatus MicroAllocator::StartModelAllocation(
 }
 
 TfLiteStatus MicroAllocator::FinishModelAllocation(
-    const Model* model, TfLiteEvalTensor* eval_tensors) {
+    const Model* model, TfLiteEvalTensor* eval_tensors,
+    void** scratch_buffer_handles) {
   if (!model_is_allocating_) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "MicroAllocator: Model allocation finished before "
@@ -676,9 +678,13 @@ TfLiteStatus MicroAllocator::FinishModelAllocation(
   const SubGraph* subgraph = GetSubGraphFromModel(model);
   TFLITE_DCHECK(subgraph != nullptr);
 
+  TF_LITE_ENSURE_STATUS(MoveScratchBufferHandlesToTail());
   TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(model, subgraph, eval_tensors));
   TF_LITE_ENSURE_STATUS(AllocateVariables(subgraph, eval_tensors));
 
+  if (scratch_buffer_handles != nullptr) {
+    *scratch_buffer_handles = scratch_buffer_handles_;
+  }
   model_is_allocating_ = false;
   return kTfLiteOk;
 }
@@ -690,49 +696,39 @@ void* MicroAllocator::AllocatePersistentBuffer(size_t bytes) {
 TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
                                                          size_t bytes,
                                                          int* buffer_idx) {
-  // A consistency check to make sure scratch_buffer_handles_ is contiguous i.e.
-  // scratch_buffer_handles_ is pointing to the last allocation from memory
-  // allocator.
-  if (scratch_buffer_handles_ != nullptr &&
-      reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
-          memory_allocator_->GetTail()) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Internal error: AllocateFromTail can not be called "
-                         "between two RequestScratchBufferInArena calls.");
-    return kTfLiteError;
+  // This method is only called during Prepare stage, when the scratch buffer
+  // handles are placed in the head.
+
+  // Allocate space for the new scratch buffer handle.
+  TF_LITE_ENSURE_STATUS(memory_allocator_->EnsureHeadSize(
+      sizeof(internal::ScratchBufferHandle) * (scratch_buffer_count_ + 1),
+      alignof(internal::ScratchBufferHandle)));
+
+  if (scratch_buffer_handles_ == nullptr) {
+    // If this is the first scratch buffer handle, place it in the buffer head.
+    scratch_buffer_handles_ = reinterpret_cast<internal::ScratchBufferHandle*>(
+        memory_allocator_->GetBufferHead());
   }
 
+  // Initialize the handle. `data` field will be set during memory planning.
   internal::ScratchBufferHandle* handle =
-      reinterpret_cast<internal::ScratchBufferHandle*>(
-          memory_allocator_->AllocateFromTail(
-              sizeof(internal::ScratchBufferHandle),
-              alignof(internal::ScratchBufferHandle)));
-  if (handle == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Failed to register scratch buffer handle for node %s",
-                         node_id);
-    return kTfLiteError;
-  }
+      scratch_buffer_handles_ + scratch_buffer_count_;
   *handle = {};
   handle->bytes = bytes;
   handle->node_idx = node_id;
+
+  // Buffer idx starts from 0 in this implementation.
   *buffer_idx = scratch_buffer_count_;
   scratch_buffer_count_ += 1;
-  // scratch_buffer_handles_ is in reverse order. The following code ensures
-  // that scratch_buffers[0] is pointing to the newly allocated handle.
-  scratch_buffer_handles_ = handle;
   return kTfLiteOk;
 }
 
-void* MicroAllocator::GetScratchBuffer(int buffer_idx) const {
-  if (static_cast<size_t>(buffer_idx) >= scratch_buffer_count_) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Buffer %d not found. %d buffers available.",
-                         buffer_idx, scratch_buffer_count_);
-    return nullptr;
-  }
-  // scratch_buffer_handles_ is in reverse order.
-  return scratch_buffer_handles_[scratch_buffer_count_ - buffer_idx - 1].data;
+void* MicroAllocator::GetScratchBuffer(void* scratch_buffer_handles,
+                                       int buffer_idx) {
+  internal::ScratchBufferHandle* handle =
+      reinterpret_cast<internal::ScratchBufferHandle*>(scratch_buffer_handles) +
+      buffer_idx;
+  return handle->data;
 }
 
 size_t MicroAllocator::used_bytes() const {
@@ -1020,6 +1016,8 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   // Note that AllocationInfo is only needed for creating the plan. It will be
   // thrown away when the child allocator (tmp_allocator) goes out of scope.
   {
+    // TODO(b/162595810): Use temp allocation buffer instead of a stack
+    // instance:
     SimpleMemoryAllocator tmp_allocator(error_reporter_,
                                         memory_allocator_->GetBufferHead(),
                                         memory_allocator_->GetTail());
@@ -1033,42 +1031,63 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
         builder.GetOfflinePlannedOffsets(model, &offline_planner_offsets));
     TF_LITE_ENSURE_STATUS(
         builder.AddTensors(subgraph, offline_planner_offsets, eval_tensors));
-
     TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
     const AllocationInfo* allocation_info = builder.Finish();
 
     // Remaining arena size that memory planner can use for calculating offsets.
-    size_t remaining_arena_size = tmp_allocator.GetAvailableMemory();
+    size_t remaining_arena_size =
+        tmp_allocator.GetAvailableMemory(kBufferAlignment);
     uint8_t* planner_arena =
-        tmp_allocator.AdjustHead(remaining_arena_size, kBufferAlignment);
+        tmp_allocator.AllocateTemp(remaining_arena_size, kBufferAlignment);
     TF_LITE_ENSURE(error_reporter_, planner_arena != nullptr);
     GreedyMemoryPlanner planner(planner_arena, remaining_arena_size);
     TF_LITE_ENSURE_STATUS(
         CreatePlan(error_reporter_, &planner, allocation_info, builder.Size()));
 
     size_t actual_available_arena_size =
-        memory_allocator_->GetAvailableMemory();
+        memory_allocator_->GetAvailableMemory(kBufferAlignment);
+
     // Make sure we have enough arena size.
     if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
       TF_LITE_REPORT_ERROR(
           error_reporter_,
-          "Arena size is too small for activation buffers. Needed %d but only "
-          "%d was available.",
+          "Arena size is too small for all buffers. Needed %u but only "
+          "%u was available.",
           planner.GetMaximumMemorySize(), actual_available_arena_size);
       return kTfLiteError;
     }
-
     // Commit the plan.
     TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
                                      memory_allocator_->GetBufferHead(),
                                      allocation_info, builder.Size()));
     head_usage = planner.GetMaximumMemorySize();
   }
-  // Allocate the planned area, so the allocator knows it's used.
 
-  uint8_t* allocated_tensor_memory =
-      memory_allocator_->AdjustHead(head_usage, kBufferAlignment);
-  TF_LITE_ENSURE(error_reporter_, allocated_tensor_memory != nullptr);
+  TF_LITE_ENSURE_STATUS(
+      memory_allocator_->EnsureHeadSize(head_usage, kBufferAlignment));
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroAllocator::InitScratchBufferHandles() {
+  scratch_buffer_count_ = 0;
+  scratch_buffer_handles_ = nullptr;
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroAllocator::MoveScratchBufferHandlesToTail() {
+  if (scratch_buffer_count_ == 0) {
+    return kTfLiteOk;
+  }
+  auto src = scratch_buffer_handles_;
+  internal::ScratchBufferHandle* dest =
+      reinterpret_cast<internal::ScratchBufferHandle*>(
+          memory_allocator_->AllocateFromTail(
+              sizeof(internal::ScratchBufferHandle) * scratch_buffer_count_,
+              alignof(internal::ScratchBufferHandle)));
+  for (size_t i = 0; i < scratch_buffer_count_; i++) {
+    *(dest + i) = *(src + i);
+  }
+  scratch_buffer_handles_ = dest;
   return kTfLiteOk;
 }
 

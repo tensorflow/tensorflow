@@ -30,6 +30,7 @@ const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kMetadataPlaneName = "/host:metadata";
 const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
+const absl::string_view kPythonTracerPlaneName = "/host:python-tracer";
 
 const absl::string_view kStepLineName = "Steps";
 const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
@@ -105,6 +106,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ParallelMapConsume", kParallelMapConsume},
       {"MapAndBatchProduce", kMapAndBatchProduce},
       {"MapAndBatchConsume", kMapAndBatchConsume},
+      {"ParseExampleProduce", kParseExampleProduce},
+      {"ParseExampleConsume", kParseExampleConsume},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
@@ -250,6 +253,8 @@ bool IsInternalEvent(absl::optional<int64> event_type) {
     case HostEventType::kParallelMapConsume:
     case HostEventType::kMapAndBatchProduce:
     case HostEventType::kMapAndBatchConsume:
+    case HostEventType::kParseExampleProduce:
+    case HostEventType::kParseExampleConsume:
       return true;
     default:
       return false;

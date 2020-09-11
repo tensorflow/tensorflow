@@ -380,12 +380,7 @@ xla_test(
     name = "conv_depthwise_backprop_filter_test",
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
-    # these backends do not natively handle batch group counts.
-    disabled_backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 6,
+    shard_count = 40,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -2089,6 +2084,31 @@ xla_test(
 )
 
 xla_test(
+    name = "dynamism_inference_test",
+    srcs = ["dynamism_inference_test.cc"],
+    deps = [
+        ":test_macros_header",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "compute_constant_test",
     srcs = ["compute_constant_test.cc"],
     deps = [
@@ -2674,5 +2694,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ],
 )

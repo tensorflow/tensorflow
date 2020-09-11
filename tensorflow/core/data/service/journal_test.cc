@@ -28,12 +28,12 @@ namespace data {
 namespace {
 using ::testing::HasSubstr;
 
-bool NewJournalDir(std::string* journal_dir) {
-  std::string filename;
-  if (!Env::Default()->LocalTempFilename(&filename)) {
+bool NewJournalDir(std::string& journal_dir) {
+  std::string filename = testing::TmpDir();
+  if (!Env::Default()->CreateUniqueFileName(&filename, "journal_dir")) {
     return false;
   }
-  *journal_dir = io::JoinPath(testing::TmpDir(), filename);
+  journal_dir = filename;
   return true;
 }
 
@@ -46,29 +46,28 @@ Update MakeCreateJobUpdate() {
   return update;
 }
 
-Update MakeFinishJobUpdate() {
+Update MakeFinishTaskUpdate() {
   Update update;
-  FinishJobUpdate* finish_job = update.mutable_finish_job();
-  finish_job->set_job_id(8);
+  FinishTaskUpdate* finish_task = update.mutable_finish_task();
+  finish_task->set_task_id(8);
   return update;
 }
 
-Update MakeCreateTaskUpdate() {
+Update MakeRegisterDatasetUpdate() {
   Update update;
-  CreateTaskUpdate* create_task = update.mutable_create_task();
-  create_task->set_task_id(2);
-  create_task->set_dataset_id(4);
-  create_task->set_job_id(5);
+  RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
+  register_dataset->set_dataset_id(2);
+  register_dataset->set_fingerprint(3);
   return update;
 }
 
 Status CheckJournalContent(StringPiece journal_dir,
                            const std::vector<Update>& expected) {
-  JournalReader reader(Env::Default(), journal_dir);
+  FileJournalReader reader(Env::Default(), journal_dir);
   for (const auto& update : expected) {
     Update result;
     bool end_of_journal = true;
-    TF_RETURN_IF_ERROR(reader.Read(&result, &end_of_journal));
+    TF_RETURN_IF_ERROR(reader.Read(result, end_of_journal));
     EXPECT_FALSE(end_of_journal);
     // We can't use the testing::EqualsProto matcher because it is not available
     // in OSS.
@@ -76,7 +75,7 @@ Status CheckJournalContent(StringPiece journal_dir,
   }
   Update result;
   bool end_of_journal = false;
-  TF_RETURN_IF_ERROR(reader.Read(&result, &end_of_journal));
+  TF_RETURN_IF_ERROR(reader.Read(result, end_of_journal));
   EXPECT_TRUE(end_of_journal);
   return Status::OK();
 }
@@ -84,10 +83,11 @@ Status CheckJournalContent(StringPiece journal_dir,
 
 TEST(Journal, RoundTripMultiple) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
-  std::vector<Update> updates = {MakeCreateJobUpdate(), MakeCreateTaskUpdate(),
-                                 MakeFinishJobUpdate()};
-  JournalWriter writer(Env::Default(), journal_dir);
+  EXPECT_TRUE(NewJournalDir(journal_dir));
+  std::vector<Update> updates = {MakeCreateJobUpdate(),
+                                 MakeRegisterDatasetUpdate(),
+                                 MakeFinishTaskUpdate()};
+  FileJournalWriter writer(Env::Default(), journal_dir);
   for (const auto& update : updates) {
     TF_EXPECT_OK(writer.Write(update));
   }
@@ -95,13 +95,14 @@ TEST(Journal, RoundTripMultiple) {
   TF_EXPECT_OK(CheckJournalContent(journal_dir, updates));
 }
 
-TEST(Journal, AppendExistingFile) {
+TEST(Journal, AppendExistingJournal) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
-  std::vector<Update> updates = {MakeCreateJobUpdate(), MakeCreateTaskUpdate(),
-                                 MakeFinishJobUpdate()};
+  EXPECT_TRUE(NewJournalDir(journal_dir));
+  std::vector<Update> updates = {MakeCreateJobUpdate(),
+                                 MakeRegisterDatasetUpdate(),
+                                 MakeFinishTaskUpdate()};
   for (const auto& update : updates) {
-    JournalWriter writer(Env::Default(), journal_dir);
+    FileJournalWriter writer(Env::Default(), journal_dir);
     TF_EXPECT_OK(writer.Write(update));
   }
 
@@ -110,51 +111,51 @@ TEST(Journal, AppendExistingFile) {
 
 TEST(Journal, MissingFile) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
-  JournalReader reader(Env::Default(), journal_dir);
+  EXPECT_TRUE(NewJournalDir(journal_dir));
+  FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
-  Status s = reader.Read(&result, &end_of_journal);
+  Status s = reader.Read(result, end_of_journal);
   EXPECT_TRUE(errors::IsNotFound(s));
 }
 
 TEST(Journal, NonRecordData) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
+  EXPECT_TRUE(NewJournalDir(journal_dir));
 
   TF_ASSERT_OK(Env::Default()->RecursivelyCreateDir(journal_dir));
   {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
-        DataServiceJournalFile(journal_dir), &file));
+        DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
     TF_ASSERT_OK(file->Append("not record data"));
   }
 
-  JournalReader reader(Env::Default(), journal_dir);
+  FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
-  Status s = reader.Read(&result, &end_of_journal);
+  Status s = reader.Read(result, end_of_journal);
   EXPECT_THAT(s.error_message(), HasSubstr("corrupted record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }
 
 TEST(Journal, InvalidRecordData) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
+  EXPECT_TRUE(NewJournalDir(journal_dir));
 
   TF_ASSERT_OK(Env::Default()->RecursivelyCreateDir(journal_dir));
   {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
-        DataServiceJournalFile(journal_dir), &file));
+        DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
     auto writer = absl::make_unique<io::RecordWriter>(file.get());
     TF_ASSERT_OK(writer->WriteRecord("not serializd proto"));
   }
 
-  JournalReader reader(Env::Default(), journal_dir);
+  FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
-  Status s = reader.Read(&result, &end_of_journal);
+  Status s = reader.Read(result, end_of_journal);
   EXPECT_THAT(s.error_message(), HasSubstr("Failed to parse journal record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }

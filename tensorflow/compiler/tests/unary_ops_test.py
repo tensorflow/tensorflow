@@ -21,6 +21,7 @@ from __future__ import print_function
 import unittest
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
@@ -90,8 +91,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
     self.assertAllClose(result, expected, rtol, atol)
     self.assertAllEqual(np.sort(result), result)
 
+  def AssertAllEqual(self, result, expected, rtol, atol):
+    """Tests that result and expeted are exactly equal."""
+    self.assertAllEqual(result, expected)
+
   @test_util.disable_mlir_bridge(
-      "MlirHloBuilder::Iota missing required for xla::Diag")
+      "Handle complex element type in DiagPart lowering")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
@@ -435,8 +440,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           math_ops.sign,
-          np.array([[-2.0, -1.0, -0.0, +0.0, 1.0, 2.0]], dtype=dtype),
-          expected=np.array([[-1.0, -1.0, -0.0, +0.0, 1.0, 1.0]], dtype=dtype))
+          np.array([[-2.0, -1.0, -0.0, +0.0, 1.0, 2.0,
+                     float("nan")]],
+                   dtype=dtype),
+          expected=np.array([[-1.0, -1.0, -0.0, +0.0, 1.0, 1.0,
+                              float("nan")]],
+                            dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           math_ops.is_finite,
@@ -529,8 +538,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             np.array([-40, 40], dtype=dtype),
             expected=np.array([1.0, 0.025], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.QuantizeAndDequantize compilation")
   def testQuantizeAndDequantize(self):
     for dtype in self.float_types:
 
@@ -775,12 +782,48 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
           expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
 
+  @test_util.disable_mlir_bridge(
+      "TF_PopulationCount is missing and is required to translate to "
+      "xla::PopulationCount."
+  )
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(
           bitwise_ops.invert,
           np.array([0, -1, 1, 16, 42], dtype=dtype),
           expected=np.array([-1, 0, -2, -17, -43], dtype=dtype))
+
+      # Test population_count for array inputs.
+      raw_inputs = [
+          0, 1, -1, 3, -3, 5, -5, 14, -14, 127, 128, 255, 256, 65535, 65536,
+          2**31 - 1, 2**31, 2**32 - 1, 2**32, -2**32 + 1, -2**32, -2**63 + 1,
+          2**63 - 1
+      ]
+      # Only choose inputs which fit in the int dtype.
+      raw_inputs = list(
+          filter(lambda x: np.iinfo(dtype).min <= x <= np.iinfo(dtype).max,
+                 raw_inputs))
+      inputs = np.array(raw_inputs, dtype=dtype)
+
+      def count_bits(x):
+        return sum(bin(z).count("1") for z in six.iterbytes(x.tobytes()))
+
+      truth = [count_bits(x) for x in inputs]
+      self._assertOpOutputMatchesExpected(
+          bitwise_ops.population_count,
+          inputs,
+          expected=np.array(truth, dtype=np.uint8),
+          equality_test=self.AssertAllEqual)
+
+      # Test population_count for scalar inputs.
+      for raw_inp in raw_inputs:
+        inp = dtype(raw_inp)
+        truth = count_bits(inp)
+        self._assertOpOutputMatchesExpected(
+            bitwise_ops.population_count,
+            inp,
+            expected=np.uint8(truth),
+            equality_test=self.AssertAllEqual)
 
   def testNumericOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
@@ -1025,8 +1068,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
         ],
         equality_test=self.ListsAreClose)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.DepthToSpace compilation")
   def testDepthToSpace(self):
 
     def make_op(data_format):
@@ -1073,14 +1114,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           make_op("NCHW_VECT_C"),
           np.arange(32, dtype=dtype).reshape((1, 8, 1, 1, 4)),
-          expected=np.array([[[[[0, 1], [8, 9]], [[16, 17], [24, 25]]],
-                              [[[2, 3], [10, 11]], [[18, 19], [26, 27]]],
-                              [[[4, 5], [12, 13]], [[20, 21], [28, 29]]],
-                              [[[6, 7], [14, 15]], [[22, 23], [30, 31]]]]],
+          expected=np.array([[[[[0, 1, 2, 3], [8, 9, 10, 11]],
+                               [[16, 17, 18, 19], [24, 25, 26, 27]]],
+                              [[[4, 5, 6, 7], [12, 13, 14, 15]],
+                               [[20, 21, 22, 23], [28, 29, 30, 31]]]]],
                             dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.SpaceToDepth compilation")
   def testSpaceToDepth(self):
 
     def make_op(data_format):
@@ -1127,11 +1166,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           make_op("NCHW_VECT_C"),
           np.arange(32, dtype=dtype).reshape((1, 2, 2, 2, 4)),
-          expected=np.array([[[[[0, 1, 2, 3, 16, 17, 18, 19]]],
-                              [[[4, 5, 6, 7, 20, 21, 22, 23]]],
-                              [[[8, 9, 10, 11, 24, 25, 26, 27]]],
-                              [[[12, 13, 14, 15, 28, 29, 30, 31]]]]],
-                            dtype=dtype))
+          expected=np.array(
+              [[[[[0, 1, 2, 3]]], [[[16, 17, 18, 19]]], [[[4, 5, 6, 7]]],
+                [[[20, 21, 22, 23]]], [[[8, 9, 10, 11]]], [[[24, 25, 26, 27]]],
+                [[[12, 13, 14, 15]]], [[[28, 29, 30, 31]]]]],
+              dtype=dtype))
 
   def _assertSoftplusMatchesExpected(self,
                                      features,

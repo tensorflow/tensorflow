@@ -248,6 +248,14 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   tensor = interpreter_->tensor(index);
 
   size_t size = PyArray_NBYTES(array);
+
+  if (tensor->type == kTfLiteString) {
+    tflite::DynamicBuffer buffer;
+    buffer.AddString(reinterpret_cast<const char*>(PyArray_BYTES(array)), size);
+    buffer.WriteToTensor(interpreter_->tensor(index), /*new_shape=*/nullptr);
+    Py_RETURN_NONE;
+  }
+
   if (size != tensor->bytes) {
     PyErr_Format(PyExc_ValueError,
                  "numpy array had %zu bytes but expected %zu bytes.", size,

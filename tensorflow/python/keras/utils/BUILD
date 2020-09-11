@@ -15,6 +15,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "utils",
     srcs = [
@@ -298,6 +304,19 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "layer_utils_test",
+    size = "small",
+    srcs = ["layer_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layer_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/training/tracking",
+        "//third_party/py/numpy",
     ],
 )
 

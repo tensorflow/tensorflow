@@ -13,14 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdio>
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
-
 namespace tflite {
 namespace testing {
 namespace {
@@ -458,28 +455,28 @@ const float initial_activation_state_data_16x1x1[] = {
 
 // One output with shape {1, 64}
 const float golden_output_16x1x1[] = {
-    -0.349840, -0.786585, -0.411465, -0.481465, -0.609403, -0.325105, -0.100590,
-    -0.252233, 0.194563,  0.492934,  -0.341396, -0.005863, 0.679318,  -0.127419,
-    -0.122997, 0.481488,  -0.059769, 0.577355,  -0.152513, -0.232819, 0.157115,
-    0.553756,  -0.231177, 0.417166,  0.514220,  -0.936228, -0.321929, 0.637917,
-    0.698829,  0.212120,  0.370644,  0.573798,  0.110923,  -0.731355, -0.181996,
-    0.713996,  -0.169233, -1.140784, -0.015105, 0.100089,  1.733966,  0.076599,
-    0.057502,  -0.930806, -1.225261, -0.394023, -0.213133, 0.170810,  -0.307229,
-    -0.486707, -0.026519, 0.472446,  0.414638,  -0.419811, -0.016620, 1.236398,
-    -0.132612, -0.408581, -0.166886, 0.213419,  0.074304,  -0.201534, 0.497987,
-    -1.690133};
+    -0.087914, 1.145864,  -0.418088, -1.556392, -0.925298, 0.205252,  0.289119,
+    1.331180,  -0.218010, 0.963057,  -2.225886, 1.248478,  1.448983,  0.355467,
+    1.682174,  0.803739,  0.449738,  0.543566,  1.916269,  -2.975136, 0.222774,
+    0.241589,  -0.104216, 1.561748,  0.936818,  -0.089907, -0.520117, -0.870353,
+    1.606074,  0.895770,  0.521297,  -0.369994, -0.889351, -2.809309, 2.404628,
+    1.069754,  -0.195456, -1.105652, 1.272715,  -1.233177, 1.271416,  -1.691805,
+    -1.058125, -0.716227, 0.052540,  1.262483,  0.540555,  1.735760,  -0.539197,
+    -0.014367, -0.243002, 1.072254,  0.528985,  -0.731151, -1.262649, 2.338702,
+    -0.603093, 0.970736,  -3.567897, 0.035085,  -0.201711, -0.550400, 1.545573,
+    -1.805005};
 
 // One output with shape {1, 64}
 const float golden_output_relu_16x1x1[] = {
-    0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
-    0.000000, 0.194563, 0.492934, 0.000000, 0.000000, 0.679318, 0.000000,
-    0.000000, 0.481488, 0.000000, 0.577355, 0.000000, 0.000000, 0.157115,
-    0.553756, 0.000000, 0.417166, 0.514220, 0.000000, 0.000000, 0.637917,
-    0.698829, 0.212120, 0.370644, 0.573798, 0.110923, 0.000000, 0.000000,
-    0.713996, 0.000000, 0.000000, 0.000000, 0.100089, 1.733966, 0.076599,
-    0.057502, 0.000000, 0.000000, 0.000000, 0.000000, 0.170810, 0.000000,
-    0.000000, 0.000000, 0.472446, 0.414638, 0.000000, 0.000000, 1.236398,
-    0.000000, 0.000000, 0.000000, 0.213419, 0.074304, 0.000000, 0.497987,
+    0.000000, 1.145864, 0.000000, 0.000000, 0.000000, 0.205252, 0.289119,
+    1.331180, 0.000000, 0.963057, 0.000000, 1.248478, 1.448983, 0.355467,
+    1.682174, 0.803739, 0.449738, 0.543566, 1.916269, 0.000000, 0.222774,
+    0.241589, 0.000000, 1.561748, 0.936818, 0.000000, 0.000000, 0.000000,
+    1.606074, 0.895770, 0.521297, 0.000000, 0.000000, 0.000000, 2.404628,
+    1.069754, 0.000000, 0.000000, 1.272715, 0.000000, 1.271416, 0.000000,
+    0.000000, 0.000000, 0.052540, 1.262483, 0.540555, 1.735760, 0.000000,
+    0.000000, 0.000000, 1.072254, 0.528985, 0.000000, 0.000000, 2.338702,
+    0.000000, 0.970736, 0.000000, 0.035085, 0.000000, 0.000000, 1.545573,
     0.000000};
 
 template <typename T>
@@ -490,22 +487,9 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
                          const T* input_sequences_data,
                          const int input_sequences_len, T* output_data,
                          const T* expected_output, float tolerance = 1e-5f) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensor_count, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SVDF);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   TfLiteSVDFParams params;
   params.rank = rank;
   params.activation = activaiton;
-
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
 
   int inputs_array_data[] = {5, 0, 1, 2, 3, 4};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
@@ -513,22 +497,17 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
   int outputs_array_data[] = {1, 5};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&params);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  if (registration->prepare) {
-    TfLiteStatus prepare_status = registration->prepare(&context, &node);
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, prepare_status);
-    // Abort early to make it clear prepare failed.
-    if (prepare_status != kTfLiteOk) {
-      return;
-    }
+  const TfLiteRegistration registration = tflite::ops::micro::Register_SVDF();
+  micro::KernelRunner runner(registration, tensors, tensor_count, inputs_array,
+                             outputs_array, &params, micro_test::reporter);
+
+  TfLiteStatus init_and_prepare_status = runner.InitAndPrepare();
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, init_and_prepare_status);
+
+  // Abort early to make it clear init and prepare failed.
+  if (init_and_prepare_status != kTfLiteOk) {
+    return;
   }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
 
   int num_inputs = input_sequences_len / (input_size * batch_size);
 
@@ -537,7 +516,7 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
         input_sequences_data + i * input_size * batch_size;
 
     memcpy(tensors[0].data.raw, input_batch_start, tensors[0].bytes);
-    TfLiteStatus status = registration->invoke(&context, &node);
+    TfLiteStatus status = runner.Invoke();
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, status);
 
     // Only validate outputs when invoke has succeeded.
@@ -550,10 +529,6 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
         output_idx++;
       }
     }
-  }
-
-  if (registration->free) {
-    registration->free(&context, user_data);
   }
 }
 

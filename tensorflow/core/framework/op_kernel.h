@@ -145,14 +145,16 @@ class OpKernel {
 
   // Accessors.
   const NodeDef& def() const { return props_->node_def; }
-  const string& name() const { return props_->node_def.name(); }
+  const std::string& name() const { return props_->node_def.name(); }
   absl::string_view name_view() const { return name_view_; }
-  const string& type_string() const { return props_->node_def.op(); }
+  const std::string& type_string() const { return props_->node_def.op(); }
   absl::string_view type_string_view() const { return type_string_view_; }
-  const string& requested_input(int i) const {
+  const std::string& requested_input(int i) const {
     return props_->node_def.input(i);
   }
-  const string& requested_device() const { return props_->node_def.device(); }
+  const std::string& requested_device() const {
+    return props_->node_def.device();
+  }
 
   int num_inputs() const { return props_->input_types.size(); }
   DataType input_type(int i) const { return props_->input_types[i]; }
@@ -177,10 +179,11 @@ class OpKernel {
   // Returns a trace string for current computation, op name/type and input
   // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
   // should use the default implementation.
-  virtual string TraceString(const OpKernelContext& ctx, bool verbose) const;
+  virtual std::string TraceString(const OpKernelContext& ctx,
+                                  bool verbose) const;
 
  protected:
-  string ShapeTraceString(const OpKernelContext& ctx) const;
+  std::string ShapeTraceString(const OpKernelContext& ctx) const;
 
  private:
   const std::shared_ptr<const NodeProperties> props_;
@@ -652,7 +655,7 @@ class OpKernelContext {
     SessionState* session_state = nullptr;
 
     // Unique session identifier. Can be empty.
-    string session_handle;
+    std::string session_handle;
 
     // Metadata about the session. Can be nullptr.
     const SessionMetadata* session_metadata = nullptr;
@@ -684,7 +687,7 @@ class OpKernelContext {
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
     bool run_all_kernels_inline = false;
-    const string* executor_type = nullptr;
+    const std::string* executor_type = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -826,7 +829,7 @@ class OpKernelContext {
 
   // Returns the registered name for the executor type that is executing the
   // current kernel. If empty, the default executor is used.
-  const string& executor_type() const;
+  const std::string& executor_type() const;
 
   // Input to output forwarding.
 
@@ -1100,7 +1103,7 @@ class OpKernelContext {
   SessionState* session_state() const { return params_->session_state; }
 
   // Unique identifier of the session it belongs to. Can be empty.
-  string session_handle() const { return params_->session_handle; }
+  std::string session_handle() const { return params_->session_handle; }
 
   // Metadata about the session. Can be nullptr.
   const SessionMetadata* session_metadata() const {
@@ -1405,7 +1408,7 @@ Status SupportedDeviceTypesForNode(
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.
-string KernelsRegisteredForOp(StringPiece op_name);
+std::string KernelsRegisteredForOp(StringPiece op_name);
 
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
@@ -1454,6 +1457,7 @@ class Name : public KernelDefBuilder {
 #define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
   constexpr bool should_register_##ctr##__flag =                      \
       SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__);                        \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                                  \
   static ::tensorflow::kernel_factory::OpKernelRegistrar              \
       registrar__body__##ctr##__object(                               \
           should_register_##ctr##__flag                               \
@@ -1476,6 +1480,8 @@ class Name : public KernelDefBuilder {
   REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
 #define REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)    \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                                     \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel:system")                              \
   static ::tensorflow::kernel_factory::OpKernelRegistrar                 \
       registrar__body__##ctr##__object(                                  \
           ::tensorflow::register_kernel::system::kernel_builder.Build(), \
@@ -1497,13 +1503,13 @@ Status FindKernelDef(
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
-    const KernelDef** def, string* kernel_class_name);
+    const KernelDef** def, std::string* kernel_class_name);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
-                     const KernelDef** def, string* kernel_class_name);
+                     const KernelDef** def, std::string* kernel_class_name);
 
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
 // missing kernel errors.

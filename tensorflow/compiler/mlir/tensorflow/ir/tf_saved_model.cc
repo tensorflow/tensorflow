@@ -113,7 +113,13 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
 //===----------------------------------------------------------------------===//
 
 TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf_saved_model", context) {
+    : Dialect(/*name=*/"tf_saved_model", context,
+              TypeID::get<TensorFlowSavedModelDialect>()) {
+  // The TensorFlow Dialect is needed in the verifier and other routines
+  // associated to this dialect. It makes little sense anyway to use the
+  // SavedModel dialect without the TensorFlow Dialect.
+  context->loadDialect<TF::TensorFlowDialect>();
+
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
@@ -337,6 +343,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
     if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
             i, "tf_saved_model.bound_input")) {
       if (!unique_bound_inputs.insert(attr.getValue()).second) {
+        if (module.getAttr("tf_saved_model.under_construction")) continue;
         return func.emitError()
                << "duplicate 'tf_saved_model.bound_input' binding";
       }

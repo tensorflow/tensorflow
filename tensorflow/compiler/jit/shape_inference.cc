@@ -36,7 +36,7 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
   if (!context->RankKnown(handle)) return Status::OK();
 
   std::vector<int64> dims(context->Rank(handle));
-  for (int32 i = 0; i < dims.size(); ++i) {
+  for (int32 i = 0, end = dims.size(); i < end; ++i) {
     dims[i] = context->Value(context->Dim(handle, i));
   }
   return PartialTensorShape::MakePartialShape(dims.data(), dims.size(), shape);

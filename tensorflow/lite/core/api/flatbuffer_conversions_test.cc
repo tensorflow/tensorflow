@@ -82,15 +82,12 @@ class FlatbufferConversionsTest : public ::testing::Test {
   flatbuffers::FlatBufferBuilder builder_;
 };
 
-TEST_F(FlatbufferConversionsTest, ParseBadSqueeze) {
+TEST_F(FlatbufferConversionsTest, ParseSqueezeAll) {
   const Operator* op = BuildTestOperator(
       BuiltinOptions_SqueezeOptions, CreateSqueezeOptions(builder_).Union());
   void* output_data = nullptr;
-  EXPECT_NE(kTfLiteOk, ParseOpData(op, BuiltinOperator_SQUEEZE, &mock_reporter_,
+  EXPECT_EQ(kTfLiteOk, ParseOpData(op, BuiltinOperator_SQUEEZE, &mock_reporter_,
                                    &mock_allocator_, &output_data));
-  EXPECT_THAT(mock_reporter_.GetAsString(),
-              ::testing::ContainsRegex(
-                  "Input array not provided for operation 'squeeze'"));
 }
 
 TEST_F(FlatbufferConversionsTest, ParseDynamicReshape) {

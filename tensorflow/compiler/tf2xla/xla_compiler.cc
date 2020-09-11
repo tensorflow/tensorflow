@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -64,7 +68,7 @@ Status CheckSignature(const DataTypeVector& types,
     return errors::Internal("Compilation arguments have ", args.size(),
                             " elements while function has ", types.size());
   }
-  for (int i = 0, iter_limit = types.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = types.size(); i < end; ++i) {
     // Don't perform type checks on resource variables and tensor
     // lists (DT_VARIANT) as we have to trick the type system in order to
     // plumb them through. DT_VARIANTS are wrapped in a DT_UINT8 tensor.
@@ -192,7 +196,7 @@ Status BuildComputation(
   // replicate sharding is used. The first element is the output index, second
   // element is the sharding.
   std::unordered_map<int, xla::OpSharding> retval_index_and_sharding;
-  for (int i = 0, iter_limit = retvals.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = retvals.size(); i < end; ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
     output.type = retval.dtype();
@@ -362,7 +366,7 @@ Status BuildComputation(
     xla::Shape shape = xla::ShapeUtil::MakeTupleShape(elem_shapes);
     // Copy specified sharding from retval_index_and_sharding.
     std::vector<xla::HloSharding> sharding_elems;
-    for (int i = 0, iter_limit = elems.size(); i < iter_limit; i++) {
+    for (int i = 0, end = elems.size(); i < end; i++) {
       const auto& iter = retval_index_and_sharding.find(i);
       TF_RET_CHECK(iter != retval_index_and_sharding.end());
       const xla::OpSharding& sub_op_sharding = iter->second;
@@ -674,7 +678,7 @@ Status XlaCompiler::CompileFunction(
   // Set shapes for _Arg nodes. They are useful for constant folding (e.g. an
   // Xla op requires a compile-time constant input, and that input is shape of
   // an _Arg node.
-  for (int i = 0, iter_limit = args.size(); i < iter_limit; i++) {
+  for (int i = 0, end = args.size(); i < end; i++) {
     // Skip resource variables and tensor lists.
     DataType dtype;
     TF_RETURN_IF_ERROR(GetNodeAttr(fbody->arg_nodes[i]->def(), "T", &dtype));
@@ -726,8 +730,18 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-  TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), args, result));
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+    VLOG(1) << "Using MLIR bridge";
+    GraphDebugInfo debug_info;
+    TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
+        std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
+        options_.device_type.type_string(), options.use_tuple_arg,
+        *options_.flib_def, debug_info, options_.shape_representation_fn,
+        result));
+  } else {
+    TF_RETURN_IF_ERROR(
+        CompileGraph(options, function_id, std::move(graph), args, result));
+  }
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
@@ -916,7 +930,7 @@ Status XlaCompiler::BuildArguments(
   // to the d'th XLA input. Note that the value -1 corresponds to constants, or
   // other args that don't correspond to an input.
   std::vector<int> arg_to_inputs(args.size(), -1);
-  for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; i++) {
+  for (int i = 0, end = input_to_args->size(); i < end; i++) {
     arg_to_inputs[input_to_args->at(i)] = i;
   }
 
@@ -962,7 +976,7 @@ Status XlaCompiler::BuildArguments(
                                       : it->second;
       }
       std::vector<bool> is_same_across_replicas;
-      for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; ++i) {
+      for (int i = 0, end = input_to_args->size(); i < end; ++i) {
         // Add an entry to is_same_across_replicas for every leaf buffer.
         is_same_across_replicas.insert(
             is_same_across_replicas.end(),
@@ -976,20 +990,6 @@ Status XlaCompiler::BuildArguments(
                              is_same_across_replicas);
     } else {
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
-    }
-
-    for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; ++i) {
-      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-        VLOG(1) << "Setting dynamic binding " << i << " -> "
-                << dynamic_size_param_index;
-
-        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
-            /*dynamic_size_param_num=*/0, {dynamic_size_param_index},
-            /*target_param_num=*/0, /*target_param_index=*/{i},
-            dim_and_arg_num.first));
-      }
     }
 
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
@@ -1023,16 +1023,17 @@ Status XlaCompiler::BuildArguments(
                                         absl::StrCat("arg", i));
       }
     }
+  }
 
-    for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; ++i) {
-      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
-            /*dynamic_size_param_num=*/dynamic_size_param_index, {},
-            /*target_param_num=*/i, /*target_param_index=*/{},
-            dim_and_arg_num.first));
-      }
+  for (int i = 0, end = input_to_args->size(); i < end; ++i) {
+    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
+    for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
+      int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+      VLOG(1) << "Setting dynamic size " << i << " -> "
+              << dynamic_size_param_index;
+      arg_handles[i] = xla::SetDimensionSize(
+          arg_handles[i], arg_handles[dynamic_size_param_index],
+          dim_and_arg_num.first);
     }
   }
 
@@ -1143,7 +1144,11 @@ Status ValidateGraph(const Graph* graph,
       return errors::InvalidArgument(absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
           " on ", device_type.type_string(), ": ", node->def().op(), " (",
-          s.error_message(), ")", FormatNodeForError(*node)));
+          s.error_message(), ")", FormatNodeForError(*node),
+          "One approach is to outside compile the unsupported ops to run on "
+          "CPUs by enabling soft placement "
+          "`tf.config.set_soft_device_placement(True)`."
+          " This has a potential performance penalty."));
     }
     return Status::OK();
   };
@@ -1345,7 +1350,7 @@ void SetTransfer(const string& key, absl::Span<const DataType> types,
                  tf2xla::HostTransferMetadata* transfer) {
   transfer->set_key(key);
   CHECK(types.size() == shapes.size());
-  for (int i = 0, iter_limit = types.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = types.size(); i < end; ++i) {
     tf2xla::TensorMetadata* metadata = transfer->add_metadata();
     metadata->set_type(types[i]);
     shapes[i].AsProto(metadata->mutable_shape());
@@ -1358,8 +1363,15 @@ Status XlaCompiler::SetDeviceToHostMetadata(
     const string& key, absl::Span<const DataType> types,
     absl::Span<const TensorShape> shapes) {
   if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
-    return errors::InvalidArgument(
-        "Duplicate calls to SetDeviceToHostMetadata with key ", key);
+    tf2xla::HostTransferMetadata& existing_transfer = host_compute_sends_[key];
+    tf2xla::HostTransferMetadata new_transfer;
+    SetTransfer(key, types, shapes, &new_transfer);
+    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument(
+          "Duplicate calls to SetDeviceToHostMetadata with key ", key);
+    }
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
   SetTransfer(key, types, shapes, &transfer);
@@ -1384,9 +1396,16 @@ Status XlaCompiler::GetDeviceToHostShapes(
 Status XlaCompiler::SetHostToDeviceMetadata(
     const string& key, absl::Span<const DataType> types,
     absl::Span<const TensorShape> shapes) {
-  if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
-    return errors::InvalidArgument(
-        "Duplicate calls to SetHostToDeviceMetadata with key ", key);
+  if (host_compute_recvs_.find(key) != host_compute_recvs_.end()) {
+    tf2xla::HostTransferMetadata& existing_transfer = host_compute_recvs_[key];
+    tf2xla::HostTransferMetadata new_transfer;
+    SetTransfer(key, types, shapes, &new_transfer);
+    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument(
+          "Duplicate calls to SetHostToDeviceMetadata with key ", key);
+    }
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
   SetTransfer(key, types, shapes, &transfer);

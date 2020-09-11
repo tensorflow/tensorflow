@@ -137,7 +137,7 @@ if _running_from_pip_package():
   # TODO(gunan): Add sanity checks to loaded modules here.
   for _s in _site_packages_dirs:
     # Load first party dynamic kernels.
-    _main_dir = _os.path.join(_s, 'tensorflow_core/core/kernels')
+    _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
     if _fi.file_exists(_main_dir):
       _ll.load_library(_main_dir)
 

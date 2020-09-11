@@ -783,9 +783,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ Shape ShapeUtil::ChangeElementType(const Shape& original,
                                                 PrimitiveType type) {
-  Shape new_shape = original;
-  new_shape.set_element_type(type);
-  return new_shape;
+  if (original.IsTuple()) {
+    std::vector<Shape> new_operands;
+    new_operands.reserve(original.tuple_shapes_size());
+    for (const Shape& operand : original.tuple_shapes()) {
+      new_operands.push_back(ChangeElementType(operand, type));
+    }
+    return MakeTupleShape(new_operands);
+  } else {
+    Shape new_shape = original;
+    new_shape.set_element_type(type);
+    return new_shape;
+  }
 }
 
 /* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,

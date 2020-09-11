@@ -212,6 +212,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":timespan",
+        ":trace_utils",
         ":xplane_builder",
         ":xplane_visitor",
         "//tensorflow/core:platform_base",
@@ -407,6 +408,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "kernel_stats_utils_test",
+    srcs = ["kernel_stats_utils_test.cc"],
+    deps = [
+        ":kernel_stats_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+    ],
+)
+
 cc_library(
     name = "tfstreamz_utils",
     srcs = ["tfstreamz_utils.cc"],
@@ -419,6 +431,23 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:tfstreamz_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "step_interval",
+    hdrs = ["step_interval.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "file_system_utils",
+    hdrs = ["file_system_utils.h"],
+    deps = [
+        "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",
     ],
 )

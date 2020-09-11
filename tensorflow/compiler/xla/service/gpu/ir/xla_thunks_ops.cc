@@ -28,7 +28,7 @@ namespace mlir {
 namespace xla_thunks {
 
 XLAThunksDialect::XLAThunksDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+    : Dialect(getDialectNamespace(), context, TypeID::get<XLAThunksDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/xla/service/gpu/ir/xla_thunks_ops.cc.inc"

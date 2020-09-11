@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/ascii.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/op.h"
@@ -29,41 +30,37 @@ limitations under the License.
 namespace tensorflow {
 class MlirGeneratedUnaryOp : public OpKernel {
  public:
-  explicit MlirGeneratedUnaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  MlirGeneratedUnaryOp(OpKernelConstruction* ctx, std::string name,
+                       absl::Span<const uint8_t> cubin_data)
+      : OpKernel(ctx), name_(name), cubin_data_(cubin_data) {}
 
   void Compute(OpKernelContext* ctx) override;
 
- protected:
-  virtual std::string name() const = 0;
-  virtual absl::Span<const uint8_t> cubin_data() const = 0;
-
  private:
+  std::string name_;
+  absl::Span<const uint8_t> cubin_data_;
   std::unique_ptr<se::KernelBase> kernel_;
   absl::Mutex mu_;
 };
 
-#define GENERATE_OP_KERNEL_BASE(kernel_name)                             \
-  class MlirGenerated##kernel_name##Op : public MlirGeneratedUnaryOp {   \
-   public:                                                               \
-    explicit MlirGenerated##kernel_name##Op(OpKernelConstruction* ctx)   \
-        : MlirGeneratedUnaryOp(ctx) {}                                   \
-                                                                         \
-   protected:                                                            \
-    std::string name() const override { return #kernel_name "_kernel"; } \
+#define GENERATE_OP_KERNEL_BASE(kernel_name)                                  \
+  class MlirGenerated##kernel_name##Op : public MlirGeneratedUnaryOp {        \
+   public:                                                                    \
+    MlirGenerated##kernel_name##Op(OpKernelConstruction* ctx,                 \
+                                   absl::Span<const uint8_t> cubin_data)      \
+        : MlirGeneratedUnaryOp(ctx,                                           \
+                               absl::AsciiStrToLower(#kernel_name "_kernel"), \
+                               cubin_data) {}                                 \
   };
 
-#define GENERATE_OP_KERNEL_FOR(kernel_name, data_type)      \
-  class MlirGenerated##kernel_name##data_type##Op           \
-      : public MlirGenerated##kernel_name##Op {             \
-   public:                                                  \
-    explicit MlirGenerated##kernel_name##data_type##Op(     \
-        OpKernelConstruction* ctx)                          \
-        : MlirGenerated##kernel_name##Op(ctx) {}            \
-                                                            \
-   private:                                                 \
-    absl::Span<const uint8_t> cubin_data() const override { \
-      return k##kernel_name##data_type##Kernel;             \
-    }                                                       \
+#define GENERATE_OP_KERNEL_FOR(kernel_name, data_type)    \
+  class MlirGenerated##kernel_name##data_type##Op         \
+      : public MlirGenerated##kernel_name##Op {           \
+   public:                                                \
+    explicit MlirGenerated##kernel_name##data_type##Op(   \
+        OpKernelConstruction* ctx)                        \
+        : MlirGenerated##kernel_name                      \
+          ##Op(ctx, k##kernel_name##data_type##Kernel) {} \
   };
 
 #define REGISTER_AND_GENERATE_KERNEL(kernel_name, data_type, native_data_type) \

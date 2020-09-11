@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -25,7 +26,7 @@ namespace tensorflow {
 namespace data {
 
 // A class encapsulating the journaled state of the dispatcher. All state
-// modifications must be done via `ApplyUpdate`. This helps to ensure that
+// modifications must be done via `Apply`. This helps to ensure that
 // replaying the journal will allow us to restore the exact same state.
 //
 // The following usage pattern will keep the journal in sync with the state of
@@ -33,7 +34,7 @@ namespace data {
 // {
 //   mutex_lock l(mu_);
 //   Update update = ...  // create an update
-//   dispatcher_state.ApplyUpdate(update);
+//   dispatcher_state.Apply(update);
 //   journal_writer.write(Update);
 //   // Unlock mu_
 // }
@@ -55,37 +56,160 @@ class DispatcherState {
   DispatcherState& operator=(const DispatcherState&) = delete;
 
   // Applies the given update to the dispatcher's state.
-  Status Apply(Update update);
+  Status Apply(const Update& update);
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-   public:
-    Dataset(int64 dataset_id, int64 fingerprint, const DatasetDef& dataset_def)
-        : dataset_id(dataset_id),
-          fingerprint(fingerprint),
-          dataset_def(dataset_def) {}
+    explicit Dataset(int64 dataset_id, int64 fingerprint)
+        : dataset_id(dataset_id), fingerprint(fingerprint) {}
 
     const int64 dataset_id;
     const int64 fingerprint;
-    const DatasetDef dataset_def;
   };
 
+  // A worker registered with the dispatcher.
+  struct Worker {
+    explicit Worker(const std::string& address) : address(address) {}
+
+    const std::string address;
+  };
+
+  // A key for identifying a named job. The key contains a user-specified name,
+  // as well as an index describing which iteration of the job we are on.
+  struct NamedJobKey {
+    explicit NamedJobKey(absl::string_view name, int64 index)
+        : name(name), index(index) {}
+
+    friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
+      return lhs.name == rhs.name && lhs.index == rhs.index;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const NamedJobKey& k) {
+      return H::combine(std::move(h), k.name, k.index);
+    }
+
+    const std::string name;
+    const int64 index;
+  };
+
+  // A job for processing a dataset.
+  struct Job {
+    explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+                 absl::optional<NamedJobKey> named_job_key)
+        : job_id(job_id),
+          dataset_id(dataset_id),
+          processing_mode(processing_mode),
+          named_job_key(named_job_key) {}
+
+    const int64 job_id;
+    const int64 dataset_id;
+    const ProcessingMode processing_mode;
+    const absl::optional<NamedJobKey> named_job_key;
+    int64 num_clients = 0;
+    int64 last_client_released_micros = -1;
+    bool finished = false;
+  };
+
+  struct Task {
+    explicit Task(int64 task_id, int64 job_id, int64 dataset_id,
+                  const std::string& worker_address)
+        : task_id(task_id),
+          job_id(job_id),
+          dataset_id(dataset_id),
+          worker_address(worker_address) {}
+
+    const int64 task_id;
+    const int64 job_id;
+    const int64 dataset_id;
+    const std::string worker_address;
+    bool finished = false;
+  };
+
+  // Returns the next available dataset id.
+  int64 NextAvailableDatasetId() const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
-  Status DatasetFromId(int64 id, std::shared_ptr<const Dataset>* dataset) const;
+  Status DatasetFromId(int64 id, std::shared_ptr<const Dataset>& dataset) const;
   // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
   // dataset.
   Status DatasetFromFingerprint(uint64 fingerprint,
-                                std::shared_ptr<const Dataset>* dataset) const;
+                                std::shared_ptr<const Dataset>& dataset) const;
+
+  // Gets a worker by address. Returns NOT_FOUND if there is no such worker.
+  Status WorkerFromAddress(const std::string& address,
+                           std::shared_ptr<const Worker>& worker) const;
+  // Lists all workers registered with the dispatcher.
+  std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
+
+  // Returns the next available job id.
+  int64 NextAvailableJobId() const;
+  // Returns a list of all jobs.
+  std::vector<std::shared_ptr<const Job>> ListJobs();
+  // Gets a job by id. Returns NOT_FOUND if there is no such job.
+  Status JobFromId(int64 id, std::shared_ptr<const Job>& job) const;
+  // Gets a named job by key. Returns NOT_FOUND if there is no such job.
+  Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>& job) const;
+
+  // Returns the job associated with the given job client id. Returns NOT_FOUND
+  // if the job_client_id is unknown or has been released.
+  Status JobForJobClientId(int64 job_client_id,
+                           std::shared_ptr<const Job>& job);
+  // Returns the next available job client id.
+  int64 NextAvailableJobClientId() const;
+
+  // Returns the next available task id.
+  int64 NextAvailableTaskId() const;
+  // Gets a task by id. Returns NOT_FOUND if there is no such task.
+  Status TaskFromId(int64 id, std::shared_ptr<const Task>& task) const;
+  // Stores a list of all tasks for the given job to `tasks`. Returns NOT_FOUND
+  // if there is no such job.
+  Status TasksForJob(int64 job_id,
+                     std::vector<std::shared_ptr<const Task>>& tasks) const;
+  // Stores a list of all tasks for the given worker to `tasks`. Returns
+  // NOT_FOUND if there is no such worker.
+  Status TasksForWorker(const absl::string_view worker_address,
+                        std::vector<std::shared_ptr<const Task>>& tasks) const;
 
  private:
-  // Registers a dataset. The dataset must not already be registered.
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
+  void RegisterWorker(const RegisterWorkerUpdate& register_worker);
+  void CreateJob(const CreateJobUpdate& create_job);
+  void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
+  void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
+  void CreateTask(const CreateTaskUpdate& create_task);
+  void FinishTask(const FinishTaskUpdate& finish_task);
 
+  int64 next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
   absl::flat_hash_map<int64, std::shared_ptr<Dataset>> datasets_by_id_;
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;
+
+  // Registered workers, keyed by address.
+  absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
+
+  int64 next_available_job_id_ = 2000;
+  // Jobs, keyed by job ids.
+  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_;
+  // Named jobs, keyed by their names and indices. Not all jobs have names, so
+  // this is a subset of the jobs stored in `jobs_`.
+  absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_;
+
+  int64 next_available_job_client_id_ = 3000;
+  // Mapping from client ids to the jobs they are associated with.
+  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_for_client_ids_;
+
+  int64 next_available_task_id_ = 4000;
+  // Tasks, keyed by task ids.
+  absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_;
+  // Tasks, keyed by job ids.
+  absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_;
+  // Tasks, keyed by worker addresses. The values are a map from task id to
+  // task.
+  absl::flat_hash_map<std::string,
+                      absl::flat_hash_map<int64, std::shared_ptr<Task>>>
+      tasks_by_worker_;
 };
 
 }  // namespace data

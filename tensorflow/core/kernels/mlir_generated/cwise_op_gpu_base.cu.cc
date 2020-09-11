@@ -85,7 +85,7 @@ void MlirGeneratedUnaryOp::Compute(OpKernelContext* ctx) {
   {
     absl::MutexLock l(&mu_);
     if (!kernel_) {
-      OP_REQUIRES_OK(ctx, CreateKernel(name(), 10, "", cubin_data(),
+      OP_REQUIRES_OK(ctx, CreateKernel(name_, 10, "", cubin_data_,
                                        stream->parent(), kernel_));
     }
     kernel = kernel_.get();

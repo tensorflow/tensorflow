@@ -1006,7 +1006,7 @@ def _process_tensorlike(inputs):
       dtype = None
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
-      return ops.convert_to_tensor(x, dtype=dtype)
+      return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
     elif scipy_sparse and scipy_sparse.issparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
@@ -1238,18 +1238,6 @@ class DataHandler(object):
     if adapter_steps is not None:
       return adapter_steps
 
-    if (ds_context.get_strategy().extended._in_multi_worker_mode() and  # pylint: disable=protected-access
-        (dataset.options().experimental_distribute.auto_shard_policy !=
-         distribute_options.AutoShardPolicy.OFF)):
-      # If the dataset would be auto-sharded, we should not infer a local
-      # steps_per_epoch due to the possible inbalanced sharding between workers.
-      raise ValueError("When dataset is sharded across workers, please "
-                       "specify a reasonable `steps_per_epoch` such that all "
-                       "workers will train the same number of steps and each "
-                       "step can get data from dataset without EOF. This is "
-                       "required for allreduce to succeed. We will handle the "
-                       "last partial batch in the future.")
-
     size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
       raise ValueError("When passing an infinitely repeating dataset, you "
@@ -1293,7 +1281,7 @@ def _make_class_weight_map_fn(class_weight):
         "than the number of classes, found {}").format(class_weight)
     raise ValueError(error_msg)
 
-  class_weight_tensor = ops.convert_to_tensor_v2(
+  class_weight_tensor = ops.convert_to_tensor_v2_with_dispatch(
       [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):

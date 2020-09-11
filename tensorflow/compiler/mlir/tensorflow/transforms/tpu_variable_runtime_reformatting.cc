@@ -174,7 +174,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   metadata.ParseFromString(std::string(metadata_str.getValue()));
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while
   // operands.
@@ -264,7 +264,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
     tf_device::ReplicateOp replicate, ArrayRef<Value> new_inputs,
     const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
         devices) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   assert(new_inputs.size() == num_replicas);
 
   // As model parallelism is not yet supported, we assume that all ops are
@@ -351,7 +351,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   cond.setType(FunctionType::get(append_types(cond.getType().getInputs()),
                                  cond.getType().getResults(),
                                  cond.getContext()));
-  for (int64_t i = 0; i < state_vars.size(); ++i) {
+  for (int64_t i = 0, end = state_vars.size(); i < end; ++i) {
     int64_t arg_index = body.getNumArguments() - state_vars.size() + i;
     TF::VarHandleOp state_var = state_vars[i];
     auto device_attr = state_var.getAttr(kDeviceAttr);
@@ -423,7 +423,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 // Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
                        MLIRContext* context) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   if (num_replicas == 1) return;
   tf_device::LaunchOp execute_launch;
   for (auto execute_launch_op :

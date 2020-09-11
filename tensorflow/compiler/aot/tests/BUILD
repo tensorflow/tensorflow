@@ -63,7 +63,7 @@ py_binary(
     testonly = 1,
     srcs = ["make_test_graphs.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
@@ -110,8 +110,8 @@ genrule(
     # have control of the full GPU.
     cmd = "CUDA_VISIBLE_DEVICES='' " +
           "$(location :make_test_graphs) --out_dir $(@D)",
+    exec_tools = [":make_test_graphs"],
     tags = ["manual"],
-    tools = [":make_test_graphs"],
 )
 
 tf_library(

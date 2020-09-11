@@ -89,6 +89,9 @@ interface as the original float only model.
 [TensorFlow Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers)
 and [Coral Edge TPUs](https://coral.ai/).*
 
+Note: Starting TensorFlow 2.3.0, we support the `inference_input_type` and
+`inference_output_type` attributes.
+
 Additionally, to ensure compatibility with integer only devices (such as 8-bit
 microcontrollers) and accelerators (such as the Coral Edge TPU), you can enforce
 full integer quantization for all ops including the input and output, by using
@@ -195,6 +198,9 @@ The disadvantage of this quantization is:
     delegates.
 
 Note: This is an experimental feature.
+
+A tutorial for this quantization mode can be found
+[here](post_training_integer_quant_16x8.ipynb).
 
 ### Model accuracy
 

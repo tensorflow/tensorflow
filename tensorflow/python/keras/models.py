@@ -206,6 +206,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   ancillary_layers = [
       layer for layer in created_layers.values() if layer not in model.layers
   ]
+  # TODO(b/162887610): This may need to adjust the inbound node index if the
+  # created layers had already been used to define other models.
   if ancillary_layers:
     new_nodes = nest.flatten([
         layer.inbound_nodes[1:]

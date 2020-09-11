@@ -36,6 +36,8 @@ ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
 ABSL_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
 ABSL_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
+// Name of XPlane that contains events from python tracer.
+ABSL_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
 
 // Names of XLines that contain ML-level events.
 ABSL_CONST_INIT extern const absl::string_view kStepLineName;
@@ -95,6 +97,8 @@ enum HostEventType {
   kParallelMapConsume,
   kMapAndBatchProduce,
   kMapAndBatchConsume,
+  kParseExampleProduce,
+  kParseExampleConsume,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.

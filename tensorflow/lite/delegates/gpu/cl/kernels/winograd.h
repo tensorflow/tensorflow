@@ -34,14 +34,14 @@ namespace cl {
 class Winograd4x4To36 : public GPUOperation {
  public:
   Winograd4x4To36() = default;
-  Winograd4x4To36(const OperationDef& definition, const Padding2D& padding)
-      : GPUOperation(definition), padding_(padding) {
-    work_group_size_ = int3(128, 1, 1);
-  }
+  Winograd4x4To36(const OperationDef& definition, const Padding2D& padding,
+                  const DeviceInfo& device_info);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
 
   // Move only
   Winograd4x4To36(Winograd4x4To36&& operation);
@@ -50,34 +50,35 @@ class Winograd4x4To36 : public GPUOperation {
   Winograd4x4To36& operator=(const Winograd4x4To36&) = delete;
 
  private:
-  friend absl::Status CreateWinograd4x4To36(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const Padding2D& padding, Winograd4x4To36* result);
+  friend Winograd4x4To36 CreateWinograd4x4To36(const DeviceInfo& device_info,
+                                               const OperationDef& definition,
+                                               const Padding2D& padding);
 
-  absl::Status UploadBt(CLContext* context);
+  void UploadBt();
+
+  std::string GetWinograd4x4To36Code(const OperationDef& op_def);
 
   // Must be called after kernel compilation
-  int3 SelectBestWorkGroup();
+  int3 SelectBestWorkGroup(const KernelInfo& kernel_info) const;
 
   Padding2D padding_;
 };
 
-absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const Padding2D& padding,
-                                   Winograd4x4To36* result);
+Winograd4x4To36 CreateWinograd4x4To36(const DeviceInfo& device_info,
+                                      const OperationDef& definition,
+                                      const Padding2D& padding);
 
 class Winograd36To4x4 : public GPUOperation {
  public:
   Winograd36To4x4() = default;
-  explicit Winograd36To4x4(const OperationDef& definition)
-      : GPUOperation(definition) {
-    work_group_size_ = int3(128, 1, 1);
-  }
+  Winograd36To4x4(const OperationDef& definition,
+                  const DeviceInfo& device_info);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
 
   // Move only
   Winograd36To4x4(Winograd36To4x4&& operation);
@@ -86,21 +87,21 @@ class Winograd36To4x4 : public GPUOperation {
   Winograd36To4x4& operator=(const Winograd36To4x4&) = delete;
 
  private:
-  friend absl::Status CreateWinograd36To4x4(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
-      Winograd36To4x4* result);
+  friend Winograd36To4x4 CreateWinograd36To4x4(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases);
 
-  absl::Status UploadAt(CLContext* context);
+  void UploadAt();
+
+  std::string GetWinograd36To4x4Code(const OperationDef& op_def);
 
   // Must be called after kernel compilation
-  int3 SelectBestWorkGroup();
+  int3 SelectBestWorkGroup(const KernelInfo& kernel_info) const;
 };
 
-absl::Status CreateWinograd36To4x4(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
-    Winograd36To4x4* result);
+Winograd36To4x4 CreateWinograd36To4x4(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases);
 
 }  // namespace cl
 }  // namespace gpu

@@ -10,6 +10,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 # To run CPU benchmarks:
 #   bazel run -c opt benchmarks_test -- --benchmarks=.
 
@@ -28,6 +34,7 @@ py_library(
     srcs = ["saved_model_benchmark_util.py"],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -41,6 +48,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -54,6 +62,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -67,6 +76,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -80,6 +90,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -93,6 +104,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -106,6 +118,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -119,6 +132,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -132,5 +146,6 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )

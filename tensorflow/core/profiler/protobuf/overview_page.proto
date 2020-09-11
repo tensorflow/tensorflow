@@ -21,6 +21,9 @@ message OverviewTfOp {
   double flop_rate = 5;
   // Whether the Op is eligible to use TensorCores.
   bool is_op_tensorcore_eligible = 6;
+  // Whether at least one of the kernels launched in this op is using
+  // TensorCore.
+  bool is_op_using_tensorcore = 7;
 }
 
 // Overview result for general analysis.
@@ -57,6 +60,9 @@ message OverviewPageAnalysis {
   // Percentage of TF-op execution time on the device (excluding the idle time)
   // that are in eager mode.
   double device_op_time_eager_percent = 15;
+  // Percentage of TF-op execution time on the device (excluding the idle time)
+  // that are for outside compilation.
+  double device_op_time_outside_compilation_percent = 16;
 }
 
 // Overview result for a performance tip to users.
@@ -96,10 +102,14 @@ message OverviewPageRecommendation {
   // bottleneck.
   string output_statement = 9;
   // A statement that recommends the next steps for investigating eager-mode
-  // related bottleneck (it is a html so that it can link to other tools/docs.)
+  // related bottleneck (it is an html so that it can link to other tools/docs.)
   string eager_statement_html = 12;
+  // A statement that recommends the next steps for investigating
+  // outside-compilation related bottleneck (it is an html so that it can link
+  // to other tools/docs.)
+  string outside_compilation_statement_html = 13;
   // A statement that recommends the next steps for investigating tf-function
-  // related bottleneck (it is a html so that it can link to other tools/docs.)
+  // related bottleneck (it is an html so that it can link to other tools/docs.)
   string tf_function_statement_html = 10;
   // A list of tips for improving host performance.
   repeated OverviewPageTip host_tips = 3;

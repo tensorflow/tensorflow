@@ -74,14 +74,15 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+OPTIMIZATION_LEVEL := -O3
+
 CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
                -Wshadow -Wunused-variable -Wmissing-field-initializers \
-               -Wunused-function
+               -Wunused-function -Wswitch -Wvla
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
-# TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
-# this flag is for an optimized micro runtime.
-CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
-CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
+	          $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
@@ -92,11 +93,20 @@ ifeq ($(BUILD_TYPE), debug)
 	CXXFLAGS += -DDEBUG -g
 	CCFLAGS  += -DDEBUG -g
 else ifeq ($(BUILD_TYPE), release)
-	CXXFLAGS += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
-	CCFLAGS  += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
+	CXXFLAGS += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+	CCFLAGS  += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+else ifeq ($(BUILD_TYPE), no_tf_lite_static_memory)
+	# This build should not be used to run any binaries/tests since
+	# TF_LITE_STATIC_MEMORY should be defined for all micro builds. However,
+	# having a build without TF_LITE_STATIC_MEMORY is useful to catch errors in
+	# code that is shared between TfLite Mobile and TfLite Micro. See this issue
+	# for more details:
+	# https://github.com/tensorflow/tensorflow/issues/43076
+	CXXFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CXXFLAGS))
+	CCFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CCFLAGS))
 else
-	CXXFLAGS += -DNDEBUG -O3
-	CCFLAGS  += -DNDEBUG -O3
+	CXXFLAGS += -DNDEBUG
+	CCFLAGS  += -DNDEBUG
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
@@ -106,7 +116,14 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # These two must be defined before we include the target specific Makefile.inc
 # because we filter out the examples that are not supported for those targets.
 # See targets/xtensa_xpg_makefile.inc for an example.
-MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -name Makefile.inc)
+#
+# We limit max depth of directories to search to not include target specific
+# Makefiles that are included directly by the main example Makefile. See
+# examples/micro_speech/Makefile.inc for an example. At the same time, we
+# search till an arbitrary depth for files named Makefile_internal.inc as a way
+# to bypass this check and allow for deeper directory structures.
+MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
+MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \
@@ -176,6 +193,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/mean.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
@@ -200,21 +218,22 @@ tensorflow/lite/kernels/internal/reference/tanh.h \
 tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/max.h \
 tensorflow/lite/kernels/internal/min.h \
+tensorflow/lite/kernels/internal/portable_tensor.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
-tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
 tensorflow/lite/kernels/kernel_util.h \
 tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
+tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/string_type.h \
-tensorflow/lite/string_util.h \
-tensorflow/lite/type_to_tflitetype.h \
 tensorflow/lite/version.h
 
+# TODO(b/165940489): Figure out how to avoid including fixed point
+# platform-specific headers.
 THIRD_PARTY_CC_HDRS := \
 third_party/gemmlowp/fixedpoint/fixedpoint.h \
+third_party/gemmlowp/fixedpoint/fixedpoint_neon.h \
 third_party/gemmlowp/fixedpoint/fixedpoint_sse.h \
 third_party/gemmlowp/internal/detect_platform.h \
 third_party/gemmlowp/LICENSE \
@@ -258,6 +277,8 @@ THIRD_PARTY_DOWNLOADS :=
 $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
 $(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),flatbuffers,))
 $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
+$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
+$(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
@@ -368,11 +389,9 @@ build: $(MICROLITE_BUILD_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
 
-generate_non_kernel_projects: $(filter-out generate_kernel%,$(ALL_PROJECT_TARGETS))
+ARDUINO_PROJECT_TARGETS := $(foreach TARGET,$(ALL_PROJECT_TARGETS),$(if $(findstring _arduino,$(TARGET)),$(TARGET),))
 
-generate_non_test_projects: $(filter-out %_test%,$(ALL_PROJECT_TARGETS))
-
-generate_arduino_zip: generate_non_kernel_projects $(ARDUINO_LIBRARY_ZIPS)
+generate_arduino_zip: $(ARDUINO_PROJECT_TARGETS) $(ARDUINO_LIBRARY_ZIPS)
 	python tensorflow/lite/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
 
 # Gets rid of all generated files.

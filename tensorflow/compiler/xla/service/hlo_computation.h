@@ -509,7 +509,7 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyGroup& channel_dependency_map,
+      const HloComputation::ChannelDependencyGroup& channel_dependency_group,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
       absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
 

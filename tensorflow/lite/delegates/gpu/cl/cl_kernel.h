@@ -28,6 +28,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+struct KernelInfo {
+  int private_memory_size;
+  int max_work_group_size;
+};
+
 // Arguments binding to CLKernel can be manual or automatic
 // In manual you specify binding index explicitly
 // In automatic binding, index auto-incremented with every binding call
@@ -61,9 +66,6 @@ class CLKernel {
     return SetBytesAuto(static_cast<const void*>(&value), sizeof(T));
   }
 
-  int GetPrivateMemorySize() const { return private_memory_size_; }
-  int GetMaxWorkGroupSize() const { return max_work_group_size_; }
-
   int GetBindingCounter() const { return binding_counter_; }
   void ResetBindingCounter() { binding_counter_ = 0; }
 
@@ -71,13 +73,13 @@ class CLKernel {
   // workaround for Mali memory leak
   absl::Status ReInit() const;
 
+  KernelInfo info_;
+
  private:
   void Release();
   absl::Status SetBytes(int index, const void* ptr, int length) const;
   absl::Status SetBytesAuto(const void* ptr, int length);
 
-  int private_memory_size_;
-  int max_work_group_size_;
   int binding_counter_ = -1;
 
   std::string function_name_;

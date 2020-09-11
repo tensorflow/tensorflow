@@ -122,6 +122,12 @@ const tensorflow::tpu::TpuTopologyPtr TpuPlatform::GetTopologyPtr() {
   return tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(platform_);
 }
 
+const tensorflow::tpu::TpuHostLocationExternal TpuPlatform::GetTpuHostLocation()
+    const {
+  return tpu::TpuHostLocationExternal(
+      tpu::ExecutorApiFn()->TpuPlatform_GetHostLocationFn(platform_));
+}
+
 void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
                               SE_Event* val) {
   tensorflow::mutex_lock lock(event_map_mu_);

@@ -10,7 +10,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'root\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
   }
   member_method {
     name: "read"

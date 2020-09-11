@@ -28,14 +28,15 @@ namespace cl {
 class Softmax1x1 : public GPUOperation {
  public:
   Softmax1x1() = default;
-  explicit Softmax1x1(const OperationDef& definition)
-      : GPUOperation(definition) {}
-  absl::Status Tune(const TuningParameters& params) override {
-    return absl::OkStatus();
+  explicit Softmax1x1(const OperationDef& definition);
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
   }
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Softmax1x1(Softmax1x1&& kernel);
@@ -44,6 +45,9 @@ class Softmax1x1 : public GPUOperation {
   Softmax1x1& operator=(const Softmax1x1&) = delete;
 
   friend Softmax1x1 CreateSoftmax1x1();
+
+ private:
+  std::string GetSoftmaxKernelCode(const OperationDef& op_def);
 };
 
 Softmax1x1 CreateSoftmax1x1(const OperationDef& definition);

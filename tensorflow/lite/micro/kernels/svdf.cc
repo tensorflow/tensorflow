@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/activation_utils.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
@@ -40,6 +41,10 @@ struct OpData {
   int effective_scale_2_b;
   int scratch_tensor_index;
   int scratch_output_tensor_index;
+
+  // Cached tensor zero point values for quantized operations.
+  int input_zero_point;
+  int output_zero_point;
 };
 
 /**
@@ -114,11 +119,11 @@ static inline void ApplyTimeWeightsBiasAndActivation(
 }
 
 inline void EvalFloatSVDF(
-    TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* input,
-    const TfLiteTensor* weights_feature, const TfLiteTensor* weights_time,
-    const TfLiteTensor* bias, const TfLiteSVDFParams* params,
-    int scratch_tensor_index, TfLiteTensor* activation_state,
-    TfLiteTensor* output) {
+    TfLiteContext* context, TfLiteNode* node, const TfLiteEvalTensor* input,
+    const TfLiteEvalTensor* weights_feature,
+    const TfLiteEvalTensor* weights_time, const TfLiteEvalTensor* bias,
+    const TfLiteSVDFParams* params, int scratch_tensor_index,
+    TfLiteEvalTensor* activation_state, TfLiteEvalTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -126,12 +131,14 @@ inline void EvalFloatSVDF(
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  const float* weights_feature_ptr = GetTensorData<float>(weights_feature);
-  const float* weights_time_ptr = GetTensorData<float>(weights_time);
-  const float* bias_ptr = GetTensorData<float>(bias);
-  const float* input_ptr = GetTensorData<float>(input);
+  const float* weights_feature_ptr =
+      tflite::micro::GetTensorData<float>(weights_feature);
+  const float* weights_time_ptr =
+      tflite::micro::GetTensorData<float>(weights_time);
+  const float* bias_ptr = tflite::micro::GetTensorData<float>(bias);
+  const float* input_ptr = tflite::micro::GetTensorData<float>(input);
 
-  float* state_ptr = GetTensorData<float>(activation_state);
+  float* state_ptr = tflite::micro::GetTensorData<float>(activation_state);
 
   TFLITE_DCHECK(context != nullptr);
   TFLITE_DCHECK(context->GetScratchBuffer != nullptr);
@@ -139,7 +146,7 @@ inline void EvalFloatSVDF(
   float* scratch_ptr = static_cast<float*>(
       context->GetScratchBuffer(context, scratch_tensor_index));
 
-  float* output_ptr = GetTensorData<float>(output);
+  float* output_ptr = tflite::micro::GetTensorData<float>(output);
 
   // Left shift the activation_state.
   {
@@ -185,14 +192,13 @@ inline void EvalFloatSVDF(
 }
 
 void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
-                     const TfLiteTensor* input_tensor,
-                     const TfLiteTensor* weights_feature_tensor,
-                     const TfLiteTensor* weights_time_tensor,
-                     const TfLiteTensor* bias_tensor,
+                     const TfLiteEvalTensor* input_tensor,
+                     const TfLiteEvalTensor* weights_feature_tensor,
+                     const TfLiteEvalTensor* weights_time_tensor,
+                     const TfLiteEvalTensor* bias_tensor,
                      const TfLiteSVDFParams* params,
-                     TfLiteTensor* activation_state_tensor,
-                     TfLiteTensor* output_tensor, const OpData& data,
-                     int32_t input_zp, int32_t output_zp) {
+                     TfLiteEvalTensor* activation_state_tensor,
+                     TfLiteEvalTensor* output_tensor, const OpData& data) {
   const int n_rank = params->rank;
   const int n_batch = input_tensor->dims->data[0];
   const int n_input = input_tensor->dims->data[1];
@@ -209,7 +215,8 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
       context->GetScratchBuffer(context, data.scratch_output_tensor_index));
 
   // Shift states.
-  int16_t* const state_ptr = GetTensorData<int16_t>(activation_state_tensor);
+  int16_t* const state_ptr =
+      tflite::micro::GetTensorData<int16_t>(activation_state_tensor);
 
   // Left shift the activation_state.
   {
@@ -225,10 +232,11 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
 
   // Feature matmul.
   {
-    int16_t* state = GetTensorData<int16_t>(activation_state_tensor);
-    const int8_t* input = GetTensorData<int8_t>(input_tensor);
+    int16_t* state =
+        tflite::micro::GetTensorData<int16_t>(activation_state_tensor);
+    const int8_t* input = tflite::micro::GetTensorData<int8_t>(input_tensor);
     const int8_t* weight_feature =
-        GetTensorData<int8_t>(weights_feature_tensor);
+        tflite::micro::GetTensorData<int8_t>(weights_feature_tensor);
     const int32_t output_max = std::numeric_limits<int16_t>::max();
     const int32_t output_min = std::numeric_limits<int16_t>::min();
     int16_t* result_in_batch = state + (n_memory - 1);
@@ -238,7 +246,8 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
         int32_t dot_prod = 0;
         const int8_t* vector_in_batch = input + b * n_input;
         for (int c = 0; c < n_input; c++) {
-          dot_prod += *matrix_ptr++ * (*vector_in_batch++ - input_zp);
+          dot_prod +=
+              *matrix_ptr++ * (*vector_in_batch++ - data.input_zero_point);
         }
         dot_prod = MultiplyByQuantizedMultiplier(
             dot_prod, data.effective_scale_1_a, data.effective_scale_1_b);
@@ -261,9 +270,10 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
       int32_t* scratch_ptr_batch = scratch_tensor + b * n_filter;
 
       // Perform batched vector dot product:
-      const int16_t* vector1_ptr = GetTensorData<int16_t>(weights_time_tensor);
+      const int16_t* vector1_ptr =
+          tflite::micro::GetTensorData<int16_t>(weights_time_tensor);
       const int16_t* vector2_ptr =
-          GetTensorData<int16_t>(activation_state_tensor) +
+          tflite::micro::GetTensorData<int16_t>(activation_state_tensor) +
           b * n_memory * n_filter;
 
       for (int i = 0; i < n_filter; i++) {
@@ -281,7 +291,8 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
     // Add bias.
     if (bias_tensor) {
       // Vector batch assign:
-      const int32_t* bias_data = GetTensorData<int32_t>(bias_tensor);
+      const int32_t* bias_data =
+          tflite::micro::GetTensorData<int32_t>(bias_tensor);
       for (int i = 0; i < n_batch; ++i) {
         int32_t* output_ptr = scratch_output_tensor + i * n_unit;
         const int32_t* bias_ptr = bias_data;
@@ -316,9 +327,10 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
       int32_t x1 = scratch_output_tensor[i];
       int32_t x2 = MultiplyByQuantizedMultiplier(x1, data.effective_scale_2_a,
                                                  data.effective_scale_2_b);
-      int32_t x3 = x2 + output_zp;
+      int32_t x3 = x2 + data.output_zero_point;
       int32_t x4 = std::min(std::max(output_min, x3), output_max);
-      GetTensorData<int8_t>(output_tensor)[i] = static_cast<int8_t>(x4);
+      tflite::micro::GetTensorData<int8_t>(output_tensor)[i] =
+          static_cast<int8_t>(x4);
     }
   }
 }
@@ -403,8 +415,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, activation_state->dims->data[0], batch_size);
   TF_LITE_ENSURE_EQ(context, activation_state->dims->data[1],
                     memory_size * num_filters);
+  // Since is_variable is not part of TFLiteEvalTensor, check is_variable here.
+  TF_LITE_ENSURE_EQ(context, activation_state->is_variable, true);
 
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
+
+  TFLITE_DCHECK(node->user_data != nullptr);
+  OpData* data = static_cast<OpData*>(node->user_data);
 
   if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteInt8);
@@ -430,13 +447,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  static_cast<double>(activation_state->params.scale *
                                      weights_time->params.scale)) < 1e-5);
 
-    TFLITE_DCHECK(node->user_data != nullptr);
-    OpData* data = static_cast<OpData*>(node->user_data);
-
     QuantizeMultiplier(effective_scale_1, &(data->effective_scale_1_a),
                        &(data->effective_scale_1_b));
     QuantizeMultiplier(effective_scale_2, &(data->effective_scale_2_a),
                        &(data->effective_scale_2_b));
+
+    data->input_zero_point = input->params.zero_point;
+    data->output_zero_point = output->params.zero_point;
 
     TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
 
@@ -459,9 +476,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
 
-    TFLITE_DCHECK(node->user_data != nullptr);
-    OpData* data = static_cast<OpData*>(node->user_data);
-
     TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
     const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
         context, batch_size * num_filters * sizeof(float),
@@ -474,19 +488,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
-
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* weights_feature =
-      GetInput(context, node, kWeightsFeatureTensor);
-  const TfLiteTensor* weights_time =
-      GetInput(context, node, kWeightsTimeTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  TfLiteTensor* activation_state =
-      GetVariableInput(context, node, kInputActivationStateTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
+
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* weights_feature =
+      tflite::micro::GetEvalInput(context, node, kWeightsFeatureTensor);
+  const TfLiteEvalTensor* weights_time =
+      tflite::micro::GetEvalInput(context, node, kWeightsTimeTensor);
+  const TfLiteEvalTensor* bias =
+      (NumInputs(node) == 5)
+          ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
+          : nullptr;
+  TfLiteEvalTensor* activation_state = tflite::micro::GetMutableEvalInput(
+      context, node, kInputActivationStateTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   switch (weights_feature->type) {
     case kTfLiteFloat32: {
@@ -499,8 +517,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
     case kTfLiteInt8: {
       EvalIntegerSVDF(context, node, input, weights_feature, weights_time, bias,
-                      params, activation_state, output, data,
-                      input->params.zero_point, output->params.zero_point);
+                      params, activation_state, output, data);
       return kTfLiteOk;
       break;
     }

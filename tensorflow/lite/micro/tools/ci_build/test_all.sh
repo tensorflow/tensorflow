@@ -49,10 +49,7 @@ tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh
 echo "Running stm32f4 tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh
 
-# TODO(b/158607483): Disabling Arduino because it is slow (~20mins) and has also
-# become very flaky from the download of cifar-10-binary.tar.gz which is 160 MB
-# and has started failing a lot.
-# echo "Running Arduino tests at `date`"
-# tensorflow/lite/micro/tools/ci_build/test_arduino.sh
+echo "Running Arduino tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 
 echo "Finished all micro tests at `date`"

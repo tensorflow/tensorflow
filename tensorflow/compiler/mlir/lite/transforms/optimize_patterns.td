@@ -404,11 +404,14 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
-// Convert squeeze to reshape if possible.
+// Returns True if the operand type is RankedTensorType.
+def HasRankedTensor : Constraint<
+    CPred<"$0.getType().isa<RankedTensorType>()">>;
+
 def ConvertSqueezeToReshape : Pat<
   (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
   (TFL_ReshapeOp $input, (ConstantOp (GetShape $squeeze_op))),
-  [(AnyStaticShapeTensor $squeeze_op)]>;
+  [(HasRankedTensor $squeeze_op)]>;
 
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<
@@ -422,6 +425,11 @@ class FloatValueEquals<string val> : Constraint<CPred<
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
 // ReLU patterns
+def MatchReluPattern : Pat<
+  (TFL_MaximumOp $input, (ConstantOp $Zero)),
+  (TFL_ReluOp $input),
+  [(FloatValueEquals<"0"> $Zero)]>;
+
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (ConstantOp $NegOne)),
     (ConstantOp $One)),
@@ -500,3 +508,81 @@ foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
 def OptimizeReluSquaredDifference : Pat<
   (TFL_ReluOp (TFL_SquaredDifferenceOp $l, $r)),
   (TFL_SquaredDifferenceOp $l, $r)>;
+
+// Optimize X^1 o X
+def OptimizePow1ToIdentity : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">)),
+  (replaceWithValue $input)>;
+
+// Optimize X^2 to X*X
+def OptimizePow2ToSquare : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
+  (TFL_MulOp $input, $input, TFL_AF_None)>;
+
+def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
+  "$0, $1.cast<DenseIntElementsAttr>())">>;
+
+def OptimizeIdentityGatherNdOp : Pat<
+  (TFL_GatherNdOp $params, (ConstantOp I32ElementsAttr: $indices)),
+  (replaceWithValue $params),
+  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices)]>;
+
+def OptimizeIdentityScatterNdOp : Pat<
+  (TFL_ScatterNdOp (ConstantOp I32ElementsAttr: $indices), $params, $ignored),
+  (replaceWithValue $params),
+  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices)]>;
+
+def ShapeMatchesReduceWithKeepAxes : Constraint<CPred<
+  "ShapeMatchesReduceWithKeepAxes($0, $1, $2)">>;
+
+// Fold reshapes re-inserting reduced dimensions into the results of a reduction
+// with `keep_dims=false` by chaning it to one using `keep_dims=true`.
+foreach ReduceOp = [TFL_ReduceMaxOp, TFL_ReduceMinOp, TFL_ReduceProdOp,
+                    TFL_SumOp] in {
+  def FoldReshapeTo#ReduceOp : Pat<
+    (TFL_ReshapeOp
+      (ReduceOp:$reduce $input, (ConstantOp I32ElementsAttr: $axes),
+                        ConstBoolAttrFalse),
+      (ConstantOp I32ElementsAttr: $shape)),
+    (ReduceOp $input, (ConstantOp $axes), ConstBoolAttrTrue),
+    [(ShapeMatchesReduceWithKeepAxes $input, $axes, $shape),
+     (HasOneUse $reduce)]>;
+}
+
+
+def IsSame : Constraint<CPred<"$0 == $1">>;
+def HasTwoUse : Constraint<CPred<
+  "std::distance($0.use_begin(), $0.use_end()) == 2">>;
+def AxesIsLastDimension : Constraint<CPred<
+  "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
+  "$0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
+  "$1.getType().cast<ShapedType>().getRank() - 1">>;
+
+// Convert exp(x)/sum(exp(x)) into softmax.
+def OptimizeToSoftmax : Pat<
+  (TFL_DivOp (TFL_ExpOp:$exp $input),
+             (TFL_SumOp:$sum $sum_input, (ConstantOp I32ElementsAttr: $axes),
+                             ConstBoolAttrTrue), TFL_AF_None),
+  (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">),
+  [(IsSame $exp, $sum_input),
+   (AxesIsLastDimension $axes, $sum_input),
+   (HasTwoUse $exp),
+   (HasOneUse $sum)]>;
+
+// Convert softmax(x-max(x)) into softmax(x) as the softmax op already deals
+// with the max normalization.
+def FoldNormalizationIntoSoftmax : Pat<
+  (TFL_SoftmaxOp
+    (TFL_SubOp:$sub $input,
+      (TFL_ReduceMaxOp:$max $max_input, (ConstantOp I32ElementsAttr: $axes),
+                            ConstBoolAttrTrue),
+    TFL_AF_None),
+    $beta),
+  (TFL_SoftmaxOp $input, $beta),
+  [(IsSame $input, $max_input),
+   (AxesIsLastDimension $axes, $max_input),
+   (HasOneUse $sub),
+   (HasOneUse $max)]>;

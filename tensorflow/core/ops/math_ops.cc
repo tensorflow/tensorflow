@@ -131,7 +131,7 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
@@ -1026,7 +1026,7 @@ REGISTER_OP("Min")
     .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
-    .Attr("T: numbertype")
+    .Attr("T: {realnumbertype, quantizedtype}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 
@@ -1035,7 +1035,7 @@ REGISTER_OP("Max")
     .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
-    .Attr("T: numbertype")
+    .Attr("T: {realnumbertype, quantizedtype}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 

@@ -50,8 +50,8 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
     drl_ = absl::make_unique<DeviceResolverLocal>(device_mgr_.get());
     prl_ = absl::make_unique<CollectiveParamResolverLocal>(
         cp, device_mgr_.get(), drl_.get(), kTaskName);
-    rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(
-        device_mgr_.get(), drl_.get(), work_queue_, kStepId);
+    rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(device_mgr_.get(),
+                                                          drl_.get(), kStepId);
   }
 
   ~CollectiveRemoteAccessLocalTest() override = default;
@@ -149,6 +149,17 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU1_2) {
   }
   // And still has distinct storage.
   EXPECT_NE(DMAHelper::base(&source_tensor), DMAHelper::base(&sink_tensor));
+}
+
+TEST_F(CollectiveRemoteAccessLocalTest, CheckHealth) {
+  Status status;
+  Notification done;
+  rma_->CheckPeerHealth(kTaskName, [&status, &done](const Status& s) {
+    status = s;
+    done.Notify();
+  });
+  done.WaitForNotification();
+  EXPECT_TRUE(errors::IsInternal(status));
 }
 
 }  // namespace

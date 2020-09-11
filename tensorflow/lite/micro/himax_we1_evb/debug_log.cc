@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Implementation for the DebugLog() function that prints to the UART on the
-// SparkFun Edge microcontroller. The same should work for other targets using
-// the Ambiq Apollo 3.
-
 #include "tensorflow/lite/micro/debug_log.h"
 
 #include "hx_drv_tflm.h"

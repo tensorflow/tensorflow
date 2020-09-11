@@ -29,23 +29,29 @@ namespace cl {
 class Mean : public GPUOperation {
  public:
   Mean() = default;
-  explicit Mean(const OperationDef& definition) : GPUOperation(definition) {}
+  Mean(const OperationDef& definition, const DeviceInfo& device_info);
 
-  absl::Status Tune(const TuningParameters& params) override {
-    return absl::OkStatus();
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
   }
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Mean(Mean&& operation);
   Mean& operator=(Mean&& operation);
   Mean(const Mean&) = delete;
   Mean& operator=(const Mean&) = delete;
+
+ private:
+  std::string GetMeanKernelCode(const OperationDef& op_def,
+                                const int3& work_group_size);
 };
 
-Mean CreateMean(const OperationDef& definition);
+Mean CreateMean(const OperationDef& definition, const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

@@ -30,7 +30,7 @@ from tensorflow.python.util import object_identity
 
 # pylint: disable=g-classes-have-attributes
 
-_KERAS_TENSORS_ENABLED = False
+_KERAS_TENSORS_ENABLED = True
 
 
 def enable_keras_tensors():
@@ -229,12 +229,8 @@ class KerasTensor(object):
 
     if hasattr(self, '_keras_history'):
       layer = self._keras_history.layer
-      node_index = self._keras_history.node_index
-      tensor_index = self._keras_history.tensor_index
       symbolic_description = (
-          ', description="Symbolic value %s from '
-          'symbolic call %s of layer \'%s\'"' % (
-              tensor_index, node_index, layer.name))
+          ', description="created by layer \'%s\'"' % (layer.name,))
     if self._inferred_value is not None:
       inferred_value_string = (
           ', inferred_value=%s' % self._inferred_value)
@@ -254,11 +250,7 @@ class KerasTensor(object):
 
     if hasattr(self, '_keras_history'):
       layer = self._keras_history.layer
-      node_index = self._keras_history.node_index
-      tensor_index = self._keras_history.tensor_index
-      symbolic_description = (
-          ' (Symbolic value %s from symbolic call %s of layer \'%s\')' % (
-              tensor_index, node_index, layer.name))
+      symbolic_description = ' (created by layer \'%s\')' % (layer.name,)
     if self._inferred_value is not None:
       inferred_value_string = (
           ' inferred_value=%s' % self._inferred_value)
@@ -433,6 +425,12 @@ class UserRegisteredSpec(type_spec_module.TypeSpec):
   def value_type(self):
     raise NotImplementedError
 
+# Tensorflow tensors have a maximum dimension of 254
+# (See //tensorflow/core/framework/tensor_shape.h )
+# So we do not try to infer values for int32 tensors larger than this,
+# As they cannot represent shapes.
+_MAX_TENSOR_DIMS = 254
+
 
 def keras_tensor_from_tensor(x):
   """Convert a traced (composite)tensor to a representative KerasTensor."""
@@ -461,7 +459,7 @@ def keras_tensor_from_tensor(x):
       and type_spec.dtype == dtypes.int32
       and type_spec.shape.rank < 2):
     # If this tensor might be representing shape information,
-    # (dtype=int32, rank of 0 or 1)
+    # (dtype=int32, rank of 0 or 1, not too large to represent a shape)
     # we attempt to capture any value information tensorflow's
     # shape handling can extract from the current scratch graph.
     #
@@ -476,9 +474,13 @@ def keras_tensor_from_tensor(x):
     #   manipulated w/ floating point numbers then converted back
     # * cases where int32 tensors w/ rank > 2 are manipulated before being
     #   used as a shape tensor
+    # * cases where int32 tensors too large to represent shapes are manipulated
+    #   to a smaller size before being used as a shape tensor
     inferred_value = array_ops.ones(shape=x).shape
     if inferred_value.dims:
       inferred_value = inferred_value.as_list()
+      if len(inferred_value) > _MAX_TENSOR_DIMS:
+        inferred_value = None
     else:
       inferred_value = None
 

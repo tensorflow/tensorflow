@@ -58,8 +58,8 @@ class CompositeTensor(object):
 
     Args:
       shape: A `tf.TensorShape` object.  The shape invariant for this
-        `CompositeTensor`, or `None` if a default shape invariant should be
-        used (based on the value of this `CompositeTensor`).
+        `CompositeTensor`, or `None` if a default shape invariant should be used
+        (based on the value of this `CompositeTensor`).
 
     Returns:
       A nested structure whose values are `tf.TensorShape` objects, specifying
@@ -68,8 +68,8 @@ class CompositeTensor(object):
     # New TypeSpec subclasses generally do not need to implement this --
     # this method is used for backwards compatibility.  Users of tf.while_loop
     # can specify a type by passing in TypeSpec instead.
-    raise NotImplementedError("%s._shape_invariant_to_type_spec"
-                              % type(self).__name__)
+    raise NotImplementedError("%s._shape_invariant_to_type_spec" %
+                              type(self).__name__)
 
   def _consumers(self):
     """Returns a list of `Operation`s that consume this `CompositeTensor`.
@@ -105,12 +105,13 @@ def replace_composites_with_components(structure):
     returns the same value as `nest.flatten(structure)`.
   """
   if isinstance(structure, CompositeTensor):
-    return replace_composites_with_components(structure._to_components())  # pylint: disable=protected-access
+    return replace_composites_with_components(
+        structure._type_spec._to_components(structure))  # pylint: disable=protected-access
   elif not nest.is_sequence(structure):
     return structure
   else:
-    return nest.map_structure(replace_composites_with_components, structure,
-                              expand_composites=False)
+    return nest.map_structure(
+        replace_composites_with_components, structure, expand_composites=False)
 
 
 # @TODO(edloper): Can we replace convert_to_tensor_or_xyz with just

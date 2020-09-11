@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -47,7 +48,7 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
                                const int* output_dims_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
 
-  int expected_size_dims_data[] = {2, 1, 2};
+  int expected_size_dims_data[] = {1, 2};
   TfLiteIntArray* expected_size_dims =
       IntArrayFromInts(expected_size_dims_data);
 
@@ -62,12 +63,7 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
       TestCreateTensor(output_data, output_dims),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+  tensors[1].allocation_type = kTfLiteMmapRo;
 
   TfLiteResizeNearestNeighborParams builtin_data = {false, false};
 
@@ -76,15 +72,14 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = nullptr;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_RESIZE_NEAREST_NEIGHBOR();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, &builtin_data,
+                             micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   // compare results
   for (int i = 0; i < output_dims_count; ++i) {

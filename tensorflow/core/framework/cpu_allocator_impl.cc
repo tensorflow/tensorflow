@@ -29,9 +29,8 @@ namespace tensorflow {
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
 
-void EnableCPUAllocatorStats(bool enable) {
-  cpu_allocator_collect_stats = enable;
-}
+void EnableCPUAllocatorStats() { cpu_allocator_collect_stats = true; }
+void DisableCPUAllocatorStats() { cpu_allocator_collect_stats = false; }
 bool CPUAllocatorStatsEnabled() { return cpu_allocator_collect_stats; }
 
 static const int kMaxTotalAllocationWarnings = 1;

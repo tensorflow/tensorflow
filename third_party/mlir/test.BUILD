@@ -17,21 +17,6 @@ cc_library(
 )
 
 gentbl(
-    name = "TestVectorTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestVectorTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
@@ -115,7 +100,6 @@ cc_library(
         "lib/Dialect/Test/TestTypes.h",
     ],
     includes = [
-        "lib/DeclarativeTransforms",
         "lib/Dialect/Test",
     ],
     deps = [
@@ -142,6 +126,8 @@ cc_library(
         "lib/IR/TestFunc.cpp",
         "lib/IR/TestInterfaces.cpp",
         "lib/IR/TestMatchers.cpp",
+        "lib/IR/TestPrintDefUse.cpp",
+        "lib/IR/TestPrintNesting.cpp",
         "lib/IR/TestSideEffects.cpp",
         "lib/IR/TestSymbolUses.cpp",
         "lib/IR/TestTypes.cpp",
@@ -188,7 +174,6 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
-        ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:Analysis",
@@ -197,10 +182,13 @@ cc_library(
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SPIRVDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
@@ -239,9 +227,22 @@ cc_library(
         "lib/Dialect/SPIRV/*.cpp",
     ]),
     deps = [
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SPIRVDialect",
         "@llvm-project//mlir:SPIRVLowering",
+    ],
+)
+
+cc_library(
+    name = "TestTypeDialect",
+    srcs = glob([
+        "lib/Dialect/LLVMIR/*.cpp",
+    ]),
+    deps = [
+        ":TestDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
     ],
 )

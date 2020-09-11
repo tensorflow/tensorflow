@@ -46,7 +46,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",

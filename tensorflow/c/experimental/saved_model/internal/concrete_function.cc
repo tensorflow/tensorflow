@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/function_metadata_type.h"
-#include "tensorflow/c/experimental/saved_model/internal/tensorhandle_list_type.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -35,15 +34,15 @@ TF_FunctionMetadata* TF_ConcreteFunctionGetMetadata(TF_ConcreteFunction* func) {
       &tensorflow::unwrap(func)->GetFunctionMetadata()));
 }
 
-TFE_Op* TF_ConcreteFunctionGetCallOp(TF_ConcreteFunction* func,
-                                     TFE_TensorHandle** inputs, int num_inputs,
-                                     TF_Status* status) {
+TFE_Op* TF_ConcreteFunctionMakeCallOp(TF_ConcreteFunction* func,
+                                      TFE_TensorHandle** inputs, int num_inputs,
+                                      TF_Status* status) {
   tensorflow::ImmediateOpPtr call_op;
   absl::Span<tensorflow::AbstractTensorHandle* const> input_span(
       reinterpret_cast<tensorflow::AbstractTensorHandle**>(
           tensorflow::unwrap(inputs)),
       static_cast<size_t>(num_inputs));
-  status->status = tensorflow::unwrap(func)->GetCallOp(input_span, &call_op);
+  status->status = tensorflow::unwrap(func)->MakeCallOp(input_span, &call_op);
   if (!status->status.ok()) {
     return nullptr;
   }

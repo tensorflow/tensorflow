@@ -42,6 +42,7 @@ from tensorflow.python.util import tf_decorator
 ASYNC_STATEFUL_OPS = [
     "CollectiveGather",
     "CollectiveReduce",
+    "CollectiveReduceV2",
     "CollectiveBcastSend",
     "CollectiveBcastRecv",
     "NcclAllReduce",

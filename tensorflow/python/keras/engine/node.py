@@ -169,6 +169,23 @@ class Node(object):
     arguments.update(kwargs)
     kwargs = arguments
 
+    def _serialize_keras_tensor(t):
+      """Serializes a single Tensor passed to `call`."""
+      if hasattr(t, '_keras_history'):
+        kh = t._keras_history
+        node_index = kh.node_index
+        node_key = make_node_key(kh.layer.name, node_index)
+        new_node_index = node_conversion_map.get(node_key, 0)
+        return [kh.layer.name, new_node_index, kh.tensor_index]
+
+      if isinstance(t, np.ndarray):
+        return t.tolist()
+
+      if isinstance(t, ops.Tensor):
+        return backend.get_value(t).tolist()
+
+      return t
+
     kwargs = nest.map_structure(_serialize_keras_tensor, kwargs)
     try:
       json.dumps(kwargs, default=json_utils.get_json_type)
@@ -273,18 +290,3 @@ class KerasHistory(
 
 def is_keras_tensor(obj):
   return hasattr(obj, '_keras_history')
-
-
-def _serialize_keras_tensor(t):
-  """Serializes a single Tensor passed to `call`."""
-  if hasattr(t, '_keras_history'):
-    kh = t._keras_history
-    return [kh.layer.name, kh.node_index, kh.tensor_index]
-
-  if isinstance(t, np.ndarray):
-    return t.tolist()
-
-  if isinstance(t, ops.Tensor):
-    return backend.get_value(t).tolist()
-
-  return t

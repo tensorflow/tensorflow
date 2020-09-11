@@ -112,14 +112,6 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
 // Returns an empty string if the einsum string already has an ->.
 std::string NormalizeEinsumString(absl::string_view einsum_config);
 
-// Determine if each dimension label is in at least two inputs.
-//
-// NOTE: This function is meant for testing, there is no need to call it
-// directly.
-Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
-                                       absl::Span<const int64> y_config,
-                                       absl::Span<const int64> output_config);
-
 // Supports two operand einsum notation like "ab,cb->ac".
 xla::XlaOp Einsum(
     xla::XlaOp x, xla::XlaOp y, absl::string_view einsum_config,
@@ -128,9 +120,6 @@ xla::XlaOp Einsum(
     xla::XlaOp x, absl::string_view einsum_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 
-// Handles repeated indices within an operand by taking the tensor diagonal of
-// the input.
-xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config);
 
 // Same as above but supporting numeric labels on dimensions. So "ab,cb->ac"
 // becomes:

@@ -1,4 +1,4 @@
-  # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,18 +26,19 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.module import module
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
@@ -389,7 +390,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       num_training_steps = 10
       checkpoint_directory = self.get_temp_dir()
       for training_continuation in range(3):
-        with test_util.device(use_gpu=True):
+        with testing_utils.device(should_use_gpu=True):
           model = MyModel()
           optimizer = adam.AdamOptimizer(0.001)
           root = trackable_utils.Checkpoint(
@@ -422,7 +423,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       for training_continuation in range(3):
-        with test_util.device(use_gpu=True):
+        with testing_utils.device(should_use_gpu=True):
           model = MyModel()
           # Don't actually train so we can test variable values
           optimizer = adam.AdamOptimizer(0.)
@@ -469,6 +470,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       pass  # Make sure we can use this as an op name if we prefix it.
     return named_variable.name
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testAnonymousVarsInInit(self):
 
     class Model(training.Model):
@@ -482,21 +484,20 @@ class CheckpointingTests(keras_parameterized.TestCase):
       def call(self, x):
         return x * self.w + self.b
 
-    with context.eager_mode():
-      model = Model()
-      optimizer = adam.AdamOptimizer(learning_rate=0.05)
-      checkpoint_directory = self.get_temp_dir()
-      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      checkpoint = trackable_utils.Checkpoint(
-          model=model, optimizer=optimizer)
-      for _ in range(2):
-        checkpoint.save(checkpoint_prefix)
-        with backprop.GradientTape() as tape:
-          loss = (constant_op.constant(1.)
-                  - model(constant_op.constant(1.))) ** 2
-        grad = tape.gradient(loss, model.vars)
-        optimizer.apply_gradients(
-            [(g, v) for g, v in zip(grad, model.vars)])
+    model = Model()
+    optimizer = adam.AdamOptimizer(learning_rate=0.05)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    checkpoint = trackable_utils.Checkpoint(
+        model=model, optimizer=optimizer)
+    for _ in range(2):
+      checkpoint.save(checkpoint_prefix)
+      with backprop.GradientTape() as tape:
+        loss = (constant_op.constant(1.)
+                - model(constant_op.constant(1.))) ** 2
+      grad = tape.gradient(loss, model.vars)
+      optimizer.apply_gradients(
+          [(g, v) for g, v in zip(grad, model.vars)])
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def test_initialize_if_not_restoring(self):
@@ -504,7 +505,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       optimizer_only_prefix = os.path.join(checkpoint_directory, "opt")
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.AdamOptimizer(0.001)
         root = trackable_utils.Checkpoint(
@@ -531,7 +532,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
         optimizer_save_path = optimizer_checkpoint.save(optimizer_only_prefix)
 
       # Restore into a graph with the optimizer
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.AdamOptimizer(0.001)
         root = trackable_utils.Checkpoint(
@@ -553,7 +554,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
           status.assert_consumed()
 
       # Make sure initialization doesn't clobber later restores
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.AdamOptimizer(0.001, beta1=1.0)
         root = trackable_utils.Checkpoint(
@@ -636,7 +637,7 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLoadFromNameBasedSaver(self):
     """Save a name-based checkpoint, load it using the object-based API."""
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       with self.test_session():
         save_path = self._write_name_based_checkpoint()
         root = self._initialized_model()
@@ -707,4 +708,5 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

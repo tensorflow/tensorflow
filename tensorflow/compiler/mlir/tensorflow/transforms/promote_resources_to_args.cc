@@ -304,7 +304,7 @@ LogicalResult PromoteResourcesToArguments(
       continue;
     }
 
-    const auto index = resource_and_index.index();
+    const int64_t index = resource_and_index.index();
     const bool is_var_handle = index >= var_handles_start_idx;
     if (resource.write) {
       if (!is_var_handle || resource.read) {
@@ -342,7 +342,8 @@ LogicalResult PromoteResourcesToArguments(
   }
 
   // Rewrite return if there are variable writes.
-  if (return_operands.size() > num_results_before) {
+  const int return_operands_size = return_operands.size();
+  if (return_operands_size > num_results_before) {
     builder.create<ReturnOp>(return_op.getLoc(), return_operands);
     return_op.erase();
   }

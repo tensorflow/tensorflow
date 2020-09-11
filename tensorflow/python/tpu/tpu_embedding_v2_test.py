@@ -50,6 +50,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding
 from tensorflow.python.tpu import tpu_embedding_v2
 from tensorflow.python.tpu import tpu_embedding_v2_utils
@@ -163,6 +164,9 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     )
 
   def test_checkpoint_restore_before_variable_creation(self):
+    # This test works right now because we only have one TPU host in the unit
+    # environment. Initializing from checkpoint does not understand how to
+    # pass the sharding info to the restore op right now.
 
     class TestModule(module.Module):
 
@@ -170,7 +174,6 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
         self._initializer = initializer
         self._rows = rows
 
-      def create_embedding(self):
         table = tpu_embedding_v2_utils.TableConfig(
             vocabulary_size=self._rows, dim=4, initializer=self._initializer,
             combiner='sum', name='table')
@@ -179,9 +182,13 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
         optimizer = tpu_embedding_v2_utils.SGD()
 
         self.tpu_embedding = tpu_embedding_v2.TPUEmbedding(
-            feature_config, self._rows, optimizer)
+            feature_config, optimizer)
 
-    # We need to clear the already loaded config provided by setUp method.
+      def create_embedding(self):
+        # We aren't training so batch_size here doesn't matter.
+        self.tpu_embedding.build(64)
+
+    # We need to clear the any already loaded config provided by setUp method.
     tpu_strategy_util.initialize_tpu_system(self.resolver)
 
     with self.strategy.scope():
@@ -227,11 +234,23 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     feature_config = (tpu_embedding_v2_utils.FeatureConfig(
         table=table, name='feature'),)
 
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config, optimizer)
+
+    # We want to create a second object (with its own variables) but not
+    # initialize the TPU.
+    if not initialize_tpu_embedding:
+      saved_fn = tpu.initialize_system_for_tpu_embedding
+      tpu.initialize_system_for_tpu_embedding = lambda x: None
+
     # batch_size here does not matter as we aren't training in any of these
     # tests.
-    return tpu_embedding_v2.TPUEmbedding(
-        feature_config, 64, optimizer,
-        initialize_tpu_embedding=initialize_tpu_embedding)
+    mid_level.build(64)
+
+    if not initialize_tpu_embedding:
+      tpu.initialize_system_for_tpu_embedding = saved_fn
+
+    return mid_level
 
   def make_checkpoint_and_get_embedding(self, name, model):
     """Saves model to checkpoint name, retrieves embedding variables."""
@@ -406,7 +425,6 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
                      dim=2,
                      initializer=self.initializer),
                  name='favorited')),
-            self.batch_size,
             tpu_embedding_v2_utils.SGD(learning_rate=0.1))
 
   def test_unsupported_optimizer(self):
@@ -414,11 +432,14 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
         ValueError, 'is an unsupported optimizer class.'):
       with self._get_strategy().scope():
         tpu_embedding_v2.TPUEmbedding(
-            self.feature_config, self.batch_size,
+            self.feature_config,
             tpu_embedding.AdagradParameters(learning_rate=0.1))
 
   def test_pass_non_tensor_to_apply_gradients(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+    # We aren't going to actually run anything, so the batch_size here does not
+    # matter.
+    mid_level_api.build(64)
 
     @def_function.function
     def test_apply():
@@ -429,7 +450,9 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   def test_pass_different_structure_to_apply_gradients(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
-
+    # We aren't going to actually run anything, so the batch_size here does not
+    # matter.
+    mid_level_api.build(64)
     @def_function.function
     def test_apply():
       # This should be a tuple as feature_config is a tuple of 3 configs.
@@ -442,6 +465,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   def test_pass_none_to_apply_gradients(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+    mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
     data = next(iter(strategy.experimental_distribute_dataset(
         dataset,
@@ -492,7 +516,9 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project)
     remote.connect_to_cluster(self.resolver)
     tpu_strategy_util.initialize_tpu_system(self.resolver)
-    return tpu_strategy.TPUStrategy(self.resolver)
+    strategy = tpu_strategy.TPUStrategy(self.resolver)
+    self.num_replicas = strategy.num_replicas_in_sync
+    return strategy
 
   def test_dequeue_on_cpu(self):
     mid_level_api = self._create_mid_level()
@@ -767,6 +793,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     else:
       dataset = self._create_sparse_dataset(strategy, include_weights=True,
                                             weight=weight)
+      mid_level_api.build(self.batch_size)
 
     dataset_iter = iter(strategy.experimental_distribute_dataset(
         dataset,
@@ -808,6 +835,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
       config.enable_mlir_bridge()
 
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+    mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
     dataset_iter = iter(strategy.experimental_distribute_dataset(
         dataset,
@@ -872,6 +900,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   def test_enqueue_with_outside_compilation_non_direct_input(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+    mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
     dataset_iter = iter(strategy.experimental_distribute_dataset(
         dataset,
@@ -894,6 +923,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   def test_enqueue_with_outside_compilation_auto_mode(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+    mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
     dataset_iter = iter(strategy.experimental_distribute_dataset(
         dataset,
@@ -973,11 +1003,8 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     if optimizer is None:
       optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
 
-    num_replicas = (
-        distribution_strategy_context.get_strategy().num_replicas_in_sync)
     return tpu_embedding_v2.TPUEmbedding(
         feature_config=self.feature_config,
-        batch_size=self.batch_size * num_replicas,
         optimizer=optimizer)
 
   def _create_sparse_dataset(self, strategy, include_weights=False, weight=0.5):
@@ -1093,7 +1120,6 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
           feature_config={
               'feature': tpu_embedding_v2_utils.FeatureConfig(
                   table=table_config, name='feature')},
-          batch_size=num_replicas,
           optimizer=optimizer)
 
     feature = {'feature': constant_op.constant([0], dtype=dtypes.int32)}
@@ -1164,12 +1190,13 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
       strategy = self._get_strategy()
     else:
       strategy = distribution_strategy_context.get_strategy()
-    num_replicas = strategy.num_replicas_in_sync
     with strategy.scope():
       mid_level = tpu_embedding_v2.TPUEmbedding(
           feature_config=self.feature_config,
-          batch_size=self.batch_size * num_replicas,
           optimizer=optimizer)
+      # We aren't going to actually run anything, so the batch_size here does
+      # not matter.
+      mid_level.build(self.batch_size)
     video_accumulator = mid_level._variables['video']['accumulators']
     user_accumulator = mid_level._variables['user']['accumulators']
     if use_tpu:
@@ -1203,14 +1230,15 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
         learning_rate=0.1,
         slot_variable_creation_fn=slot_creation_fn)
     strategy = self._get_strategy()
-    num_replicas = strategy.num_replicas_in_sync
     with strategy.scope():
+      mid_level_api = tpu_embedding_v2.TPUEmbedding(
+          feature_config=self.feature_config,
+          optimizer=optimizer)
       with self.assertRaisesRegex(ValueError,
                                   'Unable to extract initializer function'):
-        tpu_embedding_v2.TPUEmbedding(
-            feature_config=self.feature_config,
-            batch_size=self.batch_size*num_replicas,
-            optimizer=optimizer)
+        # We aren't going to actually run anything, so the batch_size here does
+        # not matter.
+        mid_level_api.build(self.batch_size)
 
 
 def _unpack(strategy, per_replica_output):

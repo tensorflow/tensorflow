@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
@@ -253,6 +254,10 @@ struct OpData {
   int32_t output_multiplier;
   int output_shift;
 
+  // Cached tensor zero point values for quantized operations.
+  int32_t input_zero_point;
+  int32_t output_zero_point;
+
   // Per channel output multiplier and shift.
   int32_t* per_channel_output_multiplier;
   int32_t* per_channel_output_shift;
@@ -334,7 +339,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   op_data->per_channel_output_shift =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
-
+  op_data->input_zero_point = input->params.zero_point;
+  op_data->output_zero_point = output->params.zero_point;
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
@@ -362,14 +368,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, OpData* data,
-                             const TfLiteTensor* input,
-                             const TfLiteTensor* filter,
-                             const TfLiteTensor* bias, TfLiteTensor* output,
-                             TfLiteTensor* im2col) {
+                             const TfLiteEvalTensor* input,
+                             const TfLiteEvalTensor* filter,
+                             const TfLiteEvalTensor* bias,
+                             TfLiteEvalTensor* output,
+                             TfLiteEvalTensor* im2col) {
   // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
-  op_params.input_offset = -input->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
+  op_params.input_offset = -data->input_zero_point;
+  op_params.output_offset = data->output_zero_point;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
   op_params.dilation_height_factor = params->dilation_height_factor;
@@ -381,11 +388,14 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 
   xtensa::hifimini::ConvPerChannel(
       op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8_t>(input), GetTensorShape(filter),
-      GetTensorData<int8_t>(filter), GetTensorShape(bias),
-      GetTensorData<int32_t>(bias), GetTensorShape(output),
-      GetTensorData<int8_t>(output));
+      data->per_channel_output_shift, tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int8_t>(input),
+      tflite::micro::GetTensorShape(filter),
+      tflite::micro::GetTensorData<int8_t>(filter),
+      tflite::micro::GetTensorShape(bias),
+      tflite::micro::GetTensorData<int32_t>(bias),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -394,10 +404,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* filter =
+      tflite::micro::GetEvalInput(context, node, kFilterTensor);
+  const TfLiteEvalTensor* bias =
+      (NumInputs(node) == 3)
+          ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
+          : nullptr;
 
   int* input_dims = input->dims->data;
   int* filter_dims = filter->dims->data;
@@ -405,14 +421,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       input_dims[3] == 32 && filter_dims[0] == 32 && filter_dims[1] == 1 &&
       filter_dims[2] == 1 && filter_dims[3] == 32) {
     xtensa::hifimini::Conv1x32Input32x32Filter(
-        -input->params.zero_point, output->params.zero_point,
+        -op_data->input_zero_point, op_data->output_zero_point,
         op_data->output_activation_min, op_data->output_activation_max,
         op_data->per_channel_output_multiplier,
-        op_data->per_channel_output_shift, GetTensorShape(input),
-        GetTensorData<int8_t>(input), GetTensorShape(filter),
-        GetTensorData<int8_t>(filter), GetTensorShape(bias),
-        GetTensorData<int32_t>(bias), GetTensorShape(output),
-        GetTensorData<int8_t>(output));
+        op_data->per_channel_output_shift, tflite::micro::GetTensorShape(input),
+        tflite::micro::GetTensorData<int8_t>(input),
+        tflite::micro::GetTensorShape(filter),
+        tflite::micro::GetTensorData<int8_t>(filter),
+        tflite::micro::GetTensorShape(bias),
+        tflite::micro::GetTensorData<int32_t>(bias),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<int8_t>(output));
     return kTfLiteOk;
   }
 

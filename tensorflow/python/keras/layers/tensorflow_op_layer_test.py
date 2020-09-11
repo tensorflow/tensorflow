@@ -131,6 +131,55 @@ def _shape_op_slice_and_range_known_dim():
     return keras.Model(inputs, inputs)
 
 
+def _int32_manipulation_too_big_for_shape():
+  # This test verifies that the Keras Functional API
+  # won't crash when manipulating int32 tensors that are too large
+  # to represent shapes.
+  inputs = keras.Input(batch_size=2, shape=(10,))
+  batch_size = array_ops.shape(inputs)[0]
+  num_features = 3 * 1024 * 16
+  x = math_ops.range(batch_size * num_features, dtype='int32')
+  assert x.shape.as_list() == [inputs.shape[0] * num_features]
+  x = array_ops.reshape(x, (batch_size, num_features))
+  x = math_ops.cast(x, dtype='float32')
+  outputs = keras.layers.Dense(10)(x)
+  if context.executing_eagerly():
+    return keras.Model(inputs, outputs)
+  else:
+    # In V1 the op layer fails for some reason,
+    # but we don't have access to the test case to call
+    # self.skip_test in this util method
+    return keras.Model(inputs, inputs)
+
+
+def _int32_manipulation_at_max_shape_dims_limit():
+  # This test verifies that the Keras Functional API
+  # won't crash when manipulating int32 tensors that are at the limit
+  # of the max tensor size Keras can try inferring values for.
+  inputs = keras.Input(batch_size=2, shape=(10,))
+  batch_size = array_ops.shape(inputs)[0]
+  num_features = int(keras_tensor._MAX_TENSOR_DIMS / int(inputs.shape[0]))
+  x = math_ops.range(batch_size * num_features, dtype='int32')
+  assert x.shape.as_list() == [keras_tensor._MAX_TENSOR_DIMS]
+
+  # Verify that a value was actually inferred for a tensor that *might*
+  # represent the shape, bying checking that a value in
+  # the range appears in the printed inferred value
+  if keras_tensor.keras_tensors_enabled():
+    assert str(keras_tensor._MAX_TENSOR_DIMS - 1) in str(x)
+
+  x = array_ops.reshape(x, (batch_size, num_features))
+  x = math_ops.cast(x, dtype='float32')
+  outputs = keras.layers.Dense(10)(x)
+  if context.executing_eagerly():
+    return keras.Model(inputs, outputs)
+  else:
+    # In V1 the op layer fails for some reason,
+    # but we don't have access to the test case to call
+    # self.skip_test in this util method
+    return keras.Model(inputs, inputs)
+
+
 def _single_standalone_branch():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
@@ -252,6 +301,10 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       ('shape_op_slice_and_range', _shape_op_slice_and_range),
       ('shape_op_slice_and_range_known_dim',
        _shape_op_slice_and_range_known_dim),
+      ('int32_manipulation_too_big_for_shape',
+       _int32_manipulation_too_big_for_shape),
+      ('int32_manipulation_at_max_shape_dims_limit',
+       _int32_manipulation_at_max_shape_dims_limit),
       ('single_standalone_branch', _single_standalone_branch),
       ('single_op_with_attrs', _single_op_with_attrs),
       ('multiple_uses', _multiple_uses),
@@ -271,9 +324,9 @@ class AutoLambdaTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
 
     np_inputs = nest.map_structure(
-        lambda x: np.ones((10,) + tuple(x.shape[1:]), 'float32'), model.inputs)
+        lambda x: np.ones((2,) + tuple(x.shape[1:]), 'float32'), model.inputs)
     np_outputs = nest.map_structure(
-        lambda x: np.ones((10,) + tuple(x.shape[1:]), 'float32'), model.outputs)
+        lambda x: np.ones((2,) + tuple(x.shape[1:]), 'float32'), model.outputs)
     model.fit(np_inputs, np_outputs, batch_size=2)
     model(np_inputs)  # Test calling the model directly on inputs.
 
@@ -349,7 +402,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
   def test_getitem_slice_with_step_only(self):
     if not context.executing_eagerly():
       self.skipTest('Complex slicing like this fails in v1')
-    inp = keras.Input(shape=(4, 3, 8))
+    inp = keras.Input(shape=(8,))
     slice_step = keras.Input(shape=(), dtype='int32')
 
     out = inp[..., ::slice_step[0]]
@@ -455,7 +508,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
   def test_getitem_slice_with_stop_only(self):
     if not context.executing_eagerly():
       self.skipTest('Complex slicing like this fails in v1')
-    inp = keras.Input(shape=(4, 3, 8))
+    inp = keras.Input(shape=(8,))
     slice_stop = keras.Input(shape=(), dtype='int32')
 
     out = inp[:slice_stop[0]]
@@ -491,7 +544,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
   def test_getitem_slice_with_stop_and_ellipsis_only(self):
     if not context.executing_eagerly():
       self.skipTest('Complex slicing like this fails in v1')
-    inp = keras.Input(shape=(4, 3, 8))
+    inp = keras.Input(shape=(8,))
     slice_stop = keras.Input(shape=(), dtype='int32')
 
     out = inp[..., :slice_stop[0]]
@@ -584,7 +637,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual(model(ones), 3.0 * ones)
 
   def test_numerical_correctness_simple(self):
-    x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)
     model = keras.Model(inputs, outputs)
@@ -592,15 +645,15 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllClose(y, [[0., 0., 0., 1.]])
 
   def test_numerical_correctness_with_attrs(self):
-    x = ops.convert_to_tensor_v2([[1.5, 1.5], [2.5, 3.5]])
-    inputs = keras.Input(shape=(10,))
+    x = ops.convert_to_tensor_v2_with_dispatch([[1.5, 1.5], [2.5, 3.5]])
+    inputs = keras.Input(shape=(2,))
     outputs = math_ops.reduce_mean(inputs, axis=1)
     model = keras.Model(inputs, outputs)
     y = self.evaluate(model(x))
     self.assertAllClose(y, [1.5, 3.])
 
   def test_numerical_correctness_serialization(self):
-    x = ops.convert_to_tensor_v2([-1., 0., -2., 1.])
+    x = ops.convert_to_tensor_v2_with_dispatch([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)
     model1 = keras.Model(inputs, outputs)
@@ -678,7 +731,8 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model.summary()
 
 
-class InputInEagerTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class InputInEagerTest(keras_parameterized.TestCase):
   """Tests ops on keras inputs in Eager runtime.
 
   Input returns graph/symbolic tensors in the Eager runtime (this
@@ -687,21 +741,19 @@ class InputInEagerTest(test.TestCase):
   """
 
   def test_identity(self):
-    with context.eager_mode():
-      x = keras.Input(shape=(1,))
-      ident = array_ops.identity(x)
+    x = keras.Input(shape=(1,))
+    ident = array_ops.identity(x)
 
-      # This is now a graph tensor, and should be able to continue in graphland
-      self.assertIn('Identity', ident.name)
+    # This is now a graph tensor, and should be able to continue in graphland
+    self.assertIn('Identity', ident.name)
 
   def test_size(self):
-    with context.eager_mode():
-      x = keras.Input(shape=(3,))
-      self.assertAllEqual(x.get_shape().as_list(), [None, 3])
-      sz = array_ops.size(x)
+    x = keras.Input(shape=(3,))
+    self.assertAllEqual(x.get_shape().as_list(), [None, 3])
+    sz = array_ops.size(x)
 
-      # This is now a graph tensor, and should be able to continue in graphland
-      self.assertIn('Size', sz.name)
+    # This is now a graph tensor, and should be able to continue in graphland
+    self.assertIn('Size', sz.name)
 
 
 if __name__ == '__main__':

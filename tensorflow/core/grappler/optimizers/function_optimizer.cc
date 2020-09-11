@@ -828,8 +828,9 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
       {// LINT.IfChange
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
-       "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
-       "CollectiveBcastRecv", "NcclAllReduce", "Send", "Recv",
+       "CollectiveGather", "CollectiveReduce", "CollectiveReduceV2",
+       "CollectiveBcastSend", "CollectiveBcastRecv", "NcclAllReduce", "Send",
+       "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -1251,7 +1252,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), false));
-      } else if (n->type_string() == "Case") {
+      } else if (n->IsCaseNode()) {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
       } else if (n->IsWhileNode()) {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));

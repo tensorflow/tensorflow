@@ -17,9 +17,7 @@ func @batchmatmulv2_basic(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) ->
 // CHECK:           [[LHSSHAPEEXTENTS:%.*]] = shape.to_extent_tensor [[LHSBCASTSHAPE]]
 // CHECK:           [[LHSBCAST:%.*]] = "mhlo.dynamic_broadcast_in_dim"([[LHS]], [[LHSSHAPEEXTENTS]]) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<1x4x2xf32>, tensor<3xindex>) -> tensor<3x4x2xf32>
 // CHECK:           [[RHSBCASTSHAPE:%.*]] = shape.concat [[BCASTHEAD]], [[RHSTAIL]]
-// CHECK:           [[RHSSHAPEEXTENTS:%.*]] = shape.to_extent_tensor [[RHSBCASTSHAPE]]
-// CHECK:           [[RHSBCAST:%.*]] = "mhlo.dynamic_broadcast_in_dim"([[RHS]], [[RHSSHAPEEXTENTS]]) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<3x2x4xf32>, tensor<3xindex>) -> tensor<3x2x4xf32>
-// CHECK:           [[RESULT:%.*]] = "mhlo.dot_general"([[LHSBCAST]], [[RHSBCAST]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}} : (tensor<3x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+// CHECK:           [[RESULT:%.*]] = "mhlo.dot_general"([[LHSBCAST]], [[RHS]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}} : (tensor<3x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
 // CHECK:           return [[RESULT]] : tensor<3x4x4xf32>
 // CHECK:         }
 
@@ -29,7 +27,6 @@ func @batchmatmulv2_basic(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) ->
 
 func @batchmatmulv2_lhs_batch(%arg0: tensor<3x4x2xf32>, %arg1: tensor<2x4xf32>) -> tensor<3x4x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_lhs_batch
-// CHECK:           "mhlo.dynamic_broadcast_in_dim"({{.*}}, {{.*}}) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
 // CHECK:           "mhlo.dynamic_broadcast_in_dim"({{.*}}, {{.*}}) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {dot_dimension_numbers = {
 // CHECK-SAME:        lhs_batching_dimensions = dense<0> : tensor<1xi64>,
@@ -43,7 +40,6 @@ func @batchmatmulv2_lhs_batch(%arg0: tensor<3x4x2xf32>, %arg1: tensor<2x4xf32>) 
 func @batchmatmulv2_rhs_batch(%arg0: tensor<4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_rhs_batch
 // CHECK:           "mhlo.dynamic_broadcast_in_dim"({{.*}}, {{.*}}) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
-// CHECK:           "mhlo.dynamic_broadcast_in_dim"({{.*}}, {{.*}}) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {dot_dimension_numbers = {
 // CHECK-SAME:        lhs_batching_dimensions = dense<0> : tensor<1xi64>,
 // CHECK-SAME:        lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
@@ -64,20 +60,20 @@ func @batchmatmulv2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) 
   return %0 : tensor<?x?x?xf32>
 }
 
-func @batchmatmulv2_adj_real(%arg0: tensor<5x2xf32>, %arg1: tensor<2x4xf32>) -> tensor<5x4xf32> {
+func @batchmatmulv2_adj_real(%arg0: tensor<2x5xf32>, %arg1: tensor<4x2xf32>) -> tensor<5x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_real
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {dot_dimension_numbers = {
 // CHECK-SAME:        lhs_batching_dimensions = dense<> : tensor<0xi64>,
 // CHECK-SAME:        lhs_contracting_dimensions = dense<0> : tensor<1xi64>,
 // CHECK-SAME:        rhs_batching_dimensions = dense<> : tensor<0xi64>,
 // CHECK-SAME:        rhs_contracting_dimensions = dense<1> : tensor<1xi64>}}
-  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<5x2xf32>, tensor<2x4xf32>) -> tensor<5x4xf32>
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<2x5xf32>, tensor<4x2xf32>) -> tensor<5x4xf32>
   return %0 : tensor<5x4xf32>
 }
 
-func @batchmatmulv2_adj_complex(%arg0: tensor<5x2xcomplex<f32>>, %arg1: tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
+func @batchmatmulv2_adj_complex(%arg0: tensor<2x5xcomplex<f32>>, %arg1: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_complex(
-// CHECK-SAME:                                    [[LHS:%.*]]: tensor<5x2xcomplex<f32>>, [[RHS:%.*]]: tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
+// CHECK-SAME:                                    [[LHS:%.*]]: tensor<2x5xcomplex<f32>>, [[RHS:%.*]]: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
 // CHECK:           [[LHSRE:%.*]] = "mhlo.real"([[LHS]])
 // CHECK:           [[LHSIM:%.*]] = "mhlo.imag"([[LHS]])
 // CHECK:           [[LHSIMNEG:%.*]] = "mhlo.negate"([[LHSIM]])
@@ -88,6 +84,6 @@ func @batchmatmulv2_adj_complex(%arg0: tensor<5x2xcomplex<f32>>, %arg1: tensor<2
 // CHECK:           [[RHSCONJ:%.*]] = "mhlo.complex"([[RHSRE]], [[RHSIMNEG]])
 // CHECK:           shape.shape_of [[LHSCONJ]]
 // CHECK:           shape.shape_of [[RHSCONJ]]
-  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<5x2xcomplex<f32>>, tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>>
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<2x5xcomplex<f32>>, tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>>
   return %0 : tensor<5x4xcomplex<f32>>
 }

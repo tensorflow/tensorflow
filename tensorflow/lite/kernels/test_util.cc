@@ -79,12 +79,23 @@ std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
   return matchers;
 }
 
-int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
+int SingleOpModel::AddInput(const TensorData& t) {
   int id = 0;
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {}, is_variable);
+    id = AddTensor<float>(t, {});
+  }
+  inputs_.push_back(id);
+  return id;
+}
+
+int SingleOpModel::AddVariableInput(const TensorData& t) {
+  int id = 0;
+  if (t.per_channel_quantization) {
+    id = AddTensorPerChannelQuant(t);
+  } else {
+    id = AddTensor<float>(t, {}, true);
   }
   inputs_.push_back(id);
   return id;
@@ -145,10 +156,22 @@ void SingleOpModel::SetCustomOp(
       CustomOptionsFormat_FLEXBUFFERS));
 }
 
+void SingleOpModel::AllocateAndDelegate(bool apply_delegate) {
+  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
+      << "Cannot allocate tensors";
+  interpreter_->ResetVariableTensors();
+
+  // In some rare cases a test may need to postpone modifying the graph with
+  // a delegate, e.g. if tensors are not fully specified. In such cases the
+  // test has to explicitly call ApplyDelegate() when necessary.
+  if (apply_delegate) ApplyDelegate();
+}
+
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
                                      bool allow_fp32_relax_to_fp16,
-                                     bool apply_delegate) {
+                                     bool apply_delegate,
+                                     bool allocate_and_delegate) {
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
   auto tensors = builder_.CreateVector(tensors_);
@@ -190,14 +213,9 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   interpreter_->SetAllowFp16PrecisionForFp32(allow_fp32_relax_to_fp16);
 
-  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
-      << "Cannot allocate tensors";
-  interpreter_->ResetVariableTensors();
-
-  // In some rare cases a test may need to postpone modifying the graph with
-  // a delegate, e.g. if tensors are not fully specified. In such cases the
-  // test has to explicitly call ApplyDelegate() when necessary.
-  if (apply_delegate) ApplyDelegate();
+  if (allocate_and_delegate) {
+    AllocateAndDelegate(apply_delegate);
+  }
 }
 
 TfLiteStatus SingleOpModel::ApplyDelegate() {
@@ -229,7 +247,7 @@ void SingleOpModel::BuildInterpreter(
     std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
                    /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true);
+                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true);
 }
 
 // static

@@ -435,9 +435,6 @@ class DeviceTest(test.TestCase):
     self.assertEqual(len(config.get_visible_devices('CPU')), 1)
     self.assertGreater(len(config.get_visible_devices('GPU')), 0)
 
-    # get_visible_devices filters out XLA_* devices.  list_logical_devices does
-    # not, but we can't call it here because it initializes the devices and
-    # calling set_visible_devices after that is disallowed.
     self.assertEqual(len(config.get_visible_devices('XLA_GPU')), 0)
 
     config.set_visible_devices(cpus[0])
@@ -448,12 +445,6 @@ class DeviceTest(test.TestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 'Could not satisfy'):
       with ops.device('/device:GPU:0'):
-        a = array_ops.identity(1.0)
-        self.evaluate(a)
-
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                'Could not satisfy'):
-      with ops.device('/device:XLA_GPU:0'):
         a = array_ops.identity(1.0)
         self.evaluate(a)
 
@@ -759,38 +750,36 @@ class DeviceTest(test.TestCase):
 class TensorFloat32Test(test.TestCase):
 
   def setUp(self):
+    super(TensorFloat32Test, self).setUp()
     if not test_util.is_gpu_available(
         cuda_only=True, min_cuda_compute_capability=(8, 0)):
       self.skipTest('TensorFloat-32 requires an NVIDIA GPU with compute '
                     'capability of at least 8.0')
 
   def tearDown(self):
-    config.allow_tensor_float_32_execution(False)
+    super(TensorFloat32Test, self).tearDown()
+    config.enable_tensor_float_32_execution(True)
 
-  def test_tf32_enabled(self):
-    self.assertFalse(config.tensor_float_32_execution_allowed())
-    config.allow_tensor_float_32_execution(True)
-    self.assertTrue(config.tensor_float_32_execution_allowed())
+  def test_tensor_float_32_enabled(self):
+    self.assertTrue(config.tensor_float_32_execution_enabled())
 
     x = array_ops.fill((8, 8), 1 + 2**-20)
     y = array_ops.ones((8, 8))
     out = math_ops.matmul(x, y)
-    # In tf32, each element of x is rounded to 1, so the output will be 8s.
+    # In TensorFloat-32, each element of x is rounded to 1, so the output will
+    # be 8s.
     expected = array_ops.fill((8, 8), 8)
     self.assertAllEqual(out, expected)
 
-  def test_tf32_disabled(self):
+  def test_tensor_float_32_disabled(self):
+    self.assertTrue(config.tensor_float_32_execution_enabled())
+    config.enable_tensor_float_32_execution(False)
+    self.assertFalse(config.tensor_float_32_execution_enabled())
+
     x = array_ops.fill((8, 8), 1 + 2**-20)
     y = array_ops.ones((8, 8))
     out = math_ops.matmul(x, y)
     expected = array_ops.fill((8, 8), 8 * (1 + 2**-20))
-    self.assertAllEqual(out, expected)
-
-    # Test disabling tf32 after enabling it works correctly
-    config.allow_tensor_float_32_execution(True)
-    config.allow_tensor_float_32_execution(False)
-    self.assertFalse(config.tensor_float_32_execution_allowed())
-    out = math_ops.matmul(x, y)
     self.assertAllEqual(out, expected)
 
 

@@ -13,6 +13,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "distribute_test_lib_pip",
     deps = [
+        ":all_reduce",
         ":combinations",
         ":multi_worker_test_base",
         ":single_loss_example",
@@ -89,7 +90,6 @@ py_library(
     srcs = ["cross_device_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":all_reduce",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -141,11 +141,13 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":all_reduce",
         ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
         ":one_device_strategy",
         ":sharded_variable",
+        "//tensorflow/python/distribute/client:parameter_server_client",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -431,44 +433,6 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
-    ],
-)
-
-py_library(
-    name = "mirrored_function_strategy",
-    srcs = ["mirrored_function_strategy.py"],
-    deps = [
-        ":device_util",
-        ":distribute_lib",
-        ":mirrored_strategy",
-        ":numpy_dataset",
-        ":values",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:type_spec",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
-    ],
-)
-
-tf_py_test(
-    name = "mirrored_function_strategy_test",
-    srcs = ["mirrored_function_strategy_test.py"],
-    python_version = "PY3",
-    tags = ["no_pip"],
-    deps = [
-        ":distribute_lib",
-        ":mirrored_function_strategy",
-        ":strategy_combinations",
-        ":values",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -794,9 +758,13 @@ py_library(
     deps = [
         ":distribute_lib",
         ":reduce_util",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
     ],
 )
 
@@ -806,6 +774,7 @@ py_library(
     deps = [
         ":packed_distributed_variable",
         ":values",
+        ":values_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops_gen",
@@ -843,9 +812,6 @@ py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
-    tags = [
-        "notsan",  # TODO(b/160006974)
-    ],
     deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",
@@ -887,6 +853,7 @@ py_library(
 distribute_py_test(
     name = "strategy_combinations_test",
     srcs = ["strategy_combinations_test.py"],
+    disable_mlir_bridge = False,
     python_version = "PY3",
     deps = [
         ":combinations",
@@ -904,6 +871,7 @@ py_library(
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":multi_process_runner",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
@@ -913,9 +881,19 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "multi_worker_test_base_test",
+    srcs = ["multi_worker_test_base_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":multi_worker_test_base",
     ],
 )
 
@@ -941,6 +919,7 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
+    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -956,6 +935,7 @@ distribute_py_test(
 distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
+    disable_mlir_bridge = False,
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
@@ -1043,26 +1023,19 @@ cuda_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
-        ":collective_all_reduce_strategy",
-        ":collective_util",
         ":combinations",
         ":cross_device_ops",
-        ":cross_device_utils",
-        ":device_util",
+        ":multi_process_runner",
         ":multi_worker_test_base",
-        ":multi_worker_util",
         ":reduce_util",
-        ":strategy_combinations",
         ":values",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:collective_ops",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:kernels",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:indexed_slices",
+        "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1151,6 +1124,7 @@ distribute_py_test(
     name = "values_test",
     size = "medium",
     srcs = ["values_test.py"],
+    disable_mlir_bridge = False,
     main = "values_test.py",
     shard_count = 5,
     tags = [
@@ -1165,6 +1139,8 @@ distribute_py_test(
         ":distribute_lib",
         ":distribute_utils",
         ":packed_distributed_variable",
+        ":parameter_server_strategy",
+        ":ps_values",
         ":strategy_combinations",
         ":test_util",
         ":tpu_strategy",
@@ -1172,6 +1148,7 @@ distribute_py_test(
         ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -1183,6 +1160,7 @@ distribute_py_test(
         "//tensorflow/python:saver",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf2",
         "//tensorflow/python:training",
@@ -1195,6 +1173,7 @@ distribute_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
@@ -1204,6 +1183,7 @@ distribute_py_test(
 distribute_py_test(
     name = "distribute_utils_test",
     srcs = ["distribute_utils_test.py"],
+    disable_mlir_bridge = False,
     main = "distribute_utils_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1222,6 +1202,7 @@ distribute_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
+        "@wrapt",
     ],
 )
 
@@ -1269,6 +1250,7 @@ distribute_py_test(
     name = "ps_values_test",
     size = "medium",
     srcs = ["ps_values_test.py"],
+    disable_mlir_bridge = False,
     main = "ps_values_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1288,6 +1270,7 @@ distribute_py_test(
 distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
+    disable_mlir_bridge = False,
     main = "moving_averages_test.py",
     deps = [
         ":combinations",
@@ -1305,6 +1288,7 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_gradient_test",
     srcs = ["custom_training_loop_gradient_test.py"],
+    disable_mlir_bridge = False,
     main = "custom_training_loop_gradient_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1405,9 +1389,6 @@ cuda_py_test(
     name = "remote_mirrored_strategy_eager_test",
     srcs = ["remote_mirrored_strategy_eager_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_oss",  # b/154743849
-    ],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -1506,6 +1487,7 @@ distribute_py_test(
 distribute_py_test(
     name = "zero_batch_test",
     srcs = ["zero_batch_test.py"],
+    disable_mlir_bridge = False,
     main = "zero_batch_test.py",
     deps = [
         ":combinations",
@@ -1521,6 +1503,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "nomsan",  # b/154224457: Re-enable when fixed.
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
@@ -1705,6 +1688,7 @@ py_test(
 distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
+    disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 2,
     tags = [
@@ -1737,6 +1721,7 @@ distribute_py_test(
 distribute_py_test(
     name = "tf_function_test",
     srcs = ["tf_function_test.py"],
+    disable_mlir_bridge = False,
     main = "tf_function_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1792,5 +1777,44 @@ distribute_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "parameter_server_strategy_v2",
+    srcs = ["parameter_server_strategy_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":distribute_lib",
+        ":parameter_server_strategy",
+        ":sharded_variable",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_decorator",
+        "//tensorflow/python:variable_scope",
+        "@absl_py//absl/logging",
+    ],
+)
+
+tf_py_test(
+    name = "parameter_server_strategy_v2_test",
+    srcs = ["parameter_server_strategy_v2_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
+        ":sharded_variable",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:linalg_ops_impl",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
     ],
 )

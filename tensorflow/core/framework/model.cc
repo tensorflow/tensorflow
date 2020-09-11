@@ -461,7 +461,17 @@ class AsyncKnownRatio : public Node {
     auto* buffer_size_parameter = gtl::FindOrNull(parameters_, kBufferSize);
     if (parallelism_parameter) {
       parallelism = (*parallelism_parameter)->value;
-      buffer_size = parallelism;
+      if (ratio_ == 0) {
+        buffer_size = parallelism;
+      } else {
+        // Currently, MapAndBatch is the only transformation creates
+        // AsyncKnownRatio nodes with ratio >= 1. For MapAndBatch, we create
+        // `parallelism` threads to apply the function on elements from input
+        // dataset, while one element in the buffer actually corresponds to
+        // `ratio_` elements from input dataset. So we adjust the `buffer_size`
+        // by dividing `ratio_`.
+        buffer_size = parallelism / ratio_;
+      }
     } else if (buffer_size_parameter) {
       buffer_size = (*buffer_size_parameter)->value;
     }
@@ -527,10 +537,11 @@ class AsyncKnownRatio : public Node {
 
       // Add derivative w.r.t. own parameter if it's tunable.
       if (parallelism_parameter && (*parallelism_parameter)->state->tunable) {
-        (*gradients)[long_name()] =
-            buffer_size_der - (1.0L + consumer_time_der +
-                               producer_time_der * inputs_time_der_sum) *
-                                  self_processing_time / Square(parallelism);
+        (*gradients)[long_name()] = buffer_size_der / ratio_ -
+                                    (1.0L + consumer_time_der +
+                                     producer_time_der * inputs_time_der_sum) *
+                                        self_processing_time /
+                                        Square(parallelism);
       } else if (buffer_size_parameter &&
                  (*buffer_size_parameter)->state->tunable) {
         (*gradients)[long_name()] = buffer_size_der;

@@ -499,21 +499,27 @@ class InputWorkers(object):
     return InputWorkers(worker_device_pairs)
 
 
-def _get_next_as_optional(iterator, strategy, name=None):
-  """Returns an empty dataset indicator and the next input from the iterator."""
+def _get_next_as_optional(iterator, strategy, return_per_replica=False):
+  """Returns an empty dataset indicator and the next input from the iterator.
+
+  Args:
+    iterator: a DistributedIterator object.
+    strategy: the `tf.distribute.Strategy` instance.
+    return_per_replica: a boolean. If True, the returned data will be wrapped
+      with `PerReplica` structure. Otherwise it is a 2D
+      num_input_workers*num_replicas_per_worker list.
+
+  Returns:
+    A tuple (a boolean tensor indicating whether the next batch has value
+    globally, data from all replicas).
+  """
   replicas = []
   worker_has_values = []
   worker_devices = []
   for i, worker in enumerate(iterator._input_workers.worker_devices):  # pylint: disable=protected-access
-    if name is not None:
-      d = tf_device.DeviceSpec.from_string(worker)
-      new_name = "%s_%s_%d" % (name, d.job, d.task)
-    else:
-      new_name = None
-
     with ops.device(worker):
       worker_has_value, next_element = (
-          iterator._iterators[i].get_next_as_list(new_name))  # pylint: disable=protected-access
+          iterator._iterators[i].get_next_as_list())  # pylint: disable=protected-access
       # Collective all-reduce requires explicit devices for inputs.
       with ops.device("/cpu:0"):
         # Converting to integers for all-reduce.
@@ -522,6 +528,12 @@ def _get_next_as_optional(iterator, strategy, name=None):
         worker_has_values.append(worker_has_value)
       # Make `replicas` a flat list of values across all replicas.
       replicas.append(next_element)
+
+  if return_per_replica:
+    flattened_data = []
+    for per_worker_data in replicas:
+      flattened_data.extend(per_worker_data)
+    replicas = distribute_utils.regroup(flattened_data)
 
   # Run an all-reduce to see whether any worker has values.
   # TODO(b/131423105): we should be able to short-cut the all-reduce in some
@@ -622,29 +634,15 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     return self
 
   def get_next_as_optional(self):
-    global_has_value, replicas = _get_next_as_optional(self, self._strategy)
+    global_has_value, replicas = _get_next_as_optional(
+        self, self._strategy, return_per_replica=True)
 
     def return_none():
       return optional_ops.Optional.empty(self._element_spec)
 
-    def return_value(replicas):
-      """Wraps the inputs for replicas in an `tf.experimental.Optional`."""
-      results = []
-      for i, worker in enumerate(self._input_workers.worker_devices):
-        with ops.device(worker):
-          devices = self._input_workers.compute_devices_for_worker(i)
-          for j, device in enumerate(devices):
-            with ops.device(device):
-              result = replicas[i][j]
-              results.append(result)
-      replicas = results
-
-      return optional_ops.Optional.from_value(
-          distribute_utils.regroup(replicas))
-
-    return control_flow_ops.cond(global_has_value,
-                                 lambda: return_value(replicas),
-                                 lambda: return_none())  # pylint: disable=unnecessary-lambda
+    return control_flow_ops.cond(
+        global_has_value, lambda: optional_ops.Optional.from_value(replicas),
+        return_none)
 
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
@@ -671,7 +669,8 @@ class DistributedIteratorBase(DistributedIteratorInterface):
       out_of_range_replicas.append(data)
       return data
 
-    global_has_value, replicas = _get_next_as_optional(self, self._strategy)
+    global_has_value, replicas = _get_next_as_optional(
+        self, self._strategy, return_per_replica=False)
     results = []
     for i, worker in enumerate(self._input_workers.worker_devices):
       with ops.device(worker):
@@ -906,7 +905,8 @@ class _IterableInput(DistributedDatasetInterface):
   def reduce(self, initial_state, reduce_fn):
     """Execute a `reduce_fn` over all the elements of the input."""
     iterator = iter(self)
-    has_data, data = _get_next_as_optional(iterator, self._strategy)
+    has_data, data = _get_next_as_optional(
+        iterator, self._strategy, return_per_replica=True)
 
     def cond(has_data, data, state):
       del data, state  # Unused.
@@ -915,16 +915,9 @@ class _IterableInput(DistributedDatasetInterface):
     def loop_body(has_data, data, state):
       """Executes `reduce_fn` in a loop till the dataset is empty."""
       del has_data  # Unused.
-      # data is list of lists here. where each list corresponds to one worker.
-      # TODO(b/130570614): Add support for the multiworker and TPU pods use
-      # case.
-      if self._input_workers.num_workers == 1:
-        data = data[0]
-      else:
-        raise ValueError("Dataset iteration within a tf.function is"
-                         " not supported for multiple workers.")
-      state = reduce_fn(state, distribute_utils.regroup(data))
-      has_data, data = _get_next_as_optional(iterator, self._strategy)
+      state = reduce_fn(state, data)
+      has_data, data = _get_next_as_optional(
+          iterator, self._strategy, return_per_replica=True)
       return has_data, data, state
 
     has_data, data, final_state = control_flow_ops.while_loop(
@@ -1032,6 +1025,13 @@ class DistributedDataset(_IterableInput):
       iterator = DistributedIterator(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   @property
@@ -1106,6 +1106,13 @@ class DistributedDatasetV1(DistributedDataset):
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):
@@ -1173,6 +1180,13 @@ class DistributedDatasetsFromFunction(_IterableInput):
         iterator = DistributedIterator(self._input_workers, iterators,
                                        self._strategy)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+      # When async eager is enabled, sometimes the iterator may not finish
+      # initialization before passing to a multi device function, add a sync
+      # point here to make sure all underlying iterators are initialized.
+      if context.executing_eagerly():
+        context.async_wait()
+
       return iterator
 
     raise RuntimeError("__iter__() is only supported inside of tf.function "
@@ -1213,6 +1227,13 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
     iterator = DistributedIteratorV1(self._input_workers, iterators,
                                      self._strategy)
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):

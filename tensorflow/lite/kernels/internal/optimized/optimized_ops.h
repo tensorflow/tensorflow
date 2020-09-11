@@ -2635,8 +2635,6 @@ inline void BroadcastMulFivefold(const ArithmeticParams& params,
                        output_shape, output_data);
 }
 
-
-
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
@@ -4264,8 +4262,6 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
   }
 }
 
-// TODO(myenik): This is the same as the reference implementation, not actually
-// optimized yet.
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const float* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
@@ -4277,27 +4273,14 @@ inline void LogSoftmax(const SoftmaxParams& params,
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
-    const float* block_input_data = input_data + i * depth;
-    float* block_output_data = output_data + i * depth;
+    VectorMap<const float> block_input(input_data + i * depth, depth, 1);
+    VectorMap<float> block_output(output_data + i * depth, depth, 1);
     // Find max element value which we'll use to ensure numerical stability
     // taking advantage of the following equality:
     // log(exp(x[i])/sum(exp(x[i]))) == log(exp(x[i]+C)/sum(exp(x[i]+C)))
-    float max = std::numeric_limits<float>::lowest();
-    for (int c = 0; c < depth; ++c) {
-      max = std::max(max, block_input_data[c]);
-    }
-
-    // Compute sum.
-    float sum = 0.f;
-    for (int c = 0; c < depth; ++c) {
-      sum += std::exp(block_input_data[c] - max);
-    }
-
-    // Compute result.
-    const float log_sum = std::log(sum);
-    for (int c = 0; c < depth; ++c) {
-      block_output_data[c] = block_input_data[c] - max - log_sum;
-    }
+    const float max = block_input.maxCoeff();
+    const float log_sum = std::log((block_input.array() - max).exp().sum());
+    block_output = block_input.array() - max - log_sum;
   }
 }
 
@@ -8147,6 +8130,46 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
   BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
                           input2_data, output_shape, output_data,
                           MinimumElementwise, MinimumScalarBroadcast);
+}
+
+template <typename T>
+void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
+                bool exclusive, bool reverse, T* output_data) {
+  Eigen::array<Eigen::DenseIndex, 3> dims = {1, 1, 1};
+
+  for (int i = 0; i < axis; ++i) {
+    dims[0] *= shape.Dims(i);
+  }
+  dims[1] = shape.Dims(axis);
+  for (int i = axis + 1; i < shape.DimensionsCount(); ++i) {
+    dims[2] *= shape.Dims(i);
+  }
+
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<const T, 3, Eigen::RowMajor, Eigen::DenseIndex>,
+      Eigen::Aligned>
+      ConstTensor;
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<T, 3, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>
+      Tensor;
+  ConstTensor input(input_data, dims);
+  Tensor output(output_data, dims);
+
+  if (reverse) {
+    Eigen::array<bool, 3> reverse_idx = {false, true, false};
+    output =
+        input.reverse(reverse_idx).cumsum(1, exclusive).reverse(reverse_idx);
+  } else {
+    output = input.cumsum(1, exclusive);
+  }
+}
+
+template <typename T>
+void CumSum(const T* input_data, const RuntimeShape& shape, int axis,
+            bool exclusive, bool reverse, T* output_data) {
+  const int dim = shape.DimensionsCount();
+  TFLITE_DCHECK_GE(dim, 1);
+  CumsumImpl<T>(input_data, shape, axis, exclusive, reverse, output_data);
 }
 
 }  // namespace optimized_ops

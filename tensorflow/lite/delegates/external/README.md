@@ -23,7 +23,7 @@ is allowed.
 void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate)
 ```
 
-The external delegate provides an opague and transparent way to utilize a
+The external delegate provides an opaque and transparent way to utilize a
 Tensorflow Lite delegate when performing inference. In other words, one may
 replace the actual Tensorflow Lite delegate by simply updating the dynamic
 library without changing the application code. We developed this mainly for

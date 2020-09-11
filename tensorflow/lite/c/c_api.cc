@@ -17,8 +17,10 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/version.h"
@@ -95,50 +97,9 @@ void TfLiteInterpreterOptionsSetErrorReporter(
 TfLiteInterpreter* TfLiteInterpreterCreate(
     const TfLiteModel* model,
     const TfLiteInterpreterOptions* optional_options) {
-  if (!model || !model->impl) {
-    return nullptr;
-  }
-
-  std::unique_ptr<tflite::ErrorReporter> optional_error_reporter;
-  if (optional_options && optional_options->error_reporter != nullptr) {
-    optional_error_reporter.reset(
-        new CallbackErrorReporter(optional_options->error_reporter,
-                                  optional_options->error_reporter_user_data));
-  }
-
-  // TODO(b/111881878): Allow use of C API without pulling in all builtin ops.
   tflite::ops::builtin::BuiltinOpResolver resolver;
-  if (optional_options) {
-    resolver.AddAll(optional_options->op_resolver);
-  }
-  tflite::ErrorReporter* error_reporter = optional_error_reporter
-                                              ? optional_error_reporter.get()
-                                              : tflite::DefaultErrorReporter();
-  tflite::InterpreterBuilder builder(model->impl->GetModel(), resolver,
-                                     error_reporter);
-
-  std::unique_ptr<tflite::Interpreter> interpreter;
-  if (builder(&interpreter) != kTfLiteOk) {
-    return nullptr;
-  }
-
-  if (optional_options) {
-    interpreter->UseNNAPI(optional_options->use_nnapi);
-
-    if (optional_options->num_threads !=
-        TfLiteInterpreterOptions::kDefaultNumThreads) {
-      interpreter->SetNumThreads(optional_options->num_threads);
-    }
-
-    for (auto* delegate : optional_options->delegates) {
-      if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
-        return nullptr;
-      }
-    }
-  }
-
-  return new TfLiteInterpreter{model->impl, std::move(optional_error_reporter),
-                               std::move(interpreter)};
+  return tflite::internal::InterpreterCreateWithOpResolver(
+      model, optional_options, &resolver);
 }
 
 void TfLiteInterpreterDelete(TfLiteInterpreter* interpreter) {
@@ -234,3 +195,63 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
+
+namespace tflite {
+namespace internal {
+
+TfLiteInterpreter* InterpreterCreateWithOpResolver(
+    const TfLiteModel* model, const TfLiteInterpreterOptions* optional_options,
+    tflite::MutableOpResolver* mutable_resolver) {
+  TFLITE_DCHECK_NE(mutable_resolver, nullptr);
+  if (!model || !model->impl) {
+    return nullptr;
+  }
+
+  std::unique_ptr<tflite::ErrorReporter> optional_error_reporter;
+  if (optional_options && optional_options->error_reporter != nullptr) {
+    optional_error_reporter.reset(
+        new CallbackErrorReporter(optional_options->error_reporter,
+                                  optional_options->error_reporter_user_data));
+  }
+
+  if (optional_options) {
+    mutable_resolver->AddAll(optional_options->op_resolver);
+  }
+
+  tflite::ErrorReporter* error_reporter = optional_error_reporter
+                                              ? optional_error_reporter.get()
+                                              : tflite::DefaultErrorReporter();
+  tflite::InterpreterBuilder builder(model->impl->GetModel(), *mutable_resolver,
+                                     error_reporter);
+
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  if (builder(&interpreter) != kTfLiteOk) {
+    return nullptr;
+  }
+
+  if (optional_options) {
+    if (optional_options->num_threads !=
+        TfLiteInterpreterOptions::kDefaultNumThreads) {
+      interpreter->SetNumThreads(optional_options->num_threads);
+    }
+
+    if (optional_options->use_nnapi) {
+      if (interpreter->ModifyGraphWithDelegate(tflite::NnApiDelegate()) !=
+          kTfLiteOk) {
+        return nullptr;
+      }
+    }
+
+    for (auto* delegate : optional_options->delegates) {
+      if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
+        return nullptr;
+      }
+    }
+  }
+
+  return new TfLiteInterpreter{model->impl, std::move(optional_error_reporter),
+                               std::move(interpreter)};
+}
+
+}  // namespace internal
+}  // namespace tflite

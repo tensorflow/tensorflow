@@ -42,8 +42,10 @@ namespace cl {
 class ConvTexture : public GPUOperation {
  public:
   ConvTexture() = default;
-  absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -54,40 +56,38 @@ class ConvTexture : public GPUOperation {
   ConvTexture& operator=(const ConvTexture&) = delete;
 
  private:
-  friend absl::Status CreateConvTexture(const CreationContext& creation_context,
-                                        const OperationDef& definition,
-                                        const Convolution2DAttributes& attr,
-                                        ConvTexture* result);
-  friend absl::Status CreateConvTexture(const CreationContext& creation_context,
-                                        const OperationDef& definition,
-                                        const FullyConnectedAttributes& attr,
-                                        ConvTexture* result);
+  friend ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                                       const OperationDef& definition,
+                                       const Convolution2DAttributes& attr);
+  friend ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                                       const OperationDef& definition,
+                                       const FullyConnectedAttributes& attr);
 
-  friend absl::Status CreateConvTextureWino4x4To6x6(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const Convolution2DAttributes& attr, ConvTexture* result);
+  friend ConvTexture CreateConvTextureWino4x4To6x6(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const Convolution2DAttributes& attr);
 
   ConvTexture(const OperationDef& definition,
               const Convolution2DAttributes& attr);
   explicit ConvTexture(const OperationDef& definition);
   template <DataType T>
-  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
-                          const tflite::gpu::Tensor<Linear, T>& biases,
-                          CLContext* context);
+  void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                  const tflite::gpu::Tensor<Linear, T>& biases);
 
   template <DataType T>
-  absl::Status UploadDataForWinograd4x4To6x6(
-      const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
-      CLContext* context);
+  void UploadDataForWinograd4x4To6x6(
+      const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
-  template <DataType S, typename T>
-  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
-                            absl::Span<T> dst_0, absl::Span<T> dst_1,
-                            absl::Span<T> dst_2, absl::Span<T> dst_3);
+  void GenerateCode(const DeviceInfo& device_info);
+
+  std::string GenerateConvCode(const OperationDef& op_def,
+                               const int3& block_size, bool is1x1,
+                               bool adreno4xx_optimization,
+                               bool stride_correction,
+                               bool different_weights_for_height);
 
   int2 kernel_size_;
   int2 stride_;
@@ -103,30 +103,24 @@ class ConvTexture : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvTexture::UploadData(
-    const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
-  RETURN_IF_ERROR(UploadWeights(weights, context));
+void ConvTexture::UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             const tflite::gpu::Tensor<Linear, T>& biases) {
+  UploadWeights(weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition_.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(desc, biases, context, &lt));
-  args_.AddObject("biases", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)),
-                  absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(biases);
+  args_.AddObject("biases",
+                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 }
 
 template <DataType T>
-absl::Status ConvTexture::UploadDataForWinograd4x4To6x6(
-    const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
-    CLContext* context) {
+void ConvTexture::UploadDataForWinograd4x4To6x6(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   tflite::gpu::Tensor<OHWI, T> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
-  RETURN_IF_ERROR(UploadWeights(wino_weights, context));
+  UploadWeights(wino_weights);
 
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
   bias.shape = Linear(1);
@@ -134,155 +128,63 @@ absl::Status ConvTexture::UploadDataForWinograd4x4To6x6(
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition_.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(desc, bias, context, &lt));
-  args_.AddObject("biases", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)),
-                  absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(bias);
+  args_.AddObject("biases",
+                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 }
 
 template <DataType T>
-absl::Status ConvTexture::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void ConvTexture::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   int dst_depth = DivideRoundUp(weights.shape.o, 4);
   dst_depth = AlignByN(dst_depth, block_size_.z);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
-
-  int texture_width = dst_depth;
-  int texture_height = src_depth * kernel_x * kernel_y;
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   DataType data_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
 
-  const int elements_count = texture_width * texture_height;
+  const int elements_count = dst_depth * src_depth * kernel_x * kernel_y * 4;
+  const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  Texture2DDescriptor desc;
-  desc.element_type = data_type;
-
-  Texture2D weights_0;
-  Texture2D weights_1;
-  Texture2D weights_2;
-  Texture2D weights_3;
+  std::vector<uint8_t> data(float4_size * elements_count);
 
   if (f32_weights) {
-    std::vector<float4> gpu_data_0(elements_count);
-    std::vector<float4> gpu_data_1(elements_count);
-    std::vector<float4> gpu_data_2(elements_count);
-    std::vector<float4> gpu_data_3(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data_0),
-                         absl::MakeSpan(gpu_data_1), absl::MakeSpan(gpu_data_2),
-                         absl::MakeSpan(gpu_data_3));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_0.data(),
-                                        context, &weights_0));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_1.data(),
-                                        context, &weights_1));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_2.data(),
-                                        context, &weights_2));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_3.data(),
-                                        context, &weights_3));
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.z,
+                                     absl::MakeSpan(ptr, elements_count));
   } else {
-    std::vector<half4> gpu_data_0(elements_count);
-    std::vector<half4> gpu_data_1(elements_count);
-    std::vector<half4> gpu_data_2(elements_count);
-    std::vector<half4> gpu_data_3(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data_0),
-                         absl::MakeSpan(gpu_data_1), absl::MakeSpan(gpu_data_2),
-                         absl::MakeSpan(gpu_data_3));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_0.data(),
-                                        context, &weights_0));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_1.data(),
-                                        context, &weights_1));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_2.data(),
-                                        context, &weights_2));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_3.data(),
-                                        context, &weights_3));
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.z,
+                                     absl::MakeSpan(ptr, elements_count));
   }
 
-  args_.AddObject("weights0", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_0)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
-  args_.AddObject("weights1", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_1)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
-  args_.AddObject("weights2", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_2)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
-  args_.AddObject("weights3", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_3)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
-  return absl::OkStatus();
-}
-
-template <DataType S, typename T>
-void ConvTexture::RearrangeWeightsData(
-    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst_0,
-    absl::Span<T> dst_1, absl::Span<T> dst_2, absl::Span<T> dst_3) {
-  int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  dst_depth = AlignByN(dst_depth, block_size_.z);
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
-
-  int texture_width = dst_depth;
-
-  for (int d = 0; d < dst_depth / block_size_.z; ++d) {
-    for (int y = 0; y < kernel_y; ++y) {
-      for (int x = 0; x < kernel_x; ++x) {
-        for (int s = 0; s < src_depth; ++s) {
-          for (int sub_d = 0; sub_d < block_size_.z; ++sub_d) {
-            T filters[4];
-            for (int i = 0; i < 4; ++i) {
-              for (int j = 0; j < 4; ++j) {
-                const int s_ch = s * 4 + j;
-                const int d_ch = (d * block_size_.z + sub_d) * 4 + i;
-                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                  const int f_index =
-                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
-                  filters[j][i] = weights.data[f_index];
-                } else {
-                  filters[j][i] = 0.0f;
-                }
-              }
-            }
-            int x_coord = d * block_size_.z + sub_d;
-            int y_coord = (y * kernel_x + x) * src_depth + s;
-            int offset = y_coord * texture_width + x_coord;
-            dst_0[offset] = filters[0];
-            dst_1[offset] = filters[1];
-            dst_2[offset] = filters[2];
-            dst_3[offset] = filters[3];
-          }
-        }
-      }
-    }
+  const int texture_width = dst_depth;
+  const int texture_height = src_depth * kernel_x * kernel_y;
+  const int sub_size = float4_size * texture_width * texture_height;
+  for (int i = 0; i < 4; ++i) {
+    Texture2DDescriptor desc;
+    desc.element_type = data_type;
+    desc.size = int2(texture_width, texture_height);
+    desc.data.resize(sub_size);
+    memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
+    const std::string name = "weights" + std::to_string(i);
+    args_.AddObject(name,
+                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 }
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const Convolution2DAttributes& attr,
-                               ConvTexture* result);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const Convolution2DAttributes& attr);
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const FullyConnectedAttributes& attr,
-                               ConvTexture* result);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const FullyConnectedAttributes& attr);
 
-absl::Status CreateConvTextureWino4x4To6x6(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, ConvTexture* result);
+ConvTexture CreateConvTextureWino4x4To6x6(const DeviceInfo& device_info,
+                                          const OperationDef& definition,
+                                          const Convolution2DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

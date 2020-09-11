@@ -207,7 +207,8 @@ def _prepare_np_fun_name_and_fun(np_fun_name, np_fun):
   return np_fun_name, np_fun
 
 
-def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
+def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None,
+                   link=None):
   """Helper to get docs."""
   assert np_f or np_fun_name
   if not np_fun_name:
@@ -221,7 +222,7 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
     doc = _add_blank_line(doc)
   # TODO(wangpeng): Re-enable the following and choose inlined vs. link to numpy
   #   doc according to some global switch.
-  doc = _add_np_doc(doc, np_fun_name, np_f)
+  doc = _add_np_doc(doc, np_fun_name, np_f, link=link)
   return doc
 
 
@@ -257,7 +258,61 @@ def set_np_doc_form(value):
   _np_doc_form = value
 
 
-def _add_np_doc(doc, np_fun_name, np_f):
+class Link:
+
+  def __init__(self, v):
+    self.value = v
+
+
+class AliasOf:
+
+  def __init__(self, v):
+    self.value = v
+
+
+class NoLink:
+  pass
+
+
+def generate_link(flag, np_fun_name):
+  """Generates link from numpy function name.
+
+  Args:
+    flag: the flag to control link form. See `set_np_doc_form`.
+    np_fun_name: the numpy function name.
+
+  Returns:
+    A string.
+  """
+  # Only adds link in this case
+  if flag == 'dev':
+    template = 'https://numpy.org/devdocs/reference/generated/numpy.%s.html'
+  elif flag == 'stable':
+    template = (
+        'https://numpy.org/doc/stable/reference/generated/numpy.%s.html')
+  elif re.match(r'\d+(\.\d+(\.\d+)?)?$', flag):
+    # `flag` is the version number
+    template = ('https://numpy.org/doc/' + flag +
+                '/reference/generated/numpy.%s.html')
+  else:
+    return None
+  return template % np_fun_name
+
+
+_is_check_link = (os.getenv('TF_NP_CHECK_LINK', 'False') in
+                  ('True', 'true', '1'))
+
+
+def is_check_link():
+  return _is_check_link
+
+
+def set_check_link(value):
+  global _is_check_link
+  _is_check_link = value
+
+
+def _add_np_doc(doc, np_fun_name, np_f, link):
   """Appends the numpy docstring to `doc`, according to `set_np_doc_form`.
 
   See `set_np_doc_form` for how it controls the form of the numpy docstring.
@@ -266,6 +321,7 @@ def _add_np_doc(doc, np_fun_name, np_f):
     doc: the docstring to be appended to.
     np_fun_name: the name of the numpy function.
     np_f: (optional) the numpy function.
+    link: (optional) which link to use. See `np_doc` for details.
 
   Returns:
     `doc` with numpy docstring appended.
@@ -279,22 +335,23 @@ def _add_np_doc(doc, np_fun_name, np_f):
       # comment.
       doc += np_f.__doc__.replace('>>>', '>')
   elif isinstance(flag, str):
-    # Only adds link in this case
-    if flag == 'dev':
-      template = 'https://numpy.org/devdocs/reference/generated/numpy.%s.html'
-    elif flag == 'stable':
-      template = (
-          'https://numpy.org/doc/stable/reference/generated/numpy.%s.html')
-    elif re.match(r'\d+(\.\d+(\.\d+)?)?$', flag):
-      # `flag` is the version number
-      template = ('https://numpy.org/doc/' + flag +
-                  '/reference/generated/numpy.%s.html')
+    if link is None:
+      url = generate_link(flag, np_fun_name)
+    elif isinstance(link, AliasOf):
+      url = generate_link(flag, link.value)
+    elif isinstance(link, Link):
+      url = link.value
     else:
-      template = None
-    if template is not None:
-      link = template % np_fun_name
+      url = None
+    if url is not None:
+      if is_check_link():
+        # Imports locally because some builds may not have `requests`
+        import requests  # pylint: disable=g-import-not-at-top
+        r = requests.head(url)
+        if r.status_code != 200:
+          raise ValueError("Can't open link for %s: %s" % (np_fun_name, url))
       doc += 'See the NumPy documentation for [`numpy.%s`](%s).' % (
-          np_fun_name, link)
+          np_fun_name, url)
   return doc
 
 
@@ -311,7 +368,7 @@ def set_is_sig_mismatch_an_error(value):
   _is_sig_mismatch_an_error = value
 
 
-def np_doc(np_fun_name, np_fun=None, export=True):
+def np_doc(np_fun_name, np_fun=None, export=True, link=None):
   """Attachs numpy docstring to a function.
 
   Args:
@@ -322,6 +379,11 @@ def np_doc(np_fun_name, np_fun=None, export=True):
       `tf.experimental.numpy`. Note that if `export` is `True`, `np_fun` must be
       a function directly under the `numpy` module, not under any submodule of
       `numpy` (e.g. `numpy.random`).
+    link: (optional) which link to use. If `None`, a default link generated from
+      `np_fun_name` will be used. If an instance of `AliasOf`, `link.value` will
+      be used in place of `np_fun_name` for the link generation. If an instance
+      of `Link`, `link.value` will be used as the whole link. If an instance of
+      `NoLink`, no link will be added.
 
   Returns:
     A function decorator that attaches the docstring from `np_fun` to the
@@ -363,10 +425,8 @@ def np_doc(np_fun_name, np_fun=None, export=True):
           if name not in sig.parameters:
             unsupported_params.append(name)
     f.__doc__ = _np_doc_helper(
-        f,
-        np_fun,
-        np_fun_name=np_fun_name,
-        unsupported_params=unsupported_params)
+        f, np_fun, np_fun_name=np_fun_name,
+        unsupported_params=unsupported_params, link=link)
     if export:
       return np_export.np_export(np_fun_name)(f)
     else:

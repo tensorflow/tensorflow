@@ -25,21 +25,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class LSTM : public GPUOperation {
- public:
-  explicit LSTM(const OperationDef& definition);
-  absl::Status BindArguments() override;
-  int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  LSTM(LSTM&& kernel);
-  LSTM& operator=(LSTM&& kernel);
-  LSTM(const LSTM&) = delete;
-  LSTM& operator=(const LSTM&) = delete;
-};
-
-LSTM CreateLSTM(const OperationDef& definition);
+GPUOperation CreateLSTM(const OperationDef& definition,
+                        const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

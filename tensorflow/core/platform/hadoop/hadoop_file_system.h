@@ -32,63 +32,46 @@ class HadoopFileSystem : public FileSystem {
   HadoopFileSystem();
   ~HadoopFileSystem();
 
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
-      const string& fname,
-      std::unique_ptr<RandomAccessFile>*
-          result /*, TransactionToken* token = nullptr*/) override;
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
 
-  Status NewWritableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr*/) override;
+  Status NewWritableFile(const string& fname, TransactionToken* token,
+                         std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr*/) override;
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
+                           std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>*
-          result /*, TransactionToken* token = nullptr*/) override;
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(
-      const string& fname /*, TransactionToken* token = nullptr*/) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
 
-  Status GetChildren(
-      const string& dir,
-      std::vector<string>* result /*, TransactionToken* token = nullptr*/)
-      override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override;
 
-  Status GetMatchingPaths(
-      const string& pattern,
-      std::vector<string>* results /*, TransactionToken* token = nullptr*/)
-      override;
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
+                          std::vector<string>* results) override;
 
-  Status DeleteFile(
-      const string& fname /*, TransactionToken* token = nullptr*/) override;
+  Status DeleteFile(const string& fname, TransactionToken* token) override;
 
-  Status CreateDir(
-      const string& name /*, TransactionToken* token = nullptr*/) override;
+  Status CreateDir(const string& dir, TransactionToken* token) override;
 
-  Status DeleteDir(
-      const string& name /*, TransactionToken* token = nullptr*/) override;
+  Status DeleteDir(const string& dir, TransactionToken* token) override;
 
-  Status GetFileSize(
-      const string& fname,
-      uint64* size /*, TransactionToken* token = nullptr*/) override;
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* size) override;
 
-  Status RenameFile(
-      const string& src,
-      const string& target /*, TransactionToken* token = nullptr*/) override;
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override;
 
-  Status Stat(
-      const string& fname,
-      FileStatistics* stat /*, TransactionToken* token = nullptr*/) override;
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
 
-  string TranslateName(
-      const string& name /*, TransactionToken* token = nullptr*/)
-      const override;
+  string TranslateName(const string& name) const override;
 
  private:
   Status Connect(StringPiece fname, hdfsFS* fs);

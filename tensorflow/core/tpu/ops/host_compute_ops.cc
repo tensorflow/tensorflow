@@ -23,17 +23,29 @@ namespace tensorflow {
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-REGISTER_OP("_HostComputeMlir")
+REGISTER_OP("_XlaHostComputeMlir")
     .Input("inputs: Tinputs")
     .Output("outputs: Toutputs")
     .Attr("Tinputs: list(type) >= 0")
     .Attr("Toutputs: list(type) >= 0")
-    .Attr("key: string")
+    .Attr("send_key: string")
+    .Attr("recv_key: string")
     .Attr("tpu_core: int = 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       return ::tensorflow::shape_inference::UnknownShape(c);
     })
-    .SetIsStateful();
+    .SetIsStateful()
+    .Doc(R"doc(
+A pseudo-op to represent host-side computation in an XLA program.
+
+inputs: A list of tensors that will be sent to the host.
+outputs: A list of tensors that will be returned to the device.
+Tinputs: The element types of each element in `inputs`.
+Toutputs: The element types of each element in `outputs`.
+send_key: A unique identifier for this region used to match up host recv.
+recv_key: A unique identifier for this region used to match up host send.
+tpu_core: Default core to use for host to device transfers.
+)doc");
 
 REGISTER_OP("XlaHostCompute")
     .Input("inputs: Tinputs")

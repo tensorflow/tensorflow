@@ -124,12 +124,23 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_config_c_api",
+        ":tpu_executor_api",
         "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_execute_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tpu_executor_api",
+    srcs = ["tpu_executor_api.cc"],
+    hdrs = ["tpu_executor_api.h"],
+    deps = [
+        ":libtftpu_header",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 
@@ -146,6 +157,7 @@ cc_library(
         ":tpu_api",
         ":tpu_compilation_device",
         ":tpu_config_c_api",
+        ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_node_device",
         ":tpu_system_device",
@@ -164,6 +176,12 @@ cc_library(
 cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tpu_executor_init_fns",
+    hdrs = ["tpu_executor_init_fns.inc"],
     visibility = ["//visibility:public"],
 )
 
@@ -267,6 +285,7 @@ cc_library(
     srcs = ["tpu_on_demand_compiler.cc"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
@@ -276,8 +295,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "//tensorflow/stream_executor/tpu:status_helper",
+        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/types:span",

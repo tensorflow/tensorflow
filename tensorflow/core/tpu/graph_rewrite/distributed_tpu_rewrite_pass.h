@@ -129,7 +129,7 @@ namespace tensorflow {
 class DistributedTPURewritePass : public GraphOptimizationPass {
  public:
   static void SetDistributedTpuRewritePassOptions(
-      bool distribute_vars,
+      bool distribute_vars, bool allow_xla_spmd_partition,
       bool replicate_inputs_outputs_by_default_for_xla_spmd,
       bool enable_cross_replica_sharding_mirrored_variables,
       bool enable_automatic_model_parallelism);
@@ -308,6 +308,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       const DataTypeVector& retval_types,
       const std::vector<InferredShape>& retval_shapes, const Graph& graph,
       const Node* replicate_node, FunctionLibraryRuntime* flr,
+      bool allow_parameter_replication_for_spmd,
       std::vector<::xla::OpSharding>* arg_sharding,
       std::vector<bool>* arg_fast_mem,
       std::vector<::xla::OpSharding>* retval_sharding,
@@ -412,9 +413,10 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // * `num_cores_per_replica` is the number of cores which are dedicated to
   //    each replica.
   // * `replicate_node` is the original TPUReplicate node.
-  // * `arg_types` are the types of the arguments to the computation function
+  // * `arg_names` are the names of the arguments to the computation function
   //    passed as argument to TPUReplicate, including per-replica,
   //    broadcast, and variable arguments.
+  // * `arg_types` are the corresponding types of the arguments.
   // * `arg_shapes` are the corresponding shapes (and handle types/shapes, if
   //    applicable).
   // * `arg_shardings` and `retval_shardings` are mappings from
@@ -430,6 +432,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static Status BuildExecuteNodes(
       const ParameterInfo& params_info, int num_tasks,
       int num_cores_per_replica, const Node& replicate_node,
+      const std::vector<std::string>& arg_names,
       const DataTypeVector& arg_types,
       const std::vector<InferredShape>& arg_shapes,
       const DataTypeVector& retval_types,
@@ -581,6 +584,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
  private:
   static bool distribute_vars_;
+  static bool allow_xla_spmd_partition_;
   static bool replicate_inputs_outputs_by_default_for_xla_spmd_;
   static bool enable_cross_replica_sharding_mirrored_variables_;
   static bool enable_automatic_model_parallelism_;

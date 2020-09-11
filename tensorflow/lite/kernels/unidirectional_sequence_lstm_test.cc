@@ -101,11 +101,10 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    output_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}},
-                 /*is_variable=*/true);
-    cell_state_ = AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}},
-                           /*is_variable=*/true);
+    output_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}});
+    cell_state_ =
+        AddVariableInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}});
 
     // Layer norm weights.
     if (is_layer_norm) {

@@ -142,15 +142,17 @@ Status MklEagerOpRewrite::SetupNewOp(
 
 Status MklEagerOpRewrite::CreateGenericMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
-  const string mkl_op_name = mkl_op_registry::GetMklOpName(orig_op->Name());
+  const string mkl_op_name =
+      mkl_op_registry::GetMklNativeOpName(orig_op->Name());
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
   return Status::OK();
 }
 
+// TODO(mabuzain): Replace this call with above generic one.
 Status MklEagerOpRewrite::CreateMklConv2DOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op) {
   const string mkl_op_name =
-      mkl_op_registry::GetMklEagerOpName(orig_op->Name());
+      mkl_op_registry::GetMklNativeOpName(orig_op->Name());
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_conv2d_op));
   return Status::OK();
 }
@@ -207,10 +209,10 @@ bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
                                                     DataType dt) {
   // Find if the eager op_name exists in mkl_eager_ops_ list.
   auto element = mkl_eager_ops_.find(op_name);
-  if (element != mkl_eager_ops_.end() && dt == DT_FLOAT) {
+  if (element != mkl_eager_ops_.end()) {
     // Eager Op exists. So verify registry and return registered or not.
     return (mkl_op_registry::IsMklNameChangeOp(
-                mkl_op_registry::GetMklEagerOpName(op_name), dt) ||
+                mkl_op_registry::GetMklNativeOpName(op_name), dt) ||
             mkl_op_registry::IsMklNameChangeOp(
                 mkl_op_registry::GetMklOpName(op_name), dt));
   } else {

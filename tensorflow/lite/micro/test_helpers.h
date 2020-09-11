@@ -49,7 +49,7 @@ class SimpleStatefulOp {
   static constexpr int kMedianTensor = 0;
   static constexpr int kInvokeCount = 1;
   struct OpData {
-    int invoke_count = 0;
+    int* invoke_count = nullptr;
     int sorting_buffer = kBufferNotAllocated;
   };
 

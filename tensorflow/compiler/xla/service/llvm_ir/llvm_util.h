@@ -87,7 +87,7 @@ string DumpModuleToString(const llvm::Module& module);
 //   - joining all of the nonempty inputs by '.', and then
 //   - removing all '%'s.
 //
-string IrName(string a);
+string IrName(absl::string_view a);
 string IrName(absl::string_view a, absl::string_view b);
 string IrName(const HloInstruction* a, absl::string_view b = "");
 

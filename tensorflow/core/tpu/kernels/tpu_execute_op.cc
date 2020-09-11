@@ -649,8 +649,9 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
       tensorflow::down_cast<const tpu::TpuProgramGroup*>(
           entry.tpu_program_group());
   CHECK_NE(tpu_program_group, nullptr);
+  const int core_index = entry.core_index();
   const TPUExecutableInfoProto& executable =
-      tpu_program_group->executable_info();
+      tpu_program_group->executable_info(core_index);
 
   xla::Backend* const backend = node_context->backend();
   xla::TransferManager* const transfer_manager = backend->transfer_manager();
@@ -749,8 +750,7 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   // all subsequent writes to the program that could possibly clobber the memory
   // will depend on the program to finish.
   const TPUHostTransferInfoProto& host_transfer_info =
-      tpu_program_group->host_transfer_info();
-  const int core_index = entry.core_index();
+      tpu_program_group->host_transfer_info(core_index);
   TF_ASSIGN_OR_RETURN(
       xla::ExecutionOutput output,
       TPUExecute(executable, host_transfer_info,

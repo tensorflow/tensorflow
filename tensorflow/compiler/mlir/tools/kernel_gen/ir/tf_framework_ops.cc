@@ -21,13 +21,10 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_structs.cc.inc"
-
 namespace kernel_gen {
 namespace tf_framework {
 
-TFFrameworkDialect::TFFrameworkDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+void TFFrameworkDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"
@@ -51,22 +48,23 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print a type registered to this dialect.
 void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
-  switch (type.getKind()) {
-    case TFFrameworkTypes::OpKernelContextType:
-      os << "op_kernel_context";
-      return;
-    default:
-      llvm_unreachable("unexpected TF Framework type kind");
+  if (type.isa<OpKernelContextType>()) {
+    os << "op_kernel_context";
+    return;
   }
+  llvm_unreachable("unexpected TF Framework type kind");
+}
+
+template <typename OpTy>
+LogicalResult Verify(OpTy op) {
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
-// AllocLikeOp
+// AllocRawOp
 //===----------------------------------------------------------------------===//
-template <typename AllocLikeOp>
-static LogicalResult Verify(AllocLikeOp op) {
-  static_assert(llvm::is_one_of<AllocLikeOp, AllocOutputOp, AllocTempOp>::value,
-                "applies to only alloc_output or alloc_temp");
+template <>
+LogicalResult Verify<AllocRawOp>(AllocRawOp op) {
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();

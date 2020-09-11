@@ -35,6 +35,9 @@ namespace mhlo {
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 
+/// Lowers MHLO control flow ops to the SCF dialect.
+std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
+
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
@@ -50,7 +53,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
 // Transforms unranked HLO operations to ranked ones where possible.
-std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
