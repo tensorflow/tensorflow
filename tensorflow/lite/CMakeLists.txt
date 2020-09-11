@@ -290,7 +290,7 @@ populate_tflite_source_vars("tools/optimize/calibration/builtin_logging_ops"
 populate_tflite_source_vars("tools/optimize/sparsity"
   TFLITE_TOOLS_OPTIMIZE_SPARSITY_SRCS
 )
-add_library(tensorflowlite
+add_library(tensorflow-lite
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_SRCS}
   ${TFLITE_C_SRCS}
@@ -318,7 +318,7 @@ add_library(tensorflowlite
   ${TFLITE_TOOLS_OPTIMIZE_SPARSITY_SRCS}
   ${TFLITE_TOOLS_OPTIMIZE_SRCS}
 )
-target_link_libraries(tensorflowlite
+target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
     NEON_2_SSE
@@ -335,14 +335,14 @@ target_link_libraries(tensorflowlite
     ruy
     ${TFLITE_TARGET_DEPENDENCIES}
 )
-target_include_directories(tensorflowlite
+target_include_directories(tensorflow-lite
   PUBLIC
    "${TENSORFLOW_SOURCE_DIR}"
   PRIVATE
     "${TFLITE_FLATBUFFERS_GEN_DIR}"
 )
-target_compile_options(tensorflowlite
+target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
-add_library(tensorflow::tensorflowlite ALIAS tensorflowlite)
+add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
