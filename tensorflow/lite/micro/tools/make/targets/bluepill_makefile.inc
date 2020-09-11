@@ -12,10 +12,8 @@ ifeq ($(TARGET), bluepill)
 #bluepill target to compile without it.
   PLATFORM_FLAGS = \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
-    -DTF_LITE_STATIC_MEMORY \
     -DTF_LITE_MCU_DEBUG_LOG \
     -DNDEBUG \
-    -fno-rtti \
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
@@ -25,21 +23,20 @@ ifeq ($(TARGET), bluepill)
     -MMD \
     -mcpu=cortex-m3 \
     -mthumb \
-    -std=gnu++11 \
-    -Wvla \
     -Wall \
     -Wextra \
+    -Wno-vla \
     -Wno-unused-parameter \
     -Wno-strict-aliasing \
+    -Wno-shadow \
     -Wno-type-limits \
     -fno-delete-null-pointer-checks \
-    -fno-threadsafe-statics \
     -fomit-frame-pointer \
-    -fno-use-cxa-atexit \
     -nostdlib \
     -g \
     -Os
-  CXXFLAGS += $(PLATFORM_FLAGS)
+  CXXFLAGS += $(PLATFORM_FLAGS) -fno-rtti -fno-threadsafe-statics \
+              -fno-use-cxa-atexit
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
     -T $(MAKEFILE_DIR)/targets/bluepill/bluepill.lds \
@@ -61,8 +58,19 @@ ifeq ($(TARGET), bluepill)
   # These are tests that don't currently work on the blue pill.
   EXCLUDED_TESTS := \
     tensorflow/lite/micro/micro_interpreter_test.cc \
-    tensorflow/lite/micro/simple_tensor_allocator_test.cc
+    tensorflow/lite/micro/micro_allocator_test.cc \
+    tensorflow/lite/micro/memory_helpers_test.cc \
+    tensorflow/lite/micro/memory_arena_threshold_test.cc \
+    tensorflow/lite/micro/kernels/circular_buffer_test.cc
+
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
+
+  EXCLUDED_EXAMPLE_TESTS := \
+    tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
+    tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
+    tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
+  MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
+
 
 # These are microcontroller-specific rules for converting the ELF output
 # of the linker into a binary image that can be loaded directly.

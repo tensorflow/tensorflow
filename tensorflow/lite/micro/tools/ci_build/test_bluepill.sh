@@ -33,5 +33,9 @@ TARGET=bluepill
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} third_party_downloads
 
 # TODO(b/143286954): Run all the tests once they pass.
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} kernel_add_test
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
+
+# TODO(b/149597202): Disabled until we can get Docker running inside Docker.
+# Parallell builds doesn't work very well with this
+#readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
 
