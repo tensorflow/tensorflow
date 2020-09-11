@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import strategy_combinations
@@ -371,4 +372,4 @@ class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
-  ds_combinations.main()
+  multi_process_runner.test_main()
