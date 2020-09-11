@@ -961,5 +961,31 @@ func @if_region_with_store_in_both(%arg0: tensor<i1>) {
 }
 
 
+// -----
+
+// Make sure unsupported resources are handled correctly. If a resource is used
+// in an unsupported op, resource op lifting should skip lifting that resource.
+// So for the below test, the IR should stay unchanged.
+// CHECK-LABEL: func @test_unsupported_resource_op
+func @test_unsupported_resource_op() -> tensor<*xi32> {
+  // CHECK: "tf.VarHandleOp"
+  // CHECK: "tf_device.cluster"() ( {
+  // CHECK: "tf.ReadVariableOp"
+  // CHECK: "tf.SomeResourceOperation"
+  // CHECK: "tf.SomeComputation"
+  // CHECK: tf_device.return
+  // CHECK: {cluster_attr = "cluster_attr"}
+  // CHECK: return
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<*xi32>
+    "tf.SomeResourceOperation"(%0) : (tensor<*x!tf.resource>) -> ()
+    %3 = "tf.SomeComputation"(%2) : (tensor<*xi32>) -> (tensor<*xi32>)
+    tf_device.return %3 : tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
+
+  return %1 : tensor<*xi32>
+}
+
 
 

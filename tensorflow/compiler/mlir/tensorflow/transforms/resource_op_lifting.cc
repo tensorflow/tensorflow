@@ -309,8 +309,9 @@ LogicalResult RegionResourceHoister::Analyze() {
   num_new_results_ = op_->getNumResults();
 
   for (auto resource : all_resources) {
-    ResourceInfo& info = resources_[resource];
+    ResourceInfo info;
     llvm::BitVector written_regions(op_->getNumRegions());
+    bool unsupported_use = false;
     for (OpOperand& use : resource.getUses()) {
       Operation* user = use.getOwner();
       // If the user is not in one of the regions, we are not interested in it.
@@ -334,9 +335,8 @@ LogicalResult RegionResourceHoister::Analyze() {
       auto read = dyn_cast<TF::ReadVariableOp>(user);
       auto write = dyn_cast<TF::AssignVariableOp>(user);
       if (!read && !write) {
-        return op_->emitError(
-                   "Unsupported use of resource variable in operation ")
-               << user->getName().getStringRef();
+        unsupported_use = true;
+        break;
       }
 
       if (read && !info.is_read) {
@@ -352,6 +352,10 @@ LogicalResult RegionResourceHoister::Analyze() {
         written_regions.set(user->getParentRegion()->getRegionNumber());
       }
     }
+
+    // If the resource is used in an op that we do not understand, skip
+    // lifting for that resource.
+    if (unsupported_use) continue;
 
     info.is_written_all = written_regions.count() == op_->getNumRegions();
 
@@ -371,6 +375,8 @@ LogicalResult RegionResourceHoister::Analyze() {
       written_resources_.insert(resource);
       if (!info.IsResultIndexAssigned()) info.result_index = num_new_results_++;
     }
+
+    resources_.insert({resource, info});
   }
   return success();
 }
