@@ -147,6 +147,16 @@ bool IsResource(Value value) {
   return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
 }
 
+// Get the type of the data contained in a resource. Returns null if there is
+// no single type in the resource.
+Type GetResourceSubtype(Value value) {
+  auto resource_type =
+      getElementTypeOrSelf(value.getType()).dyn_cast<TF::ResourceType>();
+  auto subtypes = resource_type.getSubtypes();
+  if (subtypes.size() == 1) return subtypes[0];
+  return nullptr;
+}
+
 // Performs store-load forwarding. This effectively removes
 // 1) Any resource loads after a store to that same resource is done
 // 2) Any resource stores except the last one.
@@ -276,6 +286,17 @@ class RegionResourceHoister {
           result_index(-1) {}
 
     bool IsResultIndexAssigned() { return result_index != -1; }
+
+    // Refine the resource type using the given type `type`.
+    void RefineType(Type type) {
+      if (!data_type) {
+        data_type = type;
+      } else {
+        data_type = TF::GetCastCompatibleType(data_type, type,
+                                              /*may_ignore_ref_type_a=*/false);
+        assert(data_type != nullptr && "Resource used with incompatible types");
+      }
+    }
   };
   llvm::MapVector<Value, ResourceInfo> resources_;
   llvm::SetVector<Value> written_resources_;
@@ -310,6 +331,7 @@ LogicalResult RegionResourceHoister::Analyze() {
 
   for (auto resource : all_resources) {
     ResourceInfo info;
+    info.data_type = GetResourceSubtype(resource);
     llvm::BitVector written_regions(op_->getNumRegions());
     bool unsupported_use = false;
     for (OpOperand& use : resource.getUses()) {
@@ -341,13 +363,13 @@ LogicalResult RegionResourceHoister::Analyze() {
 
       if (read && !info.is_read) {
         info.is_read = true;
-        info.data_type = read.value().getType();
+        info.RefineType(read.value().getType());
         info.read_attrs = user->getAttrDictionary();
       }
 
       if (write) {
         info.is_written = true;
-        info.data_type = write.value().getType();
+        info.RefineType(write.value().getType());
         info.write_attrs = user->getAttrDictionary();
         written_regions.set(user->getParentRegion()->getRegionNumber());
       }

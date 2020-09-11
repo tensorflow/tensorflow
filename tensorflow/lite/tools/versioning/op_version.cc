@@ -400,8 +400,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
-      if (op_sig.options.resize.half_pixel_centers ||
-          op_sig.options.resize.align_corners) {
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      } else if (op_sig.options.resize.half_pixel_centers ||
+                 op_sig.options.resize.align_corners) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
