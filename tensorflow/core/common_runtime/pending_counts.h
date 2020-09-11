@@ -369,8 +369,9 @@ inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
       (max_dead_count > kMaxCountForPackedCounts)) {
     constexpr int B = sizeof(std::atomic<LargeCounts>);
     // Round byte offset to proper alignment
-    static_assert(sizeof(std::atomic<LargeCounts>) >=
-                  alignof(std::atomic<LargeCounts>));
+    static_assert(
+        sizeof(std::atomic<LargeCounts>) >= alignof(std::atomic<LargeCounts>),
+        "std::atomic<LargeCounts> must be packed");
     int64 offset = ((static_cast<int64>(next_offset_) + B - 1) / B) * B;
     result.byte_offset_ = offset;
     result.is_large_ = true;
@@ -378,7 +379,8 @@ inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
   } else {
     result.byte_offset_ = next_offset_;
     result.is_large_ = false;
-    static_assert(sizeof(std::atomic<PackedCounts>) == 1);
+    static_assert(sizeof(std::atomic<PackedCounts>) == 1,
+                  "std::atomic<PackedCounts> should be a single byte");
     next_offset_ += sizeof(std::atomic<PackedCounts>);
   }
   return result;
