@@ -107,6 +107,8 @@ class ModelBuilder {
 
   // Constructs the flatbuffer model using `builder_` and return a pointer to
   // it. The returned model has the same lifetime as `builder_`.
+  // Note the default value of 0 for num_subgraph_inputs means all tensor inputs
+  // are in subgraph input list.
   const Model* BuildModel(std::initializer_list<Tensor> inputs,
                           std::initializer_list<Tensor> outputs,
                           size_t num_subgraph_inputs = 0);
@@ -197,15 +199,19 @@ const Model* ModelBuilder::BuildModel(
   constexpr size_t subgraphs_size = 1;
 
   // Find out number of subgraph inputs.
-  int num_tensors_in_subgraph_inputs = inputs.size(); // Default case = all inputs
-  if (num_subgraph_inputs > 0 && num_subgraph_inputs < inputs.size()) {
-    num_tensors_in_subgraph_inputs = num_subgraph_inputs;
+  if (num_subgraph_inputs == 0) {
+    // This is the default case.
+    num_subgraph_inputs = inputs.size();
+  } else {
+    // A non-zero value of num_subgraph_inputs means that some of
+    // the operator input tensors are not subgraph inputs.
+    TFLITE_DCHECK(num_subgraph_inputs < inputs.size());
   }
 
   const flatbuffers::Offset<SubGraph> subgraphs[subgraphs_size] = {
       tflite::CreateSubGraph(
           *builder_, builder_->CreateVector(tensors_, next_tensor_id_),
-          builder_->CreateVector(inputs.begin(), num_tensors_in_subgraph_inputs),
+          builder_->CreateVector(inputs.begin(), num_subgraph_inputs),
           builder_->CreateVector(outputs.begin(), outputs.size()),
           builder_->CreateVector(operators_, next_operator_id_),
           builder_->CreateString("test_subgraph"))};

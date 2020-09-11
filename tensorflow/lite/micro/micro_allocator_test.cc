@@ -758,8 +758,8 @@ TF_LITE_MICRO_TEST(TestOperatorInputsNotInSubgraphInputs) {
   int num_conns = 2;
   tflite::testing::NodeConnection node_list[2] = {
       {
-        {t0, t1, t2},  // t0: input (actual input part of subgraph inputs as well as
-                       // operator inputs)
+        {t0, t1, t2},  // t0: input (actual input part of subgraph inputs as
+                       // well as operator inputs)
                        // t1: scratch1 (only in operator inputs)
                        // t2: scratch2 (only in operator inputs)
         {t3}           // output
