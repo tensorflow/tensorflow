@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/step_interval.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -35,20 +36,13 @@ namespace {
 
 // Combines the src PerCoreStepInfo into the dst PerCoreStepInfo.
 void CombinePerCoreStepInfo(
-    int src_host_id, const PerCoreStepInfo& src, bool use_incomplete_step,
+    int src_host_id, bool use_incomplete_step, const PerCoreStepInfo& src,
     PerCoreStepInfo* dst,
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
     OpMetricsDbCombiner* hlo_metrics_db_per_step_combiner) {
+  DCHECK_EQ(dst->step_num(), src.step_num());
   CombineCoreIdMap(src_host_id, src.step_info_per_core(),
                    dst->mutable_step_info_per_core());
-
-  // Since we have assigned a new step number to the combined result, update
-  // the step number on each core to this new step number.
-  uint32 new_step_num = dst->step_num();
-  for (auto& [_, stepinfo] : *dst->mutable_step_info_per_core()) {
-    stepinfo.set_step_num(new_step_num);
-  }
-
   if (!use_incomplete_step) {
     hlo_metrics_db_complete_steps_only_combiner->Combine(src.hlo_metrics_db());
   }
@@ -62,18 +56,24 @@ void CombinePerCoreStepInfo(
 }
 
 void CombineStepDatabase(
-    int src_host_id, const StepIntersection& step_intersection,
+    int src_host_id, StepInterval step_intersection,
     const StepDatabaseResult& src, StepDatabaseResult* dst,
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
     std::vector<OpMetricsDbCombiner>* hlo_metrics_db_per_step_combiners) {
-  if (src.use_incomplete_step()) dst->set_use_incomplete_step(true);
-  uint32 src_first_step_idx = step_intersection.FirstStepIndex(src_host_id);
-  for (uint32 i = 0; i < step_intersection.NumSteps(); i++) {
+  if (src.use_incomplete_step()) {
+    dst->set_use_incomplete_step(true);
+  }
+  for (const PerCoreStepInfo& src_step_info : src.step_sequence()) {
+    uint32 step_num = src_step_info.step_num();
+    if (!step_intersection.Contains(step_num)) {
+      continue;
+    }
+    uint32 dst_step_sequence_index = step_intersection.Index(step_num);
     CombinePerCoreStepInfo(
-        src_host_id, src.step_sequence(src_first_step_idx + i),
-        src.use_incomplete_step(), dst->mutable_step_sequence(i),
+        src_host_id, src.use_incomplete_step(), src_step_info,
+        dst->mutable_step_sequence(dst_step_sequence_index),
         hlo_metrics_db_complete_steps_only_combiner,
-        &(*hlo_metrics_db_per_step_combiners)[i]);
+        &(*hlo_metrics_db_per_step_combiners)[dst_step_sequence_index]);
   }
 }
 
@@ -135,7 +135,7 @@ uint32 GlobalCoreId(int host_id, uint32 device_ordinal) {
 
 void CombineOpStats(
     bool no_accelerator_in_system, int src_host_id, HardwareType hardware_type,
-    const StepIntersection& step_intersection, const OpStats& src, OpStats* dst,
+    StepInterval step_intersection, const OpStats& src, OpStats* dst,
     OpMetricsDbCombiner* host_op_metrics_db_combiner,
     OpMetricsDbCombiner* device_op_metrics_db_combiner,
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
