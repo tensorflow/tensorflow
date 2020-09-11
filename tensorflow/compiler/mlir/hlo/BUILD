@@ -42,6 +42,7 @@ filegroup(
         "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td",
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
@@ -502,21 +503,6 @@ cc_library(
 )
 
 cc_library(
-    name = "lhlo_copy_removal",
-    srcs = ["lib/Dialect/mhlo/transforms/lhlo_copy_removal.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
-    deps = [
-        ":lhlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_lhlo.cc"],
     hdrs = [
@@ -805,7 +791,6 @@ cc_library(
         ":legalize_to_linalg",
         ":legalize_to_standard",
         ":lhlo",
-        ":lhlo_copy_removal",
         ":lhlo_fuse_linalg",
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",

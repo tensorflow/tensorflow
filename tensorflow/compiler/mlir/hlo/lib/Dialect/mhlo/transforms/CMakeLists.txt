@@ -125,7 +125,6 @@ add_mlir_library(MhloLhloToLinalg
 )
 
 add_mlir_library(LmhloPasses
-  lhlo_copy_removal.cc
   lhlo_fuse_linalg.cc
   lhlo_legalize_to_affine.cc
   lhlo_legalize_to_gpu.cc
