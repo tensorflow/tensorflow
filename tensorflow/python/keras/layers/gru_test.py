@@ -47,13 +47,9 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Double type is not '
                                       'yet supported in ROCm')
-  @tf_test_util.run_v2_only
-=======
   @testing_utils.run_v2_only
->>>>>>> upstream/master
   def test_float64_GRU(self):
     num_samples = 2
     timesteps = 3

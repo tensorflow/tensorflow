@@ -25,11 +25,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
-<<<<<<< HEAD:tensorflow/compiler/mlir/tools/kernel_gen/tf_to_gpu_binary.cc
-#include "tensorflow/compiler/mlir/tools/kernel_gen/gpu_binary_creator.h"
-=======
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
->>>>>>> upstream/master:tensorflow/compiler/mlir/tools/kernel_gen/tf_to_gpu_binary.cc
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -99,42 +95,9 @@ int main(int argc, char** argv) {
   mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
-<<<<<<< HEAD:tensorflow/compiler/mlir/tools/kernel_gen/tf_to_gpu_binary.cc
-#if TENSORFLOW_USE_ROCM
-  std::pair<int32_t, int32_t> compute_capability(architecture, 0);
-#else
-  std::pair<int32_t, int32_t> compute_capability(architecture / 10,
-                                                 architecture % 10);
-#endif
-
-  std::string tf_code;
-  auto read_status = tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  input_file, &tf_code);
-  if (!read_status.ok()) {
-    LOG(ERROR) << read_status;
-    return 1;
-  }
-
-  auto cubin = tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
-      tf_code, compute_capability, tile_sizes, same_shape, unroll_factors);
-
-  if (!cubin.ok()) {
-    LOG(ERROR) << cubin.status();
-    return 1;
-  }
-
-  std::vector<uint8_t> cubin_data = cubin.ConsumeValueOrDie();
-
-  auto status = tensorflow::WriteStringToFile(
-      tensorflow::Env::Default(), output_file,
-      absl::string_view{reinterpret_cast<char*>(cubin_data.data()),
-                        cubin_data.size()});
-
-=======
   auto status =
       tensorflow::kernel_gen::Run(input_file, output_file, architecture,
                                   tile_sizes, same_shape, unroll_factors);
->>>>>>> upstream/master:tensorflow/compiler/mlir/tools/kernel_gen/tf_to_gpu_binary.cc
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

@@ -145,14 +145,11 @@ cc_library(
     data = ["rocm/lib/%{hipsparse_lib}"],
 )
 
-<<<<<<< HEAD
 cc_library(
     name = "roctracer",
     data = ["rocm/lib/%{roctracer_lib}"],
 )
 
-=======
->>>>>>> upstream/master
 filegroup(
     name = "rocm_root",
     srcs = [

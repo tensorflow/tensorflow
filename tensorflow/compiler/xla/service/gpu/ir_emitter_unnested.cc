@@ -133,9 +133,7 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
   KernelThunk* kernel_thunk = static_cast<KernelThunk*>(thunk);
   kernel_thunk->SetLaunchDimensions(launch_dims);
 
-<<<<<<< HEAD
   // XXX FIXME add proper AMDGPU function attributes or metadata
-=======
   // Add __launch_bounds__ to metadata. This limits registers per thread to
   // avoid out-of-resources launching errors.
   llvm::NamedMDNode* nvvm_annotations_node =
@@ -153,7 +151,6 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
       {llvm::ConstantAsMetadata::get(ir_kernel),
        llvm::MDString::get(llvm_context, "reqntidx"),
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
->>>>>>> upstream/master
 }
 
 int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {

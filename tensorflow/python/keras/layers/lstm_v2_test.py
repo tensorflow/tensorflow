@@ -323,14 +323,10 @@ class LSTMV2Test(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([main_inputs] + initial_state, targets)
 
-<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
-  @test_util.run_v2_only
-=======
   @testing_utils.run_v2_only
->>>>>>> upstream/master
   def test_lstm_v2_feature_parity_with_canonical_lstm(self):
     input_shape = 10
     rnn_state_size = 8
@@ -595,14 +591,10 @@ class LSTMV2Test(keras_parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
-<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'float64 yet.')
-  @test_util.run_v2_only
-=======
   @testing_utils.run_v2_only
->>>>>>> upstream/master
   def test_float64_LSTM(self):
     num_samples = 2
     timesteps = 3
@@ -774,14 +766,10 @@ class LSTMV2Test(keras_parameterized.TestCase):
     model.evaluate(x, y)
     model.predict(x)
 
-<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
-  @test_util.run_v2_only
-=======
   @testing_utils.run_v2_only
->>>>>>> upstream/master
   def test_explicit_device_with_go_backward_and_mask(self):
     batch_size = 8
     timestep = 7
@@ -906,14 +894,10 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
-<<<<<<< HEAD
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
-  @test_util.run_v2_only
-=======
   @testing_utils.run_v2_only
->>>>>>> upstream/master
   def test_LSTM_runtime_with_mask(self):
     # Masking will affect which backend is selected based on whether the mask
     # is strictly right padded.

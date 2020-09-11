@@ -17,15 +17,9 @@ package_group(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "gpu_binary_creator",
-    srcs = ["gpu_binary_creator.cc"],
-    hdrs = ["gpu_binary_creator.h"],
-=======
     name = "passes",
     srcs = ["passes.cc"],
     hdrs = ["passes.h"],
->>>>>>> upstream/master
     copts = if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "@com_google_absl//absl/memory",
@@ -89,21 +83,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/mlir_gpu:passes",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
-<<<<<<< HEAD
-    ] + if_cuda([
-        "//tensorflow/stream_executor/gpu:asm_compiler"
-    ]) + if_rocm([
-        "//tensorflow/core/platform:rocm_rocdl_path",
-    ]),
-)
-
-tf_cc_binary(
-    name = "tf_to_gpu_binary",
-    srcs = ["tf_to_gpu_binary.cc"],
-    visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
-    deps = [
-        ":gpu_binary_creator",
-=======
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -157,7 +136,6 @@ tf_cc_binary(
     visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
     deps = [
         ":kernel_creator",
->>>>>>> upstream/master
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/xla:util",
