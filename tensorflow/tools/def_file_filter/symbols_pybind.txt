@@ -224,6 +224,7 @@ tensorflow::ExperimentalRunPassPipeline
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ImportGraphDef
+tensorflow::ImportFunction
 
 [op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
