@@ -5832,7 +5832,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
 void EmitLegalizationErrors(Operation *op,
                             const DenseSet<Operation *> &nonlegalized_ops) {
   // Track the legalization failures by mapping op name to information about
-  // that failure: the number of unlegalized occurrences of the op, and one
+  // that failure: the number of unlegalized occurances of the op, and one
   // example operation that failed.
   std::map<StringRef, std::pair<int, Operation *>> op_name_to_error_info;
   DenseSet<Operation *> error_ops;
