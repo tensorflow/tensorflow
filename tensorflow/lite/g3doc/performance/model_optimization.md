@@ -129,6 +129,8 @@ the numbers here:
 
 [Quantization with int16 activations](https://www.tensorflow.org/model_optimization/guide/quantization/post_training) is a full integer quantization scheme with activations in int16 and weights in int8. This mode can improve accuracy of the quantized model in comparison to the full integer quantization scheme with both activations and weights in int8 keeping a similar model size. It is recommended when activations are sensitive to the quantization.
 
+Currently only non-optimized reference kernel implementation is available in TFLite so that by default the performance will be slow compared to int8 kernels. Full advantages of this mode can currently be accessed via specialised hardware, or custom software.
+
 Below are the accuracy results for some models that benefit from this mode.
 <figure>
   <table>
