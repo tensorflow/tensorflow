@@ -683,6 +683,11 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
                                         dst_format_3d);
   }
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, rank)) {
+    // Change back to the original layout due to early exit.
+    if (rank == 5) {
+      context->AssignDeviceAndDataFormats(context->target_device, src_format,
+                                          dst_format);
+    }
     return Status::OK();
   }
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
@@ -912,6 +917,11 @@ Status FusedBatchNormGradTransposer::TransposeNode(
   }
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, rank) ||
       !IsTraining(*node)) {
+    // Change back to the original layout due to early exit.
+    if (rank == 5) {
+      context->AssignDeviceAndDataFormats(context->target_device, src_format,
+                                          dst_format);
+    }
     return Status::OK();
   }
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
