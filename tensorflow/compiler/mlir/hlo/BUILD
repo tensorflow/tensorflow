@@ -746,12 +746,32 @@ cc_library(
     srcs = ["lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
     deps = [
+        ":chlo_legalize_to_hlo_inc_gen",
         ":hlo",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+gentbl(
+    name = "chlo_legalize_to_hlo_inc_gen",
+    strip_include_prefix = "lib/Dialect/mhlo/transforms/",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Dialect/mhlo/transforms/generated_chlo_legalize_to_hlo.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_patterns.td",
+    td_relative_includes = [
+        "include",
+    ],
+    td_srcs = [
+        ":hlo_ops_td_files",
     ],
 )
 

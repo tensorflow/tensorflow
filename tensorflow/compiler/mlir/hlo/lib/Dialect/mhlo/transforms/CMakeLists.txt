@@ -25,6 +25,10 @@ set(LLVM_TARGET_DEFINITIONS legalize_to_standard_patterns.td)
 mlir_tablegen(generated_legalize_to_standard.inc -gen-rewriters)
 add_public_tablegen_target(MLIRMhloLegalizeToStandardIncGen)
 
+set(LLVM_TARGET_DEFINITIONS chlo_legalize_to_hlo_patterns.td)
+mlir_tablegen(generated_chlo_legalize_to_hlo.inc -gen-rewriters)
+add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
+
 
 add_mlir_library(ChloPasses
   chlo_legalize_to_hlo.cc
@@ -32,6 +36,7 @@ add_mlir_library(ChloPasses
 
   DEPENDS
   MLIRhlo_opsIncGen
+  MLIRChloLegalizeToHloIncGen
 
   LINK_COMPONENTS
   Core
