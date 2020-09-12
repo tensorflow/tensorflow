@@ -115,6 +115,67 @@ Watch-out 은 Tensorflow Lite 모델을 이용해 인터넷에 접속이 안되�
 - viewcontroller → viewmodel / swiftUI 리펙터링
     - 기존 tensorflowlite-ios 어플리케이션 및 타 레퍼런스의 경우 대부분 view controller 와 UIKit 을 이용하는 방식으로 되어 있기에, 최신 UI/UX 적용을 위해 SwiftUI 와 MVVM 아키텍쳐로 코드 리펙터링을 진행하였습니다.
 
+### TFLite Mobility 팀
+
+![이미지]()
+
+### 프로젝트명
+
+
+
+- Watching U
+  - Helmet Detection for mobility   
+
+### 프로젝트 개요   
+
+
+
+- 이 프로젝트는 전동킥보드 탑승자의 헬멧 착용 여부를 탐지하고,  
+착용하지 않은 경우 경고 알람을 내보내는 Tiny ML 디바이스를 만드는 프로젝트입니다.
+
+
+
+- 헬멧 미착용 상태로 전동 킥보드를 탑승하는 것이 안전상의 이슈로 커져가고 있는 현 상황에서,  
+  각각의 개별적인 킥보드를 단속하기 힘들다는 문제를 해결하기 위해 고안되었습니다.
+
+
+
+- 전동 킥보드에 부착된 디바이스 카메라에 헬멧 미착용 여부가 탐지되면, "헬멧을 쓰세요" 라는 음성이 출력되고,  
+  헬멧을 착용한 것으로 판단되면, "헬멧을 잘 쓰셨군요"라는 음성이 출력됩니다.
+  
+- 보다 자세한 내용은 [여기](https://github.com/yunho0130/tensorflow-lite/tree/master/mobilityteamproject)를 참고해주세요.
+
+### 진행 과정
+
+- Tensorflow-lite Model
+
+  - (Step1) Helmet data processing
+  	- 실습 코드
+  		- [kaggle-data-processing.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/mobilityteamproject/helmet-data-preprocessing/kaggle-data-processing.ipynb)
+  		
+  	- 설명
+
+  		- 여러 경로로부터 수집한 데이터를 사용할 수 있는 형태로 만드는 전처리 과정
+  		- 더 자세한 설명을 원하시면 [이 곳](https://github.com/yunho0130/tensorflow-lite/tree/master/mobilityteamproject/Step1_helmet_data_processing)을 클릭해주세요
+  		
+  - (Step2) Model training and tflite convert
+    - 실습 코드    
+      - [helmet_classification_for_tinyMLproject_part1.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/mobilityteamproject/modeling-with-code/helmet_classification_for_tinyMLproject_part1.ipynb)
+      - [helmet_classification_for_tinyMLproject_part2.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/mobilityteamproject/modeling-with-code/helmet_classification_for_tinyMLproject_part2.ipynb)
+      - [helmet_classification_for_tinyMLproject_part3.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/mobilityteamproject/modeling-with-code/helmet_classification_for_tinyMLproject_part3.ipynb)
+      
+	- 설명
+		- Teachable machine 또는 Keras를 통하여 모델을 학습시키고 TFLite로 변환하는 과정 
+	    - 더 자세한 설명을 원하시면 [이 곳](https://github.com/yunho0130/tensorflow-lite/tree/master/mobilityteamproject/Step2_Model_training_and_tflite_convert)을 클릭해주세요
+	    
+- Application
+ - (Step3) Raspberry Pi Porting 
+  	- 실습 참고 링크
+  		- [README 링크](https://github.com/yunho0130/tensorflow-lite/tree/master/mobilityteamproject/Step3_Raspberry_Pi_Porting)  
+  	
+  	- 설명
+  		- MCU 중 라즈베리파이에 헬멧 탐지 및 음성 출력 모델을 Porting 하는 과정
+  		- 더 자세한 설명을 원하시면 [이 곳](https://github.com/yunho0130/tensorflow-lite/tree/master/mobilityteamproject/Step3_Raspberry_Pi_Porting)을 클릭해주세요
 
 
 ### Collaborators
