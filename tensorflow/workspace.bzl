@@ -1186,6 +1186,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "https://github.com/apple/coremltools/archive/3.3.zip",
         ],
     )
+    tf_http_archive(
+        name = "leveldb",
+        build_file = "//third_party:leveldb.BUILD",
+        sha256 = "55423cac9e3306f4a9502c738a001e4a339d1a38ffbee7572d4a07d5d63949b2",
+        strip_prefix = "leveldb-1.22",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/leveldb/archive/1.22.tar.gz",
+            "https://github.com/google/leveldb/archive/1.22.tar.gz",
+        ],
+    )
 
 def tf_bind():
     """Bind targets for some external repositories"""
