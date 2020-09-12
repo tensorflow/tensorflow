@@ -1,0 +1,48 @@
+{
+  "assets" : [
+    {
+      "filename" : "Circular.imageset",
+      "idiom" : "watch",
+      "role" : "circular"
+    },
+    {
+      "filename" : "Extra Large.imageset",
+      "idiom" : "watch",
+      "role" : "extra-large"
+    },
+    {
+      "filename" : "Graphic Bezel.imageset",
+      "idiom" : "watch",
+      "role" : "graphic-bezel"
+    },
+    {
+      "filename" : "Graphic Circular.imageset",
+      "idiom" : "watch",
+      "role" : "graphic-circular"
+    },
+    {
+      "filename" : "Graphic Corner.imageset",
+      "idiom" : "watch",
+      "role" : "graphic-corner"
+    },
+    {
+      "filename" : "Graphic Large Rectangular.imageset",
+      "idiom" : "watch",
+      "role" : "graphic-large-rectangular"
+    },
+    {
+      "filename" : "Modular.imageset",
+      "idiom" : "watch",
+      "role" : "modular"
+    },
+    {
+      "filename" : "Utilitarian.imageset",
+      "idiom" : "watch",
+      "role" : "utilitarian"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
