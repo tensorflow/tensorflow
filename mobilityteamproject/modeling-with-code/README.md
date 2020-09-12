@@ -3,9 +3,9 @@
 
 2-1-helmet_classification_for_tinyMLproject_part1.ipynb
 
-2-2-helmet_classification_for_tinyMLproject_part1.ipynb
+2-2-helmet_classification_for_tinyMLproject_part2.ipynb
 
-2-3-helmet_classification_for_tinyMLproject_part1.ipynb
+2-3-helmet_classification_for_tinyMLproject_part3.ipynb
 
 ### 2-1-helmet_classification_for_tinyMLproject_part1.ipynb
 
