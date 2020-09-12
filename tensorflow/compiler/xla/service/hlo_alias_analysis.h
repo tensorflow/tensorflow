@@ -120,6 +120,15 @@ class HloAliasAnalysis {
     return results;
   }
 
+  // Returns true if the operation is an in-place operation and its operand 0
+  // must alias with the output.
+  static bool IsInPlaceOperation(HloOpcode opcode);
+
+  // Returns a vector consisting of operand number and output shape index of the
+  // in-place operations within this HLO.
+  static std::vector<std::pair<int64, ShapeIndex>> GetInPlaceInputOutputPairs(
+      const HloInstruction* instruction);
+
  protected:
   explicit HloAliasAnalysis(const HloModule* module);
 

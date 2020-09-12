@@ -308,6 +308,39 @@ class BufferValueMap {
     }
   }
 
+  void ComputeInPlaceOperationAliasedBuffers(
+      const HloValue& value, std::vector<BufferNumber>* aliased_buffers) {
+    VLOG(3) << "Compute aliases for in-place operations (e.g. "
+               "kDynamicUpdateSlice and kScatter)";
+    for (const HloPosition& position : value.positions()) {
+      HloInstruction* instruction = position.instruction;
+      for (const auto& operand_number_and_output_index :
+           HloAliasAnalysis::GetInPlaceInputOutputPairs(instruction)) {
+        if (position.index == operand_number_and_output_index.second) {
+          int64 operand_number = operand_number_and_output_index.first;
+          const HloValue& operand_value = dataflow_.GetUniqueValueAt(
+              instruction->operand(operand_number), {});
+          VLOG(3) << " operand value " << operand_value.ToShortString()
+                  << " aliases.";
+          aliased_buffers->push_back(GetBufferForValue(operand_value));
+        }
+      }
+    }
+
+    for (const HloUse& use : value.uses()) {
+      for (const auto& operand_number_and_output_index :
+           HloAliasAnalysis::GetInPlaceInputOutputPairs(use.instruction)) {
+        int64 operand_number = operand_number_and_output_index.first;
+        if (use.operand_number == operand_number) {
+          const HloValue& use_value = dataflow_.GetUniqueValueAt(
+              use.instruction, operand_number_and_output_index.second);
+          VLOG(3) << " use value " << use_value.ToShortString() << " aliases.";
+          aliased_buffers->push_back(GetBufferForValue(use_value));
+        }
+      }
+    }
+  }
+
   // Compute and return a vector of buffers that the given value must be
   // contained in due to HLO aliasing rules.
   std::vector<BufferNumber> ComputeAliasedBuffers(const HloValue& value) {
@@ -318,6 +351,7 @@ class BufferValueMap {
     ComputeInputOutputAliasedBuffers(value, &aliased_buffers);
     ComputeWhileAliasedBuffers(value, &aliased_buffers);
     ComputeConditionalAliasedBuffers(value, &aliased_buffers);
+    ComputeInPlaceOperationAliasedBuffers(value, &aliased_buffers);
     // Uniquify aliased buffers.
     absl::c_sort(aliased_buffers);
     aliased_buffers.erase(
@@ -341,6 +375,42 @@ class BufferValueMap {
   // The buffer number of the next buffer to be created.
   BufferNumber next_buffer_number_ = 0;
 };
+
+/*static*/ bool HloAliasAnalysis::IsInPlaceOperation(HloOpcode opcode) {
+  return opcode == HloOpcode::kDynamicUpdateSlice ||
+         opcode == HloOpcode::kScatter;
+}
+
+/*static*/ std::vector<std::pair<int64, ShapeIndex>>
+HloAliasAnalysis::GetInPlaceInputOutputPairs(
+    const HloInstruction* instruction) {
+  if (IsInPlaceOperation(instruction->opcode())) {
+    return {{0, {}}};
+  } else if (instruction->opcode() != HloOpcode::kFusion) {
+    return {};
+  }
+  std::vector<std::pair<int64, ShapeIndex>> input_output_pairs;
+  for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    const HloInstruction* hlo_generating_output =
+        instruction->fused_expression_root();
+    for (int64 i = 0; i < indexed_shape.index.size(); ++i) {
+      if (hlo_generating_output->opcode() == HloOpcode::kTuple) {
+        hlo_generating_output =
+            hlo_generating_output->operand(indexed_shape.index[i]);
+      } else {
+        CHECK_EQ(i, indexed_shape.index.size() - 1);
+      }
+    }
+
+    if (IsInPlaceOperation(hlo_generating_output->opcode()) &&
+        hlo_generating_output->operand(0)->opcode() == HloOpcode::kParameter) {
+      input_output_pairs.emplace_back(
+          hlo_generating_output->operand(0)->parameter_number(),
+          indexed_shape.index);
+    }
+  }
+  return input_output_pairs;
+}
 
 HloAliasAnalysis::HloAliasAnalysis(const HloModule* module) : module_(module) {}
 
