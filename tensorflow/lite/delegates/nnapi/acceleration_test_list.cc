@@ -364,6 +364,7 @@ SelectOpTest/.+,29
 -SliceOpTest/SliceOpTest/SliceString/.+
 -SliceOpTest/SliceOpTest/SliceInt64/.+
 -SliceOpTest/SliceOpTest/SliceBool/.+
+-SliceOpTest/SliceOpTest/SliceInt16/.+
 # Only constant tensors
 SliceOpTest/SliceOpTest/.+/0,29
 
@@ -413,6 +414,7 @@ TopKV2OpTest/TopKV2OpTest/.+/0,29
 -TransposeTest/5DDividedIntoTwo2Ds.*
 -TransposeTest/Complex5DTest.*
 -TransposeTest/.+DynamicTensor
+-TransposeTest/TestRefOps4DInt16
 TransposeTest/.+
 
 # transpose_conv_test
