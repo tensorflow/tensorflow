@@ -19,13 +19,14 @@ limitations under the License.
 
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
+
+#include "leveldb/table_builder.h"
 
 namespace tensorflow {
 

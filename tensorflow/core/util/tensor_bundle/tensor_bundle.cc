@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -46,6 +45,8 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
+
+#include "leveldb/table_builder.h"
 
 namespace tensorflow {
 
