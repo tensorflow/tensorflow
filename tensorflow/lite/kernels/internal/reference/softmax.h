@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 
 #include <limits>
-#include <vector>
 
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -145,6 +144,20 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
+int16_t CalculateExp(const SoftmaxParams& params, const int16_t* input_data,
+                     const int depth, int16_t max_in_row, int i, int c) {
+  int32_t input_diff = input_data[i * depth + c] - max_in_row;
+  // scale the input_diff such that [-65535, 0] correspond to [-10.0, 0.0]
+  int32_t scaled_diff = MultiplyByQuantizedMultiplier(
+      input_diff, params.input_multiplier, params.input_left_shift);
+  // recenter to [-32768, 32767]
+  int32_t sym_scaled_diff = scaled_diff + 32767;
+  int16_t sat_sym_scaled_diff =
+      std::min(std::max(sym_scaled_diff, static_cast<int32_t>(-32768)),
+               static_cast<int32_t>(32767));
+  // apply the exp() LUT activation function
+  return generic_int16_table_lookup(sat_sym_scaled_diff, params.exp_lut);
+}
 // Quantized softmax with int16_t input and int16_t output.
 inline void SoftmaxInt16(const SoftmaxParams& params,
                          const RuntimeShape& input_shape,
@@ -165,27 +178,10 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
     }
 
     // Compute exp(input - max_input)
-    std::vector<int16_t> exp_result_Q015(depth);
-    for (int c = 0; c < depth; ++c) {
-      int32_t input_diff = input_data[i * depth + c] - max_in_row;
-      // scale the input_diff such that [-65535, 0] correspond to [-10.0, 0.0]
-      int32_t scaled_diff = MultiplyByQuantizedMultiplier(
-          input_diff, params.input_multiplier, params.input_left_shift);
-      // recenter to [-32768, 32767]
-      int32_t sym_scaled_diff = scaled_diff + 32767;
-      int16_t sat_sym_scaled_diff =
-          std::min(std::max(sym_scaled_diff, static_cast<int32_t>(-32768)),
-                   static_cast<int32_t>(32767));
-      // apply the exp() LUT activation function
-      exp_result_Q015[c] =
-          generic_int16_table_lookup(sat_sym_scaled_diff, params.exp_lut);
-    }
-
     // sum_of_exps is a Q16.15 fixed point format.
     int32_t sum_of_exps = 0;
     for (int c = 0; c < depth; ++c) {
-      // Q16.15 + Q0.15
-      sum_of_exps += exp_result_Q015[c];
+      sum_of_exps += CalculateExp(params, input_data, depth, max_in_row, i, c);
     }
 
     // Compute the reciprocal 1/sum_of_exps
@@ -211,7 +207,9 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
     for (int c = 0; c < depth; ++c) {
       uint8_t right_shift = 31 - headroom_plus_one;
       int64_t round = 1 << (right_shift - 1);
-      int32_t result = (static_cast<int64_t>(exp_result_Q015[c]) *
+      int16_t exp_result_Q015 =
+          CalculateExp(params, input_data, depth, max_in_row, i, c);
+      int32_t result = (static_cast<int64_t>(exp_result_Q015) *
                             static_cast<int64_t>(reciprocal_scale_Q015) +
                         round) >>
                        right_shift;
