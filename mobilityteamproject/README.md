@@ -74,7 +74,6 @@
       - 만들어진 모델을 학습하고, 모델을 텐서플로우 라이트 파일로 변환하는 시간을 갖습니다.
       - (experimental) Grad-Cam 이라는 방법을 통해 해석해 봅니다.
 
-
     - 더 자세한 설명을 원하시면 [이 곳](https://github.com/yunho0130/tensorflow-lite/tree/master/mobilityteamproject/Step2_Model_training_and_tflite_convert)을 클릭해주세요
 
    

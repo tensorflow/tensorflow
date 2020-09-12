@@ -1,2 +1,0 @@
-0 wearing a helmet
-1 not wearing a helmet
