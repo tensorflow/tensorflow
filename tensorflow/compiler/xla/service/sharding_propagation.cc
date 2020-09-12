@@ -476,7 +476,7 @@ bool SupportSpatialPartitioning(const HloInstruction* instruction,
 
 bool InferDotShardingFromOperands(
     HloInstruction* instruction,
-    const dot_as_convolution_util::DotGeneralAsConvolutionDimsInfo& dnums,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
     bool may_combine_partial_sharding) {
   auto from_operand = [&](int64 operand_index) {
     auto operand = instruction->operand(operand_index);
@@ -543,9 +543,10 @@ bool InferDotShardingFromOperands(
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           int64 aggressiveness,
                                           bool may_combine_partial_sharding) {
-  if (auto dot_dims = dot_as_convolution_util::ParseDotGeneralFromConvolution(
-          instruction)) {
-    return InferDotShardingFromOperands(instruction, *dot_dims,
+  auto dot_dims =
+      dot_as_convolution_util::ParseConvolutionDimsInfo(instruction);
+  if (dot_dims.conv_spatial_dims.empty()) {
+    return InferDotShardingFromOperands(instruction, dot_dims,
                                         may_combine_partial_sharding);
   }
   const auto& dnums = instruction->convolution_dimension_numbers();
@@ -1031,7 +1032,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
 
 HloSharding InferDotOperandSharding(
     const HloInstruction* instruction,
-    const dot_as_convolution_util::DotGeneralAsConvolutionDimsInfo& dnums,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
     int64 operand_index, bool may_combine_partial_sharding) {
   auto operand = instruction->operand(operand_index);
   auto other = instruction->operand(1 - operand_index);
@@ -1185,10 +1186,10 @@ absl::optional<HloSharding> GetShardingFromUser(
       return HloSharding::Tile(new_tile_assignment);
     }
     case HloOpcode::kConvolution: {
-      if (auto dot_dims =
-              dot_as_convolution_util::ParseDotGeneralFromConvolution(&user)) {
+      auto dot_dims = dot_as_convolution_util::ParseConvolutionDimsInfo(&user);
+      if (dot_dims.conv_spatial_dims.empty()) {
         int64 op_idx = user.operand_index(&instruction);
-        return InferDotOperandSharding(&user, *dot_dims, op_idx,
+        return InferDotOperandSharding(&user, dot_dims, op_idx,
                                        may_combine_partial_sharding);
       }
       return absl::nullopt;
