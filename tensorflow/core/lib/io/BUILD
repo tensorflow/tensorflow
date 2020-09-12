@@ -13,38 +13,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# TODO(bmzhao): Remaining targets to add to this BUILD file are: all tests.
-
-cc_library(
-    name = "block",
-    srcs = [
-        "block.cc",
-        "block_builder.cc",
-        "format.cc",
-        "table_builder.cc",
-    ],
-    hdrs = [
-        "block.h",
-        "block_builder.h",
-        "format.h",
-        "table_builder.h",
-    ],
-    deps = [
-        ":iterator",
-        ":table_options",
-        "//tensorflow/core/lib/core:coding",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/lib/hash:crc32c",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:types",
-    ],
-    alwayslink = True,
-)
-
 cc_library(
     name = "buffered_inputstream",
     srcs = ["buffered_inputstream.cc"],
@@ -89,17 +57,6 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:types",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "iterator",
-    srcs = ["iterator.cc"],
-    hdrs = ["iterator.h"],
-    deps = [
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:stringpiece",
     ],
     alwayslink = True,
 )
@@ -235,48 +192,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cache",
-    srcs = [
-        "cache.cc",
-    ],
-    hdrs = [
-        "cache.h",
-    ],
-    deps = [
-        "//tensorflow/core/platform:coding",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:stringpiece",
-    ],
-)
-
-cc_library(
-    name = "table",
-    srcs = [
-        "table.cc",
-        "two_level_iterator.cc",
-    ],
-    hdrs = [
-        "table.h",
-        "two_level_iterator.h",
-    ],
-    deps = [
-        ":block",
-        ":cache",
-        ":iterator",
-        ":table_options",
-        "//tensorflow/core/lib/core:coding",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/platform:env",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "table_options",
-    hdrs = ["table_options.h"],
-)
-
-cc_library(
     name = "zlib_compression_options",
     srcs = ["zlib_compression_options.cc"],
     hdrs = ["zlib_compression_options.h"],
@@ -326,24 +241,14 @@ cc_library(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "block.cc",
-        "block.h",
-        "block_builder.cc",
-        "block_builder.h",
         "buffered_inputstream.cc",
         "buffered_inputstream.h",
-        "cache.cc",
-        "cache.h",
         "compression.cc",
         "compression.h",
-        "format.cc",
-        "format.h",
         "inputbuffer.cc",
         "inputbuffer.h",
         "inputstream_interface.cc",
         "inputstream_interface.h",
-        "iterator.cc",
-        "iterator.h",
         "path.h",
         "random_inputstream.cc",
         "random_inputstream.h",
@@ -352,13 +257,6 @@ filegroup(
         "snappy/snappy_compression_options.h",
         "snappy/snappy_inputstream.cc",
         "snappy/snappy_inputstream.h",
-        "table.cc",
-        "table.h",
-        "table_builder.cc",
-        "table_builder.h",
-        "table_options.h",
-        "two_level_iterator.cc",
-        "two_level_iterator.h",
         "zlib_compression_options.cc",
         "zlib_compression_options.h",
         "zlib_inputstream.cc",
@@ -369,14 +267,10 @@ filegroup(
 filegroup(
     name = "legacy_lib_io_all_headers",
     srcs = [
-        "block.h",
-        "block_builder.h",
         "buffered_inputstream.h",
         "compression.h",
-        "format.h",
         "inputbuffer.h",
         "inputstream_interface.h",
-        "iterator.h",
         "path.h",
         "proto_encode_helper.h",
         "random_inputstream.h",
@@ -386,10 +280,6 @@ filegroup(
         "snappy/snappy_inputbuffer.h",
         "snappy/snappy_inputstream.h",
         "snappy/snappy_outputbuffer.h",
-        "table.h",
-        "table_builder.h",
-        "table_options.h",
-        "two_level_iterator.h",
         "zlib_compression_options.h",
         "zlib_inputstream.h",
         "zlib_outputbuffer.h",
@@ -401,7 +291,6 @@ filegroup(
     name = "legacy_lib_io_all_tests",
     srcs = [
         "buffered_inputstream_test.cc",
-        "cache_test.cc",
         "inputbuffer_test.cc",
         "inputstream_interface_test.cc",
         "path_test.cc",
@@ -409,7 +298,6 @@ filegroup(
         "record_reader_writer_test.cc",
         "recordio_test.cc",
         "snappy/snappy_test.cc",
-        "table_test.cc",
         "zlib_buffers_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -419,7 +307,6 @@ filegroup(
     name = "legacy_lib_io_headers",
     srcs = [
         "buffered_inputstream.h",
-        "cache.h",
         "compression.h",
         "inputstream_interface.h",
         "path.h",
@@ -427,9 +314,6 @@ filegroup(
         "random_inputstream.h",
         "record_reader.h",
         "record_writer.h",
-        "table.h",
-        "table_builder.h",
-        "table_options.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -438,7 +322,6 @@ filegroup(
     name = "legacy_lib_internal_public_headers",
     srcs = [
         "inputbuffer.h",
-        "iterator.h",
         "snappy/snappy_compression_options.h",
         "snappy/snappy_inputbuffer.h",
         "snappy/snappy_inputstream.h",
@@ -453,9 +336,6 @@ filegroup(
 filegroup(
     name = "legacy_lib_test_internal_headers",
     srcs = [
-        "block.h",
-        "block_builder.h",
-        "format.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
