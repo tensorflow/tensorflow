@@ -339,8 +339,6 @@ build:windows --copt=/experimental:preprocessor
 build:windows --host_copt=/experimental:preprocessor
 
 # Misc build options we need for windows.
-build:windows --linkopt=/DEBUG
-build:windows --host_linkopt=/DEBUG
 build:windows --linkopt=/OPT:REF
 build:windows --host_linkopt=/OPT:REF
 build:windows --linkopt=/OPT:ICF
