@@ -30,7 +30,6 @@ limitations under the License.
 /* Define main entry point */
 ENTRY(_main)
 
-/* 20K of RAM and 128K of FLASH */
 MEMORY {
 RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 256K
 FLASH (rx) : ORIGIN = 0x8000000, LENGTH = 512K
