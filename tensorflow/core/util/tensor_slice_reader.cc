@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/leveldb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -39,10 +40,11 @@ namespace checkpoint {
 TensorSliceReader::Table::~Table() {}
 
 namespace {
+
 class TensorSliceReaderTable : public TensorSliceReader::Table {
  public:
   // Takes ownership of 'f'.
-  explicit TensorSliceReaderTable(RandomAccessFile* f, table::Table* t)
+  explicit TensorSliceReaderTable(leveldb::RandomAccessFile* f, leveldb::Table* t)
       : file_(f), table_(t) {}
 
   ~TensorSliceReaderTable() override {
@@ -51,10 +53,10 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
   }
 
   bool Get(const string& key, string* value) override {
-    std::unique_ptr<table::Iterator> iter(table_->NewIterator());
+    std::unique_ptr<leveldb::Iterator> iter(table_->NewIterator(leveldb::ReadOptions()));
     iter->Seek(key);
     if (iter->Valid() && iter->key() == key) {
-      StringPiece v = iter->value();
+      leveldb::Slice v = iter->value();
       value->assign(v.data(), v.size());
       return true;
     } else {
@@ -63,8 +65,8 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
   }
 
  private:
-  RandomAccessFile* file_;  // Owns.
-  table::Table* table_;
+  leveldb::RandomAccessFile* file_;  // Owns.
+  leveldb::Table* table_;
 };
 }  // namespace
 
@@ -72,15 +74,17 @@ Status OpenTableTensorSliceReader(const string& fname,
                                   TensorSliceReader::Table** result) {
   *result = nullptr;
   Env* env = Env::Default();
-  std::unique_ptr<RandomAccessFile> f;
-  Status s = env->NewRandomAccessFile(fname, &f);
+  std::unique_ptr<RandomAccessFile> r;
+  Status s = env->NewRandomAccessFile(fname, &r);
   if (s.ok()) {
     uint64 file_size;
     s = env->GetFileSize(fname, &file_size);
     if (s.ok()) {
-      table::Options options;
-      table::Table* table;
-      s = table::Table::Open(options, f.get(), file_size, &table);
+      leveldb::Options options;
+      leveldb::Table* table;
+      std::unique_ptr<leveldb::RandomAccessFile> f;
+      f.reset(new io::LevelDBRandomAccessFile(r.release()));
+      s = LEVELDB_STATUS_TO_STATUS(leveldb::Table::Open(options, f.get(), file_size, &table));
       if (s.ok()) {
         *result = new TensorSliceReaderTable(f.release(), table);
         return Status::OK();

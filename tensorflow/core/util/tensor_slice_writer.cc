@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/leveldb.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
@@ -36,19 +37,20 @@ namespace {
 
 class TableBuilder : public TensorSliceWriter::Builder {
  public:
-  TableBuilder(const string& name, WritableFile* f) : name_(name), file_(f) {
-    table::Options option;
-    option.compression = table::kNoCompression;
-    builder_.reset(new table::TableBuilder(option, f));
+  TableBuilder(const string& name, WritableFile* f) : name_(name) {
+    file_.reset(new io::LevelDBWritableFile(f));
+    leveldb::Options option;
+    option.compression = leveldb::kNoCompression;
+    builder_.reset(new leveldb::TableBuilder(option, file_.get()));
   }
   void Add(StringPiece key, StringPiece val) override {
-    builder_->Add(key, val);
+    builder_->Add(leveldb::Slice(key.data(), key.size()), leveldb::Slice(val.data(), val.size()));
   }
   Status Finish(int64* file_size) override {
     *file_size = -1;
-    Status s = builder_->Finish();
+    Status s = LEVELDB_STATUS_TO_STATUS(builder_->Finish());
     if (s.ok()) {
-      s = file_->Close();
+      s = LEVELDB_STATUS_TO_STATUS(file_->Close());
       if (s.ok()) {
         *file_size = builder_->FileSize();
       }
@@ -64,9 +66,10 @@ class TableBuilder : public TensorSliceWriter::Builder {
 
  private:
   string name_;
-  std::unique_ptr<WritableFile> file_;
-  std::unique_ptr<table::TableBuilder> builder_;
+  std::unique_ptr<leveldb::WritableFile> file_;
+  std::unique_ptr<leveldb::TableBuilder> builder_;
 };
+
 }  // anonymous namespace
 
 Status CreateTableTensorSliceBuilder(const string& name,

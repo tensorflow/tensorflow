@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/leveldb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -378,13 +379,13 @@ Status CorruptFileError(const Status& in_status, const string& filename,
                       detail, "): ", in_status.error_message()));
 }
 
-table::Options TableBuilderOptions() {
-  table::Options o;
+leveldb::Options TableBuilderOptions() {
+  leveldb::Options o;
   // Compressed tables cannot be read by TensorFlow releases prior to 1.1.
   // To smoothen the transition, compressed writes are disabled for now
   // (version 1.2) with the intention that they will be enabled again at
   // some point (perhaps the 1.3 release?).
-  o.compression = table::kNoCompression;
+  o.compression = leveldb::kNoCompression;
   return o;
 }
 
@@ -532,15 +533,16 @@ Status BundleWriter::Finish() {
   }
   if (!status_.ok()) return status_;
   // Build key -> BundleEntryProto table.
-  std::unique_ptr<WritableFile> file;
-  status_ = env_->NewWritableFile(metadata_path_, &file);
+  std::unique_ptr<WritableFile> w;
+  status_ = env_->NewWritableFile(metadata_path_, &w);
   if (!status_.ok()) return status_;
+  std::unique_ptr<leveldb::WritableFile> file(new io::LevelDBWritableFile(w.release()));
   {
     // N.B.: the default use of Snappy compression may not be supported on all
     // platforms (e.g. Android).  The metadata file is small, so this is fine.
-    table::Options options;
-    options.compression = table::kNoCompression;
-    table::TableBuilder builder(options, file.get());
+    leveldb::Options options;
+    options.compression = leveldb::kNoCompression;
+    leveldb::TableBuilder builder(options, file.get());
     // Header entry.
     BundleHeaderProto header;
     header.set_num_shards(1);
@@ -556,9 +558,9 @@ Status BundleWriter::Finish() {
     for (const auto& p : entries_) {
       builder.Add(p.first, p.second.SerializeAsString());
     }
-    status_ = builder.Finish();
+    status_ = LEVELDB_STATUS_TO_STATUS(builder.Finish());
+    status_.Update(LEVELDB_STATUS_TO_STATUS(file->Close()));
   }
-  status_.Update(file->Close());
   if (!status_.ok()) {
     Env::Default()->DeleteFile(metadata_path_).IgnoreError();
     return status_;
@@ -598,25 +600,26 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   const string filename = MetaFilename(prefix);
   uint64 file_size;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
-  std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
+  std::unique_ptr<RandomAccessFile> r;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &r));
+  std::unique_ptr<leveldb::RandomAccessFile> file(new io::LevelDBRandomAccessFile(r.release()));
 
-  table::Table* table = nullptr;
-  TF_RETURN_IF_ERROR(
-      table::Table::Open(TableBuilderOptions(), file.get(), file_size, &table));
-  std::unique_ptr<table::Table> table_deleter(table);
-  std::unique_ptr<table::Iterator> iter(table->NewIterator());
+  leveldb::Table* table = nullptr;
+  TF_RETURN_IF_ERROR(LEVELDB_STATUS_TO_STATUS(
+      leveldb::Table::Open(TableBuilderOptions(), file.get(), file_size, &table)));
+  std::unique_ptr<leveldb::Table> table_deleter(table);
+  std::unique_ptr<leveldb::Iterator> iter(table->NewIterator(leveldb::ReadOptions()));
 
   int num_shards;
   // Process header.
   {
     iter->Seek(kHeaderEntryKey);
     if (!iter->Valid()) {
-      return CorruptFileError(iter->status(), filename,
+      return CorruptFileError(LEVELDB_STATUS_TO_STATUS(iter->status()), filename,
                               "failed to seek to header entry");
     }
     BundleHeaderProto header;
-    Status s = ParseEntryProto(iter->key(), iter->value(), &header);
+    Status s = ParseEntryProto(StringPiece(iter->key().data(), iter->key().size()), StringPiece(iter->value().data(), iter->value().size()), &header);
     if (!s.ok()) return CorruptFileError(s, filename, "unable to parse header");
 
     merge_state->num_shards += header.num_shards();
@@ -647,7 +650,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Loops through the non-header to-merge entries.
   BundleEntryProto to_merge_entry;
   for (; iter->Valid(); iter->Next()) {
-    const string key(iter->key());
+    const string key(iter->key().data(), iter->key().size());
     const auto entry_iter = merge_state->entries.find(key);
 
     // Illegal: the duplicated entry is a non-slice tensor.
@@ -659,7 +662,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
     }
 
     TF_RETURN_IF_ERROR(
-        ParseEntryProto(iter->key(), iter->value(), &to_merge_entry));
+        ParseEntryProto(StringPiece(iter->key().data(), iter->key().size()), StringPiece(iter->value().data(), iter->value().size()), &to_merge_entry));
 
     // The duplicated entry holds metadata for a sliced full tensor.
     // Allows the duplication and merges "slices".
@@ -712,11 +715,12 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
   }
 
   // Writes the final metadata table under the merged prefix.
-  std::unique_ptr<WritableFile> merged_metadata;
+  std::unique_ptr<WritableFile> w;
   TF_RETURN_IF_ERROR(
-      env->NewWritableFile(MetaFilename(merged_prefix), &merged_metadata));
+      env->NewWritableFile(MetaFilename(merged_prefix), &w));
+  std::unique_ptr<leveldb::WritableFile> merged_metadata(new io::LevelDBWritableFile(w.release()));
   {
-    table::TableBuilder builder(TableBuilderOptions(), merged_metadata.get());
+    leveldb::TableBuilder builder(TableBuilderOptions(), merged_metadata.get());
     // Header entry.
     BundleHeaderProto header;
     header.set_num_shards(merge.num_shards);
@@ -727,9 +731,9 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
     for (const auto& p : merge.entries) {
       builder.Add(p.first, p.second.SerializeAsString());
     }
-    status = builder.Finish();
+    status = LEVELDB_STATUS_TO_STATUS(builder.Finish());
+    status.Update(LEVELDB_STATUS_TO_STATUS(merged_metadata->Close()));
   }
-  status.Update(merged_metadata->Close());
   if (!status.ok()) return status;
   VLOG(1) << "Merged bundles to:" << merged_prefix;
 
@@ -756,33 +760,33 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   if (!status_.ok()) return;
 
   // Opens the metadata table.
-  std::unique_ptr<RandomAccessFile> wrapper;
-  status_ = env_->NewRandomAccessFile(filename, &wrapper);
+  std::unique_ptr<RandomAccessFile> r;
+  status_ = env_->NewRandomAccessFile(filename, &r);
   if (!status_.ok()) return;
-  metadata_ = wrapper.release();
+  metadata_ = new io::LevelDBRandomAccessFile(r.release());
 
-  table::Options o;
+  leveldb::Options o;
   int64 cache_size;
   Status s =
       ReadInt64FromEnvVar("TF_TABLE_INDEX_CACHE_SIZE_IN_MB", 0, &cache_size);
   if (s.ok() && cache_size > 0) {
-    index_cache_ = table::NewLRUCache(cache_size << 20);
+    index_cache_ = leveldb::NewLRUCache(cache_size << 20);
     o.block_cache = index_cache_;
   }
 
-  status_ = table::Table::Open(o, metadata_, file_size, &table_);
+  status_ = LEVELDB_STATUS_TO_STATUS(leveldb::Table::Open(o, metadata_, file_size, &table_));
   if (!status_.ok()) return;
-  iter_ = table_->NewIterator();
+  iter_ = table_->NewIterator(leveldb::ReadOptions());
 
   // Reads "num_shards_" from the first entry.
   iter_->Seek(kHeaderEntryKey);
   if (!iter_->Valid()) {
-    status_ = CorruptFileError(iter_->status(), filename,
+    status_ = CorruptFileError(LEVELDB_STATUS_TO_STATUS(iter_->status()), filename,
                                "failed to seek to header entry");
     return;
   }
   BundleHeaderProto header;
-  status_ = ParseEntryProto(iter_->key(), iter_->value(), &header);
+  status_ = ParseEntryProto(StringPiece(iter_->key().data(), iter_->key().size()), StringPiece(iter_->value().data(), iter_->value().size()), &header);
   if (!status_.ok()) {
     status_ = CorruptFileError(status_, filename, "unable to parse header");
     return;
@@ -825,13 +829,13 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   entry->Clear();
   TF_CHECK_OK(status_);
   Seek(key);
-  if (!iter_->Valid() || iter_->key() != key) {
+  if (!iter_->Valid() || StringPiece(iter_->key().data(), iter_->key().size()) != key) {
     return errors::NotFound("Key ", key, " not found in checkpoint");
   }
 
   BundleEntryProto entry_copy;
   TF_RETURN_IF_ERROR(
-      ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
+      ParseEntryProto(StringPiece(iter_->key().data(), iter_->key().size()), StringPiece(iter_->value().data(), iter_->value().size()), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
     return errors::DataLoss("Invalid tensor shape: ", key, " ",
                             entry_copy.shape().ShortDebugString());
@@ -954,9 +958,9 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
 Status BundleReader::ReadCurrent(Tensor* val) {
   CHECK(val != nullptr);
   BundleEntryProto entry;
-  TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
+  TF_RETURN_IF_ERROR(ParseEntryProto(StringPiece(iter_->key().data(), iter_->key().size()), StringPiece(iter_->value().data(), iter_->value().size()), &entry));
   if (!TensorShape::IsValid(entry.shape())) {
-    return errors::DataLoss("Invalid tensor shape: ", iter_->key(), " ",
+    return errors::DataLoss("Invalid tensor shape: ", StringPiece(iter_->key().data(), iter_->key().size()), " ",
                             entry.shape().ShortDebugString());
   }
 
@@ -964,7 +968,7 @@ Status BundleReader::ReadCurrent(Tensor* val) {
     return GetValue(entry, val);
   } else {
     return GetSliceValue(
-        iter_->key(), entry,
+        StringPiece(iter_->key().data(), iter_->key().size()), entry,
         /* a full slice */ TensorSlice(TensorShape(entry.shape()).dims()), val);
   }
 }

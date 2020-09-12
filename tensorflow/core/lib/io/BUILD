@@ -14,6 +14,21 @@ package(
 )
 
 cc_library(
+    name = "leveldb",
+    srcs = [],
+    hdrs = ["leveldb.h"],
+    deps = [
+        "//tensorflow/core/platform:env",
+        "@leveldb",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/util/tensor_bundle:__pkg__",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "buffered_inputstream",
     srcs = ["buffered_inputstream.cc"],
     hdrs = ["buffered_inputstream.h"],

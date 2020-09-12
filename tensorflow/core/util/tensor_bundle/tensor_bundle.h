@@ -247,7 +247,7 @@ class BundleReader {
 
   // Seeks to the first position in the bundle whose key is no less than "key".
   // REQUIRES: status().ok()
-  void Seek(StringPiece key) { return iter_->Seek(key); }
+  void Seek(StringPiece key) { return iter_->Seek(leveldb::Slice(key.data(), key.size())); }
   // Moves to the next position in the bundle.
   // REQUIRES: status().ok()
   void Next() const { iter_->Next(); }
@@ -257,10 +257,10 @@ class BundleReader {
 
   // Returns the key at the current position.
   // REQUIRES: status().ok() && Valid()
-  StringPiece key() const { return iter_->key(); }
+  StringPiece key() const { return StringPiece(iter_->key().data(), iter_->key().size()); }
   // Returns the raw value at the current position.
   // REQUIRES: status().ok() && Valid()
-  StringPiece value() const { return iter_->value(); }
+  StringPiece value() const { return StringPiece(iter_->value().data(), iter_->value().size()); }
 
   string DebugString();
 
@@ -288,10 +288,10 @@ class BundleReader {
   const string prefix_;
 
   Status status_;
-  RandomAccessFile* metadata_;  // Owned.
-  table::Table* table_;
-  table::Cache* index_cache_;
-  table::Iterator* iter_;
+  leveldb::RandomAccessFile* metadata_;  // Owned.
+  leveldb::Table* table_;
+  leveldb::Cache* index_cache_;
+  leveldb::Iterator* iter_;
   // Owned the InputBuffer objects and their underlying RandomAccessFile's.
   std::unordered_map<int32, io::InputBuffer*> data_;
 

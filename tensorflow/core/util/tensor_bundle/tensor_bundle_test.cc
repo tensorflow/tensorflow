@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* iopyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,13 +25,15 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/leveldb.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+
+#include "leveldb/table_builder.h"
 
 namespace tensorflow {
 
@@ -135,26 +137,28 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
 Status FlipEndiannessBit(const string& prefix) {
   Env* env = Env::Default();
   const string metadata_tmp_path = Prefix("some_tmp_path");
-  std::unique_ptr<WritableFile> metadata_file;
-  TF_RETURN_IF_ERROR(env->NewWritableFile(metadata_tmp_path, &metadata_file));
+  std::unique_ptr<WritableFile> w;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(metadata_tmp_path, &w));
+  std::unique_ptr<leveldb::WritableFile> metadata_file(new io::LevelDBWritableFile(w.release()));
   // We create the builder lazily in case we run into an exception earlier, in
   // which case we'd forget to call Finish() and TableBuilder's destructor
   // would complain.
-  std::unique_ptr<table::TableBuilder> builder;
+  std::unique_ptr<leveldb::TableBuilder> builder;
 
   // Reads the existing metadata file, and fills the builder.
   {
     const string filename = MetaFilename(prefix);
     uint64 file_size;
     TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
-    std::unique_ptr<RandomAccessFile> file;
-    TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
+    std::unique_ptr<RandomAccessFile> r;
+    TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &r));
+    std::unique_ptr<leveldb::RandomAccessFile> file(new io::LevelDBRandomAccessFile(r.release()));
 
-    table::Table* table = nullptr;
-    TF_RETURN_IF_ERROR(
-        table::Table::Open(table::Options(), file.get(), file_size, &table));
-    std::unique_ptr<table::Table> table_deleter(table);
-    std::unique_ptr<table::Iterator> iter(table->NewIterator());
+    leveldb::Table* table = nullptr;
+    TF_RETURN_IF_ERROR(LEVELDB_STATUS_TO_STATUS(
+        leveldb::Table::Open(leveldb::Options(), file.get(), file_size, &table)));
+    std::unique_ptr<leveldb::Table> table_deleter(table);
+    std::unique_ptr<leveldb::Iterator> iter(table->NewIterator(leveldb::ReadOptions()));
 
     // Reads the header entry.
     iter->Seek(kHeaderEntryKey);
@@ -168,7 +172,7 @@ Status FlipEndiannessBit(const string& prefix) {
       header.set_endianness(BundleHeaderProto::LITTLE);
     }
     builder.reset(
-        new table::TableBuilder(table::Options(), metadata_file.get()));
+        new leveldb::TableBuilder(leveldb::Options(), metadata_file.get()));
     builder->Add(iter->key(), header.SerializeAsString());
     iter->Next();
 
@@ -176,9 +180,9 @@ Status FlipEndiannessBit(const string& prefix) {
     for (; iter->Valid(); iter->Next())
       builder->Add(iter->key(), iter->value());
   }
-  TF_RETURN_IF_ERROR(builder->Finish());
+  TF_RETURN_IF_ERROR(LEVELDB_STATUS_TO_STATUS(builder->Finish()));
   TF_RETURN_IF_ERROR(env->RenameFile(metadata_tmp_path, MetaFilename(prefix)));
-  return metadata_file->Close();
+  return LEVELDB_STATUS_TO_STATUS(metadata_file->Close());
 }
 
 template <typename T>
@@ -509,11 +513,12 @@ void VersionTest(const VersionDef& version, StringPiece expected_error) {
     *header.mutable_version() = version;
 
     // Write the metadata file to disk.
-    std::unique_ptr<WritableFile> file;
-    TF_ASSERT_OK(Env::Default()->NewWritableFile(MetaFilename(path), &file));
-    table::TableBuilder builder(table::Options(), file.get());
+    std::unique_ptr<WritableFile> w;
+    TF_ASSERT_OK(Env::Default()->NewWritableFile(MetaFilename(path), &w));
+    std::unique_ptr<leveldb::WritableFile> file(new io::LevelDBWritableFile(w.release()));
+    leveldb::TableBuilder builder(leveldb::Options(), file.get());
     builder.Add(kHeaderEntryKey, header.SerializeAsString());
-    TF_ASSERT_OK(builder.Finish());
+    TF_ASSERT_OK(LEVELDB_STATUS_TO_STATUS(builder.Finish()));
   }
   // Read it back in and verify that we get the expected error.
   BundleReader reader(Env::Default(), path);
