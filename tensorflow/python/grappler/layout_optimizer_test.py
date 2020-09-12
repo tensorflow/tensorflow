@@ -1242,11 +1242,11 @@ class LayoutOptimizerTest(test.TestCase):
       beta = random_ops.truncated_normal([1, 1, 1, 1, 3], seed=0)
       conv3d = gen_nn_ops.conv3d(x, w, [1, 1, 1, 1, 1], 'SAME')
       y = nn.batch_normalization(conv3d,
-              mean=mean,
-              variance=variance,
-              scale=gamma,
-              offset=beta,
-              variance_epsilon=0.001)
+                                 mean=mean,
+                                 variance=variance,
+                                 scale=gamma,
+                                 offset=beta,
+                                 variance_epsilon=0.001)
       output = array_ops.identity(y)
 
       with session.Session(config=_get_config(False)) as sess:
