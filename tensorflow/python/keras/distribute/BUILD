@@ -18,6 +18,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "distribute",
     srcs = [
@@ -245,7 +251,6 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_cuda11",
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.

@@ -168,7 +168,11 @@ Status MatrixDiagV2Shape(shape_inference::InferenceContext* c);
 // Shape function for MatrixSetDiagV2 and MatrixSetDiagV3 operations.
 Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c);
 
-// Shape function for MaxPool-like operations.
+// Shape function for MaxPool-like operations that support explicit padding.
+Status MaxPoolShapeWithExplicitPadding(shape_inference::InferenceContext* c);
+
+// Shape function for MaxPool-like operations that do not support explicit
+// padding.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPoolV2-like operations.

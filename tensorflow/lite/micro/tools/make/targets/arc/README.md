@@ -1,5 +1,12 @@
 # Building TensorFlow Lite for Microcontrollers for Synopsys DesignWare ARC EM/HS Processors
 
+## Maintainers
+
+*   [dzakhar](https://github.com/dzakhar)
+*   [JaccovG](https://github.com/JaccovG)
+
+## Introduction
+
 This document contains the general information on building and running
 TensorFlow Lite Micro for targets based on the Synopsys ARC EM/HS Processors.
 
@@ -97,7 +104,8 @@ output from the EM SDP.
 
 If you want to self-boot your application (start it independently from a
 debugger connection), you also need a microSD card with a minimum size of 512 MB
-and a way to write to the card from your development host
+and a way to write to the card from your development host. Note that the card
+must be formatted as FAT32 with default cluster size (but less than 32 Kbytes)
 
 ### Connect the Board
 
@@ -207,16 +215,32 @@ In both cases you will see the application output in the serial terminal.
 1.  Use the following command in the same command shell you used for building
     the application, as described in the previous step
 
+```
     make flash
+```
 
-2.  Copy the content of the created *./bin* folder into the root of microSD
+1.  Copy the content of the created *./bin* folder into the root of microSD
     card. Note that the card must be formatted as FAT32 with default cluster
     size (but less than 32 Kbytes)
 
-3.  Plug in the microSD card into the J11 connector.
+2.  Plug in the microSD card into the J11 connector.
 
-4.  Push the RST button. If a red LED is lit beside RST button, push the CFG
+3.  Push the RST button. If a red LED is lit beside RST button, push the CFG
     button.
+
+4.  Using serial terminal, create uboot environment file to automatically run
+    the application on start-up. Type or copy next sequence of commands into
+    serial terminal one-by-another:
+
+```
+   setenv loadaddr 0x10800000
+   setenv bootfile app.elf
+   setenv bootdelay 1
+   setenv bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+   saveenv
+```
+
+1.  Reset the board (see step 4 above)
 
 You will see the application output in the serial terminal.
 

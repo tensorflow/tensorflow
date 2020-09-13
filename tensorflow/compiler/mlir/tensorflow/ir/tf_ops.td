@@ -570,36 +570,6 @@ def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]
   DerivedAttr shape = TF_DerivedResultShapeAttr;
 }
 
-def TF_SparseMatMulOp : TF_Op<"SparseMatMul", [NoSideEffect]> {
-  let summary = [{
-SparseMatMul is MatMul with hints on the sparseness of the matrices.
-  }];
-
-  let description = [{
-Similar to MatMul, with a_is_sparse and b_is_sparse indicating whether a and b
-are sparse matrices.
-  }];
-
-  let arguments = (ins
-    TensorOf<[BF16, F32]>:$a,
-    TensorOf<[BF16, F32]>:$b,
-
-    DefaultValuedAttr<BoolAttr, "true">:$a_is_sparse,
-    DefaultValuedAttr<BoolAttr, "false">:$b_is_sparse,
-
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_b
-  );
-
-  let results = (outs
-    TensorOf<[F32]>:$product
-  );
-
-  TF_DerivedOperandTypeAttr Ta = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr Tb = TF_DerivedOperandTypeAttr<1>;
-}
-
-
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
                                          [CallOpInterface]> {
   let summary =
@@ -821,7 +791,7 @@ Example:
   );
 
   let results = (outs
-    TF_ResourceTensor:$resource
+    Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
   TF_DerivedOperandOrResultHandleTypeAttr dtype =
@@ -1213,63 +1183,6 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
   let verifier = [{ return VerifyPartitionedCall(*this); }];
 }
 
-class TF_FusedBatchNormOpBase<string Name> : TF_Op<Name, [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_LayoutSensitiveInterface]> {
-  let summary = "Batch normalization.";
-
-  let description = [{
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
-The size of 1D Tensors matches the dimension C of the 4D Tensors.
-  }];
-
-  let arguments = (ins
-    TensorOf<[BF16, F16, F32]>:$x,
-    F32Tensor:$scale,
-    F32Tensor:$offset,
-    F32Tensor:$mean,
-    F32Tensor:$variance,
-
-    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
-    DefaultValuedAttr<BoolAttr, "true">:$is_training
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
-
-  let extraClassDeclaration = [{
-    // TF_FoldOperandsTransposeInterface:
-    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
-    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
-    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
-
-    // TF_LayoutSensitiveInterface:
-    StringRef GetOptimalLayout(const RuntimeDevices& devices);
-    LogicalResult UpdateDataFormat(StringRef data_format);
-  }];
-}
-
-def TF_FusedBatchNormV2Op : TF_FusedBatchNormOpBase<"FusedBatchNormV2"> {
-  let results = (outs
-    TensorOf<[BF16, F16, F32]>:$y,
-    F32Tensor:$batch_mean,
-    F32Tensor:$batch_variance,
-    F32Tensor:$reserve_space_1,
-    F32Tensor:$reserve_space_2
-  );
-}
-
-def TF_FusedBatchNormV3Op : TF_FusedBatchNormOpBase<"FusedBatchNormV3"> {
-  let results = (outs
-    TensorOf<[BF16, F16, F32]>:$y,
-    F32Tensor:$batch_mean,
-    F32Tensor:$batch_variance,
-    F32Tensor:$reserve_space_1,
-    F32Tensor:$reserve_space_2,
-    F32Tensor:$reserve_space_3
-  );
-}
-
 def TF_BatchFunctionOp : TF_Op<"BatchFunction", [AttrSizedOperandSegments]> {
   let summary = [{
 Batches all the inputs tensors to the computation done by the function.
@@ -1339,6 +1252,286 @@ must be a Tensor or a list/tuple of Tensors.
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedOperandTypeListAttr Tcaptured = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
+                 WithBroadcastableBinOpBuilder {
+  let summary = "Returns x + y element-wise.";
+
+  let description = [{
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
+}
+
+def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
+                    WithBroadcastableBinOpBuilder {
+  let summary = "Returns 0 if the denominator is zero.";
+
+  let description = [{
+*NOTE*: `DivNoNan` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex, TF_F16Ref, TF_F32Ref, TF_F64Ref, TF_ComplexRef]>:$x,
+    TensorOf<[F16, F32, F64, TF_Complex, TF_F16Ref, TF_F32Ref, TF_F64Ref, TF_ComplexRef]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex, TF_F16Ref, TF_F32Ref, TF_F64Ref, TF_ComplexRef]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
+                   WithBroadcastableBinOpBuilder {
+  let summary = "Returns the max of x and y (i.e. x > y ? x : y) element-wise.";
+
+  let description = [{
+*NOTE*: `Maximum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float, I16, I32, I64, TF_Uint8, TF_FloatRef, TF_Int16Ref, TF_Int32Ref, TF_Int64Ref, TF_Uint8Ref]>:$x,
+    TensorOf<[TF_Float, I16, I32, I64, TF_Uint8, TF_FloatRef, TF_Int16Ref, TF_Int32Ref, TF_Int64Ref, TF_Uint8Ref]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float, I16, I32, I64, TF_Uint8, TF_FloatRef, TF_Int16Ref, TF_Int32Ref, TF_Int64Ref, TF_Uint8Ref]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RealDivOp : TF_Op<"RealDiv", [NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary]>,
+                   WithBroadcastableBinOpBuilder {
+  let summary = "Returns x / y element-wise for real types.";
+
+  let description = [{
+If `x` and `y` are reals, this will return the floating-point division.
+
+*NOTE*: `Div` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint16Ref, TF_Uint8Ref]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint16Ref, TF_Uint8Ref]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint16Ref, TF_Uint8Ref]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
+}
+
+def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
+               WithBroadcastableBinOpBuilder {
+  let summary = "Returns x + y element-wise.";
+
+  let description = [{
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
+
+Both input and output have a range `(-inf, inf)`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_NumberNotQuantizedOrStr, TF_NumberNotQuantizedOrStrRef]>:$x,
+    TensorOf<[TF_NumberNotQuantizedOrStr, TF_NumberNotQuantizedOrStrRef]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[TF_NumberNotQuantizedOrStr, TF_NumberNotQuantizedOrStrRef]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+}
+
+def TF_StatefulStandardNormalV2Op : TF_Op<"StatefulStandardNormalV2", []> {
+  let summary = "Outputs random values from a normal distribution.";
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatefulTruncatedNormalOp : TF_Op<"StatefulTruncatedNormal", []> {
+  let summary = "Outputs random values from a truncated normal distribution.";
+
+  let description = [{
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatefulUniformOp : TF_Op<"StatefulUniform", []> {
+  let summary = "Outputs random values from a uniform distribution.";
+
+  let description = [{
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatefulUniformFullIntOp : TF_Op<"StatefulUniformFullInt", []> {
+  let summary = "Outputs random integers from a uniform distribution.";
+
+  let description = [{
+The generated values are uniform integers covering the whole range of `dtype`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+// TODO(lyandy): Investigate supported dtypes (`minval`, `maxval`, `output`) for
+// `tf.StatefulUniformInt`. tf2xla kernels support i32, i64, ui32, and ui64
+// while TensorFlow CPU/GPU kernels only support i32 and i64.
+def TF_StatefulUniformIntOp : TF_Op<"StatefulUniformInt", []> {
+  let summary = "Outputs random integers from a uniform distribution.";
+
+  let description = [{
+The generated values are uniform integers in the range `[minval, maxval)`.
+The lower bound `minval` is included in the range, while the upper bound
+`maxval` is excluded.
+
+The random integers are slightly biased unless `maxval - minval` is an exact
+power of two.  The bias is small for values of `maxval - minval` significantly
+smaller than the range of the output (either `2^32` or `2^64`).
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    I64Tensor:$algorithm,
+    TF_I32OrI64Tensor:$shape,
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$minval,
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$maxval
+  );
+
+  let results = (outs
+    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<3>;
+}
+
+//===----------------------------------------------------------------------===//
+// Tensorflow ops that are implemented only in TFRT.
+//===----------------------------------------------------------------------===//
+
+def TF__JitFusedMatMulOp : TF_Op<"_JitFusedMatMul", [NoSideEffect, SameOperandsAndResultElementType]> {
+  let summary = [{
+    MatMul operation with an output fusion compiled at runtime via MLIR codegen.
+  }];
+
+  let description = [{
+The inputs to the MatMul are specified by `a` and `b`. The series of operations
+that follows is specified by the `fusion` attribute, which is a list of output
+kernel names specified as strings (e.g. "BiasAdd"). They are performed in order,
+where the (first) input to each op is the output of the preceding op. The first
+input and the output of each fused_op must be of type T.
+
+Supported list of fusions is defined by ContractionOutputKernelBuilder
+implementations.
+
+*WARN*: This is a TFRT only operations, and it does not exist in TF. This
+operation is only added by the ContractionFusion pass.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32]>:$a,
+    TensorOf<[F32]>:$b,
+    Variadic<TensorOf<[F32]>>:$additional_args,
+
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$fusion
+  );
+
+  let results = (outs
+    TensorOf<[F32]>:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 #endif // TF_OPS

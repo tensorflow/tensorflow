@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
 
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -69,6 +71,11 @@ namespace {
 constexpr char kShardingAttr[] = "mhlo.sharding";
 
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
+                    shape::ShapeDialect, StandardOpsDialect>();
+  }
+
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF &) {}
@@ -728,6 +735,27 @@ static IntegerAttr getFeatureDimensionAttr(Builder &b, StringAttr format,
                                            Value input) {
   return b.getI64IntegerAttr(
       GetFeatureDimension(format, input.getType().cast<RankedTensorType>()));
+}
+
+//===----------------------------------------------------------------------===//
+// FFT op utilities.
+//===----------------------------------------------------------------------===//
+// Returns the 1D i64 elements attribute populated with the inner-most dim of
+// the value.
+static DenseIntElementsAttr GetInnerDimFromValue(ShapedType type,
+                                                 Builder *builder) {
+  if (type.getRank() == 0) {
+    return builder->getI64TensorAttr({});
+  }
+  return builder->getI64TensorAttr(type.getShape().back());
+}
+
+// Returns True if the inner-most dim is static.
+bool CheckInnerDimStatic(ShapedType type, Builder *builder) {
+  if (!type.hasRank()) {
+    return false;
+  }
+  return !type.isDynamicDim(type.getShape().size() - 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1679,6 +1707,80 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
   }
 };
 
+template <typename OpTy>
+class ConvertFFTOp : public OpRewritePattern<OpTy> {
+ public:
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    auto input_ty = op.input().getType().template cast<ShapedType>();
+    if (!input_ty.hasRank()) {
+      return failure();
+    }
+    auto input_shape = input_ty.getShape();
+    DenseIntElementsAttr fft_length_attr;
+    if (!matchPattern(op.fft_length(), m_Constant(&fft_length_attr))) {
+      return failure();
+    }
+    int64_t fft_length;
+    if (fft_length_attr.getNumElements() != 0) {
+      fft_length = fft_length_attr.getValue<IntegerAttr>(0).getInt();
+    } else {
+      return failure();
+    }
+
+    std::string fft_string = "RFFT";
+    if (typeid(OpTy) == typeid(TF::IRFFTOp)) {
+      fft_length = fft_length / 2 + 1;
+      fft_string = "IRFFT";
+    }
+    auto loc = op.getLoc();
+
+    // The inner-most dim cannot be dynamic.
+    if (input_ty.isDynamicDim(input_shape.size() - 1)) {
+      return failure();
+    }
+
+    auto expected_shape = llvm::to_vector<4>(input_shape.drop_back());
+    expected_shape.push_back(fft_length);
+
+    // Zero pad or truncate the last axis
+    Value reshaped = op.input();
+    SmallVector<int64_t, 4> begin_indices(input_shape.size(), 0);
+    SmallVector<int64_t, 4> strides(input_shape.size(), 1);
+
+    // Last dim larger than fft_length, slice the input
+    if (input_shape.back() > fft_length) {
+      reshaped = rewriter.create<SliceOp>(
+          op.getLoc(),
+          RankedTensorType::get(expected_shape, input_ty.getElementType()),
+          op.input(), GetI64ElementsAttr(begin_indices, &rewriter),
+          GetI64ElementsAttr(expected_shape, &rewriter),
+          GetI64ElementsAttr(strides, &rewriter));
+
+      // Last dim smaller than fft_length, zero-pad the input
+    } else if (input_ty.getShape().back() < fft_length) {
+      SmallVector<int64_t, 4> no_padding(input_shape.size(), 0);
+      SmallVector<int64_t, 4> padding(input_shape.size() - 1, 0);
+      padding.push_back(fft_length - input_shape.back());
+      Value zero =
+          GetScalarConstOfType(input_ty.getElementType(), loc, 0, &rewriter);
+      reshaped = rewriter.create<PadOp>(
+          loc, RankedTensorType::get(expected_shape, input_ty.getElementType()),
+          op.input(), zero, GetI64ElementsAttr(no_padding, &rewriter),
+          GetI64ElementsAttr(padding, &rewriter),
+          GetI64ElementsAttr(no_padding, &rewriter));
+    }
+
+    rewriter.replaceOpWithNewOp<FftOp>(op, op.getType(), reshaped, fft_string,
+                                       rewriter.getI64TensorAttr(fft_length));
+    return success();
+  }
+};
+
+using ConvertRFFTOp = ConvertFFTOp<TF::RFFTOp>;
+using ConvertIRFFTOp = ConvertFFTOp<TF::IRFFTOp>;
+
 // The base class to convert TensorFlow FusedBatchNormGrad*Op to HLO
 // BatchNormGradOp for training and a sequence of binary ops for inference.
 // TODO(b/145536565): move to legalize_tf_patterns.td if it applies.
@@ -1727,7 +1829,7 @@ class ConvertFusedBatchNormGradBase
 
       auto training_op = rewriter.create<BatchNormGradOp>(
           loc, result_type, act, scale, mean, var, grad, op.epsilon(),
-          feature_dim_attr.getValue());
+          feature_dim);
 
       x_backprop =
           rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 0);
@@ -1847,7 +1949,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
 
       auto bn_train_op = rewriter.create<mhlo::BatchNormTrainingOp>(
           op.getLoc(), result_type, bn_train_input, op.scale(), op.offset(),
-          op.epsilon(), feature_dim.getValue());
+          op.epsilon(), feature_dim.getInt());
       // HLO op outputs a tuple of tensors. Extract those results.
       auto bn_train_op_result = bn_train_op.getResult();
       Value y_out = rewriter.create<mhlo::GetTupleElementOp>(
@@ -1934,7 +2036,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
           op.getLoc(),
           /*result_type=*/bn_train_input_type_tensor, bn_train_input,
           op.scale(), op.offset(), op.mean(), op.variance(), op.epsilon(),
-          feature_dim.getValue());
+          feature_dim.getInt());
 
       // Convert back to input type to stay aligned with expected output type
       // for TF op.
@@ -2372,6 +2474,12 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
     Type element_type =
         op.input().getType().template cast<TensorType>().getElementType();
     if (!element_type.isSignlessIntOrFloat()) return failure();
+    tensorflow::Padding padding;
+    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
+      return failure();
+    if (padding == tensorflow::Padding::EXPLICIT) {
+      return failure();
+    }
     Location loc = op.getLoc();
     ConstOp init = GetScalarLimitConstOfType(element_type, loc,
                                              hlo::kInfinityLowest, &rewriter);
@@ -3083,7 +3191,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     // axis. For instance, if there are 4 dims, we can support a
     // shrink_axis_mask of 0001 (1), 0011 (3), 0111 (7), or 1111 (15), but no
     // other.
-    bool shrink_axis_mask_ok = op.shrink_axis_mask().isMask();
+    bool shrink_axis_mask_ok = llvm::isMask_64(op.shrink_axis_mask());
     if (!shrink_axis_mask_ok)
       return rewriter.notifyMatchFailure(
           op,
@@ -3092,27 +3200,27 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
 
     // When begin/end values are dynamic, the ellipsis mask, if set, must refer
     // to the last dimension.
-    int ellipsis_mask = op.ellipsis_mask().getZExtValue();
+    int ellipsis_mask = op.ellipsis_mask();
     if (!(ellipsis_mask == 0 || ellipsis_mask == (1 << last_dim)))
       return rewriter.notifyMatchFailure(
           op,
           "requires that ellipsis_mask, if set, refer to the last dimension of "
           "input (when begin/end values are dynamic)");
 
-    APInt begin_mask = op.begin_mask();
-    if (!begin_mask.isNullValue())
+    uint64_t begin_mask = op.begin_mask();
+    if (begin_mask)
       return rewriter.notifyMatchFailure(
           op,
           "requires that begin_mask is either set to 0 or not set when "
           "begin/end values are dynamic");
-    APInt end_mask = op.end_mask();
-    if (!end_mask.isNullValue())
+    uint64_t end_mask = op.end_mask();
+    if (end_mask)
       return rewriter.notifyMatchFailure(
           op,
           "requires that end_mask is either set to 0 or not set when begin/end "
           "values are dynamic");
-    APInt new_axis_mask = op.new_axis_mask();
-    if (!new_axis_mask.isNullValue())
+    uint64_t new_axis_mask = op.new_axis_mask();
+    if (new_axis_mask)
       return rewriter.notifyMatchFailure(
           op,
           "requires that new_axis_mask is either set to 0 or not set when "
@@ -4368,7 +4476,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
     }
 
     int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
-    int64_t axis = op.axis().getSExtValue();
+    int64_t axis = op.axis();
     if (axis == -1) axis = indices_shape.size();
 
     llvm::SmallVector<int64_t, 4> broadcast_dims(indices_shape.size());
@@ -4644,7 +4752,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
     if (!value_type) return failure();
 
     int64_t value_rank = value_type.getRank();
-    int64_t axis = op.axis().getSExtValue();
+    int64_t axis = op.axis();
     if (axis < 0) axis += value_rank;
 
     // Parameters for constructing each slice.
@@ -5862,16 +5970,17 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertConv2DBackpropFilterOp, ConvertConv3DBackpropFilterOp,
       ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
       ConvertCumprodOp, ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
-      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
-      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
-      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
-      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
-      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
-      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
-      ConvertDynamicRangeOp, ConvertMatrixDiagPartV3Op, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertRFFTOp, ConvertIRFFTOp, ConvertFusedBatchNormGradOp,
+      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
+      ConvertFusedBatchNormV2Op, ConvertFusedBatchNormV3Op,
+      ConvertInfeedDequeueTupleOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPool2DOp, ConvertAvgPool3DOp,
+      ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp, ConvertMaxPool2DOp,
+      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
+      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
+      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,

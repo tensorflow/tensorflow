@@ -18,6 +18,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 # A separate build for layers without serialization to avoid circular deps
 # with feature column.
 py_library(
@@ -814,7 +820,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = [
-        "no_cuda11",
         "no_oss",
     ],
     xla_enable_strict_auto_jit = False,

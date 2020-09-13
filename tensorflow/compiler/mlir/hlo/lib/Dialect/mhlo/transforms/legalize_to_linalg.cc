@@ -704,7 +704,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange ivs,
             ValueRange args) {
           Value castOp = nestedBuilder.create<IndexCastOp>(
-              nestedLoc, ivs[iotaOp.iota_dimension().getZExtValue()],
+              nestedLoc, ivs[iotaOp.iota_dimension()],
               nestedBuilder.getIntegerType(
                   resultElementType.getIntOrFloatBitWidth()));
           if (resultElementType.template isa<FloatType>()) {
@@ -822,6 +822,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::CosOp>,
                    PointwiseToLinalgConverter<lmhlo::DivOp>,
                    PointwiseToLinalgConverter<lmhlo::ExpOp>,
+                   PointwiseToLinalgConverter<lmhlo::FloorOp>,
                    PointwiseToLinalgConverter<lmhlo::ImagOp>,
                    PointwiseToLinalgConverter<lmhlo::LogOp>,
                    PointwiseToLinalgConverter<lmhlo::MaxOp>,
@@ -840,7 +841,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    ReshapeOpConverter<lmhlo::ReshapeOp>,
                    ReverseConverter<lmhlo::ReverseOp>,
                    ScalarPointwiseToStandardConverter<lmhlo::AddOp>,
-                   SliceConverter
+                   SliceConverter,
+                   TransposeConverter<lmhlo::TransposeOp>
                   >(context);
   // clang-format on
 }
@@ -866,6 +868,10 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 // } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 struct LhloLegalizeToLinalgPass
     : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<AffineDialect, linalg::LinalgDialect>();
+  }
+
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -882,6 +888,10 @@ struct LhloLegalizeToLinalgPass
 
 struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<linalg::LinalgDialect>();
+  }
+
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -921,6 +931,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                PointwiseToLinalgConverter<mhlo::CosOp, false>,
                PointwiseToLinalgConverter<mhlo::DivOp, false>,
                PointwiseToLinalgConverter<mhlo::ExpOp, false>,
+               PointwiseToLinalgConverter<mhlo::FloorOp, false>,
                PointwiseToLinalgConverter<mhlo::ImagOp, false>,
                PointwiseToLinalgConverter<mhlo::LogOp, false>,
                PointwiseToLinalgConverter<mhlo::MaxOp, false>,

@@ -176,6 +176,72 @@ static LogicalResult Verify(BatchMatMulV2Op op) {
   if (!HasRankAtLeast(op.y(), 2)) {
     return op.emitOpError("requires rhs operand to have rank at least two");
   }
+
+  RankedTensorType x_ty = GetRankedTensorTypeForOperand(op.x());
+  RankedTensorType y_ty = GetRankedTensorTypeForOperand(op.y());
+
+  if (!x_ty || !y_ty) return success();
+
+  ArrayRef<int64_t> x_shape = x_ty.getShape();
+  ArrayRef<int64_t> y_shape = y_ty.getShape();
+
+  // Check broadcast compatibility if both input shapes are known.
+  //
+  // The last two dimensions are non-batch dimensions that don't need to
+  // participate in batch dimension compatibility check.
+
+  llvm::SmallVector<int64_t, 4> result_batch_shape;
+  if (!OpTrait::util::getBroadcastedShape(
+          x_shape.drop_back(2), y_shape.drop_back(2), result_batch_shape))
+    return op.emitOpError()
+           << "found incompatible broadcast batch dimensions for lhs shape "
+           << x_ty << " and rhs shape " << y_ty;
+
+  RankedTensorType output_ty = GetRankedTensorTypeForOperand(op.output());
+  if (!output_ty) return success();
+
+  int64_t expected_output_rank = std::max(x_ty.getRank(), y_ty.getRank());
+  if (output_ty.getRank() != expected_output_rank)
+    return op.emitOpError()
+           << "found invalid output rank, expected " << expected_output_rank
+           << " but got " << output_ty.getRank();
+
+  // Check output batch dim with potential broadcasting.
+  ArrayRef<int64_t> output_shape = output_ty.getShape();
+  for (int i = 0; i < result_batch_shape.size(); ++i) {
+    if (output_shape[i] != ShapedType::kDynamicSize &&
+        output_shape[i] != result_batch_shape[i])
+      return op.emitOpError()
+             << "has mismatching input batch dimension "
+             << result_batch_shape[i] << " and output batch dimension "
+             << output_shape[i];
+  }
+
+  // Check output shape for non-batch dimension, following documentation below.
+  // https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-mat-mul
+  int64_t x_row_dim = x_shape[x_shape.size() - 2];
+  int64_t x_col_dim = x_shape[x_shape.size() - 1];
+  int64_t y_row_dim = y_shape[y_shape.size() - 2];
+  int64_t y_col_dim = y_shape[y_shape.size() - 1];
+  int64_t out_row_dim = output_shape[output_shape.size() - 2];
+  int64_t out_col_dim = output_shape[output_shape.size() - 1];
+
+  int64_t expected_out_row_dim = op.adj_x() ? x_col_dim : x_row_dim;
+  int64_t expected_out_col_dim = op.adj_y() ? y_row_dim : y_col_dim;
+
+  if (expected_out_row_dim != ShapedType::kDynamicSize &&
+      out_row_dim != ShapedType::kDynamicSize &&
+      out_row_dim != expected_out_row_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on row, expected "
+           << expected_out_row_dim << " but got " << out_row_dim;
+  if (expected_out_col_dim != ShapedType::kDynamicSize &&
+      out_col_dim != ShapedType::kDynamicSize &&
+      out_col_dim != expected_out_col_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on col, expected "
+           << expected_out_col_dim << " but got " << out_col_dim;
+
   return success();
 }
 
@@ -190,7 +256,7 @@ void BatchMatMulV2Op::getCanonicalizationPatterns(
 
 static LogicalResult Verify(BatchToSpaceOp op) {
   // Op already has a constraint that block_size >= 2.
-  int64_t block_size = op.block_size().getSExtValue();
+  int64_t block_size = op.block_size();
 
   llvm::SmallVector<int64_t, 4> input_shape(4, ShapedType::kDynamicSize);
   auto input_type = op.input().getType().cast<TensorType>();
@@ -381,6 +447,13 @@ static LogicalResult Verify(BiasAddOp op) {
   return success();
 }
 
+Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
+  // Only NHWC in f32 is supported for fusion.
+  if (data_format() != "NHWC" || !T().isF32()) return None;
+
+  return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
+}
+
 //===----------------------------------------------------------------------===//
 // BiasAddGradOp
 //===----------------------------------------------------------------------===//
@@ -507,8 +580,9 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
 
   // Functions have one less operand compared to op as first operand is elided
   // (`cond` of `tf.If` and `branch_index` of `tf.Case`).
-  int expected_num_inputs = op->getNumOperands() - 1;
-  int expected_num_results = op->getNumResults();
+  TypeRangeWithDesc input{op->getOperands().drop_front().getTypes(), "input"};
+  TypeRangeWithDesc result{op->getResultTypes(), "result"};
+
   for (auto branch : llvm::enumerate(branches)) {
     auto branch_func = SymbolTable::lookupNearestSymbolFrom<FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
@@ -518,47 +592,22 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
              << branch.value() << ") to point to a defined function";
 
     FunctionType branch_type = branch_func.getType();
-    if (branch_type.getNumInputs() != expected_num_inputs)
-      return op->emitOpError()
-             << "expects all branches to have " << expected_num_inputs
-             << " input(s), but " << branch_name(branch.index()) << " has "
-             << branch_type.getNumInputs() << " input(s)";
+    std::string desc = branch_name(branch.index()) + " input";
+    TypeRangeWithDesc branch_input{branch_type.getInputs(), desc};
+    if (failed(VerifyTypeRangesAreCompatible(op, branch_input, input)))
+      return failure();
 
-    if (branch_type.getNumResults() != expected_num_results)
-      return op->emitOpError()
-             << "expects all branches to have " << expected_num_results
-             << " result(s), but " << branch_name(branch.index()) << " has "
-             << branch_type.getNumResults() << " result(s)";
-
-    // Non-conditional operands starting with the second operand are passed to
-    // branches and should be compatible across all branches' inputs.
-    for (auto operand_type :
-         llvm::enumerate(llvm::drop_begin(op->getOperandTypes(), 1))) {
-      Type branch_input_i_type = branch_type.getInput(operand_type.index());
-      if (!AreCastCompatible({operand_type.value(), branch_input_i_type}))
-        return op->emitOpError()
-               << "expects operand type " << operand_type.value()
-               << " to be cast compatible with " << branch_name(branch.index())
-               << " input type " << branch_input_i_type << " at index "
-               << operand_type.index();
-    }
-
-    // Branches' results should be pair-wise compatible with the op results.
-    for (auto result_type : llvm::enumerate(op->getResultTypes())) {
-      Type branch_result_i_type = branch_type.getResult(result_type.index());
-      if (!AreCastCompatible({result_type.value(), branch_result_i_type}))
-        return op->emitOpError()
-               << "expects result type " << result_type.value()
-               << " to be cast compatible with " << branch_name(branch.index())
-               << " result type " << branch_result_i_type << " at index "
-               << result_type.index();
-    }
+    desc = branch_name(branch.index()) + " result";
+    TypeRangeWithDesc branch_result{branch_type.getResults(), desc};
+    if (failed(VerifyTypeRangesAreCompatible(op, branch_result, result)))
+      return failure();
 
     branch_types.push_back(branch_type);
   }
 
   // If branches have incompatible input types that means that no tensor can
   // serve as input to all the functions. Hence, the op is invalid.
+  int expected_num_inputs = op->getNumOperands() - 1;
   for (int i = 0; i < expected_num_inputs; ++i) {
     SmallVector<Type, 2> branch_input_i_types;
     branch_input_i_types.reserve(branches.size());
@@ -597,10 +646,14 @@ static LogicalResult Verify(CaseRegionOp op) {
 
   if (failed(VerifyCaseOpBase(op, op.branch_index()))) return failure();
 
+  TypeRangeWithDesc results{op.getResultTypes(), "result"};
+
   for (auto region_and_idx : llvm::enumerate(op.branches())) {
-    std::string region_name =
-        llvm::formatv("region #{0}", region_and_idx.index()).str();
-    if (failed(VerifyRegionResults(op, region_and_idx.value(), region_name)))
+    std::string description =
+        llvm::formatv("branch #{0} result", region_and_idx.index()).str();
+    Operation *yield = region_and_idx.value().front().getTerminator();
+    TypeRangeWithDesc branch_results{yield->getOperandTypes(), description};
+    if (failed(VerifyTypeRangesAreCompatible(op, branch_results, results)))
       return failure();
   }
 
@@ -1639,7 +1692,7 @@ static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
     return op.emitOpError("range is invalid: [" + Twine(std::to_string(rmin)) +
                           "," + Twine(std::to_string(rmax)) + "]");
   }
-  int64_t num_bits = op.num_bits().getSExtValue();
+  int64_t num_bits = op.num_bits();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
@@ -1659,7 +1712,7 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
   if (max && !IsOfRankedFloatTensorType(max, 0))
     return op.emitOpError("requires max to be a 0d float tensor");
 
-  int64_t num_bits = op.num_bits().getSExtValue();
+  int64_t num_bits = op.num_bits();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
@@ -1683,7 +1736,7 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
   if (!HasRankAtLeast(inputs, 1))
     return op.emitError("requires inputs to be at least 1d float tensor");
 
-  int64_t num_bits = op.num_bits().getSExtValue();
+  int64_t num_bits = op.num_bits();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
@@ -1886,7 +1939,7 @@ StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices &devices) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(GatherV2Op op) {
-  int64_t batch_dims = op.batch_dims().getSExtValue();
+  int64_t batch_dims = op.batch_dims();
   if (auto ty = op.indices().getType().dyn_cast<RankedTensorType>()) {
     int64_t rank = ty.getRank();
     if (batch_dims > rank || batch_dims < -rank)
@@ -1992,9 +2045,18 @@ void IfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(IfRegionOp op) {
-  if (failed(VerifyRegionResults(op, op.then_branch(), "then")))
+  TypeRange then_types =
+      op.then_branch().front().getTerminator()->getOperandTypes();
+  TypeRange else_types =
+      op.else_branch().front().getTerminator()->getOperandTypes();
+
+  TypeRangeWithDesc results{op.getResultTypes(), "result"};
+  TypeRangeWithDesc then_results{then_types, "then result"};
+  TypeRangeWithDesc else_results{else_types, "else result"};
+
+  if (failed(VerifyTypeRangesAreCompatible(op, then_results, results)))
     return failure();
-  if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
+  if (failed(VerifyTypeRangesAreCompatible(op, else_results, results)))
     return failure();
   return success();
 }

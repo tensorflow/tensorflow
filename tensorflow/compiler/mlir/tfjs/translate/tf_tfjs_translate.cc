@@ -125,7 +125,6 @@ int main(int argc, char** argv) {
                                     "TF GraphDef to TFJS JSON converter\n");
 
   MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 

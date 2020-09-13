@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -33,17 +34,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    return true;
-  }();
-  (void)init_once;
+static void RegisterDialects(mlir::MLIRContext &context) {
+  context.loadDialect<mlir::TF::TensorFlowDialect>();
 }
 
 TEST(ConvertTypeToTensorTypeTest, UnrankedTensorType) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
+  RegisterDialects(context);
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape =
@@ -53,7 +50,7 @@ TEST(ConvertTypeToTensorTypeTest, UnrankedTensorType) {
 
 TEST(ConvertTypeToTensorTypeTest, NonFullyDefinedRankedTensorType) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
+  RegisterDialects(context);
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape = ConvertTypeToTensorShape(
@@ -63,7 +60,7 @@ TEST(ConvertTypeToTensorTypeTest, NonFullyDefinedRankedTensorType) {
 
 TEST(ConvertTypeToTensorTypeTest, FullyDefinedRankedTensorType) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
+  RegisterDialects(context);
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape = ConvertTypeToTensorShape(
@@ -80,8 +77,8 @@ TEST(ConvertTypeToTensorTypeTest, ScalarTensorType) {
 }
 
 TEST(ConvertTypeToTensorTypeTest, ConvertStringTensor) {
-  RegisterDialects();
   mlir::MLIRContext context;
+  RegisterDialects(context);
   mlir::Builder b(&context);
 
   // Create the sample tensor to convert.
@@ -126,9 +123,8 @@ class ConvertTensorTest : public ::testing::Test {
 };
 
 TEST_F(ConvertTensorTest, Simple) {
-  RegisterDialects();
-
   mlir::MLIRContext context;
+  RegisterDialects(context);
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<Eigen::half>(
       {Eigen::half(1.0)}, DT_HALF, mlir::FloatType::getF16(&context)));
   ASSERT_NO_FATAL_FAILURE(

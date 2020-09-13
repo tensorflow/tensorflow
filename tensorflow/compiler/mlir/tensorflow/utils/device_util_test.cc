@@ -60,7 +60,6 @@ class FakeDevice : public Device {
 
 TEST(DeviceUtilTest, AddDeviceToOp) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
@@ -102,7 +101,6 @@ TEST(DeviceUtilTest, AddDeviceToOp) {
 
 TEST(DeviceUtilTest, AddDeviceToOpNullDeviceSet) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
@@ -112,7 +110,6 @@ TEST(DeviceUtilTest, AddDeviceToOpNullDeviceSet) {
 
 TEST(DeviceUtilTest, GetDevicesFromOpNoDevicesAttribute) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 

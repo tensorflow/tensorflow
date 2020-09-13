@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"

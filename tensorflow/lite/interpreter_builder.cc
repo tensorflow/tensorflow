@@ -27,14 +27,11 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
-
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-#include "tensorflow/lite/profiling/platform_profiler.h"
-#endif
 
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
@@ -630,9 +627,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
 
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-  (*interpreter)->SetProfiler(tflite::profiling::CreatePlatformProfiler());
-#endif
+  (*interpreter)->SetProfiler(tflite::profiling::MaybeCreatePlatformProfiler());
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {

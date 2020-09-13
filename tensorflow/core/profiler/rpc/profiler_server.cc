@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 
 namespace tensorflow {
+namespace profiler {
 
 void ProfilerServer::StartProfilerServer(int32 port) {
   std::string server_address = absl::StrCat("[::]:", port);
@@ -34,8 +35,8 @@ void ProfilerServer::StartProfilerServer(int32 port) {
   ::grpc::ServerBuilder builder;
 
   int selected_port = 0;
-  builder.AddListeningPort(
-      server_address, profiler::GetDefaultServerCredentials(), &selected_port);
+  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials(),
+                           &selected_port);
   builder.RegisterService(service_.get());
   server_ = builder.BuildAndStart();
   if (!selected_port) {
@@ -54,4 +55,5 @@ ProfilerServer::~ProfilerServer() {
   }
 }
 
+}  // namespace profiler
 }  // namespace tensorflow

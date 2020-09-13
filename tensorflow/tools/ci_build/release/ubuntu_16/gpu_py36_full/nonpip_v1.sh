@@ -35,7 +35,7 @@ export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.6)
 export PROJECT_NAME="tensorflow_gpu"
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$TENSORRT_INSTALL_PATH/lib"
-export TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_37,sm_52,sm_60,sm_61,compute_70
+export TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_50,sm_60,sm_70,sm_75,compute_80
 
 yes "" | "$PYTHON_BIN_PATH" configure.py
 

@@ -24,7 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import shutil
 
 from absl.testing import parameterized
@@ -146,17 +145,12 @@ class CustomNetworkWithConfigName(CustomNetworkWithConfig):
     self._config_dict['name'] = self.name
 
 
-class TestModelRevive(keras_parameterized.TestCase):
+class ReviveTestBase(keras_parameterized.TestCase):
 
   def setUp(self):
-    super(TestModelRevive, self).setUp()
+    super(ReviveTestBase, self).setUp()
     self.path = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, self.path, ignore_errors=True)
-
-  def _save_model_dir(self, dirname='saved_model'):
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-    return os.path.join(temp_dir, dirname)
 
   def _assert_revived_correctness(self, model, revived):
     self.assertAllEqual(model.input_names, revived.input_names)
@@ -203,6 +197,11 @@ class TestModelRevive(keras_parameterized.TestCase):
         # created with the same name.
         self.assertEqual(type(model_layer).__name__,
                          type(revived_layer).__name__)
+
+
+# These tests take a while to run, so each should run in a separate shard
+# (putting them in the same TestCase resolves this).
+class TestBigModelRevive(ReviveTestBase):
 
   @keras_parameterized.run_with_all_model_types
   def test_revive(self):
@@ -266,6 +265,9 @@ class TestModelRevive(keras_parameterized.TestCase):
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
 
+
+class TestModelRevive(ReviveTestBase):
+
   def test_revive_subclassed_with_nested_model(self):
     model = SubclassedModelNoConfig(1., 2.)
     # Run data through the Model to create save spec and weights.
@@ -292,6 +294,29 @@ class TestModelRevive(keras_parameterized.TestCase):
     model.save(self.path, include_optimizer=False, save_format='tf')
     revived = keras_load.load(self.path, compile=False)
     self._assert_revived_correctness(model, revived)
+
+  def test_load_compiled_metrics(self):
+    model = testing_utils.get_small_sequential_mlp(1, 3)
+
+    # Compile with dense categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    x = np.random.random((5, 10)).astype(np.float32)
+    y_true = np.random.random((5, 3)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
+
+    # Compile with sparse categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    y_true = np.random.randint(0, 3, (5, 1)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
 
 
 if __name__ == '__main__':

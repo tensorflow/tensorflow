@@ -36,7 +36,7 @@ from tensorflow.python.eager import test
 # Put it in top level so it executes in the child processes as well.
 mwms_lib.CollectiveAllReduceExtended._enable_check_health = True
 mwms_lib.CollectiveAllReduceExtended._check_health_interval = 3
-mwms_lib.CollectiveAllReduceExtended._check_health_initial_timeout = 6
+mwms_lib.CollectiveAllReduceExtended._check_health_initial_timeout = 0
 
 
 def get_attempt(strategy, attempts):

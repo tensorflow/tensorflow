@@ -296,6 +296,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )
@@ -379,7 +380,6 @@ cc_library(
     hdrs = ["collective_param_resolver_local.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -546,6 +546,9 @@ cc_library(
     deps = [
         ":device_mgr",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -662,6 +665,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -2219,6 +2223,7 @@ tf_cuda_cc_test(
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["notsan"],  # b/168317266
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

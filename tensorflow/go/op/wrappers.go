@@ -7748,98 +7748,6 @@ func PriorityQueueV2(scope *Scope, shapes []tf.Shape, optional ...PriorityQueueV
 	return op.Output(0)
 }
 
-// Does nothing. Serves as a control trigger for scheduling.
-//
-// Only useful as a placeholder for control edges.
-//
-// Returns the created operation.
-func ControlTrigger(scope *Scope) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ControlTrigger",
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Interleave the values from the `data` tensors into a single tensor.
-//
-// Builds a merged tensor such that
-//
-// ```python
-//     merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
-// ```
-//
-// For example, if each `indices[m]` is scalar or vector, we have
-//
-// ```python
-//     # Scalar indices:
-//     merged[indices[m], ...] = data[m][...]
-//
-//     # Vector indices:
-//     merged[indices[m][i], ...] = data[m][i, ...]
-// ```
-//
-// Each `data[i].shape` must start with the corresponding `indices[i].shape`,
-// and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
-// must have `data[i].shape = indices[i].shape + constant`.  In terms of this
-// `constant`, the output shape is
-//
-//     merged.shape = [max(indices)] + constant
-//
-// Values may be merged in parallel, so if an index appears in both `indices[m][i]`
-// and `indices[n][j]`, the result may be invalid. This differs from the normal
-// DynamicStitch operator that defines the behavior in that case.
-//
-// For example:
-//
-// ```python
-//     indices[0] = 6
-//     indices[1] = [4, 1]
-//     indices[2] = [[5, 2], [0, 3]]
-//     data[0] = [61, 62]
-//     data[1] = [[41, 42], [11, 12]]
-//     data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
-//     merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
-//               [51, 52], [61, 62]]
-// ```
-//
-// This method can be used to merge partitions created by `dynamic_partition`
-// as illustrated on the following example:
-//
-// ```python
-//     # Apply function (increments x_i) on elements for which a certain condition
-//     # apply (x_i != -1 in this example).
-//     x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
-//     condition_mask=tf.not_equal(x,tf.constant(-1.))
-//     partitioned_data = tf.dynamic_partition(
-//         x, tf.cast(condition_mask, tf.int32) , 2)
-//     partitioned_data[1] = partitioned_data[1] + 1.0
-//     condition_indices = tf.dynamic_partition(
-//         tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
-//     x = tf.dynamic_stitch(condition_indices, partitioned_data)
-//     # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
-//     # unchanged.
-// ```
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
-// </div>
-func ParallelDynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ParallelDynamicStitch",
-		Input: []tf.Input{
-			tf.OutputList(indices), tf.OutputList(data),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Partitions `data` into `num_partitions` tensors using indices from `partitions`.
 //
 // For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`
@@ -8245,6 +8153,14 @@ func ModelDatasetAlgorithm(value int64) ModelDatasetAttr {
 func ModelDatasetCpuBudget(value int64) ModelDatasetAttr {
 	return func(m optionalAttr) {
 		m["cpu_budget"] = value
+	}
+}
+
+// ModelDatasetRamBudget sets the optional ram_budget attribute to value.
+// If not specified, defaults to 0
+func ModelDatasetRamBudget(value int64) ModelDatasetAttr {
+	return func(m optionalAttr) {
+		m["ram_budget"] = value
 	}
 }
 
@@ -15307,6 +15223,118 @@ func TensorListLength(scope *Scope, input_handle tf.Output) (length tf.Output) {
 	return op.Output(0)
 }
 
+// Does nothing. Serves as a control trigger for scheduling.
+//
+// Only useful as a placeholder for control edges.
+//
+// Returns the created operation.
+func ControlTrigger(scope *Scope) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ControlTrigger",
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Interleave the values from the `data` tensors into a single tensor.
+//
+// Builds a merged tensor such that
+//
+// ```python
+//     merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
+// ```
+//
+// For example, if each `indices[m]` is scalar or vector, we have
+//
+// ```python
+//     # Scalar indices:
+//     merged[indices[m], ...] = data[m][...]
+//
+//     # Vector indices:
+//     merged[indices[m][i], ...] = data[m][i, ...]
+// ```
+//
+// Each `data[i].shape` must start with the corresponding `indices[i].shape`,
+// and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
+// must have `data[i].shape = indices[i].shape + constant`.  In terms of this
+// `constant`, the output shape is
+//
+//     merged.shape = [max(indices)] + constant
+//
+// Values may be merged in parallel, so if an index appears in both `indices[m][i]`
+// and `indices[n][j]`, the result may be invalid. This differs from the normal
+// DynamicStitch operator that defines the behavior in that case.
+//
+// For example:
+//
+// ```python
+//     indices[0] = 6
+//     indices[1] = [4, 1]
+//     indices[2] = [[5, 2], [0, 3]]
+//     data[0] = [61, 62]
+//     data[1] = [[41, 42], [11, 12]]
+//     data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
+//     merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
+//               [51, 52], [61, 62]]
+// ```
+//
+// This method can be used to merge partitions created by `dynamic_partition`
+// as illustrated on the following example:
+//
+// ```python
+//     # Apply function (increments x_i) on elements for which a certain condition
+//     # apply (x_i != -1 in this example).
+//     x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
+//     condition_mask=tf.not_equal(x,tf.constant(-1.))
+//     partitioned_data = tf.dynamic_partition(
+//         x, tf.cast(condition_mask, tf.int32) , 2)
+//     partitioned_data[1] = partitioned_data[1] + 1.0
+//     condition_indices = tf.dynamic_partition(
+//         tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
+//     x = tf.dynamic_stitch(condition_indices, partitioned_data)
+//     # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
+//     # unchanged.
+// ```
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
+// </div>
+func ParallelDynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ParallelDynamicStitch",
+		Input: []tf.Input{
+			tf.OutputList(indices), tf.OutputList(data),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns a Tensor stack of all keys in a tensor map.
+//
+// input_handle: the input map
+// keys: the returned Tensor of all keys in the map
+func TensorMapStackKeys(scope *Scope, input_handle tf.Output, key_dtype tf.DataType) (keys tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorMapStackKeys",
+		Input: []tf.Input{
+			input_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns whether the given key exists in the map.
 //
 // input_handle: the input map
@@ -15390,35 +15418,6 @@ func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_
 			input_handle, key,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Merges summaries.
-//
-// This op creates a
-// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-// protocol buffer that contains the union of all the values in the input
-// summaries.
-//
-// When the Op is run, it reports an `InvalidArgument` error if multiple values
-// in the summaries to merge use the same tag.
-//
-// Arguments:
-//	inputs: Can be of any shape.  Each must contain serialized `Summary` protocol
-// buffers.
-//
-// Returns Scalar. Serialized `Summary` protocol buffer.
-func MergeSummary(scope *Scope, inputs []tf.Output) (summary tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MergeSummary",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -16853,6 +16852,14 @@ func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, def
 
 // MaxPoolGradAttr is an optional argument to MaxPoolGrad.
 type MaxPoolGradAttr func(optionalAttr)
+
+// MaxPoolGradExplicitPaddings sets the optional explicit_paddings attribute to value.
+// If not specified, defaults to <>
+func MaxPoolGradExplicitPaddings(value []int64) MaxPoolGradAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
 
 // MaxPoolGradDataFormat sets the optional data_format attribute to value.
 //
@@ -21541,6 +21548,11 @@ func ResourceGather(scope *Scope, resource tf.Output, indices tf.Output, dtype t
 //
 // *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+//
+// Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
+//
+// Both input and output have a range `(-inf, inf)`.
+//
 func Add(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -21618,6 +21630,12 @@ func Atan(scope *Scope, x tf.Output) (y tf.Output) {
 }
 
 // Computes acos of x element-wise.
+//
+//
+//   Provided an input tensor, the `tf.math.acos` operation returns the inverse cosine of each element of the tensor. If `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`.
+//
+//   Input range is `[-1, 1]` and the output has a range of `[0, pi]`.
+//
 func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -34877,6 +34895,14 @@ func OrderedMapClear(scope *Scope, dtypes []tf.DataType, optional ...OrderedMapC
 // MaxPoolAttr is an optional argument to MaxPool.
 type MaxPoolAttr func(optionalAttr)
 
+// MaxPoolExplicitPaddings sets the optional explicit_paddings attribute to value.
+// If not specified, defaults to <>
+func MaxPoolExplicitPaddings(value []int64) MaxPoolAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
 // MaxPoolDataFormat sets the optional data_format attribute to value.
 //
 // value: Specify the data format of the input and output data. With the
@@ -38907,6 +38933,57 @@ func LookupTableImportV2(scope *Scope, table_handle tf.Output, keys tf.Output, v
 	return scope.AddOperation(opspec)
 }
 
+// ImageProjectiveTransformV3Attr is an optional argument to ImageProjectiveTransformV3.
+type ImageProjectiveTransformV3Attr func(optionalAttr)
+
+// ImageProjectiveTransformV3FillMode sets the optional fill_mode attribute to value.
+//
+// value: Fill mode, "REFLECT", "WRAP", or "CONSTANT".
+// If not specified, defaults to "CONSTANT"
+func ImageProjectiveTransformV3FillMode(value string) ImageProjectiveTransformV3Attr {
+	return func(m optionalAttr) {
+		m["fill_mode"] = value
+	}
+}
+
+// Applies the given transform to each of the images.
+//
+// If one row of `transforms` is `[a0, a1, a2, b0, b1, b2, c0, c1]`, then it maps
+// the *output* point `(x, y)` to a transformed *input* point
+// `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`, where
+// `k = c0 x + c1 y + 1`. If the transformed point lays outside of the input
+// image, the output pixel is set to fill_value.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, channels]`.
+//	transforms: 2-D Tensor, `[batch, 8]` or `[1, 8]` matrix, where each row corresponds to a 3 x 3
+// projective transformation matrix, with the last entry assumed to be 1. If there
+// is one row, the same transformation will be applied to all images.
+//	output_shape: 1-D Tensor [new_height, new_width].
+//	fill_value: float, the value to be filled when fill_mode is constant".
+//	interpolation: Interpolation method, "NEAREST" or "BILINEAR".
+//
+// Returns 4-D with shape
+// `[batch, new_height, new_width, channels]`.
+func ImageProjectiveTransformV3(scope *Scope, images tf.Output, transforms tf.Output, output_shape tf.Output, fill_value tf.Output, interpolation string, optional ...ImageProjectiveTransformV3Attr) (transformed_images tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"interpolation": interpolation}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ImageProjectiveTransformV3",
+		Input: []tf.Input{
+			images, transforms, output_shape, fill_value,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // LoadTPUEmbeddingMomentumParametersAttr is an optional argument to LoadTPUEmbeddingMomentumParameters.
 type LoadTPUEmbeddingMomentumParametersAttr func(optionalAttr)
 
@@ -42499,7 +42576,7 @@ func ResourceApplyCenteredRMSPropUseLocking(value bool) ResourceApplyCenteredRMS
 //	mom: Should be from a Variable().
 //	lr: Scaling factor. Must be a scalar.
 //	rho: Decay rate. Must be a scalar.
-//
+//	momentum: Momentum Scale. Must be a scalar.
 //	epsilon: Ridge term. Must be a scalar.
 //	grad: The gradient.
 //
@@ -42784,6 +42861,35 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Merges summaries.
+//
+// This op creates a
+// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+// protocol buffer that contains the union of all the values in the input
+// summaries.
+//
+// When the Op is run, it reports an `InvalidArgument` error if multiple values
+// in the summaries to merge use the same tag.
+//
+// Arguments:
+//	inputs: Can be of any shape.  Each must contain serialized `Summary` protocol
+// buffers.
+//
+// Returns Scalar. Serialized `Summary` protocol buffer.
+func MergeSummary(scope *Scope, inputs []tf.Output) (summary tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MergeSummary",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // MaxPool3DGradAttr is an optional argument to MaxPool3DGrad.

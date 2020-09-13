@@ -50,7 +50,14 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       .def("stop", &tensorflow::data::WorkerGrpcDataServer::Stop)
       .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
-      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort);
+      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort)
+      .def("num_tasks",
+           [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
+             int num_tasks;
+             tensorflow::Status status = server->NumTasks(&num_tasks);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return num_tasks;
+           });
 
   m.def(
       "TF_DATA_NewDispatchServer",
@@ -63,7 +70,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewDispatchServer(config, &server);
+            tensorflow::data::NewDispatchServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
@@ -80,7 +87,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewWorkerServer(config, &server);
+            tensorflow::data::NewWorkerServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },

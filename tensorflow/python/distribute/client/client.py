@@ -32,6 +32,8 @@ import threading
 import weakref
 from absl import logging
 from six.moves import queue
+
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import metric_utils
@@ -40,13 +42,11 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import function as tf_function
-from tensorflow.python.eager import remote
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 # Maximum time for failed worker to come back is 1 hour
@@ -757,32 +757,11 @@ class Cluster(object):
     workers: a list of `Worker` objects in the cluster.
   """
 
-  def __init__(self, cluster_resolver, client_name="chief"):
-    """Initializes the cluster instance and connect to the remote cluster."""
-    if client_name in ["worker", "ps"]:
-      raise ValueError("Client name should not be 'worker' or 'ps'.")
-    cluster_spec = cluster_resolver.cluster_spec()
+  def __init__(self, strategy):
+    """Initializes the cluster instance."""
 
-    self._num_workers = len(cluster_spec.as_dict().get("worker", ()))
-    self._num_ps = len(cluster_spec.as_dict().get("ps", ()))
-    device_filters = server_lib.ClusterDeviceFilters()
-    # For any worker, only the devices on PS and chief nodes are visible
-    for i in range(self._num_workers):
-      device_filters.set_device_filters(
-          "worker", i, ["/job:ps", "/job:%s" % client_name])
-    # Similarly for any ps, only the devices on workers and chief are visible
-    for i in range(self._num_ps):
-      device_filters.set_device_filters(
-          "ps", i, ["/job:worker", "/job:%s" % client_name])
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
-    # Allow at most one outstanding RPC for each worker at a certain time. This
-    # is to simplify worker failure handling in the runtime
-    os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"
-    remote.connect_to_cluster(cluster_spec,
-                              job_name=client_name,
-                              protocol=cluster_resolver.rpc_layer,
-                              cluster_device_filters=device_filters)
+    self._num_workers = strategy._num_workers
+    self._num_ps = strategy._num_ps
 
     # Ignore PS failures reported by workers due to transient connection errors.
     # Transient connectivity issues between workers and PS are relayed by the
@@ -893,20 +872,11 @@ class Client(object):
       raise ValueError("Only `ParameterServerStrategyV2` is supported in "
                        "`Client` currently.")
     self._strategy = strategy
-    self.cluster = Cluster(strategy._cluster_resolver)
+    self.cluster = Cluster(strategy)
 
   @property
   def strategy(self):
     return self._strategy
-
-  @contextlib.contextmanager
-  def experimental_variable_partitioning_scope(self):
-    with self._strategy.experimental_variable_partitioning_scope():
-      yield
-
-  (experimental_variable_partitioning_scope.__doc__) = (
-      parameter_server_strategy_v2.ParameterServerStrategyV2
-      .experimental_variable_partitioning_scope.__doc__)
 
   def schedule(self, fn, args=None, kwargs=None):
     """Schedules `fn` to be dispatched to a worker for execution asynchronously.
@@ -985,8 +955,6 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    # TODO(b/159486639): Update the docs once we can cancel the functions being
-    # executed on workers, that when `join` returns, the system is stabilized.
     with _translate_parameter_server_failure():
       self.cluster.join()
 
@@ -1157,15 +1125,12 @@ class _PerWorkerDistributedDataset(object):
     per_worker_iterator = self._client._create_per_worker_resources(
         _create_per_worker_iterator)
 
-    # Create an iterator, so the consumer function of this iterator can start
-    # tracing using this iterator without needing to wait for the completion of
-    # the iterater creation. Note: the iterator shouldn't use memory until it is
-    # consumed.
-    # TODO(b/154675763): get rid of this workaround once we can make input_fn a
-    # tf.function.
-    iterator = _create_per_worker_iterator()
+    # Setting type_spec of each RemoteValue so that functions taking these
+    # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._set_type_spec(iterator._type_spec)
+      iterator_remote_value._set_type_spec(
+          iterator_ops.IteratorSpec(
+              self._dataset_fn.structured_outputs.element_spec))
     return _PerWorkerDistributedIterator(per_worker_iterator._values)
 
   @property

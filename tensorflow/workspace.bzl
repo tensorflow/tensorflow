@@ -314,15 +314,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
-    http_file(
-        name = "com_github_nlohmann_json_single_header",
-        sha256 = "63da6d1f22b2a7bb9e4ff7d6b255cf691a161ff49532dcc45d398a53e295835f",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nlohmann/json/releases/download/v3.4.0/json.hpp",
-            "https://github.com/nlohmann/json/releases/download/v3.4.0/json.hpp",
-        ],
-    )
-
     tf_http_archive(
         name = "com_github_google_crc32c",
         sha256 = "6b3b1d861bb8307658b2407bc7a4c59e566855ef5368a60b35c893551e4788e9",
@@ -336,18 +327,19 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "d9d1358f464328b8fd6d24a98d4c2876fde0d3fdb06c8b6bd617be7fb9b0fbac",
-        strip_prefix = "google-cloud-cpp-1.16.0",
+        sha256 = "ff82045b9491f0d880fc8e5c83fd9542eafb156dcac9ff8c6209ced66ed2a7f0",
+        strip_prefix = "google-cloud-cpp-1.17.1",
         repo_mapping = {
             "@com_github_curl_curl": "@curl",
+            "@com_github_nlohmann_json": "@nlohmann_json_lib",
         },
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v1.16.0.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v1.16.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz",
         ],
     )
 
@@ -518,12 +510,23 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "typing_extensions_archive",
         build_file = clean_dep("//third_party:typing_extensions.BUILD"),
         sha256 = "79ee589a3caca649a9bfd2a8de4709837400dfa00b6cc81962a1e6a1815969ae",
-        strip_prefix = "typing_extensions-3.7.4.2",
-        system_build_file = clean_dep("//third_party/systemlibs:six.BUILD"),
+        strip_prefix = "typing_extensions-3.7.4.2/src_py3",
+        system_build_file = clean_dep("//third_party/systemlibs:typing_extensions.BUILD"),
         urls = [
             "http://mirror.tensorflow.org/files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
             "https://files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
         ],
+    )
+
+    filegroup_external(
+        name = "typing_extensions_license",
+        licenses = ["notice"],  # PSFL
+        sha256_urls = {
+            "ff17ce94e102024deb68773eb1cc74ca76da4e658f373531f0ac22d68a6bb1ad": [
+                "http://mirror.tensorflow.org/raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE",
+                "https://raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE",
+            ],
+        },
     )
 
     tf_http_archive(
@@ -711,8 +714,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "02bf5632a94da6c3570df002804f8d3f79c11bfc"
-    LLVM_SHA256 = "cd21689a7e3ccdfcb90673a4bfb0db3e1a569d92d8003d11f04069667bedceed"
+    LLVM_COMMIT = "0e0d93e2f09a3e84cee0e77f0f2510001c2f064a"
+    LLVM_SHA256 = "82dd6fac9474fb3be25c500bdca6c618cfeda4b7e1f9f5dba175134ee479e788"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

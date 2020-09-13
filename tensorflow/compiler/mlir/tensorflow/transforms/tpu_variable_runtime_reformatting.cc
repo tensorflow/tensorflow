@@ -174,7 +174,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   metadata.ParseFromString(std::string(metadata_str.getValue()));
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while
   // operands.
@@ -264,7 +264,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
     tf_device::ReplicateOp replicate, ArrayRef<Value> new_inputs,
     const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
         devices) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   assert(new_inputs.size() == num_replicas);
 
   // As model parallelism is not yet supported, we assume that all ops are
@@ -423,7 +423,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 // Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
                        MLIRContext* context) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   if (num_replicas == 1) return;
   tf_device::LaunchOp execute_launch;
   for (auto execute_launch_op :

@@ -1028,8 +1028,6 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return super(MirroredVariable, self).scatter_update(*args, **kwargs)
 
   def _get_cross_replica(self):
-    if values_util.is_saving_non_distributed():
-      return self._primary.read_value()
     # Return identity, to avoid directly exposing the variable to the user and
     # allowing it to be modified by mistake.
     return array_ops.identity(Mirrored._get_cross_replica(self))
@@ -1186,8 +1184,6 @@ class SyncOnReadVariable(DistributedVariable):
         return self._get_on_device_or_primary().value()
 
   def _get_cross_replica(self):
-    if values_util.is_saving_non_distributed():
-      return self._primary.read_value()
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       # Consider returning a tensor value here to make the return value of
       # _get_cross_replica consistent.
@@ -1328,7 +1324,7 @@ class OnReadPolicy(VariablePolicy):
 
   def _get_cross_replica(self, var):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      return var._primary  # pylint: disable=protected-access
+      return var._get_replica(0)  # pylint: disable=protected-access
 
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       return  var.distribute_strategy.reduce(

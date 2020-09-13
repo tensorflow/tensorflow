@@ -31,12 +31,13 @@ from absl.testing import parameterized
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
@@ -203,7 +204,7 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
 class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
                                             parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['graph'],
           strategy_cls=[
@@ -261,7 +262,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
     self.join_independent_workers(threads_to_join)
     verification_callback.verify(self)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['graph'],
           strategy_cls=[ParameterServerStrategy],

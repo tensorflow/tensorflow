@@ -243,7 +243,6 @@ tf_cuda_cc_test(
     srcs = ["collective_nccl_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "guitar",
-        "manual",
         "multi_gpu",
         "no_oss",
         "notap",
@@ -1662,6 +1661,7 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1672,6 +1672,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels/image",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -3087,7 +3088,6 @@ cc_library(
         ":logging_ops",
         ":summary_audio_op",
         ":summary_image_op",
-        ":summary_op",
         ":summary_tensor_op",
     ],
 )
@@ -3098,6 +3098,10 @@ LOGGING_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    # TODO(b/162630222): remove this dependency.
+    "//tensorflow/c/kernels:histogram_summary_op",
+    "//tensorflow/c/kernels:merge_summary_op",
+    "//tensorflow/c/kernels:summary_op",
 ]
 
 tf_kernel_library(
@@ -3118,12 +3122,12 @@ tf_kernel_library(
     deps = LOGGING_DEPS + ["//tensorflow/core:png_internal"],
 )
 
-tf_kernel_library(
+# TODO(b/162630222): remove this target
+cc_library(
     name = "summary_op",
-    prefix = "summary_op",
-    deps = LOGGING_DEPS + [
-        # TODO(b/162630222): remove these dependencies.
+    deps = [
         "//tensorflow/c/kernels:histogram_summary_op",
+        "//tensorflow/c/kernels:merge_summary_op",
         "//tensorflow/c/kernels:summary_op",
     ],
 )
@@ -3370,7 +3374,7 @@ tf_kernel_library(
     name = "cwise_op",
     copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_unary_op"]),
 )
 
 tf_kernel_library(
@@ -5910,6 +5914,7 @@ filegroup(
         "avgpooling_op.h",
         "batch_matmul_op_impl.h",
         "batch_norm_op.h",
+        "bincount_op.h",
         "broadcast_to_op.h",
         "bucketize_op.h",
         "control_flow_ops.h",
@@ -6112,6 +6117,9 @@ filegroup(
         "//tensorflow/core/kernels/linalg:einsum_op_impl_complex128.cc",
         "//tensorflow/core/kernels/linalg:einsum_op_impl.h",
         "//tensorflow/core/kernels/linalg:einsum_op.h",
+        "//tensorflow/core/kernels/image:decode_image_op.cc",
+        "//tensorflow/core/kernels/image:encode_jpeg_op.cc",
+        "//tensorflow/core/kernels/image:encode_png_op.cc",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",
@@ -6127,6 +6135,7 @@ filegroup(
         ":android_extended_ops_headers",
         "base64_ops.cc",
         "batchtospace_op.cc",
+        "bincount_op.cc",
         "broadcast_to_op.cc",
         "bucketize_op.cc",
         "ctc_decoder_ops.cc",
@@ -6213,11 +6222,11 @@ filegroup(
         "stack_ops.cc",
         "stateless_random_ops.cc",
         "string_join_op.cc",
+        "string_lower_op.cc",
         "string_util.cc",
         "string_split_op.cc",
         "string_to_hash_bucket_op.cc",
         "substr_op.cc",
-        "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
         "tensor_list.cc",
@@ -6431,6 +6440,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:portable_jpeg_internal",
+        "//tensorflow/core:portable_png_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/core/platform:strong_hash",

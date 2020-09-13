@@ -167,9 +167,10 @@ class InterpreterInfo : public GraphInfo {
   TfLiteTensor* tensor(size_t index) override {
     return &subgraph_->tensors()[index];
   }
-  size_t num_nodes() const override {
+  size_t num_execution_nodes() const override {
     return subgraph_->execution_plan().size();
   }
+  size_t num_total_nodes() const override { return subgraph_->nodes_size(); }
   const TfLiteNode& node(size_t index) const override {
     int node_index = subgraph_->execution_plan()[index];
     return subgraph_->nodes_and_registration()[node_index].first;
@@ -674,13 +675,17 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
       continue;
     }
 
-    // Variable tensors have to be `kTfLiteArenaRwPersistent`, and must be
-    // allocated after the initial `PrepareOpsAndTensors()` is called.
-    TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
-                      kTfLiteArenaRwPersistent);
-    TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
-
-    tflite::ResetVariableTensor(&tensor);
+    if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
+      // If variable tensors allocation type is `kTfLiteArenaRwPersistent`, then
+      // they must be allocated after the initial `PrepareOpsAndTensors()` is
+      // called.
+      TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
+      tflite::ResetVariableTensor(&tensor);
+    } else {
+      // If variable tensors allocation type is not `kTfLiteArenaRwPersistent`,
+      // then it can only be `kTfLiteCustom` in which case, we do not reset it.
+      TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type, kTfLiteCustom);
+    }
   }
   return kTfLiteOk;
 }
@@ -1486,8 +1491,10 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 TfLiteStatus Subgraph::SetCustomAllocationForTensor(
     int tensor_index, const TfLiteCustomAllocation& allocation) {
   TfLiteTensor* tensor = &context_.tensors[tensor_index];
-  TF_LITE_ENSURE(context(), tensor->allocation_type == kTfLiteArenaRw ||
-                                tensor->allocation_type == kTfLiteCustom);
+  TF_LITE_ENSURE(context(),
+                 (tensor->allocation_type == kTfLiteArenaRw ||
+                  tensor->allocation_type == kTfLiteArenaRwPersistent ||
+                  tensor->allocation_type == kTfLiteCustom));
   TF_LITE_ENSURE_STATUS(
       ValidateCustomAllocationForTensor(context(), tensor, allocation));
 

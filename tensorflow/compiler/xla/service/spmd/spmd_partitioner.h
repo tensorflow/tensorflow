@@ -330,25 +330,9 @@ class PartitionedHlo {
   PartitioningState state_;
 };
 
-struct DotGeneralDimsMapping {
+struct DotConvDimsMapping {
   // The dimension numbers for the operands and output corresponding to a
   // logical dimension (e.g., batch, contracting, non-contracting). If an
-  // operand or the output doesn't have the logical dimension, it is set to
-  // -1.
-  struct DimsMapping {
-    int64 lhs;
-    int64 rhs;
-    int64 output;
-  };
-  std::vector<DimsMapping> batch_dims;
-  std::vector<DimsMapping> contracting_dims;
-  std::vector<DimsMapping> lhs_non_contracting_dims;
-  std::vector<DimsMapping> rhs_non_contracting_dims;
-};
-
-struct ConvolutionDimsMapping {
-  // The dimension numbers for the operands and output corresponding to a
-  // logical dimension (e.g., batch, parallel, non-parallel). If an
   // operand or the output doesn't have the logical dimension, it is set to
   // -1.
   struct DimsMapping {
@@ -358,8 +342,11 @@ struct ConvolutionDimsMapping {
     // input mapped to index in input_spatial_dimensions().
     int64 spatial;
   };
-  std::vector<DimsMapping> parallel_spatial_dims;
-  std::vector<DimsMapping> non_parallel_spatial_dims;
+  std::vector<DimsMapping> batch_dims;
+  std::vector<DimsMapping> contracting_dims;
+  std::vector<DimsMapping> lhs_non_contracting_dims;
+  std::vector<DimsMapping> rhs_non_contracting_dims;
+  std::vector<DimsMapping> conv_spatial_dims;
 };
 
 class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
@@ -404,7 +391,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   Status HandleDotHelper(
-      HloInstruction* hlo, const DotGeneralDimsMapping& dims_mapping,
+      HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
       const std::function<StatusOr<HloInstruction*>(
           HloInstruction*, HloInstruction*, SpmdBuilder*)>& create_sharded_dot);
 

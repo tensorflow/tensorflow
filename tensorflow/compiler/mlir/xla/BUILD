@@ -133,7 +133,6 @@ cc_library(
         ":hlo_utils",
         ":mlir_hlo_to_hlo",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_force_registration",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -238,8 +237,8 @@ cc_library(
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
         ":type_to_shape",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_force_registration",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/tf2xla:common",
@@ -325,6 +324,16 @@ cc_library(
 )
 
 cc_library(
+    name = "translate_cl_options",
+    srcs = ["xla_mlir_translate_cl.cc"],
+    hdrs = ["xla_mlir_translate_cl.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_mlir_translate",
     srcs = ["xla_mlir_translate.cc"],
     hdrs = ["xla_mlir_translate.h"],
@@ -332,8 +341,10 @@ cc_library(
         ":hlo_to_mlir_hlo",
         ":mhlo_to_lhlo_with_xla",
         ":mlir_hlo_to_hlo",
+        ":translate_cl_options",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -342,6 +353,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,
@@ -388,7 +400,6 @@ cc_library(
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_force_registration",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:legalize_control_flow",
         "//tensorflow/compiler/mlir/hlo:legalize_tanh_to_approximation",

@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows", "if_tpu")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -506,7 +506,8 @@ def tf_proto_library(
         create_service = False,
         create_java_proto = False,
         make_default_target_header_only = False,
-        exports = []):
+        exports = [],
+        tags = []):
     """Make a proto library, possibly depending on other proto libraries."""
 
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
@@ -520,6 +521,7 @@ def tf_proto_library(
         deps = protodeps + well_known_proto_libs(),
         visibility = visibility,
         testonly = testonly,
+        tags = tags,
     )
 
     tf_proto_library_cc(
@@ -800,3 +802,6 @@ def if_llvm_system_z_available(then, otherwise = []):
         "//tensorflow:linux_s390x": then,
         "//conditions:default": otherwise,
     })
+
+def tf_tpu_dependencies():
+    return if_tpu(["//tensorflow/core/tpu/kernels"])

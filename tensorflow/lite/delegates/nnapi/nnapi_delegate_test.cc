@@ -2682,7 +2682,7 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
     weights_ = AddInput(weights);
     recurrent_weights_ = AddInput(recurrent_weights);
     bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddInput(TensorType_FLOAT32, true);
+    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
@@ -2872,9 +2872,8 @@ class BaseSVDFOpModel : public SingleOpModelWithNNAPI {
     // when using NNAPI delegate.
     bias_ = AddInput(TensorType_FLOAT32);
     const int num_filters = units * rank;
-    activation_state_ = AddInput(
-        TensorData{TensorType_FLOAT32, {batches, memory_size * num_filters}},
-        /*is_variable=*/true);
+    activation_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {batches, memory_size * num_filters}});
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
@@ -3098,8 +3097,8 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
     }
 
     // Adding the 2 input state tensors.
-    input_activation_state_ = AddInput(TensorType_FLOAT32, true);
-    input_cell_state_ = AddInput(TensorType_FLOAT32, true);
+    input_activation_state_ = AddVariableInput(TensorType_FLOAT32);
+    input_cell_state_ = AddVariableInput(TensorType_FLOAT32);
 
     const bool use_layer_norm = input_shapes.size() > 20;
     // Layer norm weights.

@@ -54,7 +54,7 @@ class RemoteMgrTest : public ::testing::Test {
     ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        tensorflow::ContextMirroringPolicy::MIRRORING_NONE, /*async=*/false,
+        /*async=*/false,
         /*lazy_copy_function_remote_inputs=*/false, device_mgr.release(), true,
         rendezvous, GetDefaultCustomKernelCreator(), nullptr);
   }

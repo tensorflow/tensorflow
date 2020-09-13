@@ -376,7 +376,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 end_logical_time_;
   int64 earliest_prefetch_time_;
   int64 latest_prefetch_time_;
-  bool using_increasing_prefetch_time_iterator_;
+  bool using_increasing_prefetch_time_iterator_ = true;
   int64 increasing_prefetch_time_iterator_;
   int64 decreasing_prefetch_time_iterator_;
 };
@@ -871,29 +871,6 @@ class MemorySpaceAssignment {
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_before_;
 };
 
-// This struct contains mandatory memory assignments at a given time. E.g., an
-// input's required memory assignment time would correspond to the definition
-// time of the parameter instruction, and an output's time would correspond to
-// the time of last use.
-struct RequiredMemoryAssignment {
-  MemorySpaceAssignment::MemorySpace memory_space;
-  int64 time;
-  absl::optional<HeapSimulator::Chunk> chunk;
-
-  bool equals_ignoring_time(const RequiredMemoryAssignment& other) const {
-    return memory_space == other.memory_space && chunk == other.chunk;
-  }
-
-  bool operator==(const RequiredMemoryAssignment& other) const {
-    return memory_space == other.memory_space && time == other.time &&
-           chunk == other.chunk;
-  }
-
-  bool operator!=(const RequiredMemoryAssignment& other) const {
-    return !(*this == other);
-  }
-};
-
 // A struct representing an asynchronous copy with its logical start and end
 // time and its destination memory space.
 struct AsynchronousCopy {
@@ -980,6 +957,13 @@ class AlternateMemoryBestFitHeap
     MemorySpaceAssignment::Allocation* allocation;
   };
 
+  // A data structure we use to associate Allocation objects that are aliased
+  // and must get the same offset.
+  struct AliasedOffset {
+    int64 offset;
+    absl::flat_hash_set<const MemorySpaceAssignment::Allocation*> allocations;
+  };
+
   // An allocation request for a use segment. A use segment is the time segment
   // between the definition and the first use, and the time segment between the
   // uses of a buffer. For example, the time between the definition and Use1, is
@@ -1007,9 +991,32 @@ class AlternateMemoryBestFitHeap
     int64 size;
     bool allow_no_copy_alternate_mem_allocation;
     absl::optional<int64> earliest_prefetch_time;
-    absl::optional<int64> preferred_offset;
+    AliasedOffset* preferred_offset;
     const MemorySpaceAssignment::AllocationValue::Use* use;
     MemorySpaceAssignment::AllocationValue* allocation_value;
+  };
+
+  // This struct contains mandatory memory assignments at a given time. E.g., an
+  // input's required memory assignment time would correspond to the definition
+  // time of the parameter instruction, and an output's time would correspond to
+  // the time of last use.
+  struct RequiredMemoryAssignment {
+    MemorySpaceAssignment::MemorySpace memory_space;
+    int64 time;
+    AliasedOffset* offset;
+
+    bool equals_ignoring_time(const RequiredMemoryAssignment& other) const {
+      return memory_space == other.memory_space && offset == other.offset;
+    }
+
+    bool operator==(const RequiredMemoryAssignment& other) const {
+      return memory_space == other.memory_space && time == other.time &&
+             offset == other.offset;
+    }
+
+    bool operator!=(const RequiredMemoryAssignment& other) const {
+      return !(*this == other);
+    }
   };
 
   // Result of an allocation, prefetch, eviction etc. request.  The result is
@@ -1067,6 +1074,17 @@ class AlternateMemoryBestFitHeap
     return result_is(result, Result::kFailOutOfAsyncCopies) ||
            result_is(result, Result::kFailViolatesAsyncCopyOrdering);
   }
+
+  // Returns the AliasedOffset object associated with the allocation.
+  AliasedOffset* GetAliasedOffset(
+      const MemorySpaceAssignment::Allocation& allocation);
+
+  // If aliased_offset is non-null, this method adds the allocation to
+  // aliased_offset. Otherwise, it creates a new AliasedOffset object and adds
+  // the allocation to this new AliasedOffset.
+  void CreateOrAddToAliasedOffset(
+      const MemorySpaceAssignment::Allocation& allocation,
+      AliasedOffset* aliased_offset);
 
   // Given an allocation sequence, returns the live allocation at time with a
   // preference towards allocations in alternate memory. Returns nullptr if no
@@ -1140,7 +1158,7 @@ class AlternateMemoryBestFitHeap
   // availability if no preferred offset is given, or at the preferred_offset if
   // it is given.
   absl::optional<ChunkCandidate> FindBestChunkCandidate(
-      const AllocationRequest& request, absl::optional<int64> preferred_offset,
+      const AllocationRequest& request, const AliasedOffset* preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 
   // Returns the required assignment at a particular time, if available.
@@ -1162,10 +1180,10 @@ class AlternateMemoryBestFitHeap
   void AddRequiredAssignment(const HloValue* value,
                              const HloInstruction* instruction,
                              MemorySpace memory_space, int64 time,
-                             absl::optional<Chunk> chunk = absl::nullopt);
+                             AliasedOffset* offset = nullptr);
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
-                             absl::optional<Chunk> chunk = absl::nullopt);
+                             AliasedOffset* offset = nullptr);
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
@@ -1216,6 +1234,7 @@ class AlternateMemoryBestFitHeap
                     int64 start_time, int64 end_time,
                     int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations,
+                    AliasedOffset* aliased_offset,
                     bool is_cross_program_prefetch = false);
 
   // This method is used for committing the chunk candidate but adding it to
@@ -1284,6 +1303,11 @@ class AlternateMemoryBestFitHeap
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
       pending_required_assignments_;
+  // The data structure that contains AliasedOffset objects and Allocation to
+  // AliasedOffset map for efficient lookup.
+  std::list<AliasedOffset> aliased_offsets_;
+  absl::flat_hash_map<const MemorySpaceAssignment::Allocation*, AliasedOffset*>
+      aliased_offset_map_;
   // This map contains required memory assignments for HloValues (e.g., input
   // and outputs).
   absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>

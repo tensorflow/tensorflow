@@ -1276,7 +1276,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'ackpt'
       self.evaluate(v.assign(42.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('ackpt.index'))
+      self.assertTrue(file_io.file_exists_v2('ackpt.index'))
       self.evaluate(v.assign(1.))
       m.load_weights(prefix)
       self.assertEqual(42., self.evaluate(v))
@@ -1284,7 +1284,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'subdir/ackpt'
       self.evaluate(v.assign(43.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('subdir/ackpt.index'))
+      self.assertTrue(file_io.file_exists_v2('subdir/ackpt.index'))
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
       self.assertEqual(43., self.evaluate(v))
@@ -1292,7 +1292,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'ackpt/'
       self.evaluate(v.assign(44.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('ackpt/.index'))
+      self.assertTrue(file_io.file_exists_v2('ackpt/.index'))
       self.evaluate(v.assign(3.))
       m.load_weights(prefix)
       self.assertEqual(44., self.evaluate(v))

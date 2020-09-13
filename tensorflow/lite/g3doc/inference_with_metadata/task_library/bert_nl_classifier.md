@@ -1,4 +1,4 @@
-# Bert natural language classifier
+# Integrate BERT natural language classifier
 
 The Task Library `BertNLClassifier` API is very similar to the `NLClassifier`
 that classifies input text into different categories, except that this API is

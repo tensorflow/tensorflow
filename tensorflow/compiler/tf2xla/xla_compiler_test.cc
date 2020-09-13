@@ -1903,8 +1903,8 @@ TEST_F(XlaCompilerTest, SetDeviceToHostMetadataExactDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
   const string& key = "comm_key";
-  std::vector<const DataType> types{DT_INT32};
-  std::vector<const TensorShape> shapes{TensorShape({2})};
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
 
   TF_ASSERT_OK(compiler.SetDeviceToHostMetadata(key, types, shapes));
   TF_ASSERT_OK(compiler.SetDeviceToHostMetadata(key, types, shapes));
@@ -1916,10 +1916,10 @@ TEST_F(XlaCompilerTest, SetDeviceToHostMetadataMismatchedDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
   const string& key = "comm_key";
-  std::vector<const DataType> types{DT_INT32};
-  std::vector<const TensorShape> shapes{TensorShape({2})};
-  std::vector<const DataType> types2{DT_FLOAT};
-  std::vector<const TensorShape> shapes2{TensorShape({1})};
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
+  std::vector<DataType> types2{DT_FLOAT};
+  std::vector<TensorShape> shapes2{TensorShape({1})};
 
   TF_ASSERT_OK(compiler.SetDeviceToHostMetadata(key, types, shapes));
   Status status = compiler.SetDeviceToHostMetadata(key, types2, shapes2);
@@ -1932,8 +1932,8 @@ TEST_F(XlaCompilerTest, SetHostToDeviceMetadataExactDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
   const string& key = "comm_key";
-  std::vector<const DataType> types{DT_INT32};
-  std::vector<const TensorShape> shapes{TensorShape({2})};
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
 
   TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
   TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
@@ -1945,10 +1945,10 @@ TEST_F(XlaCompilerTest, SetHostToDeviceMetadataMismatchedDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
   const string& key = "comm_key";
-  std::vector<const DataType> types{DT_INT32};
-  std::vector<const TensorShape> shapes{TensorShape({2})};
-  std::vector<const DataType> types2{DT_FLOAT};
-  std::vector<const TensorShape> shapes2{TensorShape({1})};
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
+  std::vector<DataType> types2{DT_FLOAT};
+  std::vector<TensorShape> shapes2{TensorShape({1})};
 
   TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
   Status status = compiler.SetHostToDeviceMetadata(key, types2, shapes2);

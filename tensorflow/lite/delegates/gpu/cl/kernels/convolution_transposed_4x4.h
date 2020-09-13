@@ -61,12 +61,14 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 
  private:
   ConvolutionTransposed4x4(const OperationDef& definition,
-                           const DeviceInfo& device_info);
+                           const DeviceInfo& device_info,
+                           const ConvolutionTransposedAttributes& attr);
   friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
       const DeviceInfo& device_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                     WeightsUploadType weights_upload_type);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -74,13 +76,12 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 
   std::string GenerateConvolutionTransposedCode(
       const OperationDef& op_def, WeightsUploadType weights_upload_type);
-
-  WeightsUploadType weights_upload_type_;
 };
 
 template <DataType T>
 void ConvolutionTransposed4x4::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights) {
+    const tflite::gpu::Tensor<OHWI, T>& weights,
+    WeightsUploadType weights_upload_type) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 4;  //  This operation support only 4x4 kernel
@@ -94,7 +95,7 @@ void ConvolutionTransposed4x4::UploadWeights(
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type =
-      weights_upload_type_ ==
+      weights_upload_type ==
               ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM
           ? MemoryType::CONSTANT
           : MemoryType::GLOBAL;

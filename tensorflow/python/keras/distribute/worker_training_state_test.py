@@ -21,8 +21,9 @@ import os
 import sys
 
 from absl.testing import parameterized
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
@@ -33,7 +34,7 @@ from tensorflow.python.platform import test
 class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
                           parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['graph'],
           required_gpus=[0, 1],
@@ -48,7 +49,7 @@ class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
         callbacks.ModelCheckpoint(
             filepath=saving_filepath, save_weights_only=save_weights_only)
     ]
-    self.assertFalse(file_io.file_exists(saving_filepath))
+    self.assertFalse(file_io.file_exists_v2(saving_filepath))
 
     try:
       model.fit(
@@ -56,9 +57,9 @@ class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
     except NotFoundError as e:
       if 'Failed to create a NewWriteableFile' in e.message:
         self.skipTest('b/138941852, path not found error in Windows py35.')
-    tf_saved_model_exists = file_io.file_exists(saving_filepath)
-    tf_weights_only_checkpoint_exists = file_io.file_exists(saving_filepath +
-                                                            '.index')
+    tf_saved_model_exists = file_io.file_exists_v2(saving_filepath)
+    tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
+        saving_filepath + '.index')
     self.assertTrue(tf_saved_model_exists or tf_weights_only_checkpoint_exists)
 
 

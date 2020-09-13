@@ -20,8 +20,10 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
@@ -169,6 +171,11 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
 struct LhloLegalizeToGpuPass
     : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
+                    scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());

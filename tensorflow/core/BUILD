@@ -72,7 +72,6 @@ load(
     "if_ios",
     "if_mobile",
     "if_not_windows",
-    "if_tpu",
     "tf_android_core_proto_headers",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -117,6 +116,7 @@ load(
     "tf_protos_all_impl",
     "tf_protos_grappler_impl",
     "tf_protos_profiler_impl",
+    "tf_tpu_dependencies",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -670,8 +670,9 @@ tf_gen_op_libs(
         ":lib",
         ":protos_all_cc",
         # TODO(b/162630222): remove this dependency.
-        "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/c/kernels:histogram_summary_op_lib",
+        "//tensorflow/c/kernels:merge_summary_op_lib",
+        "//tensorflow/c/kernels:summary_op_lib",
     ],
 )
 
@@ -876,6 +877,7 @@ cc_library(
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
         "//tensorflow/c/kernels:histogram_summary_op_lib",
+        "//tensorflow/c/kernels:merge_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
@@ -984,9 +986,10 @@ cc_library(
     name = "all_kernels_impl",
     visibility = [":__subpackages__"],
     deps = [
-        "//tensorflow/c/kernels:histogram_summary_op",
-        "//tensorflow/c/kernels:summary_op",
         "//tensorflow/c/kernels:bitcast_op",
+        "//tensorflow/c/kernels:histogram_summary_op",
+        "//tensorflow/c/kernels:merge_summary_op",
+        "//tensorflow/c/kernels:summary_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",
@@ -1083,9 +1086,7 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_op_kernels",
         "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
-    ]) + if_tpu([
-        "//tensorflow/core/tpu/kernels",
-    ]),
+    ]) + tf_tpu_dependencies(),
 )
 
 cc_library(
@@ -2010,6 +2011,11 @@ alias(
 )
 
 alias(
+    name = "portable_png_internal",
+    actual = "//tensorflow/core/lib/png:png_io",
+)
+
+alias(
     name = "android_png_internal",
     actual = "//tensorflow/core/lib/png:png_io",
 )
@@ -2037,8 +2043,8 @@ cc_library(
 )
 
 cc_library(
-    name = "android_jpeg_internal",
-    srcs = if_android([
+    name = "portable_jpeg_internal",
+    srcs = if_mobile([
         "lib/jpeg/jpeg_handle.cc",
         "lib/jpeg/jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
@@ -2052,7 +2058,7 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = if_android(["-ldl"]),
     deps = [
         ":core_stringpiece",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -2065,8 +2071,8 @@ cc_library(
 )
 
 cc_library(
-    name = "android_gif_internal",
-    srcs = if_android([
+    name = "portable_gif_internal",
+    srcs = if_mobile([
         "lib/gif/gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
     ]),
@@ -2079,7 +2085,7 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = if_android(["-ldl"]),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
@@ -2088,6 +2094,16 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
+)
+
+alias(
+    name = "android_jpeg_internal",
+    actual = ":portable_jpeg_internal",
+)
+
+alias(
+    name = "android_gif_internal",
+    actual = ":portable_gif_internal",
 )
 
 alias(
@@ -2985,37 +3001,14 @@ filegroup(
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
         # BMP data
-        "lib/bmp/testdata/lena.bmp",
-        "lib/bmp/testdata/rgb_small.bmp",
-        "lib/bmp/testdata/rgb_small_255.bmp",
-        "lib/bmp/testdata/rgba_small.bmp",
-        "lib/bmp/testdata/rgba_small_255.bmp",
-        "lib/bmp/testdata/grayscale_small.bmp",
-        "lib/bmp/testdata/grayscale_small_3channels.bmp",
-        "lib/bmp/testdata/grayscale_small_4channels.bmp",
+        "//tensorflow/core/lib/bmp:bmp_testdata",
     ],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+alias(
     name = "lmdb_testdata",
-    testonly = 1,
-    srcs = [
-        # A simple key-value store:
-        #   0 : 'b'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'b'
-        # Which is then overwritten with:
-        #   0 : 'a'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'j'
-        "lib/lmdb/testdata/data.mdb",
-        # LMDB, being a memory-mapped database, uses a different file format on
-        # big-endian systems.
-        "lib/lmdb/testdata/data_bigendian.mdb",
-    ],
+    actual = "//tensorflow/core/lib/lmdb:lmdb_testdata",
     visibility = ["//visibility:public"],
 )
 

@@ -562,6 +562,7 @@ selects.config_setting_group(
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/distribute/...",
         "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
         "//tensorflow/...",

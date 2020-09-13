@@ -1144,7 +1144,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
   SparseFullyConnectedOpModel(TfLiteRegistration* registration, int units,
                               int batches, const TensorData& input,
                               const TensorData& weights,
-                              std::initializer_list<T> weights_data,
+                              const std::vector<T>& weights_data,
                               int num_threads = 1)
       : batches_(batches), units_(units) {
     int total_input_size = 1;

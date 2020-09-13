@@ -1716,12 +1716,6 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for
       the linear transformation of the recurrent state.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications.
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before" (default),
       True = "after" (CuDNN compatible).
@@ -1750,7 +1744,6 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
                reset_after=False,
                **kwargs):
     # By default use cached variable under v2 mode, see b/143699808.
@@ -1778,6 +1771,8 @@ class GRUCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
+
+    implementation = kwargs.pop('implementation', 1)
     if self.recurrent_dropout != 0 and implementation != 1:
       logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
       self.implementation = 1
@@ -2007,12 +2002,6 @@ class GRU(RNN):
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for
       the linear transformation of the recurrent state.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications.
     return_sequences: Boolean. Whether to return the last output
       in the output sequence, or the full sequence.
     return_state: Boolean. Whether to return the last state
@@ -2070,7 +2059,6 @@ class GRU(RNN):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -2078,6 +2066,7 @@ class GRU(RNN):
                unroll=False,
                reset_after=False,
                **kwargs):
+    implementation = kwargs.pop('implementation', 1)
     if implementation == 0:
       logging.warning('`implementation=0` has been deprecated, '
                       'and now defaults to `implementation=1`.'
@@ -2286,12 +2275,6 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for
       the linear transformation of the recurrent state.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications.
 
   Call arguments:
     inputs: A 2D tensor.
@@ -2318,7 +2301,6 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
                **kwargs):
     # By default use cached variable under v2 mode, see b/143699808.
     if ops.executing_eagerly_outside_functions():
@@ -2346,6 +2328,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
+    implementation = kwargs.pop('implementation', 1)
     if self.recurrent_dropout != 0 and implementation != 1:
       logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
       self.implementation = 1
@@ -2581,7 +2564,6 @@ class PeepholeLSTMCell(LSTMCell):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
                **kwargs):
     super(PeepholeLSTMCell, self).__init__(
         units=units,
@@ -2600,7 +2582,7 @@ class PeepholeLSTMCell(LSTMCell):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 1),
         **kwargs)
 
   def build(self, input_shape):
@@ -2696,12 +2678,6 @@ class LSTM(RNN):
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for
       the linear transformation of the recurrent state.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications.
     return_sequences: Boolean. Whether to return the last output.
       in the output sequence, or the full sequence.
     return_state: Boolean. Whether to return the last state
@@ -2757,13 +2733,13 @@ class LSTM(RNN):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
                stateful=False,
                unroll=False,
                **kwargs):
+    implementation = kwargs.pop('implementation', 1)
     if implementation == 0:
       logging.warning('`implementation=0` has been deprecated, '
                       'and now defaults to `implementation=1`.'

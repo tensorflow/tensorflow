@@ -37,6 +37,15 @@
 * XLA:CPU and XLA:GPU devices are no longer registered by default. Use
   `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
   removed).
+* `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type
+  `tf.complex64` or `tf.complex128`, because the behavior of these ops is not
+  well defined for complex types.
+* `tf.data.experimental.service.DispatchServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
+* `tf.data.experimental.service.WorkerServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.WorkerServer(worker_config)`.
 
 ## Known Caveats
 
@@ -95,6 +104,11 @@
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
     * `tf.data.Options` were previously immutable and can now be overriden.
+    * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
+      with a new `output_signature` argument, which allows `from_generator` to
+      produce any type describable by a `tf.TypeSpec`.
+    * `tf.data.experimental.AUTOTUNE` is now available in the core API as
+      `tf.data.AUTOTUNE`.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op
@@ -120,6 +134,13 @@
       customization of how gradients are aggregated across devices, as well as
       `gradients_transformers` to allow for custom gradient transformations
       (such as gradient clipping).
+    * The `steps_per_execution` argument in `compile()` is no longer
+      experimental; if you were passing `experimental_steps_per_execution`,
+      rename it to `steps_per_execution` in your code. This argument controls
+      the number of batches to run during each `tf.function` call when calling
+      `fit()`. Running multiple batches inside a single `tf.function` call can
+      greatly improve performance on TPUs or small models with a large Python
+      overhead.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
@@ -147,6 +168,8 @@
     * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
       * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
     * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
+    * TFLite Profiler for Android is available. See the detailed
+      [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android).
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
@@ -171,11 +194,13 @@
       checkpoint saved in the `variables/` folder in the SavedModel.
     * When restoring, `save_path` can be a path to a SavedModel. The function
       will automatically find the checkpoint in the SavedModel.
+*   `tf.nn`:
+    * `tf.nn.max_pool2d` now supports explicit padding.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
   https://developers.google.com/style/word-list#blacklist for more context.
-    * <ADD RELEASE NOTES HERE>
+  <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 

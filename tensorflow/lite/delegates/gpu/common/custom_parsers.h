@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_PARSERS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_PARSERS_H_
 
-#include <string>
+#include <stdint.h>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/any.h"

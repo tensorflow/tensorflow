@@ -220,13 +220,6 @@ func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: tenso
   return %0 : tensor<3x3xf32>
 }
 
-// CHECK-LABEL: fft
-func @fft(%arg0: tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>> {
-  // CHECK: "mhlo.fft"(%arg0)
-  %0 = "tf.FFT"(%arg0) : (tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>>
-  return %0 : tensor<3x5x8xcomplex<f32>>
-}
-
 // CHECK-LABEL: reverse_sequence
 func @reverse_sequence(%arg0: tensor<4x2x3x1x1xi32>, %arg1: tensor<3xi32>) -> tensor<4x2x3x1x1xi32> {
   // CHECK-NOT: tf.ReverseSequence

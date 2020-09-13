@@ -77,9 +77,9 @@ class FileJournalWriter : public JournalWriter {
 class JournalReader {
  public:
   virtual ~JournalReader() = default;
-  // Reads the next update from the journal. Sets `*end_of_journal=true` if
+  // Reads the next update from the journal. Sets `end_of_journal=true` if
   // there are no more updates left in the journal.
-  virtual Status Read(Update* update, bool* end_of_journal) = 0;
+  virtual Status Read(Update& update, bool& end_of_journal) = 0;
 };
 
 // JournalReader is not thread-safe, requiring external synchronization when
@@ -93,7 +93,7 @@ class FileJournalReader : public JournalReader {
   FileJournalReader(const FileJournalReader&) = delete;
   FileJournalReader& operator=(const FileJournalReader&) = delete;
 
-  Status Read(Update* update, bool* end_of_journal) override;
+  Status Read(Update& update, bool& end_of_journal) override;
 
  private:
   // Initializes the reader if it is not yet initialized.

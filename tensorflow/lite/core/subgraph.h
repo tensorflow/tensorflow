@@ -342,8 +342,8 @@ class Subgraph {
   // for the tensor, it can no longer be reset to the TFLite arena memory.
   //
   // Parameters should satisfy the following conditions:
-  // 1. tensor->allocation_type == kTfLiteArenaRw
-  //    In general, this is true for all non-constants such as I/O tensors.
+  // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  //    In general, this is true for I/O tensors & variable tensors.
   // 2. allocation->data has the appropriate permissions for runtime access
   //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
   // 3. allocation->bytes >= tensor->bytes.

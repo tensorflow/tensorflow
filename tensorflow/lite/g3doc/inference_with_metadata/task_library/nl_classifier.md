@@ -1,4 +1,4 @@
-# Natural language classifier
+# Integrate Natural language classifier
 
 The Task Library's `NLClassifier` API classifies input text into different
 categories, and is a versatile and configurable API that can handle most text

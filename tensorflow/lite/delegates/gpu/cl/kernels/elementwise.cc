@@ -42,10 +42,10 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "\n";
       break;
     case OperationType::ELU:
-      result = "$0.x = $0.x < (FLT)(0.0f) ? exp($0.x) - (FLT)(1.0f) : $0.x;\n";
-      result += "$0.y = $0.y < (FLT)(0.0f) ? exp($0.y) - (FLT)(1.0f) : $0.y;\n";
-      result += "$0.z = $0.z < (FLT)(0.0f) ? exp($0.z) - (FLT)(1.0f) : $0.z;\n";
-      result += "$0.w = $0.w < (FLT)(0.0f) ? exp($0.w) - (FLT)(1.0f) : $0.w;\n";
+      result = "$0.x = $0.x < (FLT)(0.0f) ? expm1($0.x) : $0.x;\n";
+      result += "$0.y = $0.y < (FLT)(0.0f) ? expm1($0.y) : $0.y;\n";
+      result += "$0.z = $0.z < (FLT)(0.0f) ? expm1($0.z) : $0.z;\n";
+      result += "$0.w = $0.w < (FLT)(0.0f) ? expm1($0.w) : $0.w;\n";
       break;
     case OperationType::EXP:
       result = "$0 = exp($0);\n";
@@ -57,6 +57,9 @@ std::string GetOneInputCode(const OperationType& op_type,
       break;
     case OperationType::LOG:
       result = "$0 = log($0);\n";
+      break;
+    case OperationType::NEG:
+      result = "$0 = -($0);\n";
       break;
     case OperationType::RSQRT:
       result = "$0 = rsqrt($0);\n";
@@ -127,6 +130,43 @@ std::string GetTwoInputCode(const OperationType& op_type,
       break;
     case OperationType::SUB:
       result += "$0 = $1 - $2;\n";
+      break;
+    // Comparison operators
+    case OperationType::LESS:
+      result = "$0.x = $1.x < $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y < $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z < $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w < $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::LESS_EQUAL:
+      result = "$0.x = $1.x <= $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y <= $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z <= $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w <= $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::GREATER:
+      result = "$0.x = $1.x > $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y > $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z > $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w > $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::GREATER_EQUAL:
+      result = "$0.x = $1.x >= $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y >= $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z >= $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w >= $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::EQUAL:
+      result = "$0.x = $1.x == $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y == $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z == $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w == $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::NOT_EQUAL:
+      result = "$0.x = $1.x != $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y != $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z != $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w != $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
       break;
     default:
       return "Unknown operation type;\n";

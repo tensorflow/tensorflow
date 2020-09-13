@@ -69,6 +69,9 @@ class ElementwiseOneArgument : public NodeShader {
             value_0.w = value_0.w > 0.0 ? log(value_0.w) : nan;
         )";
         break;
+      case OperationType::NEG:
+        source = "value_0 = -(value_0);";
+        break;
       case OperationType::RSQRT:
         source = R"(
             const float nan = normalize(vec4(0, 0, 0, 0)).x;

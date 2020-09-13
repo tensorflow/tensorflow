@@ -496,6 +496,18 @@ func @sin(%input: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @floor
+func @floor(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "lmhlo.floor"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = floorf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @negf
 func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.negate"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -736,3 +748,16 @@ func @conv(%input: memref<3x5x5x3xf32>, %filter: memref<2x2x3x4xf32>, %output: m
   "lmhlo.copy"(%0, %output) : (memref<3x5x5x4xf32>, memref<3x5x5x4xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
+
+// -----
+
+// CHECK-DAG: #[[TRANSPOSE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d1, d0)>
+// CHECK-DAG: #[[TRANSPOSE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @transpose
+func @transpose(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
+  "lmhlo.transpose"(%arg0, %arg1) {
+    permutation = dense<[1, 0]> : tensor<2xi64>
+  } : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[TRANSPOSE_INPUT_MAP]], #[[TRANSPOSE_OUTPUT_MAP]]]

@@ -2,7 +2,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "tf_cuda_library",
-    "tfe_xla_copts",
 )
 
 package(
@@ -20,7 +19,7 @@ tf_cuda_library(
     srcs = [
         "c_api_unified_experimental_mlir.cc",
     ],
-    copts = tf_copts() + tfe_xla_copts(),
+    copts = tf_copts(),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:tensor_interface",

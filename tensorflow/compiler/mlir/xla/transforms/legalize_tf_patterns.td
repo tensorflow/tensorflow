@@ -285,9 +285,19 @@ def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (TF_ConstOp $group_assignment),
 // FFT op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
-          (HLO_FftOp $input, HLO_FFT_TYPE_RFFT,
-           (CastElementsToI64Elements $fft_length))>;
+def GetInnerDimFromValue : NativeCodeCall<
+  "GetInnerDimFromValue($0.getType().cast<ShapedType>(), &$_builder)">;
+
+def CheckInnerDimStatic
+  : Constraint<CPred<"CheckInnerDimStatic($0.getType().cast<ShapedType>(), &$_builder)">>;
+
+def : Pat<(TF_FFTOp:$res $input),
+          (HLO_FftOp $input, HLO_FFT_TYPE_FFT, (GetInnerDimFromValue $res)),
+          [(CheckInnerDimStatic $input)]>;
+
+def : Pat<(TF_IFFTOp:$res $input),
+          (HLO_FftOp $input, HLO_FFT_TYPE_IFFT, (GetInnerDimFromValue $res)),
+          [(CheckInnerDimStatic $input)]>;
 
 //===----------------------------------------------------------------------===//
 // GatherV2 op patterns.

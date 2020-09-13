@@ -21,9 +21,6 @@ namespace tensorflow {
 
 void CollectiveRemoteAccessLocal::StartAbort(const Status& s) {
   buf_rendezvous_.StartAbort(s);
-  if (errors::IsFailedPrecondition(s)) {
-    dev_resolver_->ClearCache();
-  }
 }
 
 void CollectiveRemoteAccessLocal::RecvFromPeer(
