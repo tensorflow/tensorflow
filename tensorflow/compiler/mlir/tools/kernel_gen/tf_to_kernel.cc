@@ -98,8 +98,6 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
                 llvm::ArrayRef<uint32_t> same_shape,
                 llvm::ArrayRef<uint32_t> unroll_factors) {
-  std::pair<int32_t, int32_t> compute_capability(architecture / 10,
-                                                 architecture % 10);
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -109,7 +107,7 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/false,
-                              compute_capability, tile_sizes, same_shape,
+                              architecture, tile_sizes, same_shape,
                               unroll_factors));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));

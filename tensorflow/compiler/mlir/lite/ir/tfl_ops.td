@@ -2447,8 +2447,7 @@ def TFL_ReluOp: TFL_Op<"relu", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu operator";
 
   let description = [{
@@ -2476,8 +2475,7 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu6 operator";
 
   let description = [{
@@ -2505,8 +2503,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu1 operator";
 
   let description = [{

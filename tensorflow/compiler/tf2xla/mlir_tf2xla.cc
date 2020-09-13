@@ -90,18 +90,6 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
   return ParseOutputArrayInfo(array_names, &specs->outputs);
 }
 
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::mhlo::MhloDialect>();
-    mlir::registerDialect<mlir::shape::ShapeDialect>();
-    return true;
-  }();
-  (void)init_once;
-}
-
 }  // namespace
 
 Status ConvertGraphDefToXlaViaMlir(
@@ -150,9 +138,7 @@ Status ConvertGraphDefToXlaViaMlir(
     }
   }
 
-  RegisterDialects();
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));

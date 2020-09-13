@@ -317,6 +317,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         'weights',
         'activity_regularizer',
         'autocast',
+        'implementation',
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -1320,6 +1321,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Trainable weights are updated via gradient descent during training.
 
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
+
     Returns:
       A list of trainable variables.
     """
@@ -1335,6 +1339,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Non-trainable weights are *not* updated during training. They are expected
     to be updated manually in `call()`.
+
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
 
     Returns:
       A list of non-trainable variables.
@@ -1353,6 +1360,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   @property
   def weights(self):
     """Returns the list of all layer variables/weights.
+
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
 
     Returns:
       A list of variables.
@@ -2250,6 +2260,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """Returns the list of all layer variables/weights.
 
     Alias of `self.weights`.
+
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
 
     Returns:
       A list of variables.

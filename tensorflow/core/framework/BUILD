@@ -1504,4 +1504,7 @@ tf_proto_library(
         ":variable_proto",
         ":versions_proto",
     ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
 )

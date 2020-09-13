@@ -982,7 +982,6 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":Analysis",
         ":IR",
         ":ParserTokenKinds",
         ":Support",
@@ -2682,6 +2681,7 @@ cc_library(
         ":Affine",
         ":CallOpInterfaces",
         ":IR",
+        ":LinalgOps",
         ":SCFDialect",
         ":StandardOps",
         ":Support",
@@ -3006,11 +3006,9 @@ cc_library(
 
 cc_library(
     name = "AllPassesAndDialects",
-    srcs = ["@org_tensorflow//third_party/mlir:mlir-auto-init.cpp"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
     ],
-    alwayslink = 1,
 )
 
 cc_binary(

@@ -476,7 +476,7 @@ bool SupportSpatialPartitioning(const HloInstruction* instruction,
 
 bool InferDotShardingFromOperands(
     HloInstruction* instruction,
-    const dot_as_convolution_util::DotGeneralAsConvolutionDimsInfo& dnums,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
     bool may_combine_partial_sharding) {
   auto from_operand = [&](int64 operand_index) {
     auto operand = instruction->operand(operand_index);
@@ -543,9 +543,10 @@ bool InferDotShardingFromOperands(
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           int64 aggressiveness,
                                           bool may_combine_partial_sharding) {
-  if (auto dot_dims = dot_as_convolution_util::ParseDotGeneralFromConvolution(
-          instruction)) {
-    return InferDotShardingFromOperands(instruction, *dot_dims,
+  auto dot_dims =
+      dot_as_convolution_util::ParseConvolutionDimsInfo(instruction);
+  if (dot_dims.conv_spatial_dims.empty()) {
+    return InferDotShardingFromOperands(instruction, dot_dims,
                                         may_combine_partial_sharding);
   }
   const auto& dnums = instruction->convolution_dimension_numbers();
@@ -595,6 +596,10 @@ bool CanPropagateThroughAtAgressiveLevel(const HloInstruction& inst,
   if (aggressiveness < 1 && !inst.IsElementwise() &&
       inst.opcode() != HloOpcode::kTranspose &&
       inst.opcode() != HloOpcode::kReshape) {
+    return false;
+  }
+  // Broadcast propagation should have at least aggressiveness 2.
+  if (aggressiveness < 2 && inst.opcode() == HloOpcode::kBroadcast) {
     return false;
   }
   return true;
@@ -745,12 +750,6 @@ bool InferShardingFromOperands(HloInstruction* instruction,
     case HloOpcode::kBroadcast: {
       const HloInstruction* op = instruction->operand(0);
       if (!IsSpatiallyPartitioned(op) || op->sharding().IsReplicated()) {
-        return false;
-      }
-      // Heuristic: If an operand is more than 8 times fewer elements than its
-      // output, do not propagate sharding.
-      if (ShapeUtil::ElementsIn(instruction->shape()) >
-          8 * ShapeUtil::ElementsIn(op->shape())) {
         return false;
       }
       // The output will be tiled along the broadcasted dimension the same way
@@ -1031,7 +1030,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
 
 HloSharding InferDotOperandSharding(
     const HloInstruction* instruction,
-    const dot_as_convolution_util::DotGeneralAsConvolutionDimsInfo& dnums,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
     int64 operand_index, bool may_combine_partial_sharding) {
   auto operand = instruction->operand(operand_index);
   auto other = instruction->operand(1 - operand_index);
@@ -1185,10 +1184,10 @@ absl::optional<HloSharding> GetShardingFromUser(
       return HloSharding::Tile(new_tile_assignment);
     }
     case HloOpcode::kConvolution: {
-      if (auto dot_dims =
-              dot_as_convolution_util::ParseDotGeneralFromConvolution(&user)) {
+      auto dot_dims = dot_as_convolution_util::ParseConvolutionDimsInfo(&user);
+      if (dot_dims.conv_spatial_dims.empty()) {
         int64 op_idx = user.operand_index(&instruction);
-        return InferDotOperandSharding(&user, *dot_dims, op_idx,
+        return InferDotOperandSharding(&user, dot_dims, op_idx,
                                        may_combine_partial_sharding);
       }
       return absl::nullopt;
@@ -1376,6 +1375,9 @@ absl::optional<HloSharding> GetShardingFromUser(
 bool InferShardingFromUsers(HloInstruction* instruction,
                             const ComputationMap& computation_map,
                             int64 aggressiveness, bool is_spmd) {
+  if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
+    return false;
+  }
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
     return false;
   }
@@ -1736,8 +1738,9 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
       ++iterations;
     }
   };
-  run_to_fix_point(0);
-  run_to_fix_point(1);
+  for (int64 aggressiveness = 0; aggressiveness < 3; ++aggressiveness) {
+    run_to_fix_point(aggressiveness);
+  }
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";

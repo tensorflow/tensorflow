@@ -30,7 +30,6 @@ namespace testing {
 
 // Note: These methods are deprecated, do not use.  See b/141332970.
 
-
 // Derives the quantization range max from scaling factor and zero point.
 template <typename T>
 inline float MaxFromZeroPointScale(const int zero_point, const float scale) {
@@ -81,15 +80,15 @@ TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float min, float max,
                                    bool is_variable = false);
 
-TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
+TfLiteTensor CreateQuantizedTensor(const float* data, uint8_t* quantized_data,
                                    TfLiteIntArray* dims,
                                    bool is_variable = false);
 
-TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
+TfLiteTensor CreateQuantizedTensor(const float* data, int8_t* quantized_data,
                                    TfLiteIntArray* dims,
                                    bool is_variable = false);
 
-TfLiteTensor CreateQuantizedTensor(float* data, int16_t* quantized_data,
+TfLiteTensor CreateQuantizedTensor(const float* data, int16_t* quantized_data,
                                    TfLiteIntArray* dims,
                                    bool is_variable = false);
 

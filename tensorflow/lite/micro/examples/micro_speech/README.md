@@ -23,6 +23,7 @@ kilobytes of Flash.
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
 -   [Deploy to HIMAX WE1 EVB](#deploy-to-himax-we1-evb)
+-   [Deploy to CEVA-BX1](#deploy-to-ceva-bx1)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
@@ -653,6 +654,13 @@ Following the Steps to run micro speech example at HIMAX WE1 EVB platform.
     cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
     ```
 
+    make sure this tool directory is in $PATH. You can permanently set it to
+    PATH by
+
+    ```
+    export PATH=$PATH:$(pwd)
+    ```
+
 5.  run image generate tool, generate flash image file.
 
     *   Before running image generate tool, by typing `sudo chmod +x image_gen`
@@ -671,6 +679,34 @@ After these steps, press reset button on the HIMAX WE1 EVB, you will see
 application output in the serial terminal and lighting LED.
 
 ![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
+
+## Deploy to CEVA-BX1
+
+The following instructions will help you build and deploy the sample to the
+[CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/)
+
+1.  Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
+2.  Download and install CEVA-BX Toolbox v18.0.2 and run
+3.  Set the TARGET_TOOLCHAIN_ROOT variable in
+    /tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+    To your installation location. For example: TARGET_TOOLCHAIN_ROOT :=
+    /home/myuser/work/CEVA-ToolBox/V18/BX
+4.  Generate the Makefile for the project: /tensorflow$ make -f
+    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=bx1
+    generate_micro_speech_make_project
+5.  Build the project:
+    /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
+6.  This should build the project and create a file called micro_speech.elf.
+7.  The supplied configuarion reads input from a files and expects a file called
+    input.wav (easily changed in audio_provider.cc) to be placed in the same
+    directory of the .elf file
+8.  We used Google's speech command dataset: V0.0.2:
+    http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz V0.0.1:
+    http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz
+9.  Follow CEVA Toolbox instructions for creating a debug target and running the
+    project.
+10. Output should look like: Heard silence (208) @352ms Heard no (201) @1696ms
+    Heard yes (203) @3904ms
 
 ## Run on macOS
 

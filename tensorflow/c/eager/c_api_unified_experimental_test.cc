@@ -22,10 +22,15 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
+using tensorflow::Status;
 using tensorflow::string;
+using tensorflow::TF_StatusPtr;
 
 namespace tensorflow {
 namespace {
@@ -37,7 +42,10 @@ class UnifiedCAPI
     : public ::testing::TestWithParam<std::tuple<const char*, bool>> {
  protected:
   void SetUp() override {
-    TF_SetTracingImplementation(std::get<0>(GetParam()));
+    TF_StatusPtr status(TF_NewStatus());
+    TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
+    Status s = StatusFromTF_Status(status.get());
+    CHECK_EQ(errors::OK, s.code()) << s.error_message();
   }
 };
 

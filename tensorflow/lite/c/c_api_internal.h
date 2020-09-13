@@ -36,6 +36,16 @@ struct TfLiteModel {
   std::shared_ptr<const tflite::FlatBufferModel> impl;
 };
 
+// This struct mirrors the tflite::ErrorResolver C++ abstract base class.
+struct TfLiteErrorReporterCallback {
+  // Opaque data that gets passed down to the callback function.
+  void* user_data = nullptr;
+
+  // Callback function that reports an error.
+  void (*error_reporter)(void* user_data, const char* format,
+                         va_list args) = nullptr;
+};
+
 struct TfLiteInterpreterOptions {
   enum {
     kDefaultNumThreads = -1,
@@ -44,11 +54,9 @@ struct TfLiteInterpreterOptions {
 
   tflite::MutableOpResolver op_resolver;
 
-  void (*error_reporter)(void* user_data, const char* format,
-                         va_list args) = nullptr;
-  void* error_reporter_user_data = nullptr;
-
   std::vector<TfLiteDelegate*> delegates;
+
+  TfLiteErrorReporterCallback error_reporter_callback;
 
   bool use_nnapi = false;
 };
@@ -60,7 +68,7 @@ struct TfLiteInterpreter {
 
   // The interpreter does not take ownership of the provided ErrorReporter
   // instance, so we ensure its validity here. Note that the interpreter may use
-  // the reporter in its destructor, so it should be declared first.
+  // the reporter in its destructor, so the reporter should be declared first.
   std::unique_ptr<tflite::ErrorReporter> optional_error_reporter;
 
   std::unique_ptr<tflite::Interpreter> impl;

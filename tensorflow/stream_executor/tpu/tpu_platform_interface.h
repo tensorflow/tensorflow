@@ -40,9 +40,11 @@ class TpuPlatformInterface : public stream_executor::Platform {
   // Option to not initialize a platform if not necessary.
   static TpuPlatformInterface* GetRegisteredPlatform(bool initialize_platform);
 
-  virtual Status Reset() { return Reset(false); }
+  virtual Status Reset(bool only_tear_down, absl::string_view reason) = 0;
 
-  virtual Status Reset(bool only_tear_down) = 0;
+  Status Reset(absl::string_view reason) { return Reset(false, reason); }
+
+  Status Reset() { return Reset(false, {}); }
 
   virtual int64 TpuMemoryLimit() = 0;
 

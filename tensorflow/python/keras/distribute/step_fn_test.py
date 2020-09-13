@@ -20,10 +20,11 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute.single_loss_example import single_loss_example
 from tensorflow.python.eager import context
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.ops import variables
@@ -33,7 +34,7 @@ from tensorflow.python.platform import test
 @test_util.with_control_flow_v2
 class SingleLossStepTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           optimizer_combinations.distributions_and_v1_optimizers(),
           combinations.combine(

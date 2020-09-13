@@ -21,8 +21,13 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+// Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getType().getElementType().isF32()">,
+        "float constant tensor">;
+
+// Checks if the param passed is of NoneType.
+def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;
 
 def ExtractSingleElementAsFloat : NativeCodeCall<
     "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
@@ -93,6 +98,29 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
       $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
      (HasOneUse $output)]>;
+   def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+                (ConstantOp F32ElementsAttr:$bias), $padding,
+                $stride_h, $stride_w),
+              (ConstantOp F32ElementsAttr:$value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+      (binaryOp (ConstantOp $bias),
+         (ConstantOp $value), TFL_AF_None),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (HasOneUse $output)]>;
+  // Fuse for TransposeConv with no bias
+  def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+                (ConstantOp $bias), $padding,
+                $stride_h, $stride_w),
+              (ConstantOp F32ElementsAttr:$value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+      (ConstantOp $value),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (IsNoneType $bias),
+     (HasOneUse $output)]>;
 }
 foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
@@ -146,6 +174,39 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
      (HasOneUse $conv_output)]>;
+  def FuseMulOrDivWithTransposeConv#BinaryOp : Pat<
+    (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
+                (ConstantOp F32ElementsAttr:$weights), $input,
+                (ConstantOp F32ElementsAttr:$bias),
+                $padding, $stride_h, $stride_w),
+              (ConstantOp $value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape,
+      (BinaryOp (ConstantOp $weights),
+        (ConstantOp (ExpandTo4DForConv $value)),
+        TFL_AF_None),
+      $input,
+      (BinaryOp (ConstantOp $bias),
+        (ConstantOp $value),
+        TFL_AF_None),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (HasOneUse $output)]>;
+  def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
+    (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
+                (ConstantOp F32ElementsAttr:$weights), $input,
+                (ConstantOp $bias),
+                $padding, $stride_h, $stride_w),
+              (ConstantOp $value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape,
+      (BinaryOp (ConstantOp $weights),
+        (ConstantOp (ExpandTo4DForConv $value)),
+        TFL_AF_None),
+      $input,
+      (ConstantOp $bias),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (IsNoneType $bias),
+     (HasOneUse $output)]>;
 }
 
 foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in

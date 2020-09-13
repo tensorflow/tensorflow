@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -241,6 +242,11 @@ class TimeDistributed(Wrapper):
         output_shape = self._get_shape_tuple((-1, input_length), y, 1,
                                              output_shape[2:])
         y = array_ops.reshape(y, output_shape)
+        if not context.executing_eagerly():
+          # Set the static shape for the result since it might be lost during
+          # array_ops reshape, eg, some `None` dim in the result could be
+          # inferred.
+          y.set_shape(self.compute_output_shape(input_shape))
 
     return y
 

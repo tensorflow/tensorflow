@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/pending_counts.h"
+
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
-#include "tensorflow/core/common_runtime/pending_counts.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+
+using std::unique_ptr;
 
 namespace tensorflow {
 
@@ -163,6 +168,38 @@ TEST(PendingCounts, AdjustForActivation) {
     EXPECT_EQ(c.dead_count(h), 1);
     EXPECT_TRUE(result.any_dead);
   }
+}
+
+TEST(PendingCounts, AdjustForActivationAtomic) {
+  PendingCounts::Layout layout;
+  PendingCounts::Handle handles[2];
+  const int kInitialCounts[2] = {6, 16};
+  handles[0] = layout.CreateHandle(kInitialCounts[0], 0);
+  handles[1] = layout.CreateHandle(kInitialCounts[1], 0);
+  PendingCounts c(layout);
+  c.set_initial_count(handles[0], kInitialCounts[0]);
+  c.set_initial_count(handles[1], kInitialCounts[1]);
+
+  Env* env = Env::Default();
+  std::atomic<bool> start{false};
+  std::vector<unique_ptr<Thread>> threads;
+  for (int t = 0; t < 2; t++) {
+    threads.emplace_back(env->StartThread({}, "tester", [&]() {
+      while (!start) {
+      }
+      for (int i = 0; i < kInitialCounts[0] / 2; i++) {
+        c.adjust_for_activation_atomic(handles[0], false);
+      }
+      for (int i = 0; i < kInitialCounts[1] / 2; i++) {
+        c.adjust_for_activation_atomic(handles[1], false);
+      }
+    }));
+  }
+  start = true;
+  threads.clear();  // Joins the threads.
+
+  EXPECT_EQ(c.pending(handles[0]), 0);
+  EXPECT_EQ(c.pending(handles[1]), 0);
 }
 
 }  // namespace tensorflow

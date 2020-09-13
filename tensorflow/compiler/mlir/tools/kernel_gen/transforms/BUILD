@@ -1,4 +1,6 @@
 load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
@@ -28,6 +30,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
@@ -62,32 +65,55 @@ cc_library(
     srcs = [
         "bufferize_pass.cc",
         "embed_tf_framework_pass.cc",
+        "gpu_kernel_to_blob_pass.cc",
+        "materialize_broadcasts_pass.cc",
+        "propagate_tf_abi_knowledge_pass.cc",
         "shape_to_descriptors_pass.cc",
-        "tf_framework_legalize_to_llvm_pass.cc",
+        "tf_kernel_to_llvm_pass.cc",
+        "unfuse_batch_norm_pass.cc",
     ],
     hdrs = ["passes.h"],
+    copts = if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service/gpu:target_constants",
+        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
+        "//tensorflow/core:cuda_libdevice_path",
+        "//tensorflow/core:lib",
         ":bufferize",
         ":embed_tf_framework",
         ":kernel_gen_passes_inc_gen",
         ":tf_framework_legalize_to_llvm",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_llvm",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToGPURuntimeTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:TargetNVVMIR",
+        "@llvm-project//mlir:TargetROCDLIR",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-    ],
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_llvm",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+    ] + if_cuda([
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+    ]) + if_rocm([
+        "//tensorflow/core/platform:rocm_rocdl_path",
+    ]),
 )

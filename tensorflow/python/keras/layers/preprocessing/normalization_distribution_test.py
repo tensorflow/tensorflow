@@ -22,9 +22,10 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.layers.preprocessing import normalization
 from tensorflow.python.keras.layers.preprocessing import normalization_v1
@@ -104,7 +105,7 @@ def _get_layer_computation_test_cases():
   return crossed_test_cases
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.times(
         combinations.combine(
             distribution=strategy_combinations.all_strategies,

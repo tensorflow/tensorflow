@@ -167,6 +167,12 @@ void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
 // future these fusions may be codegen'd automatically.
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 
+// Fuses operations defining `ContractionFusableInterface` interface into the
+// contraction operations (MatMul, Conv2D, etc...). This is a more general
+// version of `CreateFusedKernelMatcherPass` that relies on codegen to compose
+// contraction fusions together.
+std::unique_ptr<OperationPass<FuncOp>> CreateContractionFusionPass();
+
 // Creates function pass to select device index/fold tf.DeviceIndex.
 std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
 
@@ -275,6 +281,11 @@ namespace TFTPU {
 // Creates a pass that forms clusters from operations of the same
 // `_tpu_replicate` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
+
+// Creates a pass that cleans up `_tpu_replicate` attribute on operations
+// that are inside a cluster.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUClusterCleanupAttributesPass();
 
 // Creates a pass that removes Identity/IdentityN ops from a cluster.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUIdentityPruningPass();

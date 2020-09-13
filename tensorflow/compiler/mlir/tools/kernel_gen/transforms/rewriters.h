@@ -45,7 +45,6 @@ namespace transforms {
 /// Collects a set of patterns that bufferize operations from the standard
 /// dialect.
 void populateStandardBufferizePattern(MLIRContext *context,
-                                      BufferAssignmentPlacer *bufferAssignment,
                                       BufferAssignmentTypeConverter *converter,
                                       OwningRewritePatternList *patterns);
 }  // namespace transforms

@@ -46,6 +46,11 @@ std::vector<Value*> GraphFloat32::inputs() const {
   return FilterValues([](const ValueDef& v) { return v.producer == nullptr; });
 }
 
+std::vector<Value*> GraphFloat32::variable_inputs() const {
+  return FilterValues(
+      [](const ValueDef& v) { return v.value->tensor.is_variable_input; });
+}
+
 std::vector<Value*> GraphFloat32::outputs() const {
   return FilterValues([](const ValueDef& v) { return v.consumers.empty(); });
 }

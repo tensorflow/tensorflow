@@ -263,30 +263,6 @@ inline void gen_lut(const std::function<double(double)>& func, double min,
       std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
 }
 
-// generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
-// softmax
-inline void gen_lut(const std::function<float(float)>& func, float min,
-                    float max, int16_t* table, const int num) {
-  // size of table should equal to num + 1
-  // last element only for slope calculation
-  float step = (max - min) / (num - 1);
-  float half_step = step / 2.0f;
-  for (int i = 0; i < num - 1; i++) {
-    float sample_val = TfLiteRound(func(min + i * step) * 32768.0f);
-    float midpoint_interp_val =
-        TfLiteRound((func(min + (i + 1) * step) * 32768.0f +
-                     TfLiteRound(func(min + i * step) * 32768.0f)) /
-                    2.0f);
-    float midpoint_val =
-        TfLiteRound(func(min + i * step + half_step) * 32768.0f);
-    float midpoint_err = midpoint_interp_val - midpoint_val;
-    float bias = TfLiteRound(midpoint_err / 2.0f);
-    table[i] = std::min(std::max(sample_val - bias, -32768.0f), 32767.0f);
-  }
-  table[num - 1] = std::min(
-      std::max(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
-}
-
 // int16_t func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax
 inline int16_t generic_int16_table_lookup(int16_t value, const int16_t* lut) {
   // 512 base value, lut[513] only for calculate slope

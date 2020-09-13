@@ -560,6 +560,21 @@ def _reduce(tf_fn,
       tf_fn(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
+# TODO (DarrenZhang01): Add `axis` support to the `size` API.
+@np_utils.np_doc('size')
+def size(x, axis=None):  # pylint: disable=missing-docstring
+  if axis is not None:
+    raise NotImplementedError('axis argument is not supported in the current '
+                              '`np.size` implementation')
+  if isinstance(x, (int, float, np.int32, np.int64, np.float32, np.float64)):
+    return 1
+  x = asarray(x).data
+  if x.shape.is_fully_defined():
+    return np.prod(x.shape.as_list())
+  else:
+    return np_utils.tensor_to_ndarray(array_ops.size_v2(x))
+
+
 @np_utils.np_doc('sum')
 def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
   return _reduce(

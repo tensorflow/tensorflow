@@ -21,6 +21,25 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
+
+//===----------------------------------------------------------------------===//
+// TensorFlow Contraction Fusion.
+//===----------------------------------------------------------------------===//
+
+struct ContractionFusion {
+  ContractionFusion(StringRef output_kernel, ArrayRef<int> additional_arguments)
+      : output_kernel(output_kernel.str()),
+        additional_arguments(additional_arguments.begin(),
+                             additional_arguments.end()) {}
+
+  // Name of the output kernel implementing the contraction fusion.
+  std::string output_kernel;
+
+  // Indices of additional arguments that will be forwarded to the fused
+  // operation (e.g. forward bias vector if fusing BiasAdd operation).
+  SmallVector<int, 4> additional_arguments;
+};
+
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"
 }  // namespace TF
 }  // namespace mlir
