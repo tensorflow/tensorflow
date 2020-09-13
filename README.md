@@ -57,6 +57,7 @@ Watch-out 은 Tensorflow Lite 모델을 이용해 인터넷에 접속이 안되�
 "수지" -  주변 사람들이 자신의 이름을 부르는 것도 듣지 못한다는 것 또한 불편사항이 될 수도 있다는 생각을 바탕으로 watch-out이 대신 사용자의 이름을 듣도록 하였습니다. 발음하기 쉽고 다른 이름과 헷갈리지 않는 대표적인 이름으로 '수지'를 선택하였습니다.
 
 소스코드는 [여기](https://github.com/yoonseok312/watch-out)를 참고해주세요. 
+모델 훈련코드는 [여기](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/micro_speech/train_speech_model_ios_ko.ipynb)를 참고해주세요. 
 
 ### Tensorflow-lite Model
 
