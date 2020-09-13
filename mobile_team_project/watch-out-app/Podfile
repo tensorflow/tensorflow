@@ -1,0 +1,27 @@
+# Uncomment the next line to define a global platform for your project
+# platform :ios, '9.0'
+
+target 'watch-out-app' do
+  # Comment the next line if you don't want to use dynamic frameworks
+  platform :ios, '13.6'
+  use_frameworks!
+
+  # Pods for watch-out-app
+  pod 'TensorFlowLiteSwift'
+end
+
+target 'watch-out-app WatchKit App' do
+  # Comment the next line if you don't want to use dynamic frameworks
+  use_frameworks!
+
+  # Pods for watch-out-app WatchKit App
+
+end
+
+target 'watch-out-app WatchKit Extension' do
+  # Comment the next line if you don't want to use dynamic frameworks
+  use_frameworks!
+
+  # Pods for watch-out-app WatchKit Extension
+
+end
