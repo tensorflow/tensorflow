@@ -61,6 +61,8 @@ def run_graph(wav_data, labels, input_layer_name, output_layer_name,
     #   predictions  will contain a two-dimensional array, where one
     #   dimension represents the input image count, and the other has
     #   predictions per class
+    for n in tf.get_default_graph().as_graph_def().node:
+      print(n.name, n.op, n.input) #, dir(n))
     softmax_tensor = sess.graph.get_tensor_by_name(output_layer_name)
     predictions, = sess.run(softmax_tensor, {input_layer_name: wav_data})
 
@@ -91,7 +93,7 @@ def label_wav(wav, labels, graph, input_name, output_name, how_many_labels):
 
   with open(wav, 'rb') as wav_file:
     wav_data = wav_file.read()
-
+  # print(wav_data)
   run_graph(wav_data, labels_list, input_name, output_name, how_many_labels)
 
 

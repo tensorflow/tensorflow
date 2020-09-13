@@ -128,6 +128,9 @@ def load_wav_file(filename):
     wav_filename_placeholder = tf.compat.v1.placeholder(tf.string, [])
     wav_loader = io_ops.read_file(wav_filename_placeholder)
     wav_decoder = tf.audio.decode_wav(wav_loader, desired_channels=1)
+    print()
+    print(wav_decoder.shape)
+    print()
     return sess.run(
         wav_decoder,
         feed_dict={wav_filename_placeholder: filename}).audio.flatten()
@@ -200,6 +203,7 @@ class AudioProcessor(object):
                               wanted_words, validation_percentage,
                               testing_percentage)
       self.prepare_background_data()
+    print(">>>>>> ", model_settings)
     self.prepare_processing_graph(model_settings, summaries_dir)
 
   def maybe_download_and_extract_dataset(self, data_url, dest_directory):

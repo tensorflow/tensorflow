@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-
+import json
 import tensorflow as tf
 
 
@@ -64,6 +64,7 @@ def prepare_model_settings(label_count, sample_rate, clip_duration_ms,
     spectrogram_length = 0
   else:
     spectrogram_length = 1 + int(length_minus_window / window_stride_samples)
+    # spectrogram_length = int(length_minus_window / window_stride_samples)
   if preprocess == 'average':
     fft_bin_count = 1 + (_next_power_of_two(window_size_samples) / 2)
     average_window_width = int(math.floor(fft_bin_count / feature_bin_count))
@@ -78,6 +79,18 @@ def prepare_model_settings(label_count, sample_rate, clip_duration_ms,
     raise ValueError('Unknown preprocess mode "%s" (should be "mfcc",'
                      ' "average", or "micro")' % (preprocess))
   fingerprint_size = fingerprint_width * spectrogram_length
+  print(json.dumps({
+      'desired_samples': desired_samples,
+      'window_size_samples': window_size_samples,
+      'window_stride_samples': window_stride_samples,
+      'spectrogram_length': spectrogram_length,
+      'fingerprint_width': fingerprint_width,
+      'fingerprint_size': fingerprint_size,
+      'label_count': label_count,
+      'sample_rate': sample_rate,
+      'preprocess': preprocess,
+      'average_window_width': average_window_width,
+  }, indent=2))
   return {
       'desired_samples': desired_samples,
       'window_size_samples': window_size_samples,
@@ -258,6 +271,7 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
   input_time_size = model_settings['spectrogram_length']
   fingerprint_4d = tf.reshape(fingerprint_input,
                               [-1, input_time_size, input_frequency_size, 1])
+  
   first_filter_width = 8
   first_filter_height = 20
   first_filter_count = 64
@@ -282,9 +296,14 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
   max_pool = tf.nn.max_pool2d(input=first_dropout,
                               ksize=[1, 2, 2, 1],
                               strides=[1, 2, 2, 1],
+                              # ksize=[1, 1, 4, 1],
+                              # strides=[1, 1, 4, 1],
                               padding='SAME')
+  
   second_filter_width = 4
   second_filter_height = 10
+  second_filter_width = 2
+  second_filter_height = 20
   second_filter_count = 64
   second_weights = tf.compat.v1.get_variable(
       name='second_weights',
@@ -306,7 +325,9 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
     second_dropout = tf.nn.dropout(second_relu, rate=dropout_rate)
   else:
     second_dropout = second_relu
+  # second_dropout = max_pool 
   second_conv_shape = second_dropout.get_shape()
+  print(">>> second_conv_shape:", second_conv_shape)
   second_conv_output_width = second_conv_shape[2]
   second_conv_output_height = second_conv_shape[1]
   second_conv_element_count = int(
@@ -324,6 +345,8 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
       initializer=tf.compat.v1.zeros_initializer,
       shape=[label_count])
   final_fc = tf.matmul(flattened_second_conv, final_fc_weights) + final_fc_bias
+
+
   if is_training:
     return final_fc, dropout_rate
   else:

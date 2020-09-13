@@ -131,7 +131,6 @@ def main(_):
         input_placeholder, fingerprint_min, fingerprint_max)
   else:
     fingerprint_input = input_placeholder
-
   logits, dropout_rate = models.create_model(
       fingerprint_input,
       model_settings,

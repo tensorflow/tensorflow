@@ -58,6 +58,7 @@ Watch-out 은 Tensorflow Lite 모델을 이용해 인터넷에 접속이 안되�
 
 소스코드는 [여기](https://github.com/yoonseok312/watch-out)를 참고해주세요. 
 
+모델 훈련코드는 [여기](https://colab.research.google.com/github/sanghunkang/tensorflow-lite/blob/master/mobile_team_project/model_training/train_speech_model_ios_ko.ipynb)를 참고해주세요. 
 ### Tensorflow-lite Model
 
 - **데이터 준비, 데이터 형식**
