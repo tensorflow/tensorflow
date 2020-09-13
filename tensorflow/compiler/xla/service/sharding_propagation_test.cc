@@ -1431,11 +1431,11 @@ ENTRY entry {
                           ShardingPropagation().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "tp"),
-              op::Sharding("{{devices=[3,1]0,1,2}}"));
+              op::Sharding("{{devices=[1,2]0,1}}"));
   EXPECT_THAT(FindInstruction(module.get(), "tgte"),
-              op::Sharding("{devices=[3,1]0,1,2}"));
+              op::Sharding("{devices=[1,2]0,1}"));
   EXPECT_THAT(FindInstruction(module.get(), "ttr"),
-              op::Sharding("{devices=[1,3]0,1,2}"));
+              op::Sharding("{devices=[2,1]0,1}"));
   EXPECT_THAT(FindInstruction(module.get(), "tr"),
               op::Sharding("{{devices=[1,3]0,1,2}}"));
   EXPECT_THAT(FindInstruction(module.get(), "fp"),

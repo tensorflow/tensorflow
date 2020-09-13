@@ -246,9 +246,31 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
     instruction->set_sharding(std::move(sharding));
     return true;
   }
-  auto merged = MergeSharding(instruction->sharding(), &sharding,
-                              may_combine_partial_sharding);
-  if (merged) {
+  int64 sharding_tiles = sharding.NumTiles();
+  if (MergeSharding(instruction->sharding(), &sharding,
+                    may_combine_partial_sharding)) {
+    // Override existing tiled sharding only when the new sharding is compatible
+    // with the existing one. This avoids unexpected resharding when `sharding`
+    // just has more tiles than existing sharding but they are not mergeable.
+    if (instruction->shape().IsArray() &&
+        !instruction->sharding().IsTileMaximal() &&
+        sharding.NumTiles() == sharding_tiles) {
+      std::vector<int64> diff_dims;
+      for (int64 i = 0; i < instruction->shape().rank(); ++i) {
+        if (instruction->sharding().tile_assignment().dim(i) ==
+            sharding.tile_assignment().dim(i)) {
+          continue;
+        }
+        if (instruction->sharding().tile_assignment().dim(i) != 1) {
+          return false;
+        }
+        diff_dims.push_back(i);
+      }
+      if (hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              sharding, diff_dims) != instruction->sharding()) {
+        return false;
+      }
+    }
     instruction->set_sharding(std::move(sharding));
     return true;
   }
@@ -748,6 +770,16 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       return changed;
     }
     case HloOpcode::kBroadcast: {
+      // Make forward propagation through broadcast low priority to avoid
+      // resharding after broadcast.
+      if (aggressiveness < 3) {
+        return false;
+      }
+      // Do not override existing tile sharding. This is likely from users.
+      if (IsSpatiallyPartitioned(instruction) &&
+          !instruction->sharding().IsTileMaximal()) {
+        return false;
+      }
       const HloInstruction* op = instruction->operand(0);
       if (!IsSpatiallyPartitioned(op) || op->sharding().IsReplicated()) {
         return false;
@@ -1659,17 +1691,11 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   // indefinitely.
   int64 iterations = 0;
   auto run_to_fix_point = [&](int64 aggressiveness) {
-    absl::flat_hash_set<const HloInstruction*> workset;
-    for (const HloComputation* computation : module->computations()) {
-      for (const HloInstruction* instruction : computation->instructions()) {
-        // Remove the instructions where the sharding was provided from the
-        // outside so we don't modify them.
-        if (!provided_shardings.contains(instruction)) {
-          workset.insert(instruction);
-        }
-      }
-    }
-    while (!workset.empty()) {
+    absl::flat_hash_set<const HloInstruction*> already_inferred_from_operands;
+    absl::flat_hash_set<const HloInstruction*> already_inferred_from_users;
+    bool changed_last_iter = true;
+    while (changed_last_iter) {
+      changed_last_iter = false;
       int64 inferred_from_operand_counter = 0;
       int64 inferred_from_user_counter = 0;
       int64 instruction_counter = 0;
@@ -1682,17 +1708,14 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         for (const HloInstruction* instruction : instructions) {
           already_sharded_counter += (instruction->has_sharding() ? 1 : 0);
         }
-
-        instructions.erase(
-            std::remove_if(instructions.begin(), instructions.end(),
-                           [&](HloInstruction* instruction) {
-                             return !workset.contains(instruction);
-                           }),
-            instructions.end());
-
         // First iterate the HLO graph in post order taking shardings from
         // operands.
         for (HloInstruction* instruction : instructions) {
+          if (already_inferred_from_operands.contains(instruction) ||
+              provided_shardings.contains(instruction)) {
+            continue;
+          }
+          already_inferred_from_operands.insert(instruction);
           if (InferShardingFromOperands(instruction, computation_map, is_spmd_,
                                         aggressiveness)) {
             ++inferred_from_operand_counter;
@@ -1700,31 +1723,37 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             VLOG(2) << "Add sharding (forward-pass): "
                     << instruction->ToString();
             maybe_computation_propagation(instruction);
-            for (auto user : instruction->users()) {
-              if (!provided_shardings.contains(user)) {
-                workset.insert(user);
-              }
+            for (auto operand : instruction->operands()) {
+              already_inferred_from_users.erase(operand);
             }
-          } else {
-            workset.erase(instruction);
+            for (auto user : instruction->users()) {
+              already_inferred_from_operands.erase(user);
+            }
+            changed_last_iter = true;
           }
         }
 
         // Then iterate the HLO graph in reverse post order taking shardings
         // from users.
         for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
+          if (already_inferred_from_users.contains(*it) ||
+              provided_shardings.contains(*it)) {
+            continue;
+          }
+          already_inferred_from_users.insert(*it);
           if (InferShardingFromUsers(*it, computation_map, aggressiveness,
                                      is_spmd_)) {
             ++inferred_from_user_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();
             maybe_computation_propagation(*it);
-            workset.insert(*it);
             for (auto operand : (*it)->operands()) {
-              if (!provided_shardings.contains(operand)) {
-                workset.insert(operand);
-              }
+              already_inferred_from_users.erase(operand);
             }
+            for (auto user : (*it)->users()) {
+              already_inferred_from_operands.erase(user);
+            }
+            changed_last_iter = true;
           }
         }
       }
@@ -1735,10 +1764,11 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
               << inferred_from_operand_counter;
       VLOG(1) << "  shardings inferred from users: "
               << inferred_from_user_counter;
+      VLOG(1) << "  aggressiveness: " << aggressiveness;
       ++iterations;
     }
   };
-  for (int64 aggressiveness = 0; aggressiveness < 3; ++aggressiveness) {
+  for (int64 aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
     run_to_fix_point(aggressiveness);
   }
 
