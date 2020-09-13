@@ -245,7 +245,6 @@ cc_library(
         ":c_api",
         ":c_api_experimental",
         ":c_api_unified_internal",
-        ":gradients",
         ":gradients_internal",
         ":tape",
         "//tensorflow/c:c_api",
