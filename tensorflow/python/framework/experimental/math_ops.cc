@@ -95,18 +95,6 @@ PYBIND11_MODULE(_math_ops, m) {
     return outputs[0];
   });
 
-  // m.def("softmax_loss", [](AbstractContext* ctx, AbstractTensorHandle* features,
-  //                 AbstractTensorHandle* labels, const char* name) {
-  //   int num_outputs = 2;
-  //   std::vector<AbstractTensorHandle*> outputs(2);
-  //   if (!name) {
-  //     name = "SparseSoftmaxCrossEntropyWithLogits";
-  //   }
-  //   MaybeRaiseRegisteredFromStatus(
-  //       SparseSoftmaxCrossEntropyLoss(ctx, {features, labels}, absl::MakeSpan(outputs), name));
-  //   return outputs[0]; // Only return the loss vals, not the backprop.
-  // });
-
   m.def("softmax_loss", [](AbstractContext* ctx, AbstractTensorHandle* features,
                            AbstractTensorHandle* labels, const char* name, Tape* tape,
                            GradientRegistry* registry) {
