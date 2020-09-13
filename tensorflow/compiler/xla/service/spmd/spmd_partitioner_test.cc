@@ -5781,6 +5781,45 @@ ENTRY entry {
               AllOf(op::Convolution(lhs, rhs), op::Shape("f32[16,801,1,512]")));
 }
 
+TEST_F(SpmdPartitioningTest, NoReshardOnBroadcastDims) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[2,3] parameter(0)
+  %param1 = f32[2,3,20] parameter(1)
+  %br0 = f32[20,2,20,3,20] broadcast(%param0), dimensions={1,3}, sharding={devices=[2,1,2,1,2]0,1,2,3,4,5,6,7}
+  %br1 = f32[20,2,20,3,20] broadcast(%param1), dimensions={1,3,4}, sharding={devices=[2,1,2,1,2]0,1,2,3,4,5,6,7}
+  %add = f32[20,2,20,3,20] add(%br0, %br1), sharding={devices=[2,1,2,1,2]0,1,2,3,4,5,6,7}
+  %reshape = f32[10,4,10,6,20] reshape(%br0), sharding={devices=[2,1,2,1,2]0,1,2,3,4,5,6,7}
+  %transpose = f32[2,3,20,20,20] transpose(%br0), dimensions={1,3,0,2,4}, sharding={devices=[1,1,2,2,2]0,1,2,3,4,5,6,7}
+  %copy_add0 = f32[20,2,20,3,20] copy(%add), sharding={devices=[2,1,2,1,2]6,7,2,3,4,5,0,1}
+  %copy_add1 = f32[20,2,20,3,20] copy(%add), sharding={devices=[2,1,2,1,2]7,6,3,2,5,4,0,1}
+  %copy_reshape = f32[10,4,10,6,20] copy(%reshape), sharding={devices=[2,1,2,1,2]7,6,3,2,5,4,0,1}
+  %copy_transpose = f32[2,3,20,20,20] copy(%transpose), sharding={devices=[1,1,2,2,2]7,6,3,2,5,4,0,1}
+  ROOT %tuple = (f32[20,2,20,3,20], f32[20,2,20,3,20], f32[10,4,10,6,20], f32[2,3,20,20,20])
+    tuple(%copy_add0, %copy_add1, %copy_reshape, %copy_transpose),
+    sharding={{devices=[2,1,2,1,2]6,7,2,3,4,5,0,1},{devices=[2,1,2,1,2]7,6,3,2,5,4,0,1},{devices=[2,1,2,1,2]7,6,3,2,5,4,0,1},{devices=[1,1,2,2,2]7,6,3,2,5,4,0,1}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  // Reshard on copy_add0 only happens on broadcast dims, can be skipped.
+  auto copy_add0 =
+      op::Copy(op::Copy(op::Add(op::Broadcast(_), op::Broadcast(_))));
+  // Reshard on copy_add1 also happens on non-broadcast dims.
+  auto copy_add1 = op::Copy(
+      op::CollectivePermute(op::Add(op::Broadcast(_), op::Broadcast(_))));
+  // Reshard on copy_reshape only happens on broadcast dims, can be skipped.
+  auto copy_reshape = op::Copy(op::Copy(op::Reshape(op::Broadcast(_))));
+  // Reshard on copy_transpose only happens on broadcast dims, can be skipped.
+  auto copy_transpose = op::Copy(op::Copy(op::Transpose(op::Broadcast(_))));
+  EXPECT_THAT(root,
+              op::Tuple(copy_add0, copy_add1, copy_reshape, copy_transpose));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

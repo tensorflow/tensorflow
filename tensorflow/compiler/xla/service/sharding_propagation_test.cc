@@ -65,22 +65,6 @@ ENTRY %elementwise {
               op::Sharding("{devices=[1,2,2,1]0,1,2,3}"));
 }
 
-TEST_F(ShardingPropagationTest, BroadcastForwardPassNoSharding) {
-  const char* const hlo_string = R"(
-HloModule module
-ENTRY %broadcast {
-  %param0 = f32[7,11]{1,0} parameter(0),
-    sharding={devices=[2,2]0,1,2,3}
-  %broadcast = f32[5,7,11,13]{3,2,1,0} broadcast(%param0), dimensions={1,2}
-  ROOT %copy = f32[5,7,11,13]{3,2,1,0} copy(%broadcast)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          ShardingPropagation().Run(module.get()));
-  EXPECT_FALSE(changed);
-}
-
 // Regression Test for b/129569657.
 TEST_F(ShardingPropagationTest, BroadcastForwardPass) {
   const char* const hlo_string = R"(

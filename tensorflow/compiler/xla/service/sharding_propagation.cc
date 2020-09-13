@@ -598,6 +598,10 @@ bool CanPropagateThroughAtAgressiveLevel(const HloInstruction& inst,
       inst.opcode() != HloOpcode::kReshape) {
     return false;
   }
+  // Broadcast propagation should have at least aggressiveness 2.
+  if (aggressiveness < 2 && inst.opcode() == HloOpcode::kBroadcast) {
+    return false;
+  }
   return true;
 }
 
@@ -746,12 +750,6 @@ bool InferShardingFromOperands(HloInstruction* instruction,
     case HloOpcode::kBroadcast: {
       const HloInstruction* op = instruction->operand(0);
       if (!IsSpatiallyPartitioned(op) || op->sharding().IsReplicated()) {
-        return false;
-      }
-      // Heuristic: If an operand is more than 8 times fewer elements than its
-      // output, do not propagate sharding.
-      if (ShapeUtil::ElementsIn(instruction->shape()) >
-          8 * ShapeUtil::ElementsIn(op->shape())) {
         return false;
       }
       // The output will be tiled along the broadcasted dimension the same way
@@ -1377,6 +1375,9 @@ absl::optional<HloSharding> GetShardingFromUser(
 bool InferShardingFromUsers(HloInstruction* instruction,
                             const ComputationMap& computation_map,
                             int64 aggressiveness, bool is_spmd) {
+  if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
+    return false;
+  }
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
     return false;
   }
@@ -1737,8 +1738,9 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
       ++iterations;
     }
   };
-  run_to_fix_point(0);
-  run_to_fix_point(1);
+  for (int64 aggressiveness = 0; aggressiveness < 3; ++aggressiveness) {
+    run_to_fix_point(aggressiveness);
+  }
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";

@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -74,6 +75,16 @@ class SpmdBuilder : public HloComputation::Builder {
 
   HloInstruction* visiting_hlo() const { return visiting_hlo_; }
 
+  // Wrapper of queries to broadcast_dims_.
+  absl::optional<const absl::flat_hash_set<int64>*> BroadcastDimsForCreatedHlo(
+      const HloInstruction* hlo) {
+    auto it = broadcast_dims_.find(hlo);
+    if (it == broadcast_dims_.end()) {
+      return absl::nullopt;
+    }
+    return &it->second;
+  }
+
  private:
   // Currently visiting instruction.
   HloInstruction* visiting_hlo_;
@@ -81,6 +92,12 @@ class SpmdBuilder : public HloComputation::Builder {
   // Map from the currently visiting (old) instruction to new instructions
   // created during SPMD partitioning.
   HloInstructionMap<std::vector<HloInstruction*>> instructions_;
+
+  // Maps from each created instruction to a set of dimensions that are from
+  // broadcasts or elementwise ops over broadcasts. This means elements along
+  // these dimensions have the same value.
+  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64>>
+      broadcast_dims_;
 };
 
 // A set of functions that create the cross-partition collective ops.
