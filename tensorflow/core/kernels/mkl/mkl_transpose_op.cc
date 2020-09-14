@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::stream;
@@ -80,9 +79,8 @@ Status MKLTranspose2D<complex64>(const char trans, const Tensor& in,
   mkl_comatcopy(
       'R', trans, in.dim_size(0), in.dim_size(1), alpha,
       reinterpret_cast<const MKL_Complex8*>(in.flat<complex64>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex8*>(
-          const_cast<complex64*>(out->flat<complex64>().data())),
+      in.dim_size(1), reinterpret_cast<MKL_Complex8*>(const_cast<complex64*>(
+                          out->flat<complex64>().data())),
       in.dim_size(0));
   return Status::OK();
 }
@@ -94,9 +92,8 @@ Status MKLTranspose2D<complex128>(const char trans, const Tensor& in,
   mkl_zomatcopy(
       'R', trans, in.dim_size(0), in.dim_size(1), alpha,
       reinterpret_cast<const MKL_Complex16*>(in.flat<complex128>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex16*>(
-          const_cast<complex128*>(out->flat<complex128>().data())),
+      in.dim_size(1), reinterpret_cast<MKL_Complex16*>(const_cast<complex128*>(
+                          out->flat<complex128>().data())),
       in.dim_size(0));
   return Status::OK();
 }
@@ -126,7 +123,7 @@ template <typename T>
 Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
                       Tensor* out_tensor, const gtl::ArraySlice<int32>& perm) {
   try {
-    engine cpu_engine = engine(ENGINE_CPU, 0);
+    engine cpu_engine = engine(engine::kind::cpu, 0);
     MklDnnData<T> in(&cpu_engine);
     MklDnnData<T> out(&cpu_engine);
 
@@ -144,7 +141,6 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
-#ifdef ENABLE_MKLDNN_V1
     auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
     transpose_stream.reset(CreateStream(context, prim->GetEngine()));
     in.SetUsrMemDataHandle(&in_tensor, transpose_stream);
@@ -154,16 +150,11 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     net_args.push_back({{MKLDNN_ARG_FROM, *in.GetUsrMem()},
                         {MKLDNN_ARG_TO, *out.GetUsrMem()}});
     execute_primitives(net, transpose_stream, net_args);
-#else
-    transpose_stream.reset(new CPU_STREAM(cpu_engine));
-    net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
-    transpose_stream->submit(net).wait();
-#endif  // ENABLE_MKLDNN_V1
 
     return Status::OK();
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) + ", in file " +
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       std::string(e.message) + ", in file " +
                        std::string(__FILE__) + ":" + std::to_string(__LINE__);
     return errors::Aborted("Operation received an exception:", error_msg);
   }
@@ -196,7 +187,7 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
 
   // MKL-DNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
-  if (in.dims() <= TENSOR_MAX_DIMS) {
+  if (in.dims() <= MKLDNN_MAX_NDIMS) {
     switch (in.dtype()) {
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
@@ -243,7 +234,7 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
 
   // MKL-DNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
-  if (in.dims() <= TENSOR_MAX_DIMS) {
+  if (in.dims() <= MKLDNN_MAX_NDIMS) {
     switch (in.dtype()) {
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
