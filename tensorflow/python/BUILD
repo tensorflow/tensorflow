@@ -5564,6 +5564,9 @@ tf_py_test(
     name = "function_parameter_canonicalizer_test",
     srcs = ["util/function_parameter_canonicalizer_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # b/168523121
+    ],
     deps = [
         ":_function_parameter_canonicalizer_binding_for_test",
         ":client_testlib",
