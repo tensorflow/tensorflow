@@ -43,17 +43,17 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
       begin = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="begin",
-          shape=[len(parameters["input_shape"])])
+          shape=[len(parameters["begin"])])
       end = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="end",
-          shape=[len(parameters["input_shape"])])
+          shape=[len(parameters["end"])])
       strides = None
       if parameters["strides"] is not None:
         strides = tf.compat.v1.placeholder(
             dtype=parameters["index_type"],
             name="strides",
-            shape=[len(parameters["input_shape"])])
+            shape=[len(parameters["strides"])])
       tensors = [input_tensor, begin, end]
       if strides is not None:
         tensors.append(strides)
@@ -141,7 +141,7 @@ def make_strided_slice_tests(options):
           "begin_mask": [0],
           "end_mask": [0],
           "shrink_axis_mask": [1],
-          "constant_indices": [True],
+          "constant_indices": [True, False],
           "fully_quantize": [False],
       },
       # 2-D
