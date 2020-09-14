@@ -2170,6 +2170,10 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def pytype_library(**kwargs):
+    # Types not enforced in OSS.
+    native.py_library(**kwargs)
+
 def tf_py_test(
         name,
         srcs,
