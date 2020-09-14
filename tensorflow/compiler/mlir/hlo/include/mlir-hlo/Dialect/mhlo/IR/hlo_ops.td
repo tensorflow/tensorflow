@@ -224,11 +224,14 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
 
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
-    BASE_HLO_NotOp;
+    BASE_HLO_NotOp {
+}
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
-    BASE_HLO_NegOp;
+    BASE_HLO_NegOp {
+  let hasFolder = 1;
+}
 
 def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
