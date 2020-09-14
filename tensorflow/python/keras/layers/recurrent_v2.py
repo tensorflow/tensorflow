@@ -22,6 +22,7 @@ import uuid
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
@@ -370,7 +371,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         reset_after and ops.executing_eagerly_outside_functions())
-    if context.num_gpus() > 0:
+    if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
       # about the cuDNN if there isn't any GPU.
       if self._could_use_gpu_kernel:
@@ -511,7 +512,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         can_use_gpu = (
             # Either user specified GPU or unspecified but GPU is available.
             (device_type == _GPU_DEVICE_NAME or
-             (device_type is None and context.num_gpus() > 0)) and
+             (device_type is None and config.list_logical_devices('GPU'))) and
             (mask is None or is_cudnn_supported_inputs(mask, self.time_major)))
         # Under eager context, check the device placement and prefer the
         if can_use_gpu:
@@ -1112,7 +1113,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         ops.executing_eagerly_outside_functions())
-    if context.num_gpus() > 0:
+    if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
       # about the cuDNN if there isn't any GPU.
       if self._could_use_gpu_kernel:
@@ -1241,7 +1242,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           can_use_gpu = (
               # Either user specified GPU or unspecified but GPU is available.
               (device_type == _GPU_DEVICE_NAME or
-               (device_type is None and context.num_gpus() > 0)) and
+               (device_type is None and config.list_logical_devices('GPU'))) and
               (mask is None or
                is_cudnn_supported_inputs(mask, self.time_major)))
           # Under eager context, check the device placement and prefer the

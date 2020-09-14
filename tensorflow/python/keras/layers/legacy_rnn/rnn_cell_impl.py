@@ -28,6 +28,7 @@ import collections
 import warnings
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -424,7 +425,7 @@ class BasicRNNCell(LayerRNNCell):
     super(BasicRNNCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
-    if context.executing_eagerly() and context.num_gpus() > 0:
+    if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
       logging.warn(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnRNNTanh for better "
@@ -533,7 +534,7 @@ class GRUCell(LayerRNNCell):
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
 
-    if context.executing_eagerly() and context.num_gpus() > 0:
+    if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
       logging.warn(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
@@ -709,7 +710,7 @@ class BasicLSTMCell(LayerRNNCell):
       logging.warn(
           "%s: Using a concatenated state is slower and will soon be "
           "deprecated.  Use state_is_tuple=True.", self)
-    if context.executing_eagerly() and context.num_gpus() > 0:
+    if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
       logging.warn(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
@@ -915,7 +916,7 @@ class LSTMCell(LayerRNNCell):
           "%s: The num_unit_shards and proj_unit_shards parameters are "
           "deprecated and will be removed in Jan 2017.  "
           "Use a variable scope with a partitioner instead.", self)
-    if context.executing_eagerly() and context.num_gpus() > 0:
+    if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
       logging.warn(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
