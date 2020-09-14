@@ -940,10 +940,11 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
 
       // Check if reorder is needed
-      if (add_mkl_shape == *output_mkl_shape) {
-        ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
-                                            kOutputIndex_Dst, add_mkl_shape);
-        *output_tensor = context->mutable_output(kOutputIndex_Dst);
+      if (add_mkl_shape == *output_mkl_shape &&
+          context->forward_input_to_output_with_shape(
+            kInputIndex_Add, kOutputIndex_Dst, output_tf_shape,
+            output_tensor)) {
+        AllocateOutputSetMklShape(context, kOutputIndex_Dst, *output_mkl_shape);
       } else {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                                   output_tf_shape, *output_mkl_shape,
