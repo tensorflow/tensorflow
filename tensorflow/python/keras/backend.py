@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import threading
+import warnings
 import weakref
 
 import numpy as np
@@ -425,10 +426,10 @@ def set_learning_phase(value):
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
   """
-  logging.warning('`tf.keras.backend.set_learning_phase` is deprecated and '
-                  'will be removed after 2020-10-11. To update it, simply '
-                  'pass a True/False value to the `training` argument of the '
-                  '`__call__` method of your layer or model.')
+  warnings.warn('`tf.keras.backend.set_learning_phase` is deprecated and '
+                'will be removed after 2020-10-11. To update it, simply '
+                'pass a True/False value to the `training` argument of the '
+                '`__call__` method of your layer or model.')
   deprecated_internal_set_learning_phase(value)
 
 
@@ -483,10 +484,10 @@ def learning_phase_scope(value):
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
-  logging.warning('`tf.keras.backend.learning_phase_scope` is deprecated and '
-                  'will be removed after 2020-10-11. To update it, simply '
-                  'pass a True/False value to the `training` argument of the '
-                  '`__call__` method of your layer or model.')
+  warnings.warn('`tf.keras.backend.learning_phase_scope` is deprecated and '
+                'will be removed after 2020-10-11. To update it, simply '
+                'pass a True/False value to the `training` argument of the '
+                '`__call__` method of your layer or model.')
   with deprecated_internal_learning_phase_scope(value):
     try:
       yield
@@ -6018,8 +6019,9 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
   dtype=float32)>
   """
-  logging.warning('`tf.keras.backend.random_binomial` is deprecated. '
-                  'Please use `tf.keras.backend.random_bernoulli` instead.')
+  warnings.warn('`tf.keras.backend.random_binomial` is deprecated, '
+                'and will be removed in a future version.'
+                'Please use `tf.keras.backend.random_bernoulli` instead.')
   return random_bernoulli(shape, p, dtype, seed)
 
 

@@ -23,6 +23,7 @@ import copy
 import functools
 import itertools
 import threading
+import warnings
 import weakref
 
 import numpy as np
@@ -79,7 +80,6 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
@@ -1370,12 +1370,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self.trainable_weights + self.non_trainable_weights
 
   @property
-  @deprecation.deprecated(
-      date=None,
-      instructions='This property should not be used in TensorFlow 2.0, '
-      'as updates are applied automatically.')
   @doc_controls.do_not_generate_docs
   def updates(self):
+    warnings.warn('`layer.updates` will be removed in a future version. '
+                  'This property should not be used in TensorFlow 2.0, '
+                  'as `updates` are applied automatically.')
     if keras_tensor.keras_tensors_enabled():
       return []
 
@@ -1895,8 +1894,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.updates` instead.')
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
     """Deprecated, do NOT use!
@@ -1909,10 +1906,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       List of update ops of the layer that depend on `inputs`.
     """
+    warnings.warn('`layer.get_updates_for` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.updates` method instead.')
     return self.updates
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.losses` instead.')
   @doc_controls.do_not_generate_docs
   def get_losses_for(self, inputs):
     """Deprecated, do NOT use!
@@ -1925,6 +1923,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
     """
+    warnings.warn('`layer.get_losses_for` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.losses` instead.')
     return self.losses
 
   @doc_controls.do_not_doc_inheritable
@@ -2229,8 +2230,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # Methods & attributes below are public aliases of other methods.            #
   ##############################################################################
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.__call__` method instead.')
   @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
     """Deprecated, do NOT use!
@@ -2245,13 +2244,17 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       Output tensor(s).
     """
+    warnings.warn('`layer.apply` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.__call__` method instead.')
     return self.__call__(inputs, *args, **kwargs)
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.add_weight` method instead.')
   @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
     """Deprecated, do NOT use! Alias for `add_weight`."""
+    warnings.warn('`layer.add_variable` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.add_weight` method instead.')
     return self.add_weight(*args, **kwargs)
 
   @property

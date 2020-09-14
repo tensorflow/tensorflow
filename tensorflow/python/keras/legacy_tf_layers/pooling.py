@@ -19,9 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.keras.legacy_tf_layers import base
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -58,8 +59,6 @@ class AveragePooling1D(keras_layers.AveragePooling1D, base.Layer):
         **kwargs)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.AveragePooling1D instead.')
 @tf_export(v1=['layers.average_pooling1d'])
 def average_pooling1d(inputs, pool_size, strides,
                       padding='valid', data_format='channels_last',
@@ -87,6 +86,9 @@ def average_pooling1d(inputs, pool_size, strides,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.average_pooling1d` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.AveragePooling1D` instead.')
   layer = AveragePooling1D(pool_size=pool_size,
                            strides=strides,
                            padding=padding,
@@ -128,8 +130,6 @@ class MaxPooling1D(keras_layers.MaxPooling1D, base.Layer):
         **kwargs)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.MaxPooling1D instead.')
 @tf_export(v1=['layers.max_pooling1d'])
 def max_pooling1d(inputs, pool_size, strides,
                   padding='valid', data_format='channels_last',
@@ -157,6 +157,9 @@ def max_pooling1d(inputs, pool_size, strides,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.max_pooling1d` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.MaxPooling1D` instead.')
   layer = MaxPooling1D(pool_size=pool_size,
                        strides=strides,
                        padding=padding,
@@ -198,8 +201,6 @@ class AveragePooling2D(keras_layers.AveragePooling2D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.AveragePooling2D instead.')
 @tf_export(v1=['layers.average_pooling2d'])
 def average_pooling2d(inputs,
                       pool_size, strides,
@@ -232,6 +233,9 @@ def average_pooling2d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.average_pooling2d` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.AveragePooling2D` instead.')
   layer = AveragePooling2D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
                            name=name)
@@ -271,8 +275,6 @@ class MaxPooling2D(keras_layers.MaxPooling2D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.MaxPooling2D instead.')
 @tf_export(v1=['layers.max_pooling2d'])
 def max_pooling2d(inputs,
                   pool_size, strides,
@@ -305,6 +307,9 @@ def max_pooling2d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.max_pooling2d` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.MaxPooling2D` instead.')
   layer = MaxPooling2D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,
                        name=name)
@@ -346,8 +351,6 @@ class AveragePooling3D(keras_layers.AveragePooling3D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.AveragePooling3D instead.')
 @tf_export(v1=['layers.average_pooling3d'])
 def average_pooling3d(inputs,
                       pool_size, strides,
@@ -382,6 +385,9 @@ def average_pooling3d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.average_pooling3d` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.AveragePooling3D` instead.')
   layer = AveragePooling3D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
                            name=name)
@@ -423,8 +429,6 @@ class MaxPooling3D(keras_layers.MaxPooling3D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.MaxPooling3D instead.')
 @tf_export(v1=['layers.max_pooling3d'])
 def max_pooling3d(inputs,
                   pool_size, strides,
@@ -457,6 +461,9 @@ def max_pooling3d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.max_pooling3d` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.MaxPooling3D` instead.')
   layer = MaxPooling3D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,
                        name=name)
