@@ -5,6 +5,7 @@ exports_files(["LICENSE.MIT"])
 cc_library(
     name = "nlohmann_json_lib",
     hdrs = glob([
+        "include/nlohmann/*.hpp",
         "include/nlohmann/**/*.hpp",
     ]),
     copts = [

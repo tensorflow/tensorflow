@@ -137,6 +137,7 @@ tensorflow/third_party/nccl/archive.patch
 tensorflow/third_party/nccl/build_defs.bzl.tpl
 tensorflow/third_party/nccl/nccl_configure.bzl
 tensorflow/third_party/nccl/system.BUILD.tpl
+tensorflow/third_party/nlohmann_json.BUILD
 tensorflow/third_party/opt_einsum.BUILD
 tensorflow/third_party/pcre.BUILD
 tensorflow/third_party/png.BUILD
@@ -374,3 +375,4 @@ tensorflow/tools/pip_package/simple_console_for_windows.py
 tensorflow/tools/pip_package/xla_build/CMakeLists.txt
 tensorflow/virtual_root_template_v1.__init__.py
 tensorflow/virtual_root_template_v2.__init__.py
+
