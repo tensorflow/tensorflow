@@ -4,11 +4,7 @@
 
   * `TF_NEED_ROCM`: Whether to enable building with ROCm.
   * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path
-  * `ROCM_TOOLKIT_PATH`: The path to the ROCm toolkit. Default is
-    `/opt/rocm`.
-  * `TF_ROCM_VERSION`: The version of the ROCm toolkit. If this is blank, then
-    use the system default.
-  * `TF_MIOPEN_VERSION`: The version of the MIOpen library.
+  * `ROCM_PATH`: The path to the ROCm toolkit. Default is `/opt/rocm`.
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
 """
 
@@ -36,13 +32,9 @@ load(
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _ROCM_TOOLKIT_PATH = "ROCM_PATH"
-_TF_ROCM_VERSION = "TF_ROCM_VERSION"
-_TF_MIOPEN_VERSION = "TF_MIOPEN_VERSION"
 _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
 _TF_ROCM_CONFIG_REPO = "TF_ROCM_CONFIG_REPO"
 
-_DEFAULT_ROCM_VERSION = ""
-_DEFAULT_MIOPEN_VERSION = ""
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 
 def verify_build_defines(params):
@@ -828,8 +820,6 @@ _ENVIRONS = [
     _GCC_HOST_COMPILER_PREFIX,
     "TF_NEED_ROCM",
     _ROCM_TOOLKIT_PATH,
-    _TF_ROCM_VERSION,
-    _TF_MIOPEN_VERSION,
     _TF_ROCM_AMDGPU_TARGETS,
 ]
 
