@@ -289,15 +289,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tflite_with_ruy_and_caching_enabled",
-    defines = [
-        "TFLITE_WITH_RUY",
-        "TFLITE_WITH_RUY_GEMV",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-cc_library(
     name = "tflite_with_ruy_default",
     visibility = ["//visibility:private"],
     deps = select({
@@ -660,25 +651,6 @@ cc_library(
     ],
 )
 
-# Creates a target where Ruy is unconditionally enabled along with caching
-# on GEMV operations. This is useful for TF Lite deployments where custom
-# copts are not allowed, e.g. b/156119344
-cc_library(
-    name = "builtin_op_kernels_ruy_and_caching",
-    srcs = BUILTIN_KERNEL_SRCS,
-    hdrs = [
-        "dequantize.h",
-    ],
-    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
-    visibility = ["//visibility:private"],
-    deps = BUILTIN_KERNEL_DEPS + [
-        "@ruy//ruy/profiler:instrumentation",
-        "//tensorflow/lite/kernels/internal:cppmath",
-        "//tensorflow/lite:string",
-        "@farmhash_archive//:farmhash",
-    ] + [":tflite_with_ruy_and_caching_enabled"],
-)
-
 cc_library(
     name = "variable_op_kernels",
     srcs = [
@@ -795,24 +767,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework_lib",
-        "//tensorflow/lite:tflite_with_xnnpack_optional",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/schema:schema_fbs",
-    ],
-)
-
-#  TODO(b/156664104) Remove once runtime flag available.
-cc_library(
-    name = "builtin_ops_ruy_and_caching_enabled",
-    srcs = ["register.cc"],
-    hdrs = [
-        "builtin_op_kernels.h",
-        "fully_connected.h",
-        "register.h",
-    ],
-    deps = [
-        ":builtin_op_kernels_ruy_and_caching",
         "//tensorflow/lite:framework_lib",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
