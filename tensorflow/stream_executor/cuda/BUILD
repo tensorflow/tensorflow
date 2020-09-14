@@ -364,6 +364,7 @@ cc_library(
         ":cuda_timer",
         ":cudnn_version",
         ":cudnn_lib",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",

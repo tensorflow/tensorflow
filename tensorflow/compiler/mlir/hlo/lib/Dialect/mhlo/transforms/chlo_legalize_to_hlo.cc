@@ -469,10 +469,13 @@ struct HloCompareAdaptor {
   }
 };
 
+#include "generated_chlo_legalize_to_hlo.inc"
 }  // namespace
 
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns) {
+  populateWithGenerated(context, patterns);
+
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do
   // not have special attributes that need to be preserved.

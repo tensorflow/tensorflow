@@ -1822,6 +1822,50 @@ static LogicalResult Verify(CaseOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// UnaryOps
+//===----------------------------------------------------------------------===//
+
+template <typename Op, typename ElementType = Type, typename ValType,
+          typename Convert>
+static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
+  if (!attrs[0]) return {};
+
+  DenseElementsAttr val = attrs[0].dyn_cast<DenseElementsAttr>();
+  if (!val) return {};
+
+  ShapedType type = op->getType().template cast<ShapedType>();
+  if (!type.hasStaticShape()) {
+    return {};
+  }
+
+  Type etype = type.getElementType();
+
+  // Evaluate for integer values.
+  if (!etype.isa<ElementType>()) {
+    return {};
+  }
+
+  SmallVector<ValType, 6> values;
+  values.reserve(val.getNumElements());
+  for (const auto v : val.getValues<ValType>()) {
+    values.push_back(Convert()(v));
+  }
+
+  return DenseElementsAttr::get(type, values);
+}
+
+#define UNARY_FOLDER(Op, Func)                                                \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
+    if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
+      return UnaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
+      return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+    return {};                                                                \
+  }
+
+UNARY_FOLDER(NegOp, std::negate);
+
+//===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
 

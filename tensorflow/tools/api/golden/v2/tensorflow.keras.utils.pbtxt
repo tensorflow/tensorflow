@@ -33,10 +33,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
-    name: "convert_all_kernels_in_model"
-    argspec: "args=[\'model\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "deserialize_keras_object"
     argspec: "args=[\'identifier\', \'module_objects\', \'custom_objects\', \'printable_module_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'object\'], "
   }

@@ -555,7 +555,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
-        "//tensorflow/core/profiler/utils:step_intersection",
+        "//tensorflow/core/profiler/utils:step_interval",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

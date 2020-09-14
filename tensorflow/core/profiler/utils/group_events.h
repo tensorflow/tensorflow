@@ -58,13 +58,13 @@ class EventNode {
 
   EventNode(const EventNode& event_node);
 
-  EventNode* GetParent() const { return parent_; }
+  const std::vector<EventNode*>& GetParents() const { return parents_; }
 
   const std::vector<EventNode*>& GetChildren() const { return children_; }
 
   void AddChild(EventNode* child) {
     children_.push_back(child);
-    child->parent_ = this;
+    child->parents_.push_back(this);
   }
 
   absl::optional<int64> GetGroupId() const { return group_id_; }
@@ -113,7 +113,7 @@ class EventNode {
   XEventVisitor visitor_;
   XLine* raw_line_;
   XEvent* raw_event_;
-  EventNode* parent_ = nullptr;
+  std::vector<EventNode*> parents_;
   std::vector<EventNode*> children_;
   absl::optional<int64> group_id_;
   absl::optional<ContextInfo> producer_context_;
@@ -136,7 +136,7 @@ using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
 using EventList = std::vector<EventNode*>;
 
 struct ContextGroup {
-  EventNode* producer = nullptr;
+  std::vector<EventNode*> producers;
   std::vector<EventNode*> consumers;
 };
 

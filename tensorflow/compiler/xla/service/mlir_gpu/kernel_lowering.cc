@@ -73,7 +73,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Next, we can strip the outer fusion operation.
   pm.addPass(createFusionOpRemoverPass());
   // Remove unnecessary LHLO copies.
-  pm.addPass(::mlir::lmhlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::createCopyRemovalPass());
   // Transform LHLO operations to LinAlg.
   pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.

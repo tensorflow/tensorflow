@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import warnings
 
 import numpy as np
 
@@ -61,7 +62,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.types import core
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
@@ -1211,8 +1211,6 @@ class Model(training_lib.Model):
       return outputs[0]
     return outputs
 
-  @deprecation.deprecated(
-      None, 'Please use Model.fit, which supports generators.')
   def fit_generator(self,
                     generator,
                     steps_per_epoch=None,
@@ -1234,6 +1232,9 @@ class Model(training_lib.Model):
       `Model.fit` now supports generators, so there is no longer any need to use
       this endpoint.
     """
+    warnings.warn('`model.fit_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.fit`, which supports generators.')
     return self.fit(
         generator,
         steps_per_epoch=steps_per_epoch,
@@ -1250,8 +1251,6 @@ class Model(training_lib.Model):
         shuffle=shuffle,
         initial_epoch=initial_epoch)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.evaluate, which supports generators.')
   def evaluate_generator(self,
                          generator,
                          steps=None,
@@ -1266,6 +1265,9 @@ class Model(training_lib.Model):
       `Model.evaluate` now supports generators, so there is no longer any need
       to use this endpoint.
     """
+    warnings.warn('`Model.evaluate_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.evaluate`, which supports generators.')
     self._check_call_args('evaluate_generator')
 
     return self.evaluate(
@@ -1277,8 +1279,6 @@ class Model(training_lib.Model):
         verbose=verbose,
         callbacks=callbacks)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.predict, which supports generators.')
   def predict_generator(self,
                         generator,
                         steps=None,
@@ -1293,6 +1293,9 @@ class Model(training_lib.Model):
       `Model.predict` now supports generators, so there is no longer any need
       to use this endpoint.
     """
+    warnings.warn('`Model.predict_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.predict`, which supports generators.')
     return self.predict(
         generator,
         steps=steps,

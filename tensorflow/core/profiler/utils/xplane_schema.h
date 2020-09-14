@@ -99,6 +99,9 @@ enum HostEventType {
   kMapAndBatchConsume,
   kParseExampleProduce,
   kParseExampleConsume,
+  // Batching related.
+  kBatchingSession,
+  kProcessBatch,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.

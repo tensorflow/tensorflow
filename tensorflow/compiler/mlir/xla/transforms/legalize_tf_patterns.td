@@ -589,23 +589,11 @@ foreach Mapping = [
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
+                   [TF_TanOp, HLOClient_TanOp],
                   ] in {
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
-
-// Expand acos to MHLO dialect as follows:
-//   acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))  if x != -1
-//           = pi                                 if x == -1
-def : Pat<(HLOClient_AcosOp $input), (HLO_SelectOp
-  (HLO_CompareOp $input, (HLO_ConstantLike<"0"> $input),
-     HLO_COMPARISON_DIRECTION_NE),
-  (HLO_MulOp (HLO_ConstantLike<"2.0f"> $input),
-    (HLO_Atan2Op
-      (HLO_SqrtOp (HLO_SubOp
-         (HLO_ConstantLike<"1"> $input), (HLO_MulOp $input, $input))),
-      (HLO_AddOp (HLO_ConstantLike<"1"> $input), $input))),
-  (HLO_ConstantLike<"M_PI"> $input))>;
 
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.
