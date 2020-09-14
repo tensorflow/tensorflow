@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -561,6 +562,39 @@ TEST(GroupEventsTest, WorkerTest) {
               }
             });
       });
+}
+
+TEST(GroupEventsTest, BatchingSessionTest) {
+  constexpr absl::string_view kSchedule = "Schedule";
+  constexpr int64 kBatchContextType =
+      static_cast<int64>(ContextType::kSharedBatchScheduler);
+  constexpr int64 kBatchContextId = 123;
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(1);
+  auto request_thread = plane.GetOrCreateLine(0);
+  // First request.
+  CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSession, 0,
+               100);
+  CreateXEvent(&plane, &request_thread, kSchedule, 0, 100,
+               {{StatType::kProducerType, kBatchContextType},
+                {StatType::kProducerId, kBatchContextId}});
+  // Second request.
+  CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSession, 200,
+               100);
+  CreateXEvent(&plane, &request_thread, kSchedule, 200, 100,
+               {{StatType::kProducerType, kBatchContextType},
+                {StatType::kProducerId, kBatchContextId}});
+  auto batch_thread = plane.GetOrCreateLine(0);
+  CreateXEvent(&plane, &batch_thread, HostEventType::kProcessBatch, 200, 100,
+               {{StatType::kConsumerType, kBatchContextType},
+                {StatType::kConsumerId, kBatchContextId}});
+
+  GroupMetadataMap group_metadata_map;
+  GroupTfEvents(&raw_space, &group_metadata_map);
+  EXPECT_EQ(group_metadata_map.size(), 3);
 }
 
 }  // namespace
