@@ -1,8 +1,9 @@
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
 
-licenses(["notice"])
-
-package(default_visibility = [":test_friends"])
+package(
+    default_visibility = [":test_friends"],
+    licenses = ["notice"],
+)
 
 # Please only depend on this from MLIR tests.
 package_group(
