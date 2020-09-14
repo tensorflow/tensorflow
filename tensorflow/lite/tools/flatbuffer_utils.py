@@ -30,7 +30,6 @@ import os
 import random
 import re
 
-import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
 _TFLITE_FILE_IDENTIFIER = b'TFL3'
@@ -84,7 +83,7 @@ def read_model_with_mutable_tensors(input_tflite_file):
 def convert_object_to_bytearray(model_object):
   """Converts a tflite model from an object to a immutable bytearray."""
   # Initial size of the buffer, which will grow automatically if needed
-  builder = flatbuffers.Builder(1024)
+  builder = schema_fb.flatbuffers.Builder(1024)
   model_offset = model_object.Pack(builder)
   builder.Finish(model_offset, file_identifier=_TFLITE_FILE_IDENTIFIER)
   model_bytearray = bytes(builder.Output())
@@ -157,7 +156,7 @@ def randomize_weights(model, random_seed=0):
 
 
 def xxd_output_to_bytes(input_cc_file):
-  """Converts xxd output C++ source file to bytes (immutable)
+  """Converts xxd output C++ source file to bytes (immutable).
 
   Args:
     input_cc_file: Full path name to th C++ source file dumped by xxd
@@ -196,7 +195,7 @@ def xxd_output_to_bytes(input_cc_file):
 
 
 def xxd_output_to_object(input_cc_file):
-  """Converts xxd output C++ source file to object
+  """Converts xxd output C++ source file to object.
 
   Args:
     input_cc_file: Full path name to th C++ source file dumped by xxd

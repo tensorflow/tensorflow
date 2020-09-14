@@ -21,7 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
 TFLITE_SCHEMA_VERSION = 3
@@ -29,7 +28,7 @@ TFLITE_SCHEMA_VERSION = 3
 
 def build_mock_flatbuffer_model():
   """Creates a flatbuffer containing an example model."""
-  builder = flatbuffers.Builder(1024)
+  builder = schema_fb.flatbuffers.Builder(1024)
 
   schema_fb.BufferStart(builder)
   buffer0_offset = schema_fb.BufferEnd(builder)
