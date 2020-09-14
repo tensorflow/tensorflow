@@ -106,16 +106,23 @@ void CollectiveParamResolverDistributed::CompleteParamsAsync(
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   VLOG(1) << "CompleteParams distributed " << device.name() << " for " << cp
           << ": " << cp->ToString();
-  CompleteGroupDistributed(device, cp, cancel_mgr,
-                           [this, device, cp, cancel_mgr, done](
-                               const Status& s, const GroupRec* gr) {
-                             if (s.ok()) {
-                               CompleteInstanceDistributed(
-                                   device.name(), gr, cp, cancel_mgr, done);
-                             } else {
-                               done(s);
-                             }
-                           });
+  CompleteGroupDistributed(
+      device, cp, cancel_mgr,
+      [this, device, cp, cancel_mgr, done](Status s, const GroupRec* gr) {
+        if (s.ok()) {
+          std::vector<DeviceAttributes> attributes;
+          mutex_lock l(gr->mu);
+          for (const auto& item : gr->devices) {
+            attributes.push_back(item.second);
+          }
+          s = dev_resolver_->UpdateDeviceAttributes(attributes);
+        }
+        if (s.ok()) {
+          CompleteInstanceDistributed(device.name(), gr, cp, cancel_mgr, done);
+        } else {
+          done(s);
+        }
+      });
 }
 
 void CollectiveParamResolverDistributed::CompleteGroupAsync(

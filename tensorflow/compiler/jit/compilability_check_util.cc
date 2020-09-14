@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -530,16 +530,11 @@ bool CanCreateXlaKernel(const NodeDef& node_def) {
 }
 
 Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
-                                       const NodeDef& node_def,
+                                       const NameAttrList& function,
                                        const FunctionBody** fbody,
                                        std::vector<int>* constant_arg_indices,
                                        std::vector<int>* resource_arg_indices) {
   FunctionLibraryRuntime::Handle handle;
-  // If node_def is not instantiable, e.g., the function does not exist,
-  // simply bail out.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
-
   TF_RETURN_IF_ERROR(
       flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
   *fbody = flr->GetFunctionBody(handle);

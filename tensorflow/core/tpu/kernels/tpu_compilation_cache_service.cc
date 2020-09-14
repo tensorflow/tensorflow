@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <chrono>  // NOLINT
 
+#include "grpcpp/support/byte_buffer.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
@@ -31,7 +32,8 @@ static constexpr int kGetTpuProgramServingThreads = 32;
 
 TpuCompilationCacheService::TpuCompilationCacheService(
     ::grpc::ServerBuilder* server_builder, TpuCompilationCacheInterface* cache)
-    : cache_(cache),
+    : running_(true),
+      cache_(cache),
       server_builder_(server_builder),
       cq_(server_builder_->AddCompletionQueue()),
       thread_pool_(absl::make_unique<thread::ThreadPool>(
@@ -125,15 +127,17 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
     CHECK_NE(call->request.fetch_target(),
              tpu::CompilationCacheFetchTarget::MAIN);
   }
-  return SendGetTpuProgramResponseHelper(
-      cache_entry,
-      [&call](::grpc::ByteBuffer* buffer, ::grpc::Status error_status) {
-        if (buffer == nullptr) {
-          return call->SendResponse(error_status);
-        }
-        call->response = *buffer;
-        return call->SendResponse(::grpc::Status());
-      });
+
+  xla::StatusOr<std::vector<::grpc::Slice>> buffer_slices =
+      tpu::SerializeCacheEntryToBufferSlices(cache_entry);
+
+  if (!buffer_slices.ok()) {
+    return call->SendResponse(ToGrpcStatus(buffer_slices.status()));
+  }
+
+  call->response =
+      ::grpc::ByteBuffer{&buffer_slices.ValueOrDie()[0], buffer_slices->size()};
+  return call->SendResponse(::grpc::Status());
 }
 
 void TpuCompilationCacheService::HandleGetTpuProgram(GetTpuProgramCall* call) {

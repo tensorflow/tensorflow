@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -73,18 +72,14 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
 
  public:
   void runOnOperation() override {
-    OwningRewritePatternList patterns;
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<lmhlo::LmhloDialect>();
-    target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalDialect<scf::SCFDialect>();
-    target.addLegalOp<ModuleOp>();
-    target.addLegalOp<ModuleTerminatorOp>();
+    target.addLegalDialect<lmhlo::LmhloDialect, scf::SCFDialect,
+                           StandardOpsDialect>();
+    target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<TensorFromElementsOp>();
-    target.addIllegalOp<ExtractElementOp>();
-    target.addIllegalOp<TensorLoadOp>();
+    target.addIllegalOp<DynamicTensorFromElementsOp, ExtractElementOp,
+                        TensorFromElementsOp, TensorLoadOp, YieldOp>();
     target.addDynamicallyLegalOp<TensorStoreOp>([&](TensorStoreOp op) {
       return !op.tensor().getType().isa<UnrankedTensorType>();
     });
@@ -103,23 +98,16 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
     target.addDynamicallyLegalOp<CallOp>(typesAreLegal);
     target.addDynamicallyLegalOp<ReturnOp>(typesAreLegal);
 
-    auto module = getOperation();
-    WalkResult result = module.walk([&](FuncOp func) -> WalkResult {
-      BufferAssignmentPlacer bufferAssignment(func);
-      OwningRewritePatternList patterns;
-      mhlo::populateHLOToLHLOConversionPattern(
-          func.getContext(), &bufferAssignment, &converter, &patterns);
-      populateWithBufferAssignmentOpConversionPatterns<
-          ReturnOp, ReturnOp, lmhlo::CopyOp,
-          /*allowMemrefFunctionResults=*/true>(&context, &bufferAssignment,
-                                               &converter, &patterns);
-      populateStandardBufferizePattern(func.getContext(), &bufferAssignment,
-                                       &converter, &patterns);
-      patterns.insert<UnrankedTensorStoreTestOnlyPattern>(func.getContext());
+    OwningRewritePatternList patterns;
+    mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
+    populateWithBufferAssignmentOpConversionPatterns<ReturnOp, ReturnOp,
+                                                     lmhlo::CopyOp>(
+        &context, &converter, &patterns);
+    populateStandardBufferizePattern(&context, &converter, &patterns);
+    patterns.insert<UnrankedTensorStoreTestOnlyPattern>(&context);
 
-      return applyPartialConversion(func, target, patterns);
-    });
-    if (result.wasInterrupted()) {
+    auto module = getOperation();
+    if (failed(applyPartialConversion(module, target, patterns))) {
       signalPassFailure();
     }
   }

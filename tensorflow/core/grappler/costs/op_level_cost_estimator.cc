@@ -815,7 +815,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
           << " Intermediate Memory Time (ns):"
           << intermediate_memory_cost.count();
 
-  Costs costs;
+  Costs costs = Costs::ZeroCosts();
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
   costs.intermediate_memory_time = intermediate_memory_cost;

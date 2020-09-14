@@ -562,8 +562,10 @@ class MultiProcessRunner(object):
     race is removed.
 
     Args:
-      timeout: if set and not all processes report status within roughly
-        `timeout` seconds, a `SubprocessTimeoutError` exception will be raised.
+      timeout: optional integer or `None`. If provided as an integer, and not
+      all processes report status within roughly `timeout` seconds, a
+      `SubprocessTimeoutError` exception will be raised. If `None`, `join` never
+      times out.
 
     Returns:
       A MultiProcessRunnerResult object, which has two attributes,
@@ -591,6 +593,8 @@ class MultiProcessRunner(object):
         `UnexpectedSubprocessExitError`'s mpr_result attribute, which has the
         same structure as above 'Returns' section describes.
     """
+    if timeout and not isinstance(timeout, int):
+      raise ValueError('`timeout` must be an integer or `None`.')
     with self._process_lock:
       if self._joined:
         raise ValueError("MultiProcessRunner can't be joined twice.")

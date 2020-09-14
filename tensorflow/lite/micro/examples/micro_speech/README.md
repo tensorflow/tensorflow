@@ -23,6 +23,7 @@ kilobytes of Flash.
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
 -   [Deploy to HIMAX WE1 EVB](#deploy-to-himax-we1-evb)
+-   [Deploy to CEVA-BX1](#deploy-to-ceva-bx1)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
@@ -35,16 +36,14 @@ board. General information and instructions on using the board with TensorFlow
 Lite Micro can be found in the common
 [ARC targets description](/tensorflow/lite/micro/tools/make/targets/arc/README.md).
 
-This example is quantized with symmetric uint8 scheme. As noted in
-[kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md),
-embARC MLI supports optimized kernels for int8 quantization only. Therefore,
-this example will only use TFLM reference kernels.
+This example uses asymmetric int8 quantization and can therefore leverage
+optimized int8 kernels from the embARC MLI library
 
-The ARC EM SDP board contains the rich set of extension interfaces. You can
-choose any compatible microphone and modify
+The ARC EM SDP board contains a rich set of extension interfaces. You can choose
+any compatible microphone and modify
 [audio_provider.cc](/tensorflow/lite/micro/examples/micro_speech/audio_provider.cc)
-file accordingly to use input from your specific camera. By default, results of
-running this example are printed to the console. If you would like to instead
+file accordingly to use input from your specific microphone. By default, results
+of running this example are printed to the console. If you would like to instead
 implement some target-specific actions, you need to modify
 [command_responder.cc](/tensorflow/lite/micro/examples/micro_speech/command_responder.cc)
 accordingly.
@@ -64,8 +63,13 @@ recommended to get started with example for mock data. The project for ARC EM
 SDP platform can be generated with the following command:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp TAGS=no_arc_mli generate_micro_speech_mock_make_project
+make -f tensorflow/lite/micro/tools/make/Makefile \
+TARGET=arc_emsdp TAGS=reduce_codesize  \
+generate_micro_speech_mock_make_project
 ```
+
+Note that `TAGS=reduce_codesize` applies example specific changes of code to
+reduce total size of application. It can be ommited.
 
 ### Build and Run Example
 
@@ -107,6 +111,11 @@ get it started.
     *   Plug in the microSD card into the J11 connector.
     *   Push the RST button. If a red LED is lit beside RST button, push the CFG
         button.
+    *   Type or copy next commands one-by-another into serial terminal: `setenv
+        loadaddr 0x10800000 setenv bootfile app.elf setenv bootdelay 1 setenv
+        bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+        saveenv`
+    *   Push the RST button.
 
 6.  If you have the MetaWare Debugger installed in your environment:
 
@@ -645,6 +654,13 @@ Following the Steps to run micro speech example at HIMAX WE1 EVB platform.
     cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
     ```
 
+    make sure this tool directory is in $PATH. You can permanently set it to
+    PATH by
+
+    ```
+    export PATH=$PATH:$(pwd)
+    ```
+
 5.  run image generate tool, generate flash image file.
 
     *   Before running image generate tool, by typing `sudo chmod +x image_gen`
@@ -663,6 +679,34 @@ After these steps, press reset button on the HIMAX WE1 EVB, you will see
 application output in the serial terminal and lighting LED.
 
 ![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
+
+## Deploy to CEVA-BX1
+
+The following instructions will help you build and deploy the sample to the
+[CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/)
+
+1.  Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
+2.  Download and install CEVA-BX Toolbox v18.0.2 and run
+3.  Set the TARGET_TOOLCHAIN_ROOT variable in
+    /tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+    To your installation location. For example: TARGET_TOOLCHAIN_ROOT :=
+    /home/myuser/work/CEVA-ToolBox/V18/BX
+4.  Generate the Makefile for the project: /tensorflow$ make -f
+    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=bx1
+    generate_micro_speech_make_project
+5.  Build the project:
+    /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
+6.  This should build the project and create a file called micro_speech.elf.
+7.  The supplied configuarion reads input from a files and expects a file called
+    input.wav (easily changed in audio_provider.cc) to be placed in the same
+    directory of the .elf file
+8.  We used Google's speech command dataset: V0.0.2:
+    http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz V0.0.1:
+    http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz
+9.  Follow CEVA Toolbox instructions for creating a debug target and running the
+    project.
+10. Output should look like: Heard silence (208) @352ms Heard no (201) @1696ms
+    Heard yes (203) @3904ms
 
 ## Run on macOS
 

@@ -127,29 +127,24 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
 // def qr(a):
 //   m = a.shape[0]
 //   n = a.shape[1]
-//   vs = np.zeros([m, n])
 //   taus = np.zeros([n])
 //   for j in xrange(min(m, n)):
 //     v, tau, beta = house(a[:, j], j)
-//     # Unusually, we apply the Householder transformation to the entirety of
-//     # a, wasting FLOPs to maintain the static shape invariant that XLA
-//     # requires. For columns that precede j this has no effect.
-//     a[:, :] -= tau * np.dot(v[:, np.newaxis],
-//                              np.dot(v[np.newaxis, :], a[:, :]))
+//     a[:, j+1:] -= tau * np.dot(v[:, np.newaxis],
+//                                np.dot(v[np.newaxis, :], a[:, j+1:]))
 //     # Form column j explicitly rather than relying on the precision of the
 //     # Householder update.
 //     a[j, j] = beta
-//     a[j+1:, j] = np.zeros([m - j - 1], dtype=a.dtype)
-//     vs[:, j] = v
+//     a[j+1:, j] = v[j+1:]
 //     taus[j] = tau
-//   return (q, vs, taus)
+//   return (a, taus)
 struct QRBlockResult {
-  // The factored R value
-  XlaOp r;
+  // The upper-triangular matrix R, packed together with the lower-triangular
+  // elementary Householder reflectors `vs` below the diagonal.
+  XlaOp a;
 
   // Representation of the Householder matrices I - beta v v.T
   XlaOp taus;  // Shape: [..., n]
-  XlaOp vs;    // Shape: [..., m, n]
 };
 StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
@@ -176,56 +171,51 @@ StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
   auto qr_body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
                         XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
     auto a = values[0];
-    auto vs = values[1];
-    auto taus = values[2];
+    auto taus = values[1];
 
-    // v, beta = house(a[:, j], j)
+    // v, tau, beta = house(a[:, j], j)
     auto x = DynamicSliceInMinorDims(a, {j}, {1});
     XlaOp v, tau, beta;
     TF_RETURN_IF_ERROR(House(Collapse(x, {num_dims - 2, num_dims - 1}), j,
                              batch_dims, m, &v, &tau, &beta));
 
+    const int64 minor_dim = batch_dims.size();
+    auto iota_mn = Iota(
+        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        minor_dim + 1);
+
     std::vector<int64> shape = batch_dims;
     shape.push_back(1);
     shape.push_back(m);
     auto v_broadcast = Reshape(v, shape);
-    // a[:, :] -= tau * np.dot(v[:, np.newaxis],
-    //                          np.dot(v[np.newaxis, :], a[:, :]))
-    auto vva = BatchDot(v_broadcast, a, precision);
+    // a[:, j+1:] -= tau * (v[:, np.newaxis] @ (v[np.newaxis, :] @ a[:, j+1:]))
+    // We use masking rather than a loop-variant shape to handle the j+1:
+    // indexing.
+    auto vva = BatchDot(v_broadcast, Select(Lt(j, iota_mn), a, ZerosLike(a)),
+                        precision);
     vva = BatchDot(v_broadcast, true, vva, false, precision);
     a = a - Mul(tau, vva,
                 /*broadcast_dimensions=*/batch_dim_indices);
 
-    // It is more precise to populate column 'k' explicitly, rather than
-    // computing it implicitly by applying the Householder transformation.
-    // a[k,k] = beta
-    // a[k+1:,k] = np.zeros([m-k-1], dtype=a.dtype)
+    // a[j, j] = beta
+    // a[j+1:,j] = v[j+1:]
     auto iota = Reshape(Iota(a.builder(), S32, m), {m, 1});
     auto predecessor_mask = ConvertElementType(Lt(iota, j), type);
     auto mask = Broadcast(ConvertElementType(Eq(iota, j), type),
                           std::vector<int64>(batch_dims.size(), 1));
+    auto successor_mask = Gt(Iota(a.builder(), S32, m), j);
     auto new_x = Mul(x, predecessor_mask,
                      /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1}) +
                  Mul(beta, mask, /*broadcast_dimensions=*/batch_dim_indices);
+    new_x = Add(
+        new_x, Select(Broadcast(successor_mask, batch_dims), v, ZerosLike(v)),
+        /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {minor_dim}));
     // Update a[:,j]
     std::vector<int64> dim_ids(num_dims);
     std::iota(dim_ids.begin(), dim_ids.end(), 0);
     new_x = BroadcastInDim(new_x, ConcatVectors(batch_dims, {m, n}),
                            /*broadcast_dimensions=*/dim_ids);
-    const int64 minor_dim = batch_dims.size();
-    auto iota_mn = Iota(
-        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
-        minor_dim + 1);
     a = Select(Eq(iota_mn, j), new_x, a);
-
-    // vs[:, j] = v
-    std::vector<int64> vs_broadcast_dims(batch_dims.size() + 1);
-    std::iota(vs_broadcast_dims.begin(), vs_broadcast_dims.end(), 0);
-    auto vs_zeros = ZerosLike(vs);
-    auto vs_update = Select(
-        Eq(iota_mn, j),
-        Add(vs_zeros, v, /*broadcast_dimensions=*/vs_broadcast_dims), vs_zeros);
-    vs = vs + vs_update;
 
     // taus[j] = tau
     std::vector<int64> tau_broadcast_dims(batch_dims.size());
@@ -240,40 +230,38 @@ StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
         Add(taus_zeros, tau, /*broadcast_dimensions=*/tau_broadcast_dims),
         taus_zeros);
     taus = taus + taus_update;
-    return std::vector<XlaOp>{a, vs, taus};
+    return std::vector<XlaOp>{a, taus};
   };
 
-  auto vs = Zeros(
-      builder, ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {m, n})));
   auto taus = Zeros(builder,
                     ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {n})));
 
   TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
-                                                {a, vs, taus}, "qr", builder));
+                                                {a, taus}, "qr", builder));
 
   QRBlockResult result;
-  result.r = values[0];
-  result.vs = values[1];
-  result.taus = values[2];
+  result.a = values[0];
+  result.taus = values[1];
   return result;
 }
 
-// Computes W and Y such that I-WY is equivalent to the sequence of Householder
-// transformations given by vs and taus.
-// Golub and van Loan, "Matrix Computations", algorithm 5.1.2.
-// Y = np.zeros([m, n])
-// W = np.zeros([m, n])
-// Y[:, 0] = vs[:, 0]
-// W[:, 0] = -taus[0] * vs[:, 0]
-// for j in xrange(1, n):
-//   v = vs[:, j]
-//   z = -taus[j] * v - taus[j] * np.dot(W, np.dot(Y.T, v))
-//   W[:, j] = z
-//   Y[:, j] = v
-// return W
-// There is no need to return Y since at termination of the loop it is equal to
-// vs.
-StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
+// Computes T such that (I - Y @ T @ Y^t) is a product of the elementary
+// Householder reflectors given by `vs` and `taus`.
+//
+// Schreiber, Robert, and Charles Van Loan. "A storage-efficient WY
+// representation for products of Householder transformations." SIAM Journal on
+// Scientific and Statistical Computing 10.1 (1989): 53-57.
+//
+// def compact_wy(vs, taus):
+//   m, n = vs.shape[-2:]
+//   t = np.eye(n) * -taus
+//   # We premultiply Y.T @ vs, since we would prefer to compute a single matrix
+//   # multiplication to many matrix-vector products.
+//   vtv = -taus[None, :] * np.triu(vs.T @ vs, 1) + np.eye(n)
+//   for i in range(1, n):
+//     t[:, i] = np.dot(t, vtv[:, i])
+//   return t
+StatusOr<XlaOp> CompactWYRepresentation(PrimitiveType type,
                                         absl::Span<const int64> batch_dims,
                                         XlaOp vs, XlaOp taus, int64 m, int64 n,
                                         PrecisionConfig::Precision precision) {
@@ -284,50 +272,38 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
   auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
                      XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
     // w has shape [..., m, n]
-    auto w = values[0];
-    const auto vs = values[1];
-    const auto taus = values[2];
+    auto t = values[0];
+    const auto vtv = values[1];
 
     // Want j values in range [1, ... n).
     j = j + ConstantR0<int32>(builder, 1);
-    // vs has shape [..., m, 1]
-    auto v = DynamicSliceInMinorDims(vs, {j}, {1});
-    // beta has shape [..., 1]
-    auto beta = DynamicSliceInMinorDims(taus, {j}, {1});
-
-    auto iota_mn = Iota(
-        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
-        n_index);
-
-    // y has shape [..., m, n]
-    auto y = Select(Ge(iota_mn, j), ZerosLike(vs), vs);
 
     // yv has shape [..., n, 1]
-    auto yv = BatchDot(y, true, v, false, precision);
-    // wyv has shape [..., m, 1]
-    auto wyv = BatchDot(w, yv, precision);
+    auto yv = DynamicSliceInMinorDims(vtv, {j}, {1});
 
-    auto z = Mul(
-        -beta, v + wyv,
-        /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
+    // wyv has shape [..., n, 1]
+    auto z = BatchDot(t, yv, precision);
 
-    w = DynamicUpdateSliceInMinorDims(w, z, {j});
+    t = DynamicUpdateSliceInMinorDims(t, z, {j});
 
-    return std::vector<XlaOp>{w, vs, taus};
+    return std::vector<XlaOp>{t, vtv};
   };
 
   XlaBuilder* builder = vs.builder();
-  auto w = Zeros(builder,
-                 ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {m, n})));
-  auto v = SliceInMinorDims(vs, {0}, {1});
-  auto beta = SliceInMinorDims(taus, {0}, {1});
-  auto bv =
-      Mul(-beta, v,
-          /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
-  w = UpdateSliceInMinorDims(w, bv, {0});
 
-  TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(n - 1, S32, body_fn,
-                                                {w, vs, taus}, "wy", builder));
+  auto tau_scale = BroadcastInDim(-taus, ConcatVectors(batch_dims, {1, n}),
+                                  ConcatVectors(batch_dim_indices, {n_index}));
+
+  auto eye = Broadcast(IdentityMatrix(builder, type, n, n), batch_dims);
+  auto t = eye * tau_scale;
+
+  auto vtv =
+      BatchDot(vs, /*transpose_x=*/true, vs, /*transpose_y=*/false, precision);
+  vtv = Select(TriangleMask(vtv, 0), ZerosLike(vtv), vtv) * tau_scale;
+  vtv = vtv + eye;
+
+  TF_ASSIGN_OR_RETURN(
+      auto values, ForEachIndex(n - 1, S32, body_fn, {t, vtv}, "wy", builder));
   return values[0];
 }
 
@@ -340,14 +316,12 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
 //   q = np.eye(m)
 //   for i in xrange(0, min(m, n), block_size):
 //     k = min(block_size, min(m, n) - s)
-//     (a, vs, taus) = qr(a[i:, i:i+k])
-//     y = vs
-//     w = ComputeWYRepresentation(vs, taus, m-i, k)
-//     a[i:, i+r:] += np.dot(y, np.dot(w.T, a[i:, i+k:]))
-//     q[:, i:] += np.dot(q[:, i:], np.dot(w, y.T))
+//     (a, taus) = qr(a[i:, i:i+k])
+//     y = np.eye(m, n) + np.tril(a, -1)
+//     t = CompactWYRepresentation(vs, taus, m-i, k)
+//     a[i:, i+k:] += (y @ t.T) @ (y.T @ a[i:, i+k:])
+//     q[:, i:] += (q[:, i:] @ y) @ (y @ t.T).T
 //   return (q, a)
-// TODO(phawkins): consider using UT transformations (in the form I - V U V')
-// rather than WY transformations.
 StatusOr<QRDecompositionResult> QRDecomposition(
     XlaOp a, bool full_matrices, int64 block_size,
     PrecisionConfig::Precision precision) {
@@ -381,27 +355,34 @@ StatusOr<QRDecompositionResult> QRDecomposition(
 
     auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
     TF_ASSIGN_OR_RETURN(auto qr_block, QRBlock(a_block, precision));
+    auto y = Add(
+        IdentityMatrix(builder, type, m - i, k),
+        Select(TriangleMask(qr_block.a, -1), qr_block.a, ZerosLike(qr_block.a)),
+        /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1});
 
-    a = UpdateSliceInMinorDims(a, qr_block.r, {i, i});
+    a = UpdateSliceInMinorDims(a, qr_block.a, {i, i});
 
-    // Compute the I-WY block representation of a product of Householder
-    // matrices.
+    // Compute the I + Y @ T @ Y^t block representation of a product of
+    // Householder matrices.
     TF_ASSIGN_OR_RETURN(
-        auto w, ComputeWYRepresentation(type, batch_dims, qr_block.vs,
-                                        qr_block.taus, m - i, k, precision));
-    auto y = qr_block.vs;
+        auto t, CompactWYRepresentation(type, batch_dims, y, qr_block.taus,
+                                        m - i, k, precision));
 
-    // a[i:, i+k:] += np.dot(Y, np.dot(W.T, a[i:, i+k:]))
+    // a[i:, i+k:] += (y @ t.T) @ (y.T @ a[i:, i+k:])
+    auto yt =
+        BatchDot(y, /*transpose_x=*/false, t, /*transpose_y=*/true, precision);
     auto a_panel = SliceInMinorDims(a, {i, i + k}, {m, n});
-    auto a_update = BatchDot(w, true, a_panel, false, precision);
-    a_update = BatchDot(y, a_update, precision);
+    auto a_update = BatchDot(y, /*transpose_x=*/true, a_panel,
+                             /*transpose_y=*/false, precision);
+    a_update = BatchDot(yt, a_update, precision);
     a_panel = a_panel + a_update;
     a = UpdateSliceInMinorDims(a, a_panel, {i, i + k});
 
-    // q[:, i:] += np.dot(np.dot(q[:, i:], W), Y.T))
+    // q[:, i:] += (q[:, i:] @ y) @ (y @ t.T).T
     auto q_panel = SliceInMinorDims(q, {0, i}, {m, m});
-    auto q_update = BatchDot(q_panel, w, precision);
-    q_update = BatchDot(q_update, false, y, true, precision);
+    auto q_update = BatchDot(q_panel, y, precision);
+    q_update = BatchDot(q_update, /*transpose_x=*/false, yt,
+                        /*transpose_y=*/true, precision);
     q_panel = q_panel + q_update;
     q = UpdateSliceInMinorDims(q, q_panel, {0, i});
   }
@@ -414,7 +395,7 @@ StatusOr<QRDecompositionResult> QRDecomposition(
     a = SliceInMinorDims(a, {0, 0}, {p, n});
   }
   result.q = q;
-  result.r = a;
+  result.r = UpperTriangle(a);
   return result;
 }
 

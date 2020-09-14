@@ -643,4 +643,17 @@ func @lower_rfft_to_rfft2d(%input: tensor<10x20x30xf32>, %fft_len: tensor<1xi32>
 // CHECK:  %[[SQE:.*]] = "tf.Squeeze"(%[[RFF]]) {squeeze_dims = [-2]} : (tensor<10x20x1x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f64>>
 }
 
+// CHECK-LABEL: xla_gather_to_slice
+func @xla_gather_to_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.Const"() {value = dense<[1, 9, 23, 768]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %2 = "tf.XlaGather"(%arg0, %0, %1) {device = "", dimension_numbers = "\0A\04\00\01\02\03\1A\01\02", indices_are_sorted = false} : (tensor<1x9x104x768xf32>, tensor<1xi32>, tensor<4xi32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+
+// CHECK: %[[CST:.*]] = constant dense<0> : tensor<4xi64>
+// CHECK: %[[CST0:.*]] = constant dense<[1, 9, 23, 768]> : tensor<4xi64>
+// CHECK: %[[V0:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<1x9x104x768xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<*xf32>
+// CHECK: return %[[V0]] : tensor<*xf32>
+}
+
 }

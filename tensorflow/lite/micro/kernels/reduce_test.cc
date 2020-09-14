@@ -43,6 +43,7 @@ template <typename T>
 TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
                                    const T* expected_output_data,
                                    T* output_data, int output_length,
+                                   const TfLiteRegistration& registration,
                                    TfLiteReducerParams* params,
                                    float tolerance = 1e-5) {
   int inputs_array_data[] = {2, 0, 1};
@@ -50,7 +51,6 @@ TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = tflite::ops::micro::Register_MEAN();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, params, micro_test::reporter);
 
@@ -74,6 +74,8 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
+  const TfLiteRegistration registration = tflite::ops::micro::Register_MEAN();
+
   constexpr int num_of_inputs = 2;   // input and axis
   constexpr int num_of_outputs = 1;  // output
 
@@ -85,9 +87,74 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
   };
 
   TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, ValidateReduceGoldens(
+                     tensors, tensors_size, expected_output_data, output_data,
+                     output_dims_count, registration, params, tolerance));
+}
+
+void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
+                       const int* axis_dims_data, const int32_t* axis_data,
+                       const int* output_dims_data, float* output_data,
+                       const float* expected_output_data,
+                       const TfLiteRegistration& registration,
+                       TfLiteReducerParams* params, float tolerance = 1e-5) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
+  const int output_dims_count = ElementCount(*output_dims);
+
+  constexpr int num_of_inputs = 2;   // input and axis
+  constexpr int num_of_outputs = 1;  // output
+
+  constexpr int tensors_size = num_of_inputs + num_of_outputs;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateFloatTensor(input_data, input_dims),
+      CreateInt32Tensor(axis_data, axis_dims),
+      CreateFloatTensor(output_data, output_dims),
+  };
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, ValidateReduceGoldens(
+                     tensors, tensors_size, expected_output_data, output_data,
+                     output_dims_count, registration, params, tolerance));
+}
+
+template <typename T>
+void TestReduceOpQuantized(
+    const int* input_dims_data, const float* input_data, T* input_data_quant,
+    float input_scale, int input_zero_point, const int* axis_dims_data,
+    const int32_t* axis_data, const int* output_dims_data,
+    const float* expected_output_data, T* output_data_quant,
+    T* expected_output_data_quant, float output_scale, int output_zero_point,
+    const TfLiteRegistration& registration, TfLiteReducerParams* params) {
+  // Convert dimesion arguments to TfLiteArrays
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
+
+  // Get number of elements in input and output tensors
+  const int output_dims_count = ElementCount(*output_dims);
+
+  // Initialize tensors
+  constexpr int tensors_size = 3;
+  TfLiteTensor tensors[] = {
+      CreateQuantizedTensor(input_data, input_data_quant, input_dims,
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(axis_data, axis_dims),
+      CreateQuantizedTensor(output_data_quant, output_dims, output_scale,
+                            output_zero_point),
+  };
+
+  // Quantize expected output
+  tflite::AsymmetricQuantize(expected_output_data, expected_output_data_quant,
+                             output_dims_count, output_scale,
+                             output_zero_point);
+
+  TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
-      ValidateReduceGoldens(tensors, tensors_size, expected_output_data,
-                            output_data, output_dims_count, params, tolerance));
+      ValidateReduceGoldens(tensors, tensors_size, expected_output_data_quant,
+                            output_data_quant, output_dims_count, registration,
+                            params, 0.01));
 }
 
 template <typename T>
@@ -125,7 +192,8 @@ void TestMeanOpQuantized(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
       ValidateReduceGoldens(tensors, tensors_size, expected_output_data_quant,
-                            output_data_quant, output_dims_count, params, 1.0));
+                            output_data_quant, output_dims_count,
+                            tflite::ops::micro::Register_MEAN(), params, 1.0));
 }
 
 }  // namespace
@@ -267,6 +335,92 @@ TF_LITE_MICRO_TEST(MeanFloat4DWithoutKeepDimsWithPrecision) {
       kInputShape4D, kInputData4D, tflite::testing::kAxisShape,
       tflite::testing::kAxisData, kOutputShape, kGoldenData, output_data,
       &params);
+}
+
+TF_LITE_MICRO_TEST(FloatMaxOpTestNotKeepDims) {
+  const int input_shape[] = {3, 4, 3, 2};
+  const float input_data[] = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                              17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  const int axis_shape[] = {1, 4};
+  const int32_t axis_data[] = {1, 0, -3, -3};
+  const int output_shape[] = {1, 2};
+  const float expected_output_data[] = {23, 24};
+  float output_data[2];
+
+  TfLiteReducerParams params = {false};
+
+  tflite::testing::TestReduceOpFloat(
+      input_shape, input_data, axis_shape, axis_data, output_shape, output_data,
+      expected_output_data, tflite::ops::micro::Register_REDUCE_MAX(), &params);
+}
+
+TF_LITE_MICRO_TEST(FloatMaxOpTestKeepDims) {
+  const int input_shape[] = {3, 4, 3, 2};
+  const float input_data[] = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                              17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  const int axis_shape[] = {1, 2};
+  const int32_t axis_data[] = {0, 2};
+  const int output_shape[] = {1, 3};
+  const float expected_output_data[] = {20, 22, 24};
+  float output_data[3];
+
+  TfLiteReducerParams params = {true};
+
+  tflite::testing::TestReduceOpFloat(
+      input_shape, input_data, axis_shape, axis_data, output_shape, output_data,
+      expected_output_data, tflite::ops::micro::Register_REDUCE_MAX(), &params);
+}
+
+TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDims) {
+  const int input_shape[] = {3, 1, 3, 2};
+  const float input_data[] = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {1, 1};
+  const int output_shape[] = {1, 2};
+  const float expected_output_data[] = {0.5, 0.6};
+
+  float input_scale = 2 / 255.0;
+  int input_zp = 0;
+
+  TfLiteReducerParams params = {true};
+
+  int8_t input_data_quant[6];
+  int8_t output_data_quant[2];
+  int8_t expected_output_data_quant[2];
+
+  tflite::testing::TestReduceOpQuantized<int8_t>(
+      input_shape, input_data, input_data_quant, input_scale, input_zp,
+      axis_shape, axis_data, output_shape, expected_output_data,
+      output_data_quant, expected_output_data_quant, input_scale, input_zp,
+      tflite::ops::micro::Register_REDUCE_MAX(), &params);
+}
+
+TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
+  const int input_shape[] = {3, 1, 3, 2};
+  const float input_data[] = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {1, 1};
+  const int output_shape[] = {1, 2};
+  const float expected_output_data[] = {0.5, 0.6};
+
+  float input_scale = 2 / 255.0;
+  int input_zp = 0;
+  float output_scale = 2 / 255.0;
+  int output_zp = 0;
+
+  TfLiteReducerParams params = {false};
+
+  int8_t input_data_quant[6];
+  int8_t output_data_quant[2];
+  int8_t expected_output_data_quant[2];
+
+  tflite::testing::TestReduceOpQuantized<int8_t>(
+      input_shape, input_data, input_data_quant, input_scale, input_zp,
+      axis_shape, axis_data, output_shape, expected_output_data,
+      output_data_quant, expected_output_data_quant, output_scale, output_zp,
+      tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
 TF_LITE_MICRO_TEST(MeanInt84DWithoutKeepDimsWithPrecision) {

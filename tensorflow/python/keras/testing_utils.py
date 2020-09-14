@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import functools
+import itertools
 import threading
 
 import numpy as np
@@ -1004,3 +1006,80 @@ def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
 def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
   """Execute all tests in a class with TensorFloat-32 disabled."""
   return for_all_test_methods(run_without_tensor_float_32, description)
+
+
+def run_v2_only(func=None):
+  """Execute the decorated test only if running in v2 mode.
+
+  This function is intended to be applied to tests that exercise v2 only
+  functionality. If the test is run in v1 mode it will simply be skipped.
+
+  See go/tf-test-decorator-cheatsheet for the decorators to use in different
+  v1/v2/eager/graph combinations.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError('`run_v2_only` only supports test methods.')
+
+    def decorated(self, *args, **kwargs):
+      if not tf2.enabled():
+        self.skipTest('Test is only compatible with v2')
+
+      return f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def generate_combinations_with_testcase_name(**kwargs):
+  """Generate combinations based on its keyword arguments using combine().
+
+  This function calls combine() and appends a testcase name to the list of
+  dictionaries returned. The 'testcase_name' key is a required for named
+  parameterized tests.
+
+  Args:
+    **kwargs: keyword arguments of form `option=[possibilities, ...]` or
+      `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  sort_by_key = lambda k: k[0]
+  combinations = []
+  for key, values in sorted(kwargs.items(), key=sort_by_key):
+    if not isinstance(values, list):
+      values = [values]
+    combinations.append([(key, value) for value in values])
+
+  combinations = [collections.OrderedDict(result)
+                  for result in itertools.product(*combinations)]
+  named_combinations = []
+  for combination in combinations:
+    assert isinstance(combination, collections.OrderedDict)
+    name = ''.join([
+        '_{}_{}'.format(''.join(filter(str.isalnum, key)),
+                        ''.join(filter(str.isalnum, str(value))))
+        for key, value in combination.items()
+    ])
+    named_combinations.append(
+        collections.OrderedDict(
+            list(combination.items()) +
+            [('testcase_name', '_test{}'.format(name))]))
+
+  return named_combinations

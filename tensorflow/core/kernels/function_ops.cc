@@ -283,13 +283,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    profiler::TraceMe trace_me(
-        [&] {
-          return absl::StrCat(
-              "SymbolicGradientOp #parent_step_id=", ctx->step_id(),
-              ",function_step_id=", opts.step_id, "#");
-        },
-        profiler::TraceMeLevel::kInfo);
+    profiler::TraceMe trace_me("SymbolicGradientOp");
     lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
@@ -411,8 +405,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   profiler::TraceMe trace_me(
       [&] {
         return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            ",parent_step_id=", ctx->step_id(),
-                            ",function_step_id=", opts.step_id,
                             ",device=", target_device, "#");
       },
       profiler::TraceMeLevel::kInfo);
@@ -424,8 +416,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         profiler::TraceMe activity(
             [&] {
               return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  ",parent_step_id=", ctx->step_id(),
-                                  ",function_step_id=", function_step_id,
                                   ",device=", target_device, "#");
             },
             profiler::TraceMeLevel::kInfo);

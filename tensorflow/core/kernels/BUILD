@@ -1672,7 +1672,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels/image",
-        "//tensorflow/core/platform:tf32_utils",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -3374,7 +3374,7 @@ tf_kernel_library(
     name = "cwise_op",
     copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_unary_op"]),
 )
 
 tf_kernel_library(
@@ -6117,6 +6117,9 @@ filegroup(
         "//tensorflow/core/kernels/linalg:einsum_op_impl_complex128.cc",
         "//tensorflow/core/kernels/linalg:einsum_op_impl.h",
         "//tensorflow/core/kernels/linalg:einsum_op.h",
+        "//tensorflow/core/kernels/image:decode_image_op.cc",
+        "//tensorflow/core/kernels/image:encode_jpeg_op.cc",
+        "//tensorflow/core/kernels/image:encode_png_op.cc",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",
@@ -6437,6 +6440,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:portable_jpeg_internal",
+        "//tensorflow/core:portable_png_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/core/platform:strong_hash",

@@ -233,6 +233,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:texture2d",
         "//tensorflow/lite/delegates/gpu/cl:util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -241,6 +242,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -381,30 +383,6 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "convolution_transposed_3d",
-    srcs = ["convolution_transposed_3d.cc"],
-    hdrs = ["convolution_transposed_3d.h"],
-    deps = [
-        ":gpu_operation",
-        ":util",
-        ":work_group_picking",
-        "//tensorflow/lite/delegates/gpu/cl:buffer",
-        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
-        "//tensorflow/lite/delegates/gpu/cl:texture2d",
-        "//tensorflow/lite/delegates/gpu/cl:util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -764,6 +742,25 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "lstm_full_test",
+    srcs = ["lstm_full_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/kernels:test_main",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 

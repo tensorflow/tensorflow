@@ -34,6 +34,10 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#endif  // INTEL_MKL
+
 namespace tensorflow {
 namespace grappler {
 
@@ -361,7 +365,11 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 }
 
 bool IsSupportedActivation(const NodeDef& node) {
+#ifdef INTEL_MKL
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node) || IsTanh(node);
+#else
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+#endif
 }
 
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
@@ -454,6 +462,9 @@ bool FindContractionWithBiasAndActivation(
   const auto* contraction_node_view =
       bias_add_node_view->GetRegularFanin(0).node_view();
   const auto* contraction_node_def = contraction_node_view->node();
+
+  // Currently, only matmul + bias + tanh is enable
+  if (!IsMatMul(*contraction_node_def) && IsTanh(*node_def)) return false;
 
   // Currently, only conv + bias + leakyrelu is enabled
   if (!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) return false;
@@ -707,6 +718,9 @@ bool FindContractionWithBiasAndAddActivation(
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
 
+  // Currently, Contraction + Bias + Add + Tanh pattern is not supported
+  if (IsTanh(*node_def)) return false;
+
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
   // MKL activation op only supports float and bfloat16 data types.
   if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
@@ -823,6 +837,12 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 #ifndef ENABLE_MKLDNN_V1
     // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
+#else
+    if (NativeFormatEnabled()) {
+      // Temporarily disable FusedBatchNorm fusion on CPU until
+      // we support it under native format mode
+      if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
+    }
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");

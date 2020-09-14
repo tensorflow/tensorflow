@@ -369,7 +369,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   //     [%a, ...] as %block_arg0: type
   //   packed_input
   //     %b as %block_arg1: type
-  const int32_t n = op.n().getSExtValue();
+  const int32_t n = op.n();
   const int32_t num_replicated_inputs =
       (*op.operand_segment_sizes().int_value_begin()).getSExtValue();
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
@@ -413,7 +413,7 @@ LogicalResult VerifyCompatibleTypes(Type a, Type b) {
 }
 
 LogicalResult Verify(ReplicateOp op) {
-  int32_t n = op.n().getSExtValue();
+  int32_t n = op.n();
 
   // Check number of devices, if set, matches `n`.
   if (op.devices().hasValue()) {

@@ -314,15 +314,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
-    http_file(
-        name = "com_github_nlohmann_json_single_header",
-        sha256 = "63da6d1f22b2a7bb9e4ff7d6b255cf691a161ff49532dcc45d398a53e295835f",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nlohmann/json/releases/download/v3.4.0/json.hpp",
-            "https://github.com/nlohmann/json/releases/download/v3.4.0/json.hpp",
-        ],
-    )
-
     tf_http_archive(
         name = "com_github_google_crc32c",
         sha256 = "6b3b1d861bb8307658b2407bc7a4c59e566855ef5368a60b35c893551e4788e9",
@@ -336,18 +327,19 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "d9d1358f464328b8fd6d24a98d4c2876fde0d3fdb06c8b6bd617be7fb9b0fbac",
-        strip_prefix = "google-cloud-cpp-1.16.0",
+        sha256 = "ff82045b9491f0d880fc8e5c83fd9542eafb156dcac9ff8c6209ced66ed2a7f0",
+        strip_prefix = "google-cloud-cpp-1.17.1",
         repo_mapping = {
             "@com_github_curl_curl": "@curl",
+            "@com_github_nlohmann_json": "@nlohmann_json_lib",
         },
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v1.16.0.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v1.16.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz",
         ],
     )
 
@@ -722,8 +714,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "646f19bb9dc86ea5baf38969697a15d0f162ddb0"
-    LLVM_SHA256 = "db9600d6fb70df815f51781870dd7c392fd8b7128b43213b100ccceb185de894"
+    LLVM_COMMIT = "c0bcd11068fc13e45b253c6c315882097f94c121"
+    LLVM_SHA256 = "41719d1fe0a7596ce357523432c1c4ca580e8bbbbfbb3842d5884bd298eb2c4e"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

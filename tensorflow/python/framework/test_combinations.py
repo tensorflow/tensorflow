@@ -57,8 +57,10 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("__internal__.test.combinations.TestCombination", v1=[])
 class TestCombination(object):
   """Customize the behavior of `generate()` and the tests that it executes.
 
@@ -316,6 +318,7 @@ def _augment_with_special_arguments(test_method, test_combinations):
   return decorated
 
 
+@tf_export("__internal__.test.combinations.combine", v1=[])
 def combine(**kwargs):
   """Generate combinations based on its keyword arguments.
 
@@ -353,6 +356,7 @@ def combine(**kwargs):
   ]
 
 
+@tf_export("__internal__.test.combinations.times", v1=[])
 def times(*combined):
   """Generate a product of N sets of combinations.
 
@@ -386,6 +390,7 @@ def times(*combined):
   return combined_results
 
 
+@tf_export("__internal__.test.combinations.NamedObject", v1=[])
 class NamedObject(object):
   """A class that translates an object into a good test name."""
 

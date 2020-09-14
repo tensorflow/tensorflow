@@ -467,4 +467,71 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
     return
   }
+
+  // Test embedding ops can be head extracted and side effect analysis
+  // predecessors are ignored.
+
+  // CHECK-LABEL: func @embedding_head_extraction
+  func @embedding_head_extraction(%arg0: tensor<!tf.string>) {
+    // CHECK:      "tf_device.launch"()
+    // CHECK-NEXT:   "tf.EnqueueTPUEmbeddingRaggedTensorBatch"
+    // CHECK-NEXT:   tf_device.return
+    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
+
+    // CHECK:      "tf_device.cluster"
+    // CHECK-NEXT:   "tf.UnknownOp"
+    // CHECK-NEXT:   tf_device.return
+    "tf_device.cluster"() ( {
+      "tf.UnknownOp"() : () -> ()
+      "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {_xla_outside_compilation = "cluster1", table_ids = [1, 2]} : (tensor<!tf.string>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    return
+  }
+
+  // Test side effecting op after embedding op can be head extracted.
+
+  // CHECK-LABEL: func @op_after_embedding_head_extraction
+  func @op_after_embedding_head_extraction() {
+    // CHECK:      "tf_device.launch"()
+    // CHECK-NEXT:   "tf.A"
+    // CHECK-NEXT:   tf_device.return
+    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
+
+    // CHECK:      "tf_device.cluster"
+    // CHECK-NEXT:   "tf.RecvTPUEmbeddingActivations"
+    // CHECK-NEXT:   "tf.SendTPUEmbeddingGradients"
+    // CHECK-NEXT:   tf_device.return
+    "tf_device.cluster"() ( {
+      %0 = "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32>
+      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
+      "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    return
+  }
+
+  // Test side effecting op before embedding op can be tail extracted.
+
+  // CHECK-LABEL: func @op_before_embedding_tail_extraction
+  func @op_before_embedding_tail_extraction() {
+    // CHECK:      "tf_device.cluster"
+    // CHECK-NEXT:   "tf.UnknownOp"
+    // CHECK-NEXT:   "tf.RecvTPUEmbeddingActivations"
+    // CHECK-NEXT:   "tf.SendTPUEmbeddingGradients"
+    // CHECK-NEXT:   tf_device.return
+
+    // CHECK:      "tf_device.launch"()
+    // CHECK-NEXT:   "tf.A"
+    // CHECK-NEXT:   tf_device.return
+    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    "tf_device.cluster"() ( {
+      "tf.UnknownOp"() : () -> ()
+      "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
+      %0 = "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32>
+      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    return
+  }
 }

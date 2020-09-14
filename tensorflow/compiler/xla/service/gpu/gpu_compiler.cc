@@ -516,7 +516,6 @@ static Status CompileModuleToLlvmIrImpl(
   DumpHloModuleIfEnabled(*hlo_module, **buffer_assignment,
                          "after_optimizations");
 
-  mlir::registerAllDialects();
   mlir::MLIRContext mlir_context;
 
   IrEmitterContext ir_emitter_context(

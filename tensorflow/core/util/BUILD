@@ -16,8 +16,8 @@ load(
     "tf_cuda_only_cc_test",
     "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
@@ -106,6 +106,8 @@ filegroup(
         "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
+        "ragged_to_dense_util_common.cc",
+        "ragged_to_dense_util_common.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
         "saved_tensor_slice_util.h",
@@ -384,6 +386,19 @@ cc_library(
 )
 
 cc_library(
+    name = "ragged_to_dense_util_common",
+    srcs = [
+        "ragged_to_dense_util_common.cc",
+    ],
+    hdrs = [
+        "ragged_to_dense_util_common.h",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+)
+
+cc_library(
     name = "ragged_to_dense_util",
     srcs = [
         "ragged_to_dense_util.cc",
@@ -392,6 +407,7 @@ cc_library(
         "ragged_to_dense_util.h",
     ],
     deps = [
+        ":ragged_to_dense_util_common",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -851,5 +867,8 @@ tf_proto_library(
         ":event_proto",
         ":saved_tensor_slice_proto",
         ":memmapped_file_system_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )

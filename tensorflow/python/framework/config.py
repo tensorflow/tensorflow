@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import _pywrap_tf32_execution
+from tensorflow.python import _pywrap_tensor_float_32_execution
 from tensorflow.python.eager import context
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -34,7 +34,7 @@ def tensor_float_32_execution_enabled():
   Returns:
     True if TensorFloat-32 is enabled (the default) and False otherwise
   """
-  return _pywrap_tf32_execution.is_allowed()
+  return _pywrap_tensor_float_32_execution.is_enabled()
 
 
 @tf_export('config.experimental.enable_tensor_float_32_execution')
@@ -65,10 +65,10 @@ def enable_tensor_float_32_execution(enabled):
   print(tf.linalg.matmul(x, y))  # [[2.0002, 2.0002], [2.0002, 2.0002]]
   ```
 
-  We soon will create an RFC proposing that TensorFloat-32 remain enabled by
-  default in stable versions of TensorFlow. We expect the RFC to be accepted,
-  but if it isn't, TensorFloat-32 will be disabled by default in TensorFlow
-  2.4.
+  There is [an RFC](https://github.com/tensorflow/community/pull/287) proposing
+  that TensorFloat-32 remain enabled by default in stable versions of
+  TensorFlow. We expect the RFC to be accepted, but if it isn't, TensorFloat-32
+  will be disabled by default in TensorFlow 2.4.
 
   To check whether TensorFloat-32 execution is currently enabled, use
   `tf.config.experimental.tensor_float_32_execution_enabled`.
@@ -90,7 +90,7 @@ def enable_tensor_float_32_execution(enabled):
   Args:
     enabled: Bool indicating whether to enable TensorFloat-32 execution.
   """
-  _pywrap_tf32_execution.allow(enabled)
+  _pywrap_tensor_float_32_execution.enable(enabled)
 
 
 @tf_export('config.threading.get_intra_op_parallelism_threads')

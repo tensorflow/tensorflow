@@ -47,7 +47,6 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
-    "if_mkl_v1",
     "if_mkldnn_threadpool",
 )
 load(
@@ -325,9 +324,8 @@ def tf_copts(
         if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
-        if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
+        if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
-        if_mkl_v1(["-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
         if_mkldnn_threadpool(["-DENABLE_MKLDNN_THREADPOOL"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_ngraph(["-DINTEL_NGRAPH=1"]) +
@@ -394,7 +392,7 @@ def tf_defines_nortti_if_lite_protos():
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
-def tf_gen_op_libs(op_lib_names, deps = None, is_external = True):
+def tf_gen_op_libs(op_lib_names, deps = None, is_external = True, compatible_with = None):
     # Make library out of each op so it can also be used to generate wrappers
     # for various languages.
     if not deps:
@@ -405,6 +403,7 @@ def tf_gen_op_libs(op_lib_names, deps = None, is_external = True):
             copts = tf_copts(is_external = is_external),
             srcs = ["ops/" + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
+            compatible_with = compatible_with,
             visibility = ["//visibility:public"],
             alwayslink = 1,
             linkstatic = 1,
@@ -1736,16 +1735,18 @@ _transitive_parameters_library = rule(
 #   * Eigen: it's a header-only library.  Add it directly to your deps.
 #   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
-def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
+def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     _transitive_parameters_library(
         name = name + "_gathered_parameters",
+        compatible_with = compatible_with,
         original_deps = deps,
     )
     cc_library(
         name = name,
         hdrs = [":" + name + "_gather"],
         includes = includes,
+        compatible_with = compatible_with,
         deps = [":" + name + "_gathered_parameters"] + extra_deps,
         **kwargs
     )
@@ -2471,7 +2472,7 @@ def cuda_py_tests(*args, **kwargs):
 #
 # Return a struct with fields (hdrs, srcs) containing the names of the
 # generated files.
-def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = [], deps = [], visibility = None):
+def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = [], deps = [], visibility = None, compatible_with = None):
     out_hdrs = (
         [
             p.replace(".proto", ".pb_text.h")
@@ -2484,6 +2485,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         srcs = srcs + protodeps + [clean_dep("//tensorflow/tools/proto_text:placeholder.txt")],
         outs = out_hdrs + out_srcs,
         visibility = visibility,
+        compatible_with = compatible_with,
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
@@ -2496,6 +2498,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         name = name + "_hdrs",
         srcs = out_hdrs,
         visibility = visibility,
+        compatible_with = compatible_with,
     )
 
     cc_library(
@@ -2926,3 +2929,9 @@ def tf_grpc_cc_dependency():
 
 def get_compatible_with_portable():
     return []
+
+def filegroup(**kwargs):
+    return native.filegroup(**kwargs)
+
+def genrule(**kwargs):
+    return native.genrule(**kwargs)

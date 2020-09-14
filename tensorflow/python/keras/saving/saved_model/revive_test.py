@@ -295,6 +295,29 @@ class TestModelRevive(ReviveTestBase):
     revived = keras_load.load(self.path, compile=False)
     self._assert_revived_correctness(model, revived)
 
+  def test_load_compiled_metrics(self):
+    model = testing_utils.get_small_sequential_mlp(1, 3)
+
+    # Compile with dense categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    x = np.random.random((5, 10)).astype(np.float32)
+    y_true = np.random.random((5, 3)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
+
+    # Compile with sparse categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    y_true = np.random.randint(0, 3, (5, 1)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

@@ -27,14 +27,15 @@ namespace stream_executor {
 
 // Plugin initialization function that a device plugin
 // must define.
-typedef void (*SEPluginInitFn)(SE_PlatformRegistrationParams* const,
+typedef void (*SEInitPluginFn)(SE_PlatformRegistrationParams* const,
                                TF_Status* const);
 
-// Loads dso and registers StreamExecutor-based pluggable device.
-port::Status RegisterDevicePlugin(const std::string& dso_path);
+// Registers StreamExecutor platform.
+port::Status InitStreamExecutorPlugin(void* dso_handle);
 
-// Allow registering a plugin using a function (used for testing).
-port::Status RegisterDevicePlugin(SEPluginInitFn init_fn);
+// Allow registering a StreamExecutor plugin using a function (used for
+// testing).
+port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn);
 
 class CPlatform : public Platform {
  public:

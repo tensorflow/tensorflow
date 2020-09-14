@@ -911,6 +911,12 @@ class MklFusedMatMulOpTest : public OpsTestBase {
             next_op = ops::Elu(root.WithOpName(last_op), next_op);
           }
 
+          if (std::find(fused_ops.begin(), fused_ops.end(), "Tanh") !=
+              fused_ops.end()) {
+            last_op = "with_tanh";
+            next_op = ops::Tanh(root.WithOpName(last_op), next_op);
+          }
+
           CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
         };
 
@@ -998,11 +1004,21 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndElu) {
                           {"BiasAdd", "Elu"});
 }
 
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndTanh) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel,
+                          {"BiasAdd", "Tanh"});
+}
+
 REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
                             WithBias,              //
                             WithBiasAndRelu,       //
                             WithBiasAndRelu6,      //
-                            WithBiasAndElu);
+                            WithBiasAndElu,        //
+                            WithBiasAndTanh);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,

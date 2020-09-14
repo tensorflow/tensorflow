@@ -148,7 +148,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
     total_loss = 0.0
     num_batches = 0
-    for epoch in range(epochs):
+    for _ in range(epochs):
       # Iterate over the batches of the dataset.
       for batch_dataset in train_dataset:
 
@@ -166,9 +166,6 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
         end_time = timer()
         train_step_time_list.append(end_time - start_time)
-
-      train_loss = total_loss / num_batches
-      print('Loss for epoch %d: %.4f' % ((epoch + 1), train_loss))
 
     return np.mean(train_step_time_list)
 

@@ -62,7 +62,7 @@ port::Status ValidateSPPlatform(const SP_Platform& platform) {
   VALIDATE_STRUCT_SIZE(SP_Platform, platform, SP_PLATFORM_STRUCT_SIZE);
   VALIDATE_MEMBER(SP_Platform, platform, name);
   VALIDATE_MEMBER(SP_Platform, platform, type);
-  VALIDATE_MEMBER(SP_Platform, platform, visible_device_count);
+  // `visible_device_count` could be 0 at initialization time.
   return port::Status::OK();
 }
 
@@ -622,11 +622,19 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
   port::Status BlockHostUntilDone(Stream* stream) override {
     OwnedTFStatus c_status(TF_NewStatus());
+    SP_Stream stream_handle =
+        static_cast<CStream*>(stream->implementation())->Handle();
+
+    // If `block_host_until_done` is set, use it.
+    if (stream_executor_->block_host_until_done != nullptr) {
+      stream_executor_->block_host_until_done(&device_, stream_handle,
+                                              c_status.get());
+      return StatusFromTF_Status(c_status.get());
+    }
+    // Create and record an event and then wait for it.
     SP_Event event_handle;
     stream_executor_->create_event(&device_, &event_handle, c_status.get());
     TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
-    SP_Stream stream_handle =
-        static_cast<CStream*>(stream->implementation())->Handle();
     stream_executor_->record_event(&device_, stream_handle, event_handle,
                                    c_status.get());
     port::Status s = StatusFromTF_Status(c_status.get());
@@ -779,23 +787,20 @@ port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
   return result;
 }
 
-port::Status RegisterDevicePlugin(const std::string& dso_path) {
-  // Step 1: Load plugin
+port::Status InitStreamExecutorPlugin(void* dso_handle) {
   tensorflow::Env* env = tensorflow::Env::Default();
-  void* dso_handle;
-  TF_RETURN_IF_ERROR(env->LoadDynamicLibrary(dso_path.c_str(), &dso_handle));
 
-  // Step 2: Load symbol for `TF_InitPlugin`
+  // Step 1: Load symbol for `TF_InitPlugin`
   void* dso_symbol;
   TF_RETURN_IF_ERROR(
       env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol));
 
-  // Step 3: Call `TF_InitPlugin`
-  auto init_fn = reinterpret_cast<SEPluginInitFn>(dso_symbol);
-  return RegisterDevicePlugin(init_fn);
+  // Step 2: Call `TF_InitPlugin`
+  auto init_fn = reinterpret_cast<SEInitPluginFn>(dso_symbol);
+  return InitStreamExecutorPlugin(init_fn);
 }
 
-port::Status RegisterDevicePlugin(SEPluginInitFn init_fn) {
+port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn) {
   SE_PlatformRegistrationParams params{
       SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE};
   SP_Platform platform{SP_PLATFORM_STRUCT_SIZE};

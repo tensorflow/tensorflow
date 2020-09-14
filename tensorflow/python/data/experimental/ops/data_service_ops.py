@@ -435,10 +435,11 @@ def register_dataset(service, dataset):
   If the dataset is already registered with the tf.data service,
   `register_dataset` returns the already-registered dataset's id.
 
-  >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker = tf.data.experimental.service.WorkerServer(
-  ...     port=0, dispatcher_address=dispatcher_address)
+  ...     tf.data.experimental.service.WorkerConfig(
+  ...         dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset_id = tf.data.experimental.service.register_dataset(
   ...     dispatcher.target, dataset)
@@ -518,10 +519,11 @@ def from_dataset_id(processing_mode,
   See the documentation for `tf.data.experimental.service.distribute` for more
   detail about how `from_dataset_id` works.
 
-  >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker = tf.data.experimental.service.WorkerServer(
-  ...     port=0, dispatcher_address=dispatcher_address)
+  ...     tf.data.experimental.service.WorkerConfig(
+  ...         dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset_id = tf.data.experimental.service.register_dataset(
   ...     dispatcher.target, dataset)

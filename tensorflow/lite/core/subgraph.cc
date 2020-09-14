@@ -167,9 +167,10 @@ class InterpreterInfo : public GraphInfo {
   TfLiteTensor* tensor(size_t index) override {
     return &subgraph_->tensors()[index];
   }
-  size_t num_nodes() const override {
+  size_t num_execution_nodes() const override {
     return subgraph_->execution_plan().size();
   }
+  size_t num_total_nodes() const override { return subgraph_->nodes_size(); }
   const TfLiteNode& node(size_t index) const override {
     int node_index = subgraph_->execution_plan()[index];
     return subgraph_->nodes_and_registration()[node_index].first;

@@ -260,22 +260,22 @@ function copy_to_new_project_name {
   VERSION="$(echo "${FULL_TAG}" | cut -d '-' -f 1)"
 
   TMP_DIR="$(mktemp -d)"
-  cp "${WHL_PATH}" "${TMP_DIR}"
-  pushd "${TMP_DIR}"
-  unzip -q "${ORIGINAL_WHL_NAME}"
+  wheel unpack "${WHL_PATH}" -d "${TMP_DIR}"
+  TMP_UNPACKED_DIR="$(ls -d "${TMP_DIR}"/* | head -n 1)"
+  pushd "${TMP_UNPACKED_DIR}"
 
   ORIGINAL_WHL_DIR_PREFIX="${ORIGINAL_PROJECT_NAME}-${VERSION}"
   NEW_WHL_DIR_PREFIX="${NEW_PROJECT_NAME}-${VERSION}"
   mv "${ORIGINAL_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.dist-info"
-  mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data" || echo
-  sed -i.bak "s/${ORIGINAL_PROJECT_NAME}/${NEW_PROJECT_NAME}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/RECORD"
+  if [[ -d "${ORIGINAL_WHL_DIR_PREFIX}.data" ]]; then
+    mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data"
+  fi
 
   ORIGINAL_PROJECT_NAME_DASH="${ORIGINAL_PROJECT_NAME//_/-}"
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
   sed -i.bak "s/${ORIGINAL_PROJECT_NAME_DASH}/${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
 
-  zip -rq "${NEW_WHL_NAME}" "${NEW_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.data" "tensorflow" "tensorflow_core"
-  mv "${NEW_WHL_NAME}" "${ORIGINAL_WHL_DIR}"
+  wheel pack "${TMP_UNPACKED_DIR}" -d "${ORIGINAL_WHL_DIR}"
   popd
   rm -rf "${TMP_DIR}"
 }

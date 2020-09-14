@@ -17,9 +17,9 @@ set -e
 
 # Build the docker image
 cd tensorflow/tools/ci_build
-docker build -t -horovod_test_container:latest -f Dockerfile.horovod.gpu .
+docker build -t horovod_test_container:latest -f Dockerfile.horovod.gpu .
 
-docker run -it --rm \
+docker run --rm \
   --gpus all \
   --shm-size=2g --ulimit memlock=-1 --ulimit stack=67108864 \
   horovod_test_container:latest bash -c "python3.7 -m pytest"
