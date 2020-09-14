@@ -121,12 +121,12 @@ TEST_F(HadoopFileSystemTest, FileExists) {
 
 TEST_F(HadoopFileSystemTest, GetChildren) {
   const string base = TmpDir("GetChildren");
-  TF_EXPECT_OK(hdfs.CreateDir(base));
+  TF_EXPECT_OK(hdfs.CreateDir(base, nullptr));
 
   const string file = io::JoinPath(base, "testfile.csv");
   TF_EXPECT_OK(WriteString(file, "blah"));
   const string subdir = io::JoinPath(base, "subdir");
-  TF_EXPECT_OK(hdfs.CreateDir(subdir));
+  TF_EXPECT_OK(hdfs.CreateDir(subdir, nullptr));
 
   std::vector<string> children;
   TF_EXPECT_OK(hdfs.GetChildren(base, &children));
@@ -151,7 +151,7 @@ TEST_F(HadoopFileSystemTest, GetFileSize) {
 
 TEST_F(HadoopFileSystemTest, CreateDirStat) {
   const string dir = TmpDir("CreateDirStat");
-  TF_EXPECT_OK(hdfs.CreateDir(dir));
+  TF_EXPECT_OK(hdfs.CreateDir(dir, nullptr));
   FileStatistics stat;
   TF_EXPECT_OK(hdfs.Stat(dir, &stat));
   EXPECT_TRUE(stat.is_directory);
@@ -160,7 +160,7 @@ TEST_F(HadoopFileSystemTest, CreateDirStat) {
 TEST_F(HadoopFileSystemTest, DeleteDir) {
   const string dir = TmpDir("DeleteDir");
   EXPECT_FALSE(hdfs.DeleteDir(dir).ok());
-  TF_EXPECT_OK(hdfs.CreateDir(dir));
+  TF_EXPECT_OK(hdfs.CreateDir(dir, nullptr));
   TF_EXPECT_OK(hdfs.DeleteDir(dir));
   FileStatistics stat;
   EXPECT_FALSE(hdfs.Stat(dir, &stat).ok());
