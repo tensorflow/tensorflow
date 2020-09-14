@@ -117,6 +117,14 @@ class OptimizationOptions(options.OptionsBase):
       "are allowed but may result in CPU contention. If None, defaults to the "
       "number of schedulable CPU cores.")
 
+  autotune_ram_budget = options.create_option(
+      name="autotune_ram_budget",
+      ty=int,
+      docstring=
+      "When autotuning is enabled (through `autotune`), determines the RAM "
+      "budget to use. Values greater than the available RAM in bytes may "
+      "result in OOM. If None, defaults to half of the available RAM in bytes.")
+
   filter_fusion = options.create_option(
       name="filter_fusion",
       ty=bool,
@@ -223,14 +231,17 @@ class OptimizationOptions(options.OptionsBase):
         _AutotuneAlgorithm.GRADIENT_DESCENT
         if self._autotune_buffers() else _AutotuneAlgorithm.HILL_CLIMB)
     cpu_budget = 0  # Indicates that all CPU cores should be used by default.
+    ram_budget = 0  # Indicates that default value of RAM budget should be used.
 
     # Set these options if they are explicitly set by the user.
     if self.autotune is False:  # pylint: disable=g-bool-id-comparison
       autotune = False
     if self.autotune_cpu_budget is not None:
       cpu_budget = self.autotune_cpu_budget
+    if self.autotune_ram_budget is not None:
+      ram_budget = self.autotune_ram_budget
 
-    return autotune, algorithm, cpu_budget
+    return autotune, algorithm, cpu_budget, ram_budget
 
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled and default graph optimizations.

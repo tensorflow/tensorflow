@@ -466,6 +466,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{rocm_is_configured}": "False",
             "%{rocm_extra_copts}": "[]",
+            "%{rocm_gpu_architectures}": "[]",
         },
     )
     _tpl(
@@ -536,7 +537,7 @@ def _genrule(src_dir, genrule_name, command, outs):
 
 def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
     amdgpu_target_flags = ["--amdgpu-target=" +
-                               amdgpu_target for amdgpu_target in amdgpu_targets]
+                           amdgpu_target for amdgpu_target in amdgpu_targets]
     return str(amdgpu_target_flags)
 
 def _create_local_rocm_repository(repository_ctx):
@@ -610,19 +611,28 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
+    clang_offload_bundler_path = rocm_toolkit_path + _if_hipcc_is_hipclang(
+        repository_ctx,
+        rocm_config,
+        bash_bin,
+        "/llvm/bin/",
+        "/hcc/bin/",
+    ) + "clang-offload-bundler"
+
     # copy files mentioned in third_party/gpus/rocm/BUILD
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "rocm-bin",
         srcs = [
 	    repository_ctx.path(Label("//third_party/gpus/rocm:bin2c.py")),
-            rocm_config.rocm_toolkit_path + "/llvm//bin/" + "clang-offload-bundler",
+            clang_offload_bundler_path,
         ],
         outs = [
             "rocm/bin/" + "bin2c.py",
             "rocm/bin/" + "clang-offload-bundler",
         ],
     ))
+
     # Set up BUILD file for rocm/
     repository_ctx.template(
         "rocm/build_defs.bzl",
@@ -730,6 +740,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/hip/lib",
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
+            "%{gcc_host_compiler_path}": str(cc),
         },
     )
 

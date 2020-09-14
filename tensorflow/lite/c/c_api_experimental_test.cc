@@ -53,6 +53,63 @@ TEST(CApiExperimentalTest, Smoke) {
   TfLiteModelDelete(model);
 }
 
+// Test using TfLiteInterpreterCreateWithSelectedOps.
+TEST(CApiExperimentalTest, SelectedBuiltins) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
+                                       GetDummyRegistration(), 1, 1);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+// Test that when using TfLiteInterpreterCreateWithSelectedOps,
+// we do NOT get the standard builtin operators by default.
+TEST(CApiExperimentalTest, MissingBuiltin) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  // Install a custom error reporter into the interpreter by way of options.
+  tflite::TestErrorReporter reporter;
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsSetErrorReporter(
+      options,
+      [](void* user_data, const char* format, va_list args) {
+        reinterpret_cast<tflite::TestErrorReporter*>(user_data)->Report(format,
+                                                                        args);
+      },
+      &reporter);
+
+  // Create an interpreter with no builtins at all.
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+
+  // Check that interpreter creation failed, because the model contain a buitin
+  // op that wasn't supported, and that we got the expected error messages.
+  ASSERT_EQ(interpreter, nullptr);
+  EXPECT_EQ(reporter.error_messages(),
+            "Didn't find op for builtin opcode 'ADD' version '1'\n"
+            "Registration failed.\n");
+  EXPECT_EQ(reporter.num_calls(), 2);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {

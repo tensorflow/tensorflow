@@ -61,7 +61,8 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 // containing `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config);
 
 // Creates a transpose HLO instruction and adds it to the computation containing

@@ -8156,6 +8156,14 @@ func ModelDatasetCpuBudget(value int64) ModelDatasetAttr {
 	}
 }
 
+// ModelDatasetRamBudget sets the optional ram_budget attribute to value.
+// If not specified, defaults to 0
+func ModelDatasetRamBudget(value int64) ModelDatasetAttr {
+	return func(m optionalAttr) {
+		m["ram_budget"] = value
+	}
+}
+
 // Identity transformation that models performance.
 //
 // Identity transformation that models performance.

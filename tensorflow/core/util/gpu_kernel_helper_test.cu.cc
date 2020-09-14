@@ -19,7 +19,6 @@ limitations under the License.
 #include <time.h>
 
 #include <numeric>
-#include <time.h>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"

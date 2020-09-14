@@ -17,10 +17,9 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
-#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -182,7 +181,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
           if (gr->devices.size() == gr->group.group_size) {
             // The group is full after adding this device, calculate the number
             // of tasks.
-            absl::flat_hash_set<string> tasks;
+            std::unordered_set<string> tasks;
             for (const auto& item : gr->devices) {
               tasks.insert(TaskNameFromDeviceName(item.first));
             }
@@ -496,7 +495,8 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
-    const StatusCallback& done) {
+    const StatusCallback& done) TF_NO_THREAD_SAFETY_ANALYSIS {
+  std::vector<DeviceAttributes> attributes;
   ir->shared.instance = cp->instance;
   {
     mutex_lock gl(gr->mu);
@@ -505,10 +505,12 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
     ir->shared.instance.task_names.clear();
     ir->shared.instance.device_names.reserve(gr->devices.size());
     ir->shared.instance.task_names.reserve(gr->devices.size());
+    attributes.reserve(gr->devices.size());
     for (const auto& item : gr->devices) {
       ir->shared.instance.device_names.push_back(item.first);
       ir->shared.instance.task_names.push_back(
           TaskNameFromDeviceName(item.first));
+      attributes.push_back(item.second);
     }
     VLOG(2) << "Initialized names for instance: "
             << ir->shared.instance.ToString();
@@ -527,6 +529,9 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
   // GetDeviceAttributesAsync will use those fields to launch RPCs.
   CompleteTaskIsLocal(task_name_, &ir->shared);
 
+  // TODO(b/151232436): clean up the following code since we no longer need to
+  // execute it in a callback.
+
   // Because the callback may execute in a different thread, we release
   // ir->out_mu here.  Before releasing, we mark it as unavailable for other
   // threads.
@@ -534,30 +539,24 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
   const auto device_names = ir->shared.instance.device_names;
   const auto task_names = ir->shared.instance.task_names;
   ir->out_mu.unlock();
-  std::vector<DeviceAttributes>* attributes = new std::vector<DeviceAttributes>;
-  // Suppress linter warning about access to shared without mutex because in
-  // principle the members are locked due to out_mu_available=false.
-  dev_resolver_->GetAllDeviceAttributesAsync(
-      ir->shared.instance.device_names,  // NOLINT
-      ir->shared.instance.task_names,    // NOLINT
-      attributes,
-      [this, gr, cp, ir, attributes, done](const Status& s)
-          TF_EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
-            // Then we recover the lock in the callback thread that will hold it
-            // through the rest of the call chain.  Signal the cv now, any
-            // waiting threads will wake only when out_mu is released later.
-            ir->out_mu.lock();
-            DCHECK(!ir->out_mu_available);
-            ir->out_mu_available = true;
-            ir->out_cv.notify_all();
-            if (s.ok()) {
-              CompleteDefaultRanking(gr, cp, ir, *attributes);
-              done(Status::OK());
-            } else {
-              done(s);
-            }
-            delete attributes;
-          });
+  auto complete_init = [this, gr, cp, ir, attributes, done](const Status& s)
+                           TF_EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
+                             // Then we recover the lock in the callback thread
+                             // that will hold it through the rest of the call
+                             // chain.  Signal the cv now, any waiting threads
+                             // will wake only when out_mu is released later.
+                             ir->out_mu.lock();
+                             DCHECK(!ir->out_mu_available);
+                             ir->out_mu_available = true;
+                             ir->out_cv.notify_all();
+                             if (s.ok()) {
+                               CompleteDefaultRanking(gr, cp, ir, attributes);
+                               done(Status::OK());
+                             } else {
+                               done(s);
+                             }
+                           };
+  complete_init(Status::OK());
 }
 
 // NOTE(ayushd): The DeviceLocality objects in attributes will have LocalLinks

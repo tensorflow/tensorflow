@@ -40,8 +40,41 @@ limitations under the License.
 
 // forward declare
 struct EagerTensor;
+namespace tensorflow {
 
+// Convert a TFE_TensorHandle to a Python numpy.ndarray object.
+// The two may share underlying storage so changes to one may reflect in the
+// other.
+PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
+  if (TFE_TensorHandleDataType(handle) == TF_RESOURCE) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Cannot convert a Tensor of dtype resource to a NumPy array.");
+    return nullptr;
+  }
+
+  tensorflow::Safe_TF_TensorPtr tensor = nullptr;
+  Py_BEGIN_ALLOW_THREADS;
+  tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
+  Py_END_ALLOW_THREADS;
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+
+  PyObject* ret = nullptr;
+  auto cppstatus =
+      tensorflow::TF_TensorToMaybeAliasedPyArray(std::move(tensor), &ret);
+  tensorflow::Set_TF_Status_from_Status(status, cppstatus);
+  if (!status->status.ok()) {
+    Py_XDECREF(ret);
+    return nullptr;
+  }
+  CHECK_NE(ret, nullptr);
+  return ret;
+}
+}  // namespace tensorflow
 namespace {
+
+using tensorflow::TFE_TensorHandleToNumpy;
 
 // An instance of _EagerTensorProfiler that will receive callbacks about
 // events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
@@ -87,35 +120,6 @@ TFE_Context* GetContextHandle(PyObject* py_context) {
   return ctx;
 }
 
-// Convert a TFE_TensorHandle to a Python numpy.ndarray object.
-// The two may share underlying storage so changes to one may reflect in the
-// other.
-PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
-  if (TFE_TensorHandleDataType(handle) == TF_RESOURCE) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Cannot convert a Tensor of dtype resource to a NumPy array.");
-    return nullptr;
-  }
-
-  tensorflow::Safe_TF_TensorPtr tensor = nullptr;
-  Py_BEGIN_ALLOW_THREADS;
-  tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
-  Py_END_ALLOW_THREADS;
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-
-  PyObject* ret = nullptr;
-  auto cppstatus =
-      tensorflow::TF_TensorToMaybeAliasedPyArray(std::move(tensor), &ret);
-  tensorflow::Set_TF_Status_from_Status(status, cppstatus);
-  if (!status->status.ok()) {
-    Py_XDECREF(ret);
-    return nullptr;
-  }
-  CHECK_NE(ret, nullptr);
-  return ret;
-}
 
 // Helper function to convert `v` to a tensorflow::DataType and store it in
 // `*out`. Returns true on success, false otherwise.

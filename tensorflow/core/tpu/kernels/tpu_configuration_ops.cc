@@ -27,8 +27,10 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
+#include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_config_c_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
@@ -37,7 +39,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-
 Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
                                 tpu::TpuMeshStateInterface** state) {
   if (!rmgr->Lookup(rmgr->default_container(),
@@ -69,7 +70,6 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
 }
-
 }  // namespace
 
 Status CreateTpuCompilationCache(
@@ -82,36 +82,39 @@ Status CreateTpuCompilationCache(
       });
 }
 
-void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
-  VLOG(1) << "ConfigureDistributedTpuOp";
-  XLA_SCOPED_LOGGING_TIMER("ConfigureDistributedTpuOp");
-
+xla::StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(
+    OpKernelContext* ctx) {
   std::vector<int32_t> num_devices_per_host;
   int chips_per_host = -1;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& input_tensor = ctx->input(i);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(input_tensor.shape()),
-        errors::InvalidArgument("Input ", i, " should be a scalar but has ",
-                                input_tensor.dims(), " dimensions"));
+    if (!TensorShapeUtils::IsScalar(input_tensor.shape())) {
+      return errors::InvalidArgument("Input ", i,
+                                     " should be a scalar but has ",
+                                     input_tensor.dims(), " dimensions");
+    }
     if (chips_per_host == -1) {
       chips_per_host = input_tensor.scalar<int32_t>()();
     } else {
-      OP_REQUIRES(
-          ctx, chips_per_host == input_tensor.scalar<int32>()(),
-          errors::Internal("Host ", i, " has ", input_tensor.scalar<int32>()(),
-                           " TPU chips but host 0 has ", chips_per_host));
+      if (chips_per_host != input_tensor.scalar<int32>()()) {
+        return errors::Internal("Host ", i, " has ",
+                                input_tensor.scalar<int32>()(),
+                                " TPU chips but host 0 has ", chips_per_host);
+      }
     }
     num_devices_per_host.push_back(input_tensor.scalar<int32_t>()());
   }
+  return num_devices_per_host;
+}
 
-  TF_Status* status = TF_NewStatus();
-  size_t host_config_output_size;
-  char* host_config_output;
+void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
+  VLOG(1) << "ConfigureDistributedTpuOp";
+  XLA_SCOPED_LOGGING_TIMER("ConfigureDistributedTpuOp");
 
-  auto* rmgr = GetTPUConfigResourceMgr();
-  OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
-                          rmgr, tpu::kTpuMeshStateInterfaceResourceName));
+  xla::StatusOr<std::vector<int32_t>> num_devices_per_host =
+      ConstructDevicesPerHost(ctx);
+  OP_REQUIRES_OK(ctx, num_devices_per_host.status());
+  ResourceMgr* rmgr = GetTPUConfigResourceMgr();
 
   // Create the subgraph compilation cache and put it in the local resource
   // manager.
@@ -119,9 +122,13 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, CreateTpuCompilationCache(rmgr, &compilation_cache));
   core::ScopedUnref compilation_cache_ref(compilation_cache);
 
-  tpu::ConfigApiFn()->ConfigureDistributedTpuOp_DoWorkFn(
-      num_devices_per_host.size(), num_devices_per_host.data(),
-      compilation_cache, &host_config_output_size, &host_config_output, status);
+  std::string host_config_output;
+  OP_REQUIRES_OK(
+      ctx, ConstructTpuPodState(rmgr, *num_devices_per_host, compilation_cache,
+                                &host_config_output));
+
+  OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
+                          rmgr, tpu::kTpuMeshStateInterfaceResourceName));
 
   auto* tpu_mesh = tpu::TpuMeshStateInterface::Create();
   OP_REQUIRES_OK(
@@ -130,13 +137,7 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
-  ctx_output->scalar<tstring>()() =
-      std::string(host_config_output, host_config_output_size);
-
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
-  TF_DeleteStatus(status);
-
-  tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
+  ctx_output->scalar<tstring>()() = std::move(host_config_output);
 
   VLOG(1) << "ConfigureDistributedTpuOp done";
 }
@@ -186,14 +187,25 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     mapping_arg.push_back(mapping[i].data());
   }
 
-  TF_Status* status = TF_NewStatus();
-  size_t tpu_topology_output_size;
-  char* tpu_topology_output;
-
   tpu::TpuMeshStateInterface* mesh_state;
   auto* rmgr = GetTPUConfigResourceMgr();
   OP_REQUIRES_OK(ctx, GetTpuMeshStateInterface(rmgr, &mesh_state));
   core::ScopedUnref mesh_state_unref(mesh_state);
+
+  // TODO(b/166858751): this code to check if `TpuPodState` exists is ported
+  // from a legacy library that may have staled. A candidate for cleanup.
+  TpuPodState* pod_state;
+  OP_REQUIRES_OK(ctx, GetTPUPodState(rmgr, &pod_state));
+  core::ScopedUnref pod_state_unref(pod_state);
+
+  size_t tpu_topology_output_size;
+  char* tpu_topology_output = nullptr;
+  TF_Status* status = TF_NewStatus();
+  auto cleanup = xla::MakeCleanup([&status, &tpu_topology_output]() {
+    TF_DeleteStatus(status);
+    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+        tpu_topology_output);
+  });
 
   auto* mesh_common_state = mesh_state->mesh_common_state();
   tpu::ConfigApiFn()->WaitForDistributedTpuOp_DoWorkFn(
@@ -201,14 +213,12 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
       const_cast<const int32_t**>(mapping_arg.data()), mesh_common_state,
       &tpu_topology_output_size, &tpu_topology_output, status);
 
+  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
   ctx_output->scalar<tstring>()() =
       std::string(tpu_topology_output, tpu_topology_output_size);
-
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
-  TF_DeleteStatus(status);
-  tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(tpu_topology_output);
 
   VLOG(1) << "WaitForDistributedTpuOp done";
 }
@@ -217,17 +227,14 @@ void ShutdownDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "ShutdownDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("ShutdownDistributedTpuOp");
 
-  TF_Status* status = TF_NewStatus();
+  auto* rmgr = GetTPUConfigResourceMgr();
   OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
-                          GetTPUConfigResourceMgr(),
-                          tpu::kTpuMeshStateInterfaceResourceName));
-  tpu::ConfigApiFn()->ShutdownDistributedTpuOp_DoWorkFn(status);
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
-  TF_DeleteStatus(status);
+                          rmgr, tpu::kTpuMeshStateInterfaceResourceName));
 
-  OP_REQUIRES_OK(
-      ctx, DeleteIfExists<tpu::TpuCompilationCacheInterface>(
-               GetTPUConfigResourceMgr(), tpu::kCompilationCacheResourceName));
+  OP_REQUIRES_OK(ctx,
+                 DeleteIfExists<TpuPodState>(rmgr, kTpuPodStateResourceName));
+  OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuCompilationCacheInterface>(
+                          rmgr, tpu::kCompilationCacheResourceName));
 
   VLOG(1) << "ShutdownDistributedTpuOp done";
 }
@@ -238,10 +245,6 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   auto* rmgr = GetTPUConfigResourceMgr();
   auto tpu_host_config = ctx->input(0).scalar<tstring>()();
-
-  size_t device_id_output_size;
-  int32_t* device_id_output;
-  TF_Status* status = TF_NewStatus();
 
   bool is_master_worker =
       tpu::ConfigApiFn()->TpuConfigurationApi_HasTPUPodStateFn();
@@ -275,10 +278,18 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     local_compilation_cache = nullptr;
   }
 
+  TF_Status* status = TF_NewStatus();
+  size_t device_id_output_size;
+  int32_t* device_id_output = nullptr;
+  auto cleanup = xla::MakeCleanup([&status, &device_id_output]() {
+    TF_DeleteStatus(status);
+    tpu::ConfigApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(device_id_output);
+  });
   tpu::ConfigApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
       tpu_host_config.size(), tpu_host_config.data(),
-      enable_whole_mesh_compilations_, local_compilation_cache,
-      &device_id_output_size, &device_id_output, status);
+      enable_whole_mesh_compilations_, is_master_worker, &device_id_output_size,
+      &device_id_output, status);
+  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
 
   if (local_compilation_cache != nullptr) {
     local_compilation_cache->Unref();
@@ -286,6 +297,30 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     tpu::TpuCompilationCacheLookup* proto_lookup;
     proto_lookup =
         new tpu::TpuCompilationCacheLocalLookup(local_compilation_cache);
+    OP_REQUIRES_OK(
+        ctx, rmgr->Create(rmgr->default_container(),
+                          tpu::kCompiledProtoCacheResourceName, proto_lookup));
+  } else {
+    int64_t cache_size_bytes;
+    tpu::ConfigApiFn()->TpuConfigurationApi_RemoteCompilationCacheSizeInBytesFn(
+        &cache_size_bytes);
+
+    char* server_address_output = nullptr;
+    auto cleanup_server_address = xla::MakeCleanup([&server_address_output]() {
+      tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+          server_address_output);
+    });
+    size_t server_address_output_size;
+    tpu::ConfigApiFn()
+        ->TpuConfigurationApi_CompilationCacheServerAddressFromConfigFn(
+            tpu_host_config.size(), tpu_host_config.data(),
+            &server_address_output_size, &server_address_output, status);
+    OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+
+    std::string server_address(server_address_output,
+                               server_address_output_size);
+    tpu::TpuCompilationCacheLookup* proto_lookup =
+        new tpu::TpuCompilationCacheRpcLookup(server_address, cache_size_bytes);
     OP_REQUIRES_OK(
         ctx, rmgr->Create(rmgr->default_container(),
                           tpu::kCompiledProtoCacheResourceName, proto_lookup));
@@ -300,10 +335,6 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   for (size_t i = 0; i < device_id_output_size; ++i) {
     ctx_output->flat<int32>()(i) = device_id_output[i];
   }
-
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
-  TF_DeleteStatus(status);
-  tpu::ConfigApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(device_id_output);
 
   VLOG(1) << "InitializeHostForDistributedTpuOp done";
 }

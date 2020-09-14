@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -51,11 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -155,57 +153,6 @@ void UpdateTypeAndInsertIncompatibleUseCasts(Dialect* tf_dialect, Type new_type,
   }
 
   result.setType(new_type);
-}
-
-// Extracts a PartialTensorShape from the MLIR type.
-Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
-  if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
-    // Convert the MLIR shape indices (int64_t) to TensorFlow indices
-    // (int64).
-    ArrayRef<int64_t> shape = ranked_type.getShape();
-    SmallVector<int64, 8> tf_shape(shape.begin(), shape.end());
-    return tensorflow::PartialTensorShape({tf_shape.data(), tf_shape.size()});
-  }
-  return None;
-}
-
-// Gets the subtype's shape and data type for `type`. Templated to support both
-// ResourceType and VariantType.
-template <typename T>
-std::unique_ptr<std::vector<
-    std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>
-GetSubtypesHelper(Type type) {
-  auto type_with_subtypes =
-      type.cast<TensorType>().getElementType().dyn_cast<T>();
-  if (!type_with_subtypes || type_with_subtypes.getSubtypes().empty()) {
-    return nullptr;
-  }
-  auto shapes_and_types = absl::make_unique<std::vector<
-      std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>();
-  for (auto subtype : type_with_subtypes.getSubtypes()) {
-    auto shape = GetShapeFromMlirType(subtype);
-    // handle_shapes_and_types requires all shapes to be known. So if any
-    // subtype is unknown, clear the vector.
-    if (!shape) {
-      shapes_and_types = nullptr;
-      break;
-    }
-    tensorflow::DataType dtype;
-    auto status =
-        tensorflow::ConvertToDataType(subtype.getElementType(), &dtype);
-    assert(status.ok() && "Unknown element type");
-    shapes_and_types->emplace_back(*shape, dtype);
-  }
-  return shapes_and_types;
-}
-
-// Gets the subtype's shape and data type for `type`.
-std::unique_ptr<std::vector<
-    std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>
-GetSubtypes(Type type) {
-  auto subclasses = GetSubtypesHelper<TF::ResourceType>(type);
-  if (subclasses) return subclasses;
-  return GetSubtypesHelper<TF::VariantType>(type);
 }
 
 // Returns whether type can be further refined.
@@ -800,180 +747,54 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   if (auto if_region = dyn_cast<IfRegionOp>(op))
     return InferShapeForIfRegion(if_region);
 
-  StringRef op_name = op->getName().getStringRef();
-  // Drop the `tf.` prefix to query TF registry.
-  auto node_name =
-      op_name.drop_front(TensorFlowDialect::getDialectNamespace().size() + 1);
-
-  // Get information from the registry and check if we have a shape function for
-  // this op.
-  const tensorflow::OpRegistrationData* op_reg_data =
-      tensorflow::OpRegistry::Global()->LookUp(node_name.data());
-  if (!op_reg_data) {
-    LLVM_DEBUG(llvm::dbgs() << "Skipping inference for unregistered op '"
-                            << op->getName() << "'.\n");
-    return false;
-  }
-  if (op_reg_data->shape_inference_fn == nullptr) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Skipping inference for op without shape function '"
-               << op->getName() << "'.\n");
-    return false;
-  }
-
-  // Convert the operation attributes to be able to use the InferenceContext
-  // and the TensorFlow shape function.
-  tensorflow::AttrValueMap attrs;
-  auto attrs_status = tensorflow::GetAttrValuesFromOperation(
-      op, node_name, /*ignore_unregistered_attrs=*/true, &attrs);
-  if (!attrs_status.ok()) {
-    LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << *op
-                            << "': " << attrs_status.error_message() << "\n");
-    return false;
-  }
-
-  // Collect an array with input values for constant operands and input shapes
-  // for all the operands.
-  std::vector<const tensorflow::Tensor*> input_tensors(op->getNumOperands());
-  std::vector<tensorflow::PartialTensorShape> input_shapes(
-      op->getNumOperands());
-  std::vector<tensorflow::Tensor> tensors(op->getNumOperands());
-  std::vector<std::unique_ptr<std::vector<
-      std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>>
-      handle_shapes_and_types(op->getNumOperands());
-  for (auto it : llvm::enumerate(op->getOperands())) {
-    Value operand = it.value();
-    size_t index = it.index();
-
-    // If the operand is constant, then convert it to Tensor.
+  // Return operand as a constant attribute.
+  auto operand_as_constant_fn = [&](Value operand) {
     ValuePort vp(operand);
     Attribute attr = ComputeOutputComponent(vp);
     if (!attr && matchPattern(operand, m_Constant(&attr)))
       RecordValue(vp, attr);
-    if (attr) {
-      tensorflow::Tensor* input_tensor = &tensors[index];
-      auto status =
-          tensorflow::ConvertToTensor(attr.cast<ElementsAttr>(), input_tensor);
-      if (status.ok()) {
-        input_tensors[index] = input_tensor;
-      } else {
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Error converting input " << index << " of op '" << *op
-                   << "' to Tensor: " << status.error_message() << "\n");
-      }
-    }
+    return attr;
+  };
 
-    Type operand_type = operand.getType();
-    if (auto shape = GetShapeFromMlirType(operand_type)) {
-      input_shapes[index] = *shape;
-    }
-    // Collect the handle shapes and types for a resource/variant.
-    handle_shapes_and_types[index] = GetSubtypes(operand_type);
-  }
+  // Return op result as a shape.
+  auto op_result_as_shape_fn = [&](InferenceContext& context,
+                                   OpResult op_result) {
+    return ComputeOutputAsShape(op_result, &context);
+  };
 
-  // Perform the shape inference using an InferenceContext with the input
-  // shapes. This object is abstracting the information that the ShapeInference
-  // function operates on.
-  InferenceContext c(graph_version_, tensorflow::AttrSlice(&attrs),
-                     op_reg_data->op_def, input_shapes, input_tensors,
-                     /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
-  auto status = c.Run(op_reg_data->shape_inference_fn);
-  if (!status.ok()) {
-    LLVM_DEBUG(llvm::dbgs() << "Shape inference error for '" << *op
-                            << "': " << status.error_message() << "\n");
+  // Return result element type at `index`.
+  auto result_element_type_fn = [&](int index) {
+    return op->getResult(index).getType().cast<TensorType>().getElementType();
+  };
+
+  llvm::SmallVector<ShapedTypeComponents, 4> inferred_return_shapes;
+  if (failed(InferReturnTypeComponentsForTFOp(
+          /*location=*/None, op, graph_version_, operand_as_constant_fn,
+          op_result_as_shape_fn, result_element_type_fn,
+          inferred_return_shapes)))
     return false;
-  }
-
-  // Determine if, during shape computation, the shape functions attempted to
-  // query an input operand as shape where the input was not known/constant.
-  bool requires_inputs =
-      any_of(llvm::seq<int>(0, c.num_inputs()), [&](int input) {
-        return c.requested_input_tensor_as_partial_shape(input) &&
-               !input_tensors[input];
-      });
-  if (requires_inputs) {
-    LLVM_DEBUG(llvm::dbgs() << "\trequired input\n");
-    std::vector<ShapeHandle> input_tensors_as_shapes;
-    for (int input : llvm::seq<int>(0, c.num_inputs())) {
-      if (c.requested_input_tensor_as_partial_shape(input) &&
-          !input_tensors[input]) {
-        LLVM_DEBUG(llvm::dbgs() << "Requesting " << input << " as shape\n");
-        auto op_result = op->getOperand(input).dyn_cast<OpResult>();
-        if (!op_result) continue;
-        // Resize on first valid shape computed.
-        input_tensors_as_shapes.resize(c.num_inputs());
-        auto handle = ComputeOutputAsShape(op_result, &c);
-        LLVM_DEBUG(llvm::dbgs() << "Requested " << input << " as shape "
-                                << (handle.Handle() ? "found" : "not found"));
-        if (handle.Handle()) input_tensors_as_shapes[input] = handle;
-      }
-    }
-
-    // Attempt to compute the unknown operands as shapes.
-    // Note: in the case where no partial outputs could be computed, this would
-    // be empty.
-    if (!input_tensors_as_shapes.empty()) {
-      c.set_input_tensors_as_shapes(input_tensors_as_shapes);
-      auto status = c.Run(op_reg_data->shape_inference_fn);
-      if (!status.ok()) {
-        LLVM_DEBUG(llvm::dbgs() << "Shape inference error for '" << *op
-                                << "': " << status.error_message() << "\n");
-        return false;
-      }
-    }
-  }
-
-  assert(c.num_outputs() == op->getNumResults() &&
-         "inference context matches the MLIR number of results.");
 
   // Update the shape for each of the operation result if the InferenceContext
   // has more precise shapes recorded.
   bool changed = false;
-  for (int output : llvm::seq<int>(0, c.num_outputs())) {
-    // Skip already statically shaped results.
-    Value result = op->getResult(output);
-    if (!CanBeRefined(result.getType())) continue;
-    auto shaped_type = result.getType().cast<ShapedType>();
+  for (auto result : llvm::zip(op->getResults(), inferred_return_shapes)) {
+    Value op_result = std::get<0>(result);
+    if (!CanBeRefined(op_result.getType())) continue;
 
-    ShapeHandle shape_handle = c.output(output);
-    LLVM_DEBUG(llvm::dbgs() << "Inferred output " << output << " : "
-                            << c.DebugString(shape_handle) << "\n");
-    auto get_tensor_type = [&c](const ShapeHandle& sh,
-                                Type element_type) -> TensorType {
-      if (!c.RankKnown(sh)) return UnrankedTensorType::get(element_type);
-      // Convert the shape from TensorFlow (int64) to MLIR (int64_t).
-      SmallVector<int64_t, 8> shape;
-      for (int dim : llvm::seq<int>(0, c.Rank(sh)))
-        shape.push_back(c.Value(c.Dim(sh, dim)));
-      return RankedTensorType::get(shape, element_type);
-    };
-    auto new_element_type = shaped_type.getElementType();
-    // Populate the handle shapes for a resource/variant.
-    if (new_element_type.isa<TF::ResourceType, TF::VariantType>()) {
-      auto handle_shapes_types = c.output_handle_shapes_and_types(output);
-      if (handle_shapes_types) {
-        SmallVector<TensorType, 1> subtypes;
-        OpBuilder b(op);
-        for (const auto& shape_n_type : *handle_shapes_types) {
-          Type element_type;
-          auto status =
-              tensorflow::ConvertDataType(shape_n_type.dtype, b, &element_type);
-          assert(status.ok() && "Unknown element type");
-          subtypes.push_back(get_tensor_type(shape_n_type.shape, element_type));
-        }
-        if (new_element_type.isa<TF::ResourceType>()) {
-          new_element_type = TF::ResourceType::get(subtypes, op->getContext());
-        } else {
-          new_element_type = TF::VariantType::get(subtypes, op->getContext());
-        }
-      }
-    }
-    auto new_type = get_tensor_type(shape_handle, new_element_type);
-    if (result.getType() == new_type) continue;
+    ShapedTypeComponents inferred = std::get<1>(result);
+    TensorType inferred_type;
+    if (inferred.hasRank())
+      inferred_type =
+          RankedTensorType::get(inferred.getDims(), inferred.getElementType());
+    else
+      inferred_type = UnrankedTensorType::get(inferred.getElementType());
 
-    UpdateTypeAndInsertIncompatibleUseCasts(tf_dialect_, new_type, op, result);
+    if (op_result.getType() == inferred_type) continue;
+    UpdateTypeAndInsertIncompatibleUseCasts(tf_dialect_, inferred_type, op,
+                                            op_result);
     changed = true;
   }
+
   if (changed)
     LLVM_DEBUG(llvm::dbgs()
                << "Modified after shape inference: '" << *op << "'\n");

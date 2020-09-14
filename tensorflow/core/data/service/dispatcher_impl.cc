@@ -85,7 +85,7 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const experimental::DispatcherConfig& config)
-    : config_(config) {
+    : config_(config), env_(Env::Default()) {
   if (config_.work_dir().empty()) {
     dataset_store_ = absl::make_unique<MemoryDatasetStore>();
   } else {
@@ -94,8 +94,19 @@ DataServiceDispatcherImpl::DataServiceDispatcherImpl(
   }
 }
 
+DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+    job_gc_thread_cv_.notify_all();
+  }
+  job_gc_thread_.reset();
+}
+
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
+  job_gc_thread_ = absl::WrapUnique(
+      env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
@@ -103,20 +114,21 @@ Status DataServiceDispatcherImpl::Start() {
     }
   } else {
     TF_RETURN_IF_ERROR(
-        Env::Default()->RecursivelyCreateDir(DatasetsDir(config_.work_dir())));
+        env_->RecursivelyCreateDir(DatasetsDir(config_.work_dir())));
   }
   if (!config_.fault_tolerant_mode()) {
     LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
                  "not be able to recover its state on restart.";
+    started_ = true;
     return Status::OK();
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
-      Env::Default(), JournalDir(config_.work_dir()));
-  LOG(INFO) << "Restoring dispatcher state from journal in "
+      env_, JournalDir(config_.work_dir()));
+  LOG(INFO) << "Attempting to restore dispatcher state from journal in "
             << JournalDir(config_.work_dir());
   Update update;
   bool end_of_journal = false;
-  FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
+  FileJournalReader reader(env_, JournalDir(config_.work_dir()));
   Status s = reader.Read(update, end_of_journal);
   if (errors::IsNotFound(s)) {
     LOG(INFO) << "No journal found. Starting dispatcher from new state.";
@@ -131,48 +143,43 @@ Status DataServiceDispatcherImpl::Start() {
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
+  started_ = true;
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::RegisterWorker(
-    const RegisterWorkerRequest* request, RegisterWorkerResponse* response) {
-  VLOG(3) << "Received register worker request";
+Status DataServiceDispatcherImpl::WorkerHeartbeat(
+    const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  VLOG(3) << "Received worker heartbeat request from worker "
+          << request->worker_address();
   mutex_lock l(mu_);
-  std::string worker_address = request->worker_address();
-  std::vector<std::shared_ptr<const Task>> tasks;
-  Status s = state_.TasksForWorker(worker_address, tasks);
-  if (errors::IsNotFound(s)) {
+  const std::string& worker_address = request->worker_address();
+  std::vector<std::shared_ptr<const Task>> correct_tasks;
+  Status s = state_.TasksForWorker(worker_address, correct_tasks);
+  if (!s.ok()) {
+    if (!errors::IsNotFound(s)) {
+      return s;
+    }
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     TF_RETURN_IF_ERROR(Apply(update));
-  } else if (!s.ok()) {
-    return s;
+    TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
+    TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, correct_tasks));
   }
 
-  absl::flat_hash_map<int64, std::shared_ptr<const Task>> tasks_by_job;
-  for (const auto& task : tasks) {
-    // Should never have multiple tasks on the same worker for the same job.
-    auto& task_for_job = tasks_by_job[task->job_id];
-    DCHECK(task_for_job == nullptr);
-    task_for_job = task;
-  }
+  absl::flat_hash_set<int64> current_tasks;
+  current_tasks.insert(request->current_tasks().cbegin(),
+                       request->current_tasks().cend());
+  absl::flat_hash_set<int64> correct_tasks_set;
 
-  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
-  // Allocate tasks to the worker.
-  for (const auto& job : jobs) {
-    if (job->finished) {
+  for (const auto& task : correct_tasks) {
+    correct_tasks_set.insert(task->task_id);
+    if (current_tasks.contains(task->task_id)) {
       continue;
     }
-    std::shared_ptr<const Task> task;
-    auto it = tasks_by_job.find(job->job_id);
-    if (it != tasks_by_job.end()) {
-      task = it->second;
-    } else {
-      TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
-    }
-    TaskDef* task_def = response->add_tasks();
+    TaskDef* task_def = response->add_new_tasks();
     std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
+    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
     if (config_.work_dir().empty()) {
@@ -184,17 +191,24 @@ Status DataServiceDispatcherImpl::RegisterWorker(
           io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
       task_def->set_path(path);
     }
-    task_def->set_dataset_id(job->dataset_id);
-    task_def->set_job_id(job->job_id);
+    task_def->set_dataset_id(task->dataset_id);
+    task_def->set_job_id(task->job_id);
     task_def->set_task_id(task->task_id);
   }
+  for (int64 current_task : current_tasks) {
+    if (!correct_tasks_set.contains(current_task)) {
+      response->add_tasks_to_delete(current_task);
+    }
+  }
 
-  VLOG(1) << "Registered worker at address " << request->worker_address();
+  VLOG(1) << "Finished worker heartbeat for worker at address "
+          << request->worker_address();
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::WorkerUpdate(
     const WorkerUpdateRequest* request, WorkerUpdateResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   for (auto& update : request->updates()) {
     int64 task_id = update.task_id();
@@ -218,6 +232,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
 
 Status DataServiceDispatcherImpl::GetDatasetDef(
     const GetDatasetDefRequest* request, GetDatasetDefResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
@@ -231,6 +246,7 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
 Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   uint64 fingerprint;
   const GraphDef& graph = request->dataset().graph();
   TF_RETURN_IF_ERROR(HashGraph(graph, &fingerprint));
@@ -276,6 +292,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
 
 Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
                                             CreateJobResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(3) << "Received create job request for dataset id "
           << request->dataset_id();
   ProcessingMode processing_mode = ProcessingMode(request->processing_mode());
@@ -299,6 +316,7 @@ Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
 
 Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(3) << "Received get or create job request for dataset id "
           << request->dataset_id() << " with name " << request->job_name()
           << " and index " << request->job_name_index();
@@ -338,6 +356,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
 Status DataServiceDispatcherImpl::ReleaseJobClient(
     const ReleaseJobClientRequest* request,
     ReleaseJobClientResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   int64 job_client_id = request->job_client_id();
   std::shared_ptr<const Job> job;
@@ -346,7 +365,7 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
   ReleaseJobClientUpdate* release_job_client =
       update.mutable_release_job_client();
   release_job_client->set_job_client_id(job_client_id);
-  release_job_client->set_time_micros(Env::Default()->NowMicros());
+  release_job_client->set_time_micros(env_->NowMicros());
   TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
@@ -409,6 +428,19 @@ Status DataServiceDispatcherImpl::CreateJob(
   }
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::CreateTasksForWorker(
+    const std::string& worker_address) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
+  for (const auto& job : jobs) {
+    if (job->finished) {
+      continue;
+    }
+    std::shared_ptr<const Task> task;
+    TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
+  }
   return Status::OK();
 }
 
@@ -531,6 +563,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
 
 Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
                                            GetTasksResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
   std::shared_ptr<const Job> job;
@@ -551,6 +584,7 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
 
 Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
                                              GetWorkersResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(3) << "Enter GetWorkers";
   std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
@@ -560,6 +594,14 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   }
   VLOG(3) << "Returning list of " << response->workers_size()
           << " workers from GetWorkers";
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::CheckStarted() LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  if (!started_) {
+    return errors::Unavailable("Dispatcher has not started yet.");
+  }
   return Status::OK();
 }
 
@@ -574,6 +616,52 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
     TF_RETURN_IF_ERROR(journal_writer_.value()->Write(update));
   }
   return state_.Apply(update);
+}
+
+void DataServiceDispatcherImpl::JobGcThread() {
+  int64 next_check_micros = 0;
+  while (true) {
+    mutex_lock l(mu_);
+    while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+      int64 remaining_micros = next_check_micros - env_->NowMicros();
+      job_gc_thread_cv_.wait_for(l,
+                                 std::chrono::microseconds(remaining_micros));
+    }
+    if (cancelled_) {
+      return;
+    }
+    Status s = GcOldJobs();
+    if (!s.ok()) {
+      LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+    }
+    next_check_micros =
+        env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
+  }
+}
+
+Status DataServiceDispatcherImpl::GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
+  int64 now = env_->NowMicros();
+  for (const auto& job : jobs) {
+    if (job->finished || job->num_clients > 0 ||
+        job->last_client_released_micros < 0 ||
+        now < job->last_client_released_micros +
+                  (config_.job_gc_timeout_ms() * 1000)) {
+      continue;
+    }
+    std::vector<std::shared_ptr<const Task>> tasks;
+    TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
+    for (const auto& task : tasks) {
+      if (task->finished) {
+        continue;
+      }
+      Update update;
+      update.mutable_finish_task()->set_task_id(task->task_id);
+      TF_RETURN_IF_ERROR(state_.Apply(update));
+    }
+    DCHECK(job->finished);
+  }
+  return Status::OK();
 }
 
 }  // namespace data

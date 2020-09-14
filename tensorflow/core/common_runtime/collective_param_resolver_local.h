@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -72,7 +72,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     CollGroupParams group;
     mutable mutex mu;
     Status status TF_GUARDED_BY(mu);
-    absl::flat_hash_map<string, DeviceAttributes> devices TF_GUARDED_BY(mu);
+    std::unordered_map<string, DeviceAttributes> devices TF_GUARDED_BY(mu);
     std::vector<StatusCallback> waiting TF_GUARDED_BY(mu);
   };
 

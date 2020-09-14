@@ -978,9 +978,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tf32_utils",
-    srcs = ["tf32_utils.cc"],
-    hdrs = ["tf32_utils.h"],
+    name = "tensor_float_32_utils",
+    srcs = ["tensor_float_32_utils.cc"],
+    hdrs = ["tensor_float_32_utils.h"],
     copts = tf_copts(),
     alwayslink = 1,
 )
@@ -1006,8 +1006,8 @@ cc_library(
 )
 
 filegroup(
-    name = "tf32_hdr",
-    srcs = ["tf32_utils.h"],
+    name = "tensor_float_32_hdr",
+    srcs = ["tensor_float_32_utils.h"],
 )
 
 tf_cc_tests(

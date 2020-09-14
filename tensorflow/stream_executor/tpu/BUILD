@@ -254,6 +254,7 @@ cc_library(
         ":status_helper",
         ":tpu_executor",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_topology_external",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/core/tpu:tpu_api",

@@ -23,7 +23,10 @@ cc_library(
 )
 
 exports_files(
-    ["custom_parsers.h"],
+    [
+        "custom_parsers.h",
+        "custom_transformations.h",
+    ],
     visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
@@ -87,6 +90,7 @@ cc_library(
         ":status",
         ":tensor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
         "@com_google_absl//absl/types:optional",
@@ -104,11 +108,38 @@ cc_test(
 )
 
 cc_library(
+    name = "lstm_parser",
+    srcs = ["lstm_parser.cc"],
+    hdrs = ["lstm_parser.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":model_builder_helper",
+        ":object_reader",
+        ":operations",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:lstm_shared",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     deps = [
         ":data_type",
+        ":lstm_parser",
         ":model",
         ":model_builder_helper",
         ":model_transformer",
@@ -124,7 +155,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",

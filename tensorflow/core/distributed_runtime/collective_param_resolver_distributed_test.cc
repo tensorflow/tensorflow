@@ -157,7 +157,7 @@ class DeviceResDistTest : public ::testing::Test {
       dv->push_back(d->name());
     }
     dev_resolvers_[worker_name] = absl::make_unique<DeviceResolverDistributed>(
-        device_mgrs_[worker_name].get(), &wc_, worker_name);
+        device_mgrs_[worker_name].get());
     cp_resolvers_[worker_name] =
         absl::make_unique<CollectiveParamResolverDistributed>(
             config, device_mgrs_[worker_name].get(),
@@ -256,6 +256,7 @@ class DeviceResDistTest : public ::testing::Test {
         EXPECT_EQ(cp_[device_name].instance.device_names.size(), dev_count);
         EXPECT_EQ(cp_[device_name].instance.device_names[idx], device_name);
         EXPECT_EQ(cp_[device_name].instance.task_names[idx], task_name);
+        ValidateDeviceResolver(cp_[device_name], task_name);
         if (idx > 0) {
           EXPECT_EQ(cp_[dev0].group.runtime_details.communicator_key,
                     cp_[device_name].group.runtime_details.communicator_key);
@@ -267,6 +268,14 @@ class DeviceResDistTest : public ::testing::Test {
           }
         }
       }
+    }
+  }
+
+  void ValidateDeviceResolver(const CollectiveParams& cp, const string& task) {
+    for (const string& device_name : cp.instance.device_names) {
+      DeviceAttributes attributes;
+      TF_ASSERT_OK(
+          dev_resolvers_[task]->GetDeviceAttributes(device_name, &attributes));
     }
   }
 

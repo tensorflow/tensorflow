@@ -1,10 +1,14 @@
 # Custom operators
 
-TensorFlow Lite currently supports a subset of TensorFlow operators. It supports
-the use of user-provided implementations (known as custom implementations) if
-the model contains an operator that is not supported. Providing custom kernels
-is also a way of executing a series of TensorFlow operations as a single fused
-TensorFlow Lite operation.
+Since the TensorFlow Lite builtin operator library only supports a limited
+number of TensorFlow operators, not every model is convertible. For details,
+refer to [operator compatibility](ops_compatibility.md).
+
+To allow conversion, users can provide their own custom implementation of an
+unsupported TensorFlow operator in TensorFlow Lite, known as a custom operator.
+*Instead, if you want to combine a series of unsupported (or supported)
+TensorFlow operators into a single fused optimized custom operator, refer to
+[operator fusing](https://www.tensorflow.org/lite/convert/operation_fusion).*
 
 Using custom operators consists of three steps.
 
@@ -17,8 +21,8 @@ Using custom operators consists of three steps.
 *   Test and profile your operator correctness and performance, respectively. If
     you wish to test just your custom operator, it is best to create a model
     with just your custom operator and using the
-    [benchmark_model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/benchmark/benchmark_model_test.cc)
-    program.
+    [benchmark model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/benchmark/benchmark_model_test.cc)
+    code.
 
 Below we describe a complete example of defining `Sin` and some links to
 existing conversion process involving custom operators.
@@ -131,8 +135,6 @@ implementations of builtins by using the `AddBuiltin`.
 
 ## Best practices
 
-### Writing TensorFlow Lite kernels best practices
-
 1.  Optimize memory allocations and de-allocations cautiously. Allocating memory
     in `Prepare` is more efficient than in `Invoke`, and allocating memory
     before a loop is better than in every iteration. Use temporary tensors data
@@ -175,61 +177,3 @@ implementations of builtins by using the `AddBuiltin`.
     Your code must not leave memory hanging when `TF_LITE_ENSURE` is used, i.e.,
     these macros should be used before any resources are allocated that will
     leak.
-
-### Conversion best practices
-
-The example above was easy to convert since it was a builtin operator in
-TensorFlow. If you are defining a new operator that fuses many operators or you
-have complicated shapes or types, you might need to provide more information and
-use graph transformations to rewrite an existing graph to use your operator
-instead of the builtin TensorFlow one.
-
-#### Converting TensorFlow models to convert graphs
-
-In TensorFlow you can use the `tf.lite.OpHint` class to encapsulate groups of
-operators when you create a TensorFlow graph. This encapsulation allows you then
-to extract a graph def that has references to those operators. `tf.lite.OpHint`
-is currently experimental and should only be used by advanced users. A full
-example of how to use this class is in the
-[OpHint code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/python/op_hint.py).
-
-In addition, you can also use a manual graph substitution approach to rewrite
-Tensorflow graphs. There is an example of how this is done in single shot object
-based detection models
-[export script](https://github.com/tensorflow/models/blob/master/research/object_detection/export_tflite_ssd_graph.py).
-
-### TF graph attributes
-
-When `tflite_convert` converts a TensorFlow graph into TFLite format, it makes
-some assumptions about custom operations. If the assumptions are not correct,
-the generated graph may not execute.
-
-It is possible to add additional information about your custom op output to the
-TF graph before it is converted. The following attributes are supported:
-
--   **_output_quantized** a boolean attribute, true if the operation outputs are
-    quantized
--   **_output_types** a list of types for output tensors
--   **_output_shapes** a list of shapes for output tensors
-
-#### Setting the attributes
-
-The following example demonstrates how the attributes can be set:
-
-```python
-frozen_graph_def = tf.graph_util.convert_variables_to_constants(...)
-for node in frozen_graph_def.node:
-    if node.op == 'sin':
-      node.attr['_output_types'].list.type.extend([
-          types_pb2.DT_FLOAT,
-      ])
-      node.attr['_output_shapes'].list.shape.extend([
-          tf.TensorShape([10]),
-      ])
-      node.attr['_output_quantized'].b = False
-tflite_model = tf.lite.toco_convert(
-        frozen_graph_def,...)
-```
-
-**Note:** After the attributes are set, the graph cannot be executed by
-TensorFlow. Therefore, the attributes should be set just before the conversion.

@@ -87,7 +87,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",

@@ -206,6 +206,10 @@ namespace {
 class LowerToROCDLPass
     : public ::mlir::PassWrapper<
           LowerToROCDLPass, ::mlir::OperationPass<::mlir::gpu::GPUModuleOp>> {
+  void getDependentDialects(mlir::DialectRegistry& registry) const override {
+    registry.insert<mlir::ROCDL::ROCDLDialect, mlir::LLVM::LLVMDialect>();
+  }
+
  public:
   void runOnOperation() override {
     ::mlir::gpu::GPUModuleOp m = getOperation();
@@ -248,7 +252,7 @@ Status LowerKernelBodiesToROCDL(mlir::ModuleOp module) {
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
   applyPassManagerCLOptions(pm);
 
-  auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
+  auto enable_if_vlog_is_on = [](mlir::Pass*, mlir::Operation*) {
     return VLOG_IS_ON(1);
   };
   pm.enableIRPrinting(/*shouldPrintBeforePass=*/{},

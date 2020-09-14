@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -733,7 +734,7 @@ Status XlaCompiler::CompileFunction(
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
-        std::move(*graph), {args.data(), args.size()},
+        std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
         options_.device_type.type_string(), options.use_tuple_arg,
         *options_.flib_def, debug_info, options_.shape_representation_fn,
         result));

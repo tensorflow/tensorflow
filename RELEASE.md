@@ -40,6 +40,12 @@
 * `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type
   `tf.complex64` or `tf.complex128`, because the behavior of these ops is not
   well defined for complex types.
+* `tf.data.experimental.service.DispatchServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
+* `tf.data.experimental.service.WorkerServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.WorkerServer(worker_config)`.
 
 ## Known Caveats
 
@@ -98,6 +104,11 @@
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
     * `tf.data.Options` were previously immutable and can now be overriden.
+    * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
+      with a new `output_signature` argument, which allows `from_generator` to
+      produce any type describable by a `tf.TypeSpec`.
+    * `tf.data.experimental.AUTOTUNE` is now available in the core API as
+      `tf.data.AUTOTUNE`.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op

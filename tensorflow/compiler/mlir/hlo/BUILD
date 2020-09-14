@@ -17,6 +17,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/google/xla/mlir/...",
+        "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/...",
         "//tensorflow/compiler/mlir/...",
@@ -311,17 +312,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_dialect_force_registration",
-    srcs = ["lib/Dialect/mhlo/IR/dialect_registration.cc"],
-    deps = [
-        ":hlo",
-        ":lhlo",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "hlo_dialect_registration",
     srcs = ["lib/Dialect/mhlo/IR/init.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
@@ -456,9 +446,13 @@ cc_library(
 cc_library(
     name = "transform_unranked_hlo",
     srcs = ["lib/Dialect/mhlo/transforms/transform_unranked_hlo.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
     deps = [
         ":hlo",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
@@ -702,7 +696,6 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":hlo_dialect_force_registration",
         ":lower_complex_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",

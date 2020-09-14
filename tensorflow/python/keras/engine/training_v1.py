@@ -2810,7 +2810,8 @@ class Model(training_lib.Model):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
-  def _get_compile_args(self):
+  def _get_compile_args(self, user_metrics=True):
+    del user_metrics
     self._assert_compile_was_called()
     kwargs = {
         'loss': self.loss,

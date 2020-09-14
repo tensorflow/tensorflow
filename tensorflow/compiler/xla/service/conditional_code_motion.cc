@@ -97,6 +97,17 @@ class BoundaryVisitor {
   absl::flat_hash_set<HloInstruction*> visited_;
 };
 
+template <class OpCollection>
+int64 CountNonLeafOps(const OpCollection& ops) {
+  absl::flat_hash_set<HloInstruction*> op_set;
+  for (auto op : ops) {
+    if (!op_set.contains(op) && op->opcode() != HloOpcode::kConstant) {
+      op_set.insert(op);
+    }
+  }
+  return op_set.size();
+}
+
 // Returns estimation of potential reuses carried by a given pair of
 // instructions.  Use different integers to classify different levels
 // of reuses This is used as a placeholder only, assuming all
@@ -120,7 +131,7 @@ int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
       return 10;
     default:
       // Assume fusion will not happen anyway if user count > 1)
-      if (op->user_count() > 1) {
+      if (CountNonLeafOps(op->users()) > 1) {
         return 0;
       }
       return 10;
@@ -508,8 +519,16 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     VLOG(2) << "computation is :" << computation->ToString() << "\n";
     // Remove hoisted instructions from the branches.
     for (auto b2 : to_move_out) {
-      VLOG(2) << "Removing boundary:" << b2.ToString() << "\n";
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(b2.operands()[i]));
+      auto instr_to_remove = b2.operands()[i];
+      // Double check to make sure it is safe to delete the instruction.
+      // Complications may arise due to some operations in the alternative
+      // branches (branches 1..n) being placed into the boundaries multiple
+      // times.
+      if (!computation->IsMarkedAsDead(instr_to_remove) &&
+          instr_to_remove->user_count() == 0) {
+        VLOG(2) << "Removing boundary:" << b2.ToString() << "\n";
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instr_to_remove));
+      }
     }
   }
   // Change conditional instruction shape to the shape of the new root.
@@ -846,17 +865,6 @@ class GroupConnectedBoundaries {
       b2.mutable_operands().push_back(op);
     }
     return b2;
-  }
-  int64 CountNonLeafOps(const xla::HloInstruction::InstructionVector& ops) {
-    int64 count = 0;
-    absl::flat_hash_set<HloInstruction*> op_set;
-    for (auto op : ops) {
-      if (!op_set.contains(op) && op->opcode() != HloOpcode::kConstant) {
-        count++;
-        op_set.insert(op);
-      }
-    }
-    return count;
   }
   // This function is reused both for moving the boundary outside or into a
   // conditional. As the result, the readability is somewhat compromised.

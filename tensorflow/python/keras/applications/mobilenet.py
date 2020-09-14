@@ -104,8 +104,9 @@ def MobileNet(input_shape=None,
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.mobilenet.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For MobileNet, call `tf.keras.applications.mobilenet.preprocess_input`
+  on your inputs before passing them to the model.
 
   Arguments:
     input_shape: Optional shape tuple, only to be specified if `include_top`

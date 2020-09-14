@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import collections
+import functools
 import os
 import weakref
 
@@ -57,6 +58,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -427,10 +429,16 @@ def _default_getter(name,
       # Instantiate initializer if provided initializer is a type object.
       if isinstance(initializer, type(init_ops.Initializer)):
         initializer = initializer(dtype=dtype)
-
-      def initial_value():
-        return initializer(
-            shape_object.as_list(), dtype=dtype, partition_info=partition_info)
+      shape_list = None if shape is None else shape_object.as_list()
+      if "partition_info" in tf_inspect.getargspec(initializer).args:
+        initial_value = functools.partial(initializer,
+                                          shape_list,
+                                          dtype=dtype,
+                                          partition_info=partition_info)
+      else:
+        initial_value = functools.partial(initializer,
+                                          shape_list,
+                                          dtype=dtype)
 
     return variables.VariableV1(
         initial_value=initial_value,

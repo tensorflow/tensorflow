@@ -497,6 +497,7 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.stack, ragged_concat_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_where_op.where, ['condition', 'x', 'y']),
+    (array_ops.where_v2, ragged_where_op.where_v2, ['condition', 'x', 'y']),
     (data_flow_ops.dynamic_partition, _ragged_dynamic_partition,
      ['data', 'partitions']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,

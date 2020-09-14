@@ -385,10 +385,11 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_scale_init_eager(self):
     """Tests that scale initializes to 1 when use_scale=True."""
-    with context.eager_mode():
-      attention_layer = dense_attention.Attention(use_scale=True)
-      attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
-      self.assertAllClose(1., attention_layer.scale.value())
+    if not context.executing_eagerly():
+      self.skipTest('Only run in eager mode')
+    attention_layer = dense_attention.Attention(use_scale=True)
+    attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
+    self.assertAllClose(1., attention_layer.scale.value())
 
   def test_scale_init_graph(self):
     """Tests that scale initializes to 1 when use_scale=True."""
