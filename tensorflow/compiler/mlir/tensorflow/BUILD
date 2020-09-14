@@ -13,6 +13,7 @@ package_group(
         "//learning/brain/experimental/dtensor/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/pathways/data_parallel/tf2xla/...",
+        "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
