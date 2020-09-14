@@ -83,13 +83,15 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     // Moving `AllocOp`s and inserting missing `DeallocOp`s
     pm.addPass(::mlir::createBufferPlacementPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::lmhlo::createLhloCopyRemovalPass());
+    pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   } else {
     pm.addPass(mlir::mhlo::createTransformUnrankedHloPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
-    pm.addPass(mlir::createCanonicalizerPass());
   }
 
+  // Clean up the IR for further processing.
+  pm.addPass(mlir::createCanonicalizerPass());
   // We have to anticipate later unrolling in tiling to make sure that we get
   // the requested tiling after unrolling. Compute the new tiling here if
   // needed.
