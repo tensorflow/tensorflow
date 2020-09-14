@@ -35,7 +35,6 @@ fi
 
 # Run configure.
 export PYTHON_BIN_PATH=`which python3`
-export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
