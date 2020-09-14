@@ -55,7 +55,7 @@ class Nadam(optimizer_v2.OptimizerV2):
     >>> var1 = tf.Variable(10.0)
     >>> loss = lambda: (var1 ** 2) / 2.0
     >>> step_count = opt.minimize(loss, [var1]).numpy()
-    >>> var1.numpy()
+    >>> "{:.1f}".format(var1.numpy())
     9.8
 
   Reference:
