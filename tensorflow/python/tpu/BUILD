@@ -545,6 +545,19 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "tpu_embedding_v2_utils_test",
+    srcs = [
+        "tpu_embedding_v2_utils_test.py",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding_v2",
+        "//tensorflow/python/compat:v2_compat",
+    ],
+)
+
 tpu_py_test(
     name = "tpu_outside_compilation_test",
     srcs = [
