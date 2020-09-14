@@ -141,6 +141,7 @@ def tflite_flex_cc_library(
                 clean_dep("//tensorflow/core:portable_tensorflow_lib_lite"),
                 clean_dep("//tensorflow/core/platform:strong_hash"),
                 clean_dep("//tensorflow/lite/delegates/flex:portable_images_lib"),
+                clean_dep("@com_google_protobuf//:protobuf"),
             ],
             alwayslink = 1,
         )

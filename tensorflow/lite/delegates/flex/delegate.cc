@@ -149,7 +149,7 @@ extern "C" {
 #if defined(_WIN32)
 __declspec(dllexport)
 #endif
-    tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
-  return tflite::FlexDelegate::Create();
-}
+//    tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
+//  return tflite::FlexDelegate::Create();
+//}
 }  // extern "C"

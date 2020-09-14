@@ -41,7 +41,7 @@ function generate_list_field {
   local list_string="$2"
   local list=(${list_string//,/ })
 
-  local message+=("$name=[")
+  local message=("$name=[")
   for item in "${list[@]}"
   do
     message+=("\"$item\",")
