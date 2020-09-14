@@ -114,9 +114,11 @@ tf_cc_test(
         ":core",
         ":eager_operation",
         ":execute",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
     ],
 )
 

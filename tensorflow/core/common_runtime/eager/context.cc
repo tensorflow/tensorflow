@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -720,6 +721,22 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
       gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
                           registered_function);
     } else {
+      // The function has been registered before. If the function is the same,
+      // then we take a Ref() otherwise we error out.
+      const FunctionDef* prev_fdef =
+          func_lib_def_.Find(fdef.signature().name());
+      if (prev_fdef == nullptr) {
+        return errors::Internal("Function: ", fdef.signature().name(),
+                                " is in the cache but not in the library");
+      }
+      if (!FunctionDefsEqual(fdef, *prev_fdef)) {
+        return errors::InvalidArgument(
+            "Attempting to add a duplicate function with name: ",
+            fdef.signature().name(), " where the previous and current ",
+            "definitions differ. Previous definiton: ",
+            prev_fdef->DebugString(),
+            " and current definition: ", fdef.DebugString());
+      }
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
