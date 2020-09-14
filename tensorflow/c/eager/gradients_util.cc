@@ -36,43 +36,47 @@ namespace gradients {
 
 using namespace std;
 
-TFE_TensorHandle* ScalarTensorHandleHelper(TFE_Context* ctx, float value) {
+Status ScalarTensorHandleHelper(TFE_Context* ctx, float value,
+                                TFE_TensorHandle** result) {
   float data[] = {value};
-  TF_Status* status = TF_NewStatus();
-  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, nullptr, 0, status);
+  // TF_Status* status = TF_NewStatus();
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TF_Tensor* t =
+      TFE_AllocateHostTensor(ctx, TF_FLOAT, nullptr, 0, status.get());
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
-  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status.get());
+  *result = th;
   TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-  return th;
+  return StatusFromTF_Status(status.get());
 }
 
-TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx,
-                                                  float data[], int64_t dims[],
-                                                  int num_dims) {
-  TF_Status* status = TF_NewStatus();
+Status TensorHandleWithDimsFloatHelper(TFE_Context* ctx, float data[],
+                                       int64_t dims[], int num_dims,
+                                       TFE_TensorHandle** result) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
   TF_Tensor* t =
-      TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0], num_dims, status);
+      TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0], num_dims, status.get());
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
-  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status.get());
+  *result = th;
   TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-  return th;
+  return StatusFromTF_Status(status.get());
 }
 
-TFE_TensorHandle* TensorHandleWithDimsIntHelper(TFE_Context* ctx, int data[],
-                                                int64_t dims[], int num_dims) {
-  TF_Status* status = TF_NewStatus();
+Status TensorHandleWithDimsIntHelper(TFE_Context* ctx, int data[],
+                                     int64_t dims[], int num_dims,
+                                     TFE_TensorHandle** result) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
   TF_Tensor* t =
-      TFE_AllocateHostTensor(ctx, TF_INT32, &dims[0], num_dims, status);
+      TFE_AllocateHostTensor(ctx, TF_INT32, &dims[0], num_dims, status.get());
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
-  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status.get());
+  *result = th;
   TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-  return th;
+  return StatusFromTF_Status(status.get());
 }
 
 // Get a scalar TensorHandle with given value
@@ -83,7 +87,12 @@ Status ScalarTensorHandle(AbstractContext* ctx, float value,
   TFE_Context* eager_ctx =
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = ScalarTensorHandleHelper(eager_ctx, value);
+  TFE_TensorHandle* input_eager;
+  Status s = ScalarTensorHandleHelper(eager_ctx, value, &input_eager);
+
+  if (!s.ok()) {  // If failed, return here.
+    return s;
+  }
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return StatusFromTF_Status(status.get());
@@ -98,8 +107,12 @@ Status TensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
   TFE_Context* eager_ctx =
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TensorHandleWithDimsFloatHelper(eager_ctx, data, dims, num_dims);
+  TFE_TensorHandle* input_eager;
+  Status s = TensorHandleWithDimsFloatHelper(eager_ctx, data, dims, num_dims,
+                                             &input_eager);
+  if (!s.ok()) {  // If failed, return here.
+    return s;
+  }
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return StatusFromTF_Status(status.get());
@@ -113,8 +126,12 @@ Status TensorHandleWithDimsInt(AbstractContext* ctx, int data[], int64_t dims[],
   TFE_Context* eager_ctx =
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TensorHandleWithDimsIntHelper(eager_ctx, data, dims, num_dims);
+  TFE_TensorHandle* input_eager;
+  Status s = TensorHandleWithDimsIntHelper(eager_ctx, data, dims, num_dims,
+                                           &input_eager);
+  if (!s.ok()) {  // If failed, return here.
+    return s;
+  }
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return StatusFromTF_Status(status.get());
