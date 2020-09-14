@@ -40,7 +40,6 @@ export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
 
 yes "" | $PYTHON_BIN_PATH configure.py
-echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test \
