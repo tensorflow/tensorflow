@@ -57,6 +57,16 @@ py_library(
 )
 
 py_library(
+    name = "sagemaker_cluster_resolver_py",
+    srcs = ["sagemaker_cluster_resolver.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_cluster_resolver_py",
+        "//tensorflow/python:training_server_lib",
+    ],
+)
+
+py_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
     srcs_version = "PY2AND3",
@@ -120,6 +130,22 @@ tf_py_test(
     main = "tfconfig_cluster_resolver_test.py",
     deps = [
         ":tfconfig_cluster_resolver_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training_server_lib",
+    ],
+)
+
+tf_py_test(
+    name = "sagemaker_cluster_resolver_py_test",
+    size = "small",
+    srcs = ["sagemaker_cluster_resolver_test.py"],
+    grpc_enabled = True,
+    main = "sagemaker_cluster_resolver_test.py",
+    deps = [
+        ":sagemaker_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
