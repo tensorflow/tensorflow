@@ -30,6 +30,7 @@ namespace tensorflow {
 namespace profiler {
 
 void ProfilerServer::StartProfilerServer(int32 port) {
+  VLOG(1) << "Starting profiler server.";
   std::string server_address = absl::StrCat("[::]:", port);
   service_ = CreateProfilerService();
   ::grpc::ServerBuilder builder;
@@ -40,11 +41,11 @@ void ProfilerServer::StartProfilerServer(int32 port) {
   builder.RegisterService(service_.get());
   server_ = builder.BuildAndStart();
   if (!selected_port) {
-    LOG(ERROR) << "Unable to bind to " << server_address << ":"
-               << selected_port;
+    LOG(ERROR) << "Unable to bind to " << server_address
+               << " selected port:" << selected_port;
   } else {
-    LOG(INFO) << "Profiling Server listening on " << server_address << ":"
-              << selected_port;
+    LOG(INFO) << "Profiler server listening on " << server_address
+              << " selected port:" << selected_port;
   }
 }
 

@@ -718,6 +718,7 @@ Status GpuTracer::CollectData(XSpace* space) {
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
     const ProfileOptions& options) {
+  VLOG(2) << "Collecting data to XSpace from GpuTracer.";
   if (options.device_type() != ProfileOptions::GPU &&
       options.device_type() != ProfileOptions::UNSPECIFIED)
     return nullptr;
