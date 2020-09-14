@@ -385,8 +385,8 @@ class ShapeTreeIterator
   bool operator!=(const ShapeTreeIterator& other) const {
     return node_ != other.node_;
   }
-  ValueType& operator*() { return node_->data; }
-  ValueType* operator->() { return &node_->data; }
+  ValueType& operator*() const { return node_->data; }
+  ValueType* operator->() const { return &node_->data; }
 
  private:
   ContainerType* nodes_;
