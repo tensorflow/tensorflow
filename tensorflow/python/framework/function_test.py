@@ -21,7 +21,6 @@ from __future__ import print_function
 import re
 import time
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import function_pb2
@@ -1624,11 +1623,10 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
-class FunctionInlineControlTest(test.TestCase, parameterized.TestCase):
+class FunctionInlineControlTest(test.TestCase):
 
-  @parameterized.parameters((True), (False))
   @test_util.disable_xla("XLA changes the names, breaking graph analysis")
-  def testFoo(self, noinline):
+  def testFoo(self):
     dtype = dtypes.float32
     cfg = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(
@@ -1638,47 +1636,50 @@ class FunctionInlineControlTest(test.TestCase, parameterized.TestCase):
                 do_function_inlining=True,
                 do_constant_folding=True)))
     cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
-    @function.Defun(dtype, noinline=noinline)
-    def Cell(v):
-      # If v is a vector [n, 1], x is a big square matrix.
-      x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
-      return math_ops.reduce_sum(x, 1, keepdims=True)
+    for noinline in [False, True]:
 
-    @function.Defun(dtype)
-    def Forward(x):
-      for _ in range(10):
-        # pylint: disable=cell-var-from-loop
-        x = Cell(x)
-      return math_ops.reduce_sum(x, [0, 1])
+      @function.Defun(dtype, noinline=noinline)
+      def Cell(v):
+        # If v is a vector [n, 1], x is a big square matrix.
+        x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
+        return math_ops.reduce_sum(x, 1, keepdims=True)
 
-    self.assertEqual(noinline, Cell.definition.attr["_noinline"].b)
+      @function.Defun(dtype)
+      def Forward(x):
+        for _ in range(10):
+          # pylint: disable=cell-var-from-loop
+          x = Cell(x)
+        return math_ops.reduce_sum(x, [0, 1])
 
-    g = ops.Graph()
-    with g.as_default():
-      x = array_ops.placeholder(dtype)
-      y = Forward(x)
-      dx, = gradients_impl.gradients([y], [x])
+      self.assertEqual(noinline, Cell.definition.attr["_noinline"].b)
 
-    np.random.seed(321)
-    inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
-    run_metadata = config_pb2.RunMetadata()
-    with session.Session(graph=g, config=cfg) as sess:
-      ans = sess.run(
-          [y, dx], {x: inp},
-          run_metadata=run_metadata,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assertAllClose(ans[0], 255.971, rtol=1e-3)
-      self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
+      g = ops.Graph()
+      with g.as_default():
+        x = array_ops.placeholder(dtype)
+        y = Forward(x)
+        dx, = gradients_impl.gradients([y], [x])
 
-    def MetadataHasCell(run_metadata):
-      for dev_stats in run_metadata.step_stats.dev_stats:
-        for node_stats in dev_stats.node_stats:
-          if cell_func_call_pattern.search(node_stats.timeline_label):
-            return True
-      return False
+      np.random.seed(321)
+      inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
+      run_metadata = config_pb2.RunMetadata()
+      with session.Session(graph=g, config=cfg) as sess:
+        ans = sess.run(
+            [y, dx], {x: inp},
+            run_metadata=run_metadata,
+            options=config_pb2.RunOptions(
+                trace_level=config_pb2.RunOptions.FULL_TRACE))
+        print(ans[0], np.sum(ans[1]))
+        self.assertAllClose(ans[0], 255.971, rtol=1e-3)
+        self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
 
-    self.assertEqual(MetadataHasCell(run_metadata), noinline)
+      def MetadataHasCell(run_metadata):
+        for dev_stats in run_metadata.step_stats.dev_stats:
+          for node_stats in dev_stats.node_stats:
+            if cell_func_call_pattern.search(node_stats.timeline_label):
+              return True
+        return False
+
+      self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
 class ModuleFunctionTest(test.TestCase):
