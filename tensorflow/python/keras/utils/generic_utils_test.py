@@ -352,7 +352,10 @@ class SerializeKerasObjectTest(test.TestCase):
     input_data = np.random.normal(2, 1, (5, 784))
     output = old_model.predict(input_data)
     expected_output = new_model.predict(input_data)
-    self.assertAllEqual(output, expected_output)
+    # This has assertAllEqual upstream. The tests passes with assertAllEqual
+    # locally, but fails with minute mismatches (e.g. 1566.231 vs 1566.2308)
+    # when run on CI.
+    self.assertAllClose(output, expected_output)
 
 
 class SliceArraysTest(test.TestCase):

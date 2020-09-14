@@ -46,7 +46,10 @@ py_test(
     main = "xla_client_test.py",
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    tags = [
+         "no_oss",
+         "no_rocm",
+    ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_call_for_test",
         ":xla_client",
@@ -66,6 +69,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss",
+        "no_rocm",
         "requires-gpu-nvidia",
     ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
@@ -169,7 +173,10 @@ py_test(
     srcs = ["bfloat16_test.py"],
     main = "bfloat16_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+         "no_oss",
+         "no_rocm"
+    ],
     deps = [
         ":xla_client",
         ":xla_extension",
