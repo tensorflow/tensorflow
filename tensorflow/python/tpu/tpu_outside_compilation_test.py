@@ -32,6 +32,7 @@ from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -554,6 +555,9 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       self.assertEqual(events[1].summary.value[0].tag, "cond/x")
       self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/168493455): Reenable this test one deadlock resolved."
+  )
   def testAutoOutsideCompilationWithFunctionalNodes(self):
     strategy = get_tpu_strategy()
 
