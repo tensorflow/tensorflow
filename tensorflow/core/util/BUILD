@@ -868,4 +868,7 @@ tf_proto_library(
         ":saved_tensor_slice_proto",
         ":memmapped_file_system_proto",
     ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
 )

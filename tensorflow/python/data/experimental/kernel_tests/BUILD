@@ -756,6 +756,7 @@ tf_py_test(
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
         "no_pip",
+        "notap",
     ],
     deps = [
         ":reader_dataset_ops_test_base",

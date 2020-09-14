@@ -78,7 +78,7 @@ OPTIMIZATION_LEVEL := -O3
 
 CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
                -Wshadow -Wunused-variable -Wmissing-field-initializers \
-               -Wunused-function -Wswitch
+               -Wunused-function -Wswitch -Wvla
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
 CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
 	          $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)

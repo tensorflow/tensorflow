@@ -1204,9 +1204,10 @@ class _TapeGradientFunctions(object):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
         zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
+    captured_inputs = backward.captured_inputs
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
-        for capture in backward.captured_inputs
+        for capture in captured_inputs
     ]
     if any(t.graph is forward_graph for t in remapped_captures
            if not isinstance(t, ops.EagerTensor)):
@@ -1220,8 +1221,7 @@ class _TapeGradientFunctions(object):
     # unconnected gradients. We do that in advance so we don't have to hold on
     # to the outputs themselves, which may not be needed otherwise.
     variant_zeros_like = {}
-    backward_function_inputs = (
-        len(backward.inputs) - len(backward.captured_inputs))
+    backward_function_inputs = (len(backward.inputs) - len(captured_inputs))
     recorded_outputs = []
     trainable_recorded_outputs = 0
     skip_positions = []

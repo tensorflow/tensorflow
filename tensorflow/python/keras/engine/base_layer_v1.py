@@ -161,7 +161,7 @@ class Layer(base_layer.Layer):
     # to non-input layers.
     allowed_kwargs = {
         'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
-        'weights', 'activity_regularizer', 'autocast'
+        'weights', 'activity_regularizer', 'autocast', 'implementation'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)

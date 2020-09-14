@@ -1586,6 +1586,7 @@ py_library(
         "framework/convert_to_constants.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = visibility + ["//waymo/ml:__subpackages__"],
     deps = [
         ":dtypes",
         ":framework_ops",

@@ -22,7 +22,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -225,7 +224,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertEqual(layer.compute_output_shape([(4, 5), (4, 5)]), (4, 1))
 
   @parameterized.named_parameters(
-      *tf_test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[keras.layers.Add, keras.layers.Subtract,
                  keras.layers.Multiply, keras.layers.Minimum,
                  keras.layers.Maximum, keras.layers.Average,
@@ -251,7 +250,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertAllEqual(out_dense, out_ragged)
 
   @parameterized.named_parameters(
-      *tf_test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[keras.layers.Add, keras.layers.Subtract,
                  keras.layers.Multiply, keras.layers.Minimum,
                  keras.layers.Maximum, keras.layers.Average]))

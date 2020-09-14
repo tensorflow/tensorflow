@@ -126,6 +126,8 @@ class DataServiceDispatcherImpl {
   Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
                              ProcessingMode processing_mode, int64 dataset_id)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
+  Status CheckStarted() LOCKS_EXCLUDED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
   Status Apply(const Update& update) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, but doesn't update the journal. Only meant to be
@@ -141,6 +143,7 @@ class DataServiceDispatcherImpl {
   Env* env_;
 
   mutex mu_;
+  bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
 
   // Cached worker stubs for communicating with workers.

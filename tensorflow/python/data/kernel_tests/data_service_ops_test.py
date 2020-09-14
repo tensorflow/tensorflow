@@ -547,12 +547,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dispatcher = self.start_dispatch_server(
         job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
     worker = self.start_worker_server(dispatcher)  # pylint: disable=unused-variable
-    num_elements = 10
+    num_elements = 100
     ds = _make_distributed_range_dataset(
         num_elements, dispatcher, job_name=job_name)
     it = iter(ds)
-    self.assertEqual(0, next(it).numpy())
-    self.assertEqual(1, worker._num_tasks())
+    self.assertEqual(next(it).numpy(), 0)
+    self.assertEqual(worker._num_tasks(), 1)
     del it
     while worker._num_tasks() > 0:
       time.sleep(0.1)

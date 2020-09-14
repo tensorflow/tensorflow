@@ -32,20 +32,16 @@ extern "C" {
 namespace {
 class CallbackErrorReporter : public tflite::ErrorReporter {
  public:
-  using ErrorCallback = void (*)(void* user_data, const char* format,
-                                 va_list args);
-
-  CallbackErrorReporter(ErrorCallback callback, void* user_data)
-      : callback_(callback), user_data_(user_data) {}
+  explicit CallbackErrorReporter(TfLiteErrorReporterCallback callback)
+      : callback_(callback) {}
 
   int Report(const char* format, va_list args) override {
-    callback_(user_data_, format, args);
+    callback_.error_reporter(callback_.user_data, format, args);
     return 0;
   }
 
  private:
-  ErrorCallback callback_;
-  void* user_data_;
+  TfLiteErrorReporterCallback callback_;
 };
 }  // namespace
 
@@ -90,8 +86,8 @@ void TfLiteInterpreterOptionsSetErrorReporter(
     TfLiteInterpreterOptions* options,
     void (*reporter)(void* user_data, const char* format, va_list args),
     void* user_data) {
-  options->error_reporter = reporter;
-  options->error_reporter_user_data = user_data;
+  options->error_reporter_callback.error_reporter = reporter;
+  options->error_reporter_callback.user_data = user_data;
 }
 
 TfLiteInterpreter* TfLiteInterpreterCreate(
@@ -208,10 +204,10 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
   }
 
   std::unique_ptr<tflite::ErrorReporter> optional_error_reporter;
-  if (optional_options && optional_options->error_reporter != nullptr) {
+  if (optional_options &&
+      optional_options->error_reporter_callback.error_reporter != nullptr) {
     optional_error_reporter.reset(
-        new CallbackErrorReporter(optional_options->error_reporter,
-                                  optional_options->error_reporter_user_data));
+        new CallbackErrorReporter(optional_options->error_reporter_callback));
   }
 
   if (optional_options) {

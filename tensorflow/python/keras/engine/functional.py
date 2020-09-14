@@ -140,10 +140,16 @@ class Functional(training_lib.Model):
     # Models constructed with a single Tensor or list of Tensors can
     # be called with a dict, where the keys of the dict are the names
     # of the `Input` objects. Extra keys are ignored with warning.
-    self._enable_dict_to_input_mapping = (
-        not nest.is_nested(self._nested_inputs) or
-        (isinstance(self._nested_inputs, (list, tuple, dict)) and
-         not any(nest.is_nested(t) for t in self._nested_inputs)))
+    if not nest.is_nested(self._nested_inputs):
+      self._enable_dict_to_input_mapping = True
+    elif (isinstance(self._nested_inputs, (list, tuple)) and
+          not any(nest.is_nested(t) for t in self._nested_inputs)):
+      self._enable_dict_to_input_mapping = True
+    elif (isinstance(self._nested_inputs, dict) and
+          not any(nest.is_nested(t) for t in self._nested_inputs.values())):
+      self._enable_dict_to_input_mapping = True
+    else:
+      self._enable_dict_to_input_mapping = False
 
     if not keras_tensor.keras_tensors_enabled():
       if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
