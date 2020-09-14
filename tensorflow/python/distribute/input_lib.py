@@ -132,18 +132,12 @@ def get_distributed_datasets_from_function(dataset_fn,
     A distributed dataset instance.
   """
   if tf2.enabled():
-    if replication_mode == InputReplicationMode.PER_WORKER:
-      return DistributedDatasetsFromFunction(
-          dataset_fn,
-          input_workers,
-          input_contexts,
-          strategy)
-    else:
-      return DistributedDatasetsFromFunctionForReplicas(
-          dataset_fn,
-          input_workers,
-          input_contexts,
-          strategy)
+    return DistributedDatasetsFromFunction(
+        dataset_fn,
+        input_workers,
+        input_contexts,
+        strategy,
+        replication_mode)
   else:
     return DistributedDatasetsFromFunctionV1(
         dataset_fn,
@@ -1147,7 +1141,7 @@ class DistributedDatasetV1(DistributedDataset):
 class DistributedDatasetsFromFunction(_IterableInput):
   """Inputs created from dataset function."""
 
-  def __init__(self, dataset_fn, input_workers, input_contexts, strategy):
+  def __init__(self, dataset_fn, input_workers, input_contexts, strategy, replication_mode):
     """Makes an iterable from datasets created by the given function.
 
     Args:
@@ -1158,6 +1152,7 @@ class DistributedDatasetsFromFunction(_IterableInput):
         `worker_device_pairs`.
       strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
+      replication_mode: Replication mode for the input function.
     """
     super(DistributedDatasetsFromFunction, self).__init__(
         input_workers=input_workers)
@@ -1168,9 +1163,11 @@ class DistributedDatasetsFromFunction(_IterableInput):
           "input_contexts (%d)" %
           (input_workers.num_workers, len(input_contexts)))
 
+    self._dataset_fn = dataset_fn
     self._input_workers = input_workers
     self._input_contexts = input_contexts
     self._strategy = strategy
+    self._replication_mode = replication_mode
     self._datasets, element_spec = (
         _create_datasets_per_worker_with_input_context(self._input_contexts,
                                                        self._input_workers,
@@ -1189,23 +1186,25 @@ class DistributedDatasetsFromFunction(_IterableInput):
       # out this change.
       enable_legacy_iterators = getattr(self._strategy,
                                         "_enable_legacy_iterators", False)
+      if self._replication_mode == InputReplicationMode.PER_WORKER:
+        iterators = _create_iterators_per_worker(self._datasets,
+                                                 self._input_workers,
+                                                 enable_legacy_iterators)
 
-      iterators = _create_iterators_per_worker(self._datasets,
-                                               self._input_workers,
-                                               enable_legacy_iterators)
-
-      if enable_legacy_iterators:
-        iterator = DistributedIteratorV1(
-            self._input_workers,
-            iterators,
-            self._strategy,
-            enable_get_next_as_optional=self._enable_get_next_as_optional)
+        if enable_legacy_iterators:
+          iterator = DistributedIteratorV1(self._input_workers, iterators,
+                                           self._strategy)
+        else:
+          iterator = DistributedIterator(self._input_workers, iterators,
+                                         self._strategy)
       else:
-        iterator = DistributedIterator(
-            self._input_workers,
-            iterators,
-            self._strategy,
-            enable_get_next_as_optional=self._enable_get_next_as_optional)
+        iterators, element_spec = _create_iterators_per_replica_with_input_context(
+            self._input_contexts, self._input_workers, self._dataset_fn)
+        iterator = DistributedIteratorForReplicas(
+            self._input_workers, iterators, self._strategy)
+        self._element_spec = _create_distributed_tensor_spec(
+            self._strategy,	element_spec)
+
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
       # When async eager is enabled, sometimes the iterator may not finish
@@ -1223,47 +1222,6 @@ class DistributedDatasetsFromFunction(_IterableInput):
   def element_spec(self):
     """The type specification of an element of this dataset."""
     return self._element_spec
-
-
-class DistributedDatasetsFromFunctionForReplicas(_IterableInput):
-  """Inputs created from dataset function."""
-
-  def __init__(self, dataset_fn, input_workers, input_contexts, strategy):
-    super(DistributedDatasetsFromFunctionForReplicas, self).__init__(
-        input_workers=input_workers)
-
-    self._dataset_fn = dataset_fn
-    self._input_workers = input_workers
-    self._input_contexts = input_contexts
-    self._strategy = strategy
-    self._element_spec = None
-
-
-  def __iter__(self):
-    if not (context.executing_eagerly() or
-            ops.get_default_graph().building_function):
-      raise RuntimeError("__iter__() is only supported inside of tf.function "
-                         "or when eager execution is enabled.")
-
-    iterators, element_spec = _create_iterators_per_replica_with_input_context(
-        self._input_contexts, self._input_workers, self._dataset_fn)
-    iterator = DistributedIteratorForReplicas(self._input_workers, iterators, self._strategy)
-    self._element_spec = _create_distributed_tensor_spec(
-      self._strategy,	element_spec)	
-    iterator._element_spec = self._element_spec  # pylint: disable=protected-access
-    return iterator
-
-  @property	
-  def element_spec(self):	
-    """The type specification of an element of this dataset."""	
-    if self._element_spec is None:	
-      raise ValueError("You must create an iterator before calling "	
-                       "`element_spec` on the distributed dataset or iterator. "	
-                       "This is because the dataset function is not called "	
-                       "before an iterator is created.")	
-    return self._element_spec
-
-
 
 
 class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):

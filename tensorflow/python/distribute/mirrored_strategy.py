@@ -485,10 +485,17 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
 
-  def _distribute_datasets_from_function(self, dataset_fn, options):
+  def _distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
+    if options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+      self._input_workers_devices = (
+          tuple((device_util.canonicalize("/device:CPU:0", d), (d,)) for d in self._devices))
+      input_workers = self._input_workers_with_options(
+          None, self._input_workers_devices)
+    else:
+      input_workers = self._input_workers_with_options(
+          options, self._input_workers_devices)
     input_contexts = []
-    input_workers = self._input_workers_with_options(
-        options, self._input_workers_devices)
     num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
