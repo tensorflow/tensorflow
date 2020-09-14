@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import uuid
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
@@ -67,7 +66,9 @@ _CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
 
 
 def _use_new_code():
-  return compat.forward_compatible(2020, 9, 9)
+  # TODO(b/168313799): Enable when the new codepath doesn't break deepcopy of
+  # built LSTM layers.
+  return False
 
 
 @keras_export('keras.layers.GRUCell', v1=[])
