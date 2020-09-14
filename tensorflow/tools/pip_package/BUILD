@@ -146,6 +146,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tpu",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
+    "//tensorflow/tools/common:public_api",
+    "//tensorflow/tools/common:test_module1",
     "//tensorflow/python/distribute/client:client",
     "//tensorflow/python/distribute/client:parameter_server_client",
     "//tensorflow/python/distribute/client:remote_eager_lib",
