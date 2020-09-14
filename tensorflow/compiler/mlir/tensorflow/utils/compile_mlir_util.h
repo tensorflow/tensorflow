@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -90,6 +91,12 @@ Status CompileMlirToXlaHlo(
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);
+
+// Parses a MLIR module from `mlir_module_string` into `mlir_module` with
+// context `mlir_context`.
+Status ParseMlirModule(llvm::StringRef mlir_module_string,
+                       mlir::MLIRContext* mlir_context,
+                       mlir::OwningModuleRef* mlir_module);
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.

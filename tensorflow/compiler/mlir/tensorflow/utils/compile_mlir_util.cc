@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
@@ -63,28 +62,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-
-// Parses the MLIR module from the mlir_module_string.
-Status ParseMlirModule(llvm::StringRef mlir_module_string,
-                       mlir::MLIRContext* mlir_context,
-                       mlir::OwningModuleRef* mlir_module) {
-  TF_RET_CHECK(!mlir_module_string.empty())
-      << "unexpected empty serialized MLIR module string";
-  TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
-
-  // Make sure we catch any error reported by MLIR and forward it to the TF
-  // error reporting system.
-  mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
-
-  // Parse the module.
-  *mlir_module = mlir::parseSourceString(mlir_module_string, mlir_context);
-  if (!*mlir_module) {
-    return error_handler.Combine(
-        errors::InvalidArgument("could not parse MLIR module"));
-  }
-
-  return Status::OK();
-}
 
 // Extracts shape from XlaArgument as TensorShape. If shape is a xla::Shape,
 // that is converted to a TensorShape.
@@ -419,6 +396,27 @@ Status CompileMlirToXlaHlo(
 
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("mlir_compile_after", module_op);
+
+  return Status::OK();
+}
+
+Status ParseMlirModule(llvm::StringRef mlir_module_string,
+                       mlir::MLIRContext* mlir_context,
+                       mlir::OwningModuleRef* mlir_module) {
+  TF_RET_CHECK(!mlir_module_string.empty())
+      << "unexpected empty serialized MLIR module string";
+  TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
+
+  // Make sure we catch any error reported by MLIR and forward it to the TF
+  // error reporting system.
+  mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
+
+  // Parse the module.
+  *mlir_module = mlir::parseSourceString(mlir_module_string, mlir_context);
+  if (!*mlir_module) {
+    return error_handler.Combine(
+        errors::InvalidArgument("could not parse MLIR module"));
+  }
 
   return Status::OK();
 }
