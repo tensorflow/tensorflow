@@ -15,7 +15,7 @@ if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 fi
 
-ROCM_PATH=$ROCM_INSTALL_DIR ./dummy.sh
+ROCM_PATH=$ROCM_INSTALL_DIR
 
 # Explicitly delete the old whl packages in the /tmp/tensorflow_pkg dir
 # Doing so comes in handy when the TF version number changes, because
