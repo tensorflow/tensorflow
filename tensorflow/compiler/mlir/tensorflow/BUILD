@@ -818,6 +818,9 @@ cc_library(
         "transforms/shape_inference.h",
     ],
     includes = ["include"],
+    textual_hdrs = [
+        "ir/tf_ops_helpers.inc",
+    ],
     deps = [
         ":attribute_utils",
         ":bridge_logger",
