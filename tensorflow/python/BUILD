@@ -5532,6 +5532,44 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "function_parameter_canonicalizer",
+    srcs = ["util/function_parameter_canonicalizer.cc"],
+    hdrs = ["util/function_parameter_canonicalizer.h"],
+    deps = [
+        ":py_util",
+        ":safe_pyobject_ptr",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_function_parameter_canonicalizer_binding_for_test",
+    testonly = True,
+    srcs = ["util/function_parameter_canonicalizer_binding_for_test.cc"],
+    module_name = "_function_parameter_canonicalizer_binding_for_test",
+    deps = [
+        ":function_parameter_canonicalizer",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "function_parameter_canonicalizer_test",
+    srcs = ["util/function_parameter_canonicalizer_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":_function_parameter_canonicalizer_binding_for_test",
+        ":client_testlib",
+    ],
+)
+
 py_library(
     name = "global_test_configuration",
     deps = if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]) +
