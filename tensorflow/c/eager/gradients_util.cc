@@ -88,11 +88,7 @@ Status ScalarTensorHandle(AbstractContext* ctx, float value,
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_TensorHandle* input_eager;
-  Status s = ScalarTensorHandleHelper(eager_ctx, value, &input_eager);
-
-  if (!s.ok()) {  // If failed, return here.
-    return s;
-  }
+  TF_RETURN_IF_ERROR(ScalarTensorHandleHelper(eager_ctx, value, &input_eager));
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return StatusFromTF_Status(status.get());
@@ -108,11 +104,8 @@ Status TensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_TensorHandle* input_eager;
-  Status s = TensorHandleWithDimsFloatHelper(eager_ctx, data, dims, num_dims,
-                                             &input_eager);
-  if (!s.ok()) {  // If failed, return here.
-    return s;
-  }
+  TF_RETURN_IF_ERROR(TensorHandleWithDimsFloatHelper(eager_ctx, data, dims,
+                                                     num_dims, &input_eager));
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return StatusFromTF_Status(status.get());
@@ -127,11 +120,8 @@ Status TensorHandleWithDimsInt(AbstractContext* ctx, int data[], int64_t dims[],
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_TensorHandle* input_eager;
-  Status s = TensorHandleWithDimsIntHelper(eager_ctx, data, dims, num_dims,
-                                           &input_eager);
-  if (!s.ok()) {  // If failed, return here.
-    return s;
-  }
+  TF_RETURN_IF_ERROR(TensorHandleWithDimsIntHelper(eager_ctx, data, dims,
+                                                   num_dims, &input_eager));
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return StatusFromTF_Status(status.get());
