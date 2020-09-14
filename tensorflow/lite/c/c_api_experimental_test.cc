@@ -23,8 +23,8 @@ limitations under the License.
 
 namespace {
 
-TfLiteRegistration* GetDummyRegistration() {
-  static TfLiteRegistration registration = {
+const TfLiteRegistration* GetDummyRegistration() {
+  static const TfLiteRegistration registration = {
       /*init=*/nullptr,
       /*free=*/nullptr,
       /*prepare=*/nullptr,

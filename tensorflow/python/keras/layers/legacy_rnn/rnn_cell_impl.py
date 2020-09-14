@@ -25,6 +25,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import warnings
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -416,9 +417,10 @@ class BasicRNNCell(LayerRNNCell):
                name=None,
                dtype=None,
                **kwargs):
-    logging.warning("`tf.nn.rnn_cell.BasicRNNCell` is deprecated. This class "
-                    "is equivalent as `tf.keras.layers.SimpleRNNCell`, "
-                    "and will be replaced by that in Tensorflow 2.0.")
+    warnings.warn("`tf.nn.rnn_cell.BasicRNNCell` is deprecated and will be "
+                  "removed in a future version. This class "
+                  "is equivalent as `tf.keras.layers.SimpleRNNCell`, "
+                  "and will be replaced by that in Tensorflow 2.0.")
     super(BasicRNNCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
@@ -523,9 +525,10 @@ class GRUCell(LayerRNNCell):
                name=None,
                dtype=None,
                **kwargs):
-    logging.warning("`tf.nn.rnn_cell.GRUCell` is deprecated. This class "
-                    "is equivalent as `tf.keras.layers.GRUCell`, "
-                    "and will be replaced by that in Tensorflow 2.0.")
+    warnings.warn("`tf.nn.rnn_cell.GRUCell` is deprecated and will be removed "
+                  "in a future version. This class "
+                  "is equivalent as `tf.keras.layers.GRUCell`, "
+                  "and will be replaced by that in Tensorflow 2.0.")
     super(GRUCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
@@ -695,9 +698,10 @@ class BasicLSTMCell(LayerRNNCell):
         When restoring from CudnnLSTM-trained checkpoints, must use
         `CudnnCompatibleLSTMCell` instead.
     """
-    logging.warning("`tf.nn.rnn_cell.BasicLSTMCell` is deprecated. This class "
-                    "is equivalent as `tf.keras.layers.LSTMCell`, "
-                    "and will be replaced by that in Tensorflow 2.0.")
+    warnings.warn("`tf.nn.rnn_cell.BasicLSTMCell` is deprecated and will be "
+                  "removed in a future version. This class "
+                  "is equivalent as `tf.keras.layers.LSTMCell`, "
+                  "and will be replaced by that in Tensorflow 2.0.")
     super(BasicLSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
@@ -895,9 +899,10 @@ class LSTMCell(LayerRNNCell):
         When restoring from CudnnLSTM-trained checkpoints, use
         `CudnnCompatibleLSTMCell` instead.
     """
-    logging.warning("`tf.nn.rnn_cell.LSTMCell` is deprecated. This class "
-                    "is equivalent as `tf.keras.layers.LSTMCell`, "
-                    "and will be replaced by that in Tensorflow 2.0.")
+    warnings.warn("`tf.nn.rnn_cell.LSTMCell` is deprecated and will be "
+                  "removed in a future version. This class "
+                  "is equivalent as `tf.keras.layers.LSTMCell`, "
+                  "and will be replaced by that in Tensorflow 2.0.")
     super(LSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
