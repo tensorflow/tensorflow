@@ -264,6 +264,7 @@ filegroup(
         "inputbuffer.h",
         "inputstream_interface.cc",
         "inputstream_interface.h",
+        "leveldb.h",
         "path.h",
         "random_inputstream.cc",
         "random_inputstream.h",
