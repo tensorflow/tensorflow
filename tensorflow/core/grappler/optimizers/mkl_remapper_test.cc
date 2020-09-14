@@ -170,7 +170,9 @@ class MklRemapperTest : public GrapplerTest {
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
     EXPECT_EQ(1, tensors_expected.size());
     EXPECT_EQ(1, tensors.size());
-    test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+    // Using relative tolerance since oneDNN could produce different results
+    // when float32 numbers need to be rounded during accumulation.
+    test::ExpectClose(tensors_expected[0], tensors[0], 0, 1e-6);
   }
 };
 
