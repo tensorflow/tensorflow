@@ -17,13 +17,13 @@ cc_library(
     name = "leveldb",
     srcs = [],
     hdrs = ["leveldb.h"],
-    deps = [
-        "//tensorflow/core/platform:env",
-        "@leveldb",
-    ],
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util/tensor_bundle:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/platform:env",
+        "@leveldb",
     ],
     alwayslink = True,
 )

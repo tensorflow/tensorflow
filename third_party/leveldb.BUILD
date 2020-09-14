@@ -18,16 +18,29 @@ cc_library(
         "util/comparator.cc",
         "util/crc32c.cc",
         "util/env.cc",
-        "util/env_posix.cc",
         "util/filter_policy.cc",
         "util/hash.cc",
         "util/options.cc",
         "util/status.cc",
-    ],
+    ] + select({
+        "//conditions:default": glob([
+            "util/env_posix.cc",
+        ]),
+        "@org_tensorflow//tensorflow:windows": glob([
+            "util/env_windows.cc",
+        ]),
+    }),
     hdrs = [
         "include/leveldb/cache.h",
+        "include/leveldb/comparator.h",
+        "include/leveldb/env.h",
         "include/leveldb/export.h",
+        "include/leveldb/filter_policy.h",
+        "include/leveldb/iterator.h",
+        "include/leveldb/options.h",
         "include/leveldb/slice.h",
+        "include/leveldb/status.h",
+        "include/leveldb/table.h",
         "include/leveldb/table_builder.h",
         "port/port.h",
         "port/port_stdcxx.h",
@@ -45,8 +58,15 @@ cc_library(
         "util/logging.h",
         "util/mutexlock.h",
         "util/no_destructor.h",
-        "util/posix_logger.h",
-    ],
+    ] + select({
+        "//conditions:default": glob([
+            "util/posix_logger.h",
+        ]),
+        "@org_tensorflow//tensorflow:windows": glob([
+            "util/env_windows_test_helper.h",
+            "util/windows_logger.h",
+        ]),
+    }),
     copts = [],
     defines = [
         "LEVELDB_PLATFORM_POSIX",
