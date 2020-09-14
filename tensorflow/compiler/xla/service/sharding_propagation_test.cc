@@ -1286,6 +1286,38 @@ ENTRY %conv {
               op::Sharding("{replicated}"));
 }
 
+TEST_F(ShardingPropagationTest,
+       ConvolutionFilterIFOFPartitionedInputPartialReplicate) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+ENTRY entry {
+  %lhs = f32[128,112,112,12] parameter(0)
+  %lhs.copy = f32[128,112,112,12] copy(f32[128,112,112,12] %lhs),
+    sharding={devices=[1,1,1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %rhs = f32[7,7,12,64] parameter(1)
+  %rhs.copy = f32[7,7,12,64] copy(f32[7,7,12,64] %rhs),
+    sharding={devices=[1,1,2,2]0,1,2,3}
+  %conv = f32[128,56,56,64] convolution(
+    f32[128,112,112,12] %lhs.copy,
+    f32[7,7,12,64] %rhs.copy),
+    window={size=7x7 stride=2x2 pad=3_3x3_3},
+    dim_labels=b01f_01io->b01f
+  ROOT %copy = f32[128,56,56,64] copy(conv)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  VLOG(1) << module->ToString();
+
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "conv"),
+      op::Sharding("{devices=[1,1,1,2,2]0,2,1,3 last_tile_dim_replicate}"));
+}
+
 TEST_F(ShardingPropagationTest, ConcatFromUserUnshardedDim) {
   const char* const hlo_string = R"(
 HloModule module

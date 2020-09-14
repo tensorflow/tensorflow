@@ -1169,11 +1169,22 @@ StatusOr<HloInstruction*> PartitionDot(
       output_sharding, dims_mapping.lhs_non_contracting_dims, 2);
   const int64 output_rhs_non_contracting_partitions = get_partitions_for_dims(
       output_sharding, dims_mapping.rhs_non_contracting_dims, 2);
+  const int64 lhs_conv_spatial_partitions = get_partitions_for_dims(
+      lhs.sharding(), dims_mapping.conv_spatial_dims, 0);
+  const int64 rhs_conv_spatial_partitions = get_partitions_for_dims(
+      rhs.sharding(), dims_mapping.conv_spatial_dims, 1);
+  const int64 output_conv_spatial_partitions = get_partitions_for_dims(
+      output_sharding, dims_mapping.conv_spatial_dims, 2);
   // Before we find partial matches along the dimensions, invoke base case again
   // without may_reshard_without_detecting_match.
 
-  // Try partition the purely spatially-partitioned convolution first.
-  if (!dims_mapping.conv_spatial_dims.empty()) {
+  // Try partition the purely spatially-partitioned convolution with convolution
+  // spatial dimension partitioned or depthwise parallel dimension partitioned.
+  if (!dims_mapping.conv_spatial_dims.empty() &&
+      (lhs_conv_spatial_partitions > 1 || rhs_conv_spatial_partitions > 1 ||
+       output_conv_spatial_partitions > 1 ||
+       original_hlo->batch_group_count() > 1 ||
+       original_hlo->feature_group_count() > 1)) {
     const auto& conv_dnums = original_hlo->convolution_dimension_numbers();
     auto window = original_hlo->window();
 

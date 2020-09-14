@@ -565,9 +565,40 @@ bool InferDotShardingFromOperands(
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           int64 aggressiveness,
                                           bool may_combine_partial_sharding) {
+  auto get_partitions_for_dims =
+      [&](const HloInstruction* inst,
+          absl::Span<
+              const dot_as_convolution_util::DotConvolutionDimsInfo::DimNums>
+              dims,
+          int lhs_or_rhs) {
+        int64 partitions = 1;
+        if (!inst->has_sharding()) {
+          return partitions;
+        }
+        const auto& sharding = inst->sharding();
+        if (sharding.IsTileMaximal()) {
+          return partitions;
+        }
+        for (const auto& dim : dims) {
+          if (lhs_or_rhs == 0) {
+            partitions *= sharding.tile_assignment().dim(dim.lhs);
+          } else {
+            CHECK_EQ(lhs_or_rhs, 1);
+            partitions *= sharding.tile_assignment().dim(dim.rhs);
+          }
+        }
+        return partitions;
+      };
   auto dot_dims =
       dot_as_convolution_util::ParseConvolutionDimsInfo(instruction);
-  if (dot_dims.conv_spatial_dims.empty()) {
+  const int64 lhs_conv_spatial_partitions = get_partitions_for_dims(
+      instruction->operand(0), dot_dims.conv_spatial_dims, 0);
+  const int64 rhs_conv_spatial_partitions = get_partitions_for_dims(
+      instruction->operand(1), dot_dims.conv_spatial_dims, 1);
+  if (dot_dims.conv_spatial_dims.empty() ||
+      (lhs_conv_spatial_partitions == 1 && rhs_conv_spatial_partitions == 1 &&
+       instruction->batch_group_count() == 1 &&
+       instruction->feature_group_count() == 1)) {
     return InferDotShardingFromOperands(instruction, dot_dims,
                                         may_combine_partial_sharding);
   }
