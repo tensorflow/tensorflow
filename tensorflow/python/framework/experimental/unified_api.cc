@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/eager/gradients_util.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"

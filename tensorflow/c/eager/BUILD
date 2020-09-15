@@ -105,6 +105,7 @@ filegroup(
         "dlpack.h",
         "gradients.h",
         "gradients_internal.h",
+        "gradients_util.h",
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
