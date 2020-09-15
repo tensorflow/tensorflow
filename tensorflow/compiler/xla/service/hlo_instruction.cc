@@ -1942,6 +1942,56 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
   return Status::OK();
 }
 
+bool HloInstruction::IdenticalInternal(
+    const HloInstruction& other,
+    const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+        eq_operands,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations,
+    bool layout_sensitive, bool ignore_channel_id_values) const {
+  // An instruction is always identical to itself.
+  if (this == &other) {
+    return true;
+  }
+
+  // Identical instruction must have the same opcode, shape, and identical
+  // operands.
+  if (opcode() != other.opcode()) {
+    return false;
+  }
+  if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
+                         : ShapeUtil::Compatible(shape(), other.shape()))) {
+    return false;
+  }
+  if (operands().size() != other.operands().size()) {
+    return false;
+  }
+
+  // Two AllReduces are Identical if they have the same channel_id.
+  // Their operands don't have to be Identical.
+  if (!IsCrossModuleAllReduce()) {
+    // Use an explicit loop rather than ContainerEquals, because copying
+    // around std::functions may be too expensive in some cases.
+    for (size_t i = 0; i < operands().size(); ++i) {
+      if (!eq_operands(operand(i), other.operand(i))) {
+        return false;
+      }
+    }
+  }
+
+  if (backend_config_ != other.backend_config_) {
+    return false;
+  }
+
+  if (ignore_channel_id_values) {
+    if (auto channel_inst = DynCast<HloChannelInstruction>(this)) {
+      return channel_inst->IdenticalSlowPathIgnoringChannelIdValues(
+          other, eq_computations);
+    }
+  }
+  return IdenticalSlowPath(other, eq_computations);
+}
+
 void HloInstruction::AppendOperand(HloInstruction* operand) {
   if (operand->parent() != nullptr) {
     DCHECK(!operand->parent()->IsMarkedAsDead(operand))
