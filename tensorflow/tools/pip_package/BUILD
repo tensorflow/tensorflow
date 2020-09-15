@@ -148,6 +148,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/common:public_api",
     "//tensorflow/tools/common:test_module1",
+    "//tensorflow/tools/common:traverse",
     "//tensorflow/python/distribute/client:client",
     "//tensorflow/python/distribute/client:parameter_server_client",
     "//tensorflow/python/distribute/client:remote_eager_lib",
