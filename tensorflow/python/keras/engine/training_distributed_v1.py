@@ -33,7 +33,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import partial_batch_padding_handler as padding_util
-from tensorflow.python.keras.engine import training_arrays
+from tensorflow.python.keras.engine import training_arrays_v1
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -669,7 +669,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
             validation_steps=validation_steps,
             validation_freq=validation_freq)
 
-    return training_arrays.fit_loop(
+    return training_arrays_v1.fit_loop(
         model,
         dataset,
         batch_size=batch_size,
@@ -717,7 +717,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         return experimental_tpu_test_loop(
             model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
 
-    return training_arrays.test_loop(
+    return training_arrays_v1.test_loop(
         model,
         inputs=dataset,
         batch_size=batch_size,
@@ -751,7 +751,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
       if not context.executing_eagerly():
         return experimental_tpu_predict_loop(
             model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
-    return training_arrays.predict_loop(
+    return training_arrays_v1.predict_loop(
         model,
         dataset,
         batch_size=batch_size,
