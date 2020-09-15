@@ -1136,6 +1136,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+        "notsan",  # b/168645872
     ],
     tpu_tags = [
         "no_oss",  # b/150954621 Target too big to run serially reliably.
