@@ -37,8 +37,8 @@ from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
-from tensorflow.python.eager import function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -3187,7 +3187,7 @@ class TensorFlowOpLayer(Layer):
         return op.outputs[0]
       return op.outputs
 
-  @function.defun
+  @def_function.function
   def _defun_call(self, inputs):
     """Wraps the op creation method in an Eager function for `run_eagerly`."""
     return self._make_op(inputs)
