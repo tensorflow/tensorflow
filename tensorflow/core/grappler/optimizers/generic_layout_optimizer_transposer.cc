@@ -1371,7 +1371,9 @@ bool ReduceTransposer::IsReduceAxisSupported(
 Status ReduceTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsReduceOp(*node->node()));
-  const auto* output_shape_attr = node->GetAttr(kAttrOutputShape);
+  const auto& regular_fanin = node->GetRegularFanin(0);
+  const auto* output_shape_attr =
+      regular_fanin.node_view()->GetAttr(kAttrOutputShape);
   const auto& shape = output_shape_attr->list().shape(0);
   const int rank = shape.dim_size();
   std::string src_format = context->src_format;
