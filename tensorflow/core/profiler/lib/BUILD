@@ -53,7 +53,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
-        ":profiler_utils",
+        ":profiler_lock",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
@@ -164,9 +164,9 @@ cc_library(
 )
 
 cc_library(
-    name = "profiler_utils",
-    srcs = ["profiler_utils.cc"],
-    hdrs = ["profiler_utils.h"],
+    name = "profiler_lock",
+    srcs = ["profiler_lock.cc"],
+    hdrs = ["profiler_lock.h"],
     visibility = ["//tensorflow/core/profiler:internal"],
 )
 

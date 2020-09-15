@@ -32,7 +32,7 @@ limitations under the License.
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_utils.h"
+#include "tensorflow/core/profiler/lib/profiler_lock.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
