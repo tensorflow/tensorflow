@@ -232,24 +232,6 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     return copies;
   }
 
-  int64 GetAlternateMemoryOffset(const PresetAssignments& preset_assignments,
-                                 const HloInstruction* instruction,
-                                 const ShapeIndex& index = {}) const {
-    // Returns the offset of the assignment, -1 if it's not in the alternate
-    // memory.
-    const HloModule* module = instruction->parent()->parent();
-    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
-    HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instruction, index);
-    for (auto& pos_and_chunk : preset_assignments.chunks()) {
-      for (auto& value : buffer.values()) {
-        if (pos_and_chunk.first == value->defining_position()) {
-          return pos_and_chunk.second.offset;
-        }
-      }
-    }
-    return -1;
-  }
-
   std::unique_ptr<HloModule> CreateEvictAndPrefetchModule() {
     HloComputation::Builder builder(TestName());
     Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
@@ -4430,47 +4412,6 @@ TEST_P(MemorySpaceAssignmentTest, Determinism) {
     std::unique_ptr<HloModule> other_module = CreateEvictAndPrefetchModule();
     AssignMemorySpace(other_module.get());
     EXPECT_EQ(module_str, other_module->ToString());
-  }
-}
-
-TEST_P(MemorySpaceAssignmentTest, InPlaceOp) {
-  // Tests that in-place ops like DynamicUpdateSlice get the same allocation as
-  // its input.
-  absl::string_view hlo_string = R"(
-HloModule Module, is_scheduled=true
-
-fused_computation {
-  param0 = f32[2,3] parameter(0)
-  constant.1 = f32[] constant(0)
-  broadcast = f32[2,1] broadcast(constant.1), dimensions={}
-  constant.3 = s32[] constant(0)
-  ROOT dynamic-update-slice.5 = f32[2,3] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
-}
-
-ENTRY main {
-  param = f32[2,3] parameter(0)
-  negate = f32[2,3] negate(param)
-  fusion = f32[2,3] fusion(negate), kind=kLoop, calls=fused_computation
-  ROOT add = f32[2,3] add(fusion, fusion)
-}
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  auto preset_assignments = AssignMemorySpace(module.get());
-  HloInstruction* negate_instruction =
-      module->entry_computation()->GetInstructionWithName("negate");
-  int64 negate_offset =
-      GetAlternateMemoryOffset(*preset_assignments, negate_instruction);
-  HloInstruction* fusion_instruction =
-      module->entry_computation()->GetInstructionWithName("fusion");
-  int64 fusion_offset =
-      GetAlternateMemoryOffset(*preset_assignments, fusion_instruction);
-  // We expect negate and fusion to get the same offsets.
-  EXPECT_EQ(negate_offset, fusion_offset);
-  const bool allocate_across_sequential_calls = GetParam();
-  if (allocate_across_sequential_calls) {
-    EXPECT_NE(negate_offset, -1);
   }
 }
 

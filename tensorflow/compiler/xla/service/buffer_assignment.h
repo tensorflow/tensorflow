@@ -635,6 +635,10 @@ class BufferAssigner {
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
+  // Promotes operations (DUS, scatter) to be done in place: If an operation can
+  // be done in place, merge its buffer with its operand buffer.
+  Status MergeInplaceOpBuffers(BufferAssignment* assignment);
+
   // Assigns a single hlo buffer to an HLO allocation.
   Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
