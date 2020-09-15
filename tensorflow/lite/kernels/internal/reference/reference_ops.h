@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "third_party/eigen3/Eigen/Core"
 namespace tflite {
 
 namespace reference_ops {
@@ -250,9 +251,8 @@ inline void ReluX(const tflite::ActivationParams& params,
   const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
     const T val = input_data[i];
-    const T clamped = val > max_value   ? max_value
-                      : val < min_value ? min_value
-                                        : val;
+    const T clamped =
+        val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
   }
 }
@@ -1560,194 +1560,6 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
     }
     for (int j = 0; j < slice_size; j++) {
       output_data[to_pos + j] += updates_data[i * slice_size + j];
-    }
-  }
-}
-
-inline void ComputeInterpolationValues(const float value, const float scale,
-                                       const bool half_pixel_centers,
-                                       int32 input_size, float* scaled_value,
-                                       int32* lower_bound, int32* upper_bound) {
-  if (half_pixel_centers) {
-    *scaled_value = (value + 0.5f) * scale - 0.5f;
-  } else {
-    *scaled_value = value * scale;
-  }
-  float scaled_value_floor = std::floor(*scaled_value);
-  *lower_bound =
-      std::max(static_cast<int32>(scaled_value_floor), static_cast<int32>(0));
-  *upper_bound =
-      std::min(static_cast<int32>(std::ceil(*scaled_value)), input_size - 1);
-}
-
-template <typename T>
-inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
-                           const RuntimeShape& unextended_input_shape,
-                           const T* input_data,
-                           const RuntimeShape& unextended_output_size_shape,
-                           const int32* output_size_data,
-                           const RuntimeShape& unextended_output_shape,
-                           T* output_data) {
-  // If half_pixel_centers is True, align_corners must be False.
-  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_size_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32 input_height = input_shape.Dims(1);
-  int32 input_width = input_shape.Dims(2);
-  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
-
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
-  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
-
-  float height_scale = static_cast<float>(input_height) / output_height;
-  float width_scale = static_cast<float>(input_width) / output_width;
-  if (op_params.align_corners && output_height > 1) {
-    height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
-  }
-  if (op_params.align_corners && output_width > 1) {
-    width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
-  }
-
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      float input_y;
-      int32 y0, y1;
-      ComputeInterpolationValues(y, height_scale, op_params.half_pixel_centers,
-                                 input_height, &input_y, &y0, &y1);
-      for (int x = 0; x < output_width; ++x) {
-        float input_x;
-        int32 x0, x1;
-        ComputeInterpolationValues(x, width_scale, op_params.half_pixel_centers,
-                                   input_width, &input_x, &x0, &x1);
-        for (int c = 0; c < depth; ++c) {
-          T interpolation =
-              static_cast<T>(input_data[Offset(input_shape, b, y0, x0, c)] *
-                                 (1 - (input_y - y0)) * (1 - (input_x - x0)) +
-                             input_data[Offset(input_shape, b, y1, x0, c)] *
-                                 (input_y - y0) * (1 - (input_x - x0)) +
-                             input_data[Offset(input_shape, b, y0, x1, c)] *
-                                 (1 - (input_y - y0)) * (input_x - x0) +
-                             input_data[Offset(input_shape, b, y1, x1, c)] *
-                                 (input_y - y0) * (input_x - x0));
-          output_data[Offset(output_shape, b, y, x, c)] = interpolation;
-        }
-      }
-    }
-  }
-}
-
-inline void ComputeInterpolationValues(const int32 value, const int32 scale_10,
-                                       const bool half_pixel_centers,
-                                       int32 input_size, int32* scaled_value,
-                                       int32* lower_bound, int32* upper_bound) {
-  if (half_pixel_centers) {
-    *scaled_value = value * scale_10 + scale_10 / 2 - (1 << 9);
-  } else {
-    *scaled_value = value * scale_10;
-  }
-  *lower_bound = std::max(*scaled_value / (1 << 10), 0);
-  *upper_bound = std::min(*scaled_value / (1 << 10) + 1, input_size - 1);
-}
-
-// Same as above but takes int8 as input and output.
-inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
-                           const RuntimeShape& unextended_input_shape,
-                           const int8_t* input_data,
-                           const RuntimeShape& unextended_output_size_shape,
-                           const int32* output_size_data,
-                           const RuntimeShape& unextended_output_shape,
-                           int8_t* output_data) {
-  // If half_pixel_centers is True, align_corners must be False.
-  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_size_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  const int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int32 input_height = input_shape.Dims(1);
-  const int32 input_width = input_shape.Dims(2);
-  const int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
-
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
-  const int32 output_height =
-      output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
-  const int32 output_width =
-      output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
-
-  int32 height_scale_10 =
-      ((1 << 10) * input_height + output_height / 2) / output_height;
-  int32 width_scale_10 =
-      ((1 << 10) * input_width + output_width / 2) / output_width;
-  if (op_params.align_corners && output_height > 1) {
-    height_scale_10 =
-        ((1 << 10) * (input_height - 1) + (output_height - 1) / 2) /
-        (output_height - 1);
-  }
-  if (op_params.align_corners && output_width > 1) {
-    width_scale_10 = ((1 << 10) * (input_width - 1) + (output_width - 1) / 2) /
-                     (output_width - 1);
-  }
-
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      int32 input_y, y0, y1;
-      ComputeInterpolationValues(y, height_scale_10,
-                                 op_params.half_pixel_centers, input_height,
-                                 &input_y, &y0, &y1);
-      for (int x = 0; x < output_width; ++x) {
-        int32 input_x, x0, x1;
-        ComputeInterpolationValues(x, width_scale_10,
-                                   op_params.half_pixel_centers, input_width,
-                                   &input_x, &x0, &x1);
-        for (int c = 0; c < depth; ++c) {
-          const int64_t output_20_ll =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y0, x0, c)]) *
-              ((1 << 10) - (input_y - (1 << 10) * y0)) *
-              ((1 << 10) - (input_x - (1 << 10) * x0));
-          const int64_t output_20_lu =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y1, x0, c)]) *
-              (input_y - (1 << 10) * y0) *
-              ((1 << 10) - (input_x - (1 << 10) * x0));
-          const int64_t output_20_rl =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y0, x1, c)]) *
-              ((1 << 10) - (input_y - (1 << 10) * y0)) *
-              (input_x - (1 << 10) * x0);
-          const int64_t output_20_ru =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y1, x1, c)]) *
-              (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
-          const int64_t output_20 =
-              output_20_ll + output_20_lu + output_20_rl + output_20_ru;
-          const int8_t interpolation =
-              static_cast<int8_t>((output_20 + (1 << 19)) / (1 << 20));
-          output_data[Offset(output_shape, b, y, x, c)] = interpolation;
-        }
-      }
     }
   }
 }

@@ -71,6 +71,7 @@ TfLiteRegistration Register_REDUCE_MAX();
 TfLiteRegistration Register_RELU();
 TfLiteRegistration Register_RELU6();
 TfLiteRegistration Register_RESHAPE();
+TfLiteRegistration Register_RESIZE_BILINEAR();
 TfLiteRegistration Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration Register_ROUND();
 TfLiteRegistration Register_RSQRT();

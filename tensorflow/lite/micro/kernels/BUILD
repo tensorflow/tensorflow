@@ -51,6 +51,7 @@ cc_library(
         "prelu.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
         "round.cc",
         "split.cc",
@@ -109,6 +110,7 @@ cc_library(
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -620,6 +622,19 @@ tflite_micro_cc_test(
     name = "resize_nearest_neighbor_test",
     srcs = [
         "resize_nearest_neighbor_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "resize_bilinear_test",
+    srcs = [
+        "resize_bilinear_test.cc",
     ],
     deps = [
         ":kernel_runner",
