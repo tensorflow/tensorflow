@@ -11,6 +11,7 @@ run on systems with small amounts of memory such as microcontrollers and DSPs.
 -   [Running on Arduino](#running-on-arduino)
 -   [Running on ESP32](#running-on-esp32)
 -   [Running on SparkFun Edge](#running-on-sparkfun-edge)
+-   [Running on Arty](#running-on-arty)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Debugging image capture](#debugging-image-capture)
 -   [Training your own model](#training-your-own-model)
@@ -458,6 +459,66 @@ screen ${DEVICENAME} 115200
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Running on Arty
+Zephyr application with TensorFlow Lite on a LiteX SoC with VexRiscv core will be running on Arty A7 FPGA development board.
+
+To run project you must first build gateware (LiteX), then build software 
+(TensorFlow Lite + Zephyr) and upload it to your board.
+
+The sample has been tested with the following device:
+* [Arty A7-35T](https://store.digilentinc.com/arty-a7-artix-7-fpga-development-board-for-makers-and-hobbyists)
+
+You will also need the following camera module:
+* [Arducam Mini 2MP Plus](https://www.amazon.com/Arducam-Module-Megapixels-Arduino-Mega2560/dp/B012UXNDOY)
+
+
+### Wiring
+![Arty with camera setup](zephyr_riscv/arty_with_camera.jpg)
+
+| Arty A7 | ArduCam OV2640 |
+|---------|----------------|
+| GND     | GND            |
+| VCC     | VCC            |
+| G13 (PMODA1)  | CS       |
+| SCL     | SCL            |
+| SDA     | SDA            |
+| MISO    | MISO           |
+| MOSI    | MOSI           |
+| SCLK    | SCK            |
+
+Arty A7 shield pins:<br>
+<a>
+  <img width="40%" height="40%" src="https://reference.digilentinc.com/_media/arty/arty_shield_pins.png">
+</a>
+
+### Build the example
+To build the gateware and software you will need to have Vivado installed on your machine.
+
+#### Litex
+1. Folow steps 1-3 from the [tutroial](https://github.com/enjoy-digital/litex#quick-start-guide).
+2. Build gateware:
+```
+python3 litex/litex/targets/arty.py --build --with-ethernet --integrated-rom-size 0x10000
+```
+
+#### Zephyr + Tensorflow
+1. Build tensorflow app in Zephyr environment:
+```
+cd tensorflow
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=zephyr_riscv person_detection_bin
+```
+
+### Load and run
+1. Use [xc3sprog](http://xc3sprog.sourceforge.net/) to upload the gateware to your board:
+```
+xc3sprog -c nexys4 litex/build/arty/gateware/arty.bit
+```
+2. Upload software to your board:
+```
+litex_term /dev/<ttyUSB> --kernel tensorflow/lite/micro/tools/make/gen/zephyr_vexriscv_x86_64/person_detection/build/zephyr/zephyr.bin
+```
+where `<ttyUSB>` is your device e.g. `ttyUSB0`.
 
 ## Run the tests on a development machine
 
