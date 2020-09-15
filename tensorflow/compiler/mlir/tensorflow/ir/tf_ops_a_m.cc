@@ -2164,6 +2164,15 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+Optional<ContractionFusion> LeakyReluOp::GetContractionFusion() {
+  // Only f32 is supported for fusion.
+  if (!T().isF32()) return None;
+
+  NamedAttribute alpha(Identifier::get("alpha", getContext()), alphaAttr());
+  return ContractionFusion("LeakyRelu", /*additional_arguments=*/{},
+                           /*additional_attributes=*/{alpha});
+}
+
 //===----------------------------------------------------------------------===//
 // LogOp
 //===----------------------------------------------------------------------===//
