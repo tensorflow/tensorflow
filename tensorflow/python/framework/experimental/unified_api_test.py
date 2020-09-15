@@ -20,6 +20,9 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework.experimental import _unified_api
 from tensorflow.python.framework.experimental import context_stack as context_lib
 from tensorflow.python.framework.experimental import def_function
@@ -27,45 +30,44 @@ from tensorflow.python.framework.experimental import math_ops
 from tensorflow.python.framework.experimental import tape as tape_lib
 from tensorflow.python.platform import test
 
-NewImmediateExecutionContext = _unified_api.NewImmediateExecutionContext
 SetTracingImplementation = _unified_api.SetTracingImplementation
+TensorCastHelper = _unified_api.EagerTensorToImmediateExecutionTensorHandle
+
+
+def get_immediate_execution_context():
+  context.context().ensure_initialized()
+  return _unified_api.EagerContextToImmediateExecutionContext(
+      context.context()._handle)
 
 
 class UnifiedApiTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters([
-      ("EagerGraph", False, False),
-      ("EagerMlir", False, True),
-      # TODO(srbs): Enable for TFRT. Segfaults right now.
-      # ("TfrtGraph", True, False),
-      # ("TfrtMlir", True, True),
+      ("Graph", False),
+      ("Mlir", True),
   ])
-  def testAdd(self, use_tfrt, use_mlir):
+  def testAdd(self, use_mlir):
     if use_mlir:
       SetTracingImplementation("mlir")
 
     def model(a, b):
       return math_ops.add(a, b)
 
-    eager_ctx = NewImmediateExecutionContext(use_tfrt)
-    with context_lib.set_default(eager_ctx):
-      a = eager_ctx.CreateFloatScalarHandle(1.)
-      b = eager_ctx.CreateFloatScalarHandle(2.)
+    with context_lib.set_default(get_immediate_execution_context()):
+      a = TensorCastHelper(constant_op.constant([1., 2.]))
+      b = TensorCastHelper(constant_op.constant([3., 4.]))
 
       func_output = def_function.function(model)(a, b)
-      self.assertAllEqual(func_output.numpy(), 3.0)
+      self.assertAllEqual(func_output.numpy(), [4., 6.])
 
       eager_output = model(a, b)
-      self.assertAllEqual(eager_output.numpy(), 3.0)
+      self.assertAllEqual(eager_output.numpy(), [4., 6.])
 
   @parameterized.named_parameters([
-      ("EagerGraph", False, False),
-      ("EagerMlir", False, True),
-      # TODO(srbs): Enable for TFRT. Segfaults right now.
-      # ("TfrtGraph", True, False),
-      # ("TfrtMlir", True, True),
+      ("Graph", False),
+      ("Mlir", True),
   ])
-  def testAddGrad(self, use_tfrt, use_mlir):
+  def testAddGrad(self, use_mlir):
     if use_mlir:
       SetTracingImplementation("mlir")
 
@@ -77,19 +79,19 @@ class UnifiedApiTest(test.TestCase, parameterized.TestCase):
       grads = tape.gradient(result, [a, b])
       return grads
 
-    eager_ctx = NewImmediateExecutionContext(use_tfrt)
-    with context_lib.set_default(eager_ctx):
-      a = eager_ctx.CreateFloatScalarHandle(1.)
-      b = eager_ctx.CreateFloatScalarHandle(2.)
+    with context_lib.set_default(get_immediate_execution_context()):
+      a = TensorCastHelper(constant_op.constant([1., 2.]))
+      b = TensorCastHelper(constant_op.constant([3., 4.]))
 
       func_outputs = def_function.function(model)(a, b)
-      self.assertAllEqual(func_outputs[0].numpy(), 1.0)
-      self.assertAllEqual(func_outputs[1].numpy(), 1.0)
+      self.assertAllEqual(func_outputs[0].numpy(), [1.0, 1.0])
+      self.assertAllEqual(func_outputs[1].numpy(), [1.0, 1.0])
 
       eager_outputs = model(a, b)
-      self.assertAllEqual(eager_outputs[0].numpy(), 1.0)
-      self.assertAllEqual(eager_outputs[1].numpy(), 1.0)
+      self.assertAllEqual(eager_outputs[0].numpy(), [1.0, 1.0])
+      self.assertAllEqual(eager_outputs[1].numpy(), [1.0, 1.0])
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()
