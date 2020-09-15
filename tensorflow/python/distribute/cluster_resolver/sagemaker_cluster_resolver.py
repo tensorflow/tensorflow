@@ -149,7 +149,7 @@ class SageMakerClusterResolver(ClusterResolver):
                        config_proto=None):
     task_type = self.task_type if task_type is None else task_type
     task_id = self.task_id if task_id is None else task_id
-    return super(TFConfigClusterResolver, self).num_accelerators(
+    return super(SageMakerClusterResolver, self).num_accelerators(
         task_type, task_id, config_proto)
 
   def cluster_spec(self):
