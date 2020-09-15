@@ -198,6 +198,15 @@ py_library(
 )
 
 py_library(
+    name = "tf_inspect",
+    srcs = ["tf_inspect.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "vis_utils",
     srcs = [
         "vis_utils.py",

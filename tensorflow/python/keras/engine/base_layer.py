@@ -62,11 +62,13 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
+
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -82,7 +84,6 @@ from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 

@@ -102,6 +102,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/utils:tf_inspect",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )

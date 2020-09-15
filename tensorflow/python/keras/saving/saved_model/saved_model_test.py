@@ -53,6 +53,7 @@ from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -63,7 +64,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_inspect
 
 
 class LayerWithLearningPhase(keras.engine.base_layer.Layer):

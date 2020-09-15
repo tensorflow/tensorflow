@@ -40,6 +40,7 @@ from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -50,7 +51,6 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 

@@ -55,6 +55,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -63,7 +64,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 
 try:

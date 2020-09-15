@@ -51,13 +51,13 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 
 

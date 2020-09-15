@@ -45,11 +45,11 @@ from six.moves.urllib.error import URLError
 
 from tensorflow.python.framework import ops
 from six.moves.urllib.request import urlopen
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
