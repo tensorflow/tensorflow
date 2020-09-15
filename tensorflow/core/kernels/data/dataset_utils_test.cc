@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -271,6 +272,26 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
       s.error_message());
+}
+
+TEST(DatasetUtilsTest, StripDevicePlacement) {
+  FunctionDefLibrary flib;
+  *flib.add_function() = FunctionDefHelper::Create(
+      /*function_name=*/"0",
+      /*in_def=*/{"arg: int64"},
+      /*out_def=*/{"ret: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {{{"node"},
+        "Identity",
+        {"arg"},
+        {{"T", DT_INT64}},
+        /*dep=*/{},
+        /*device=*/"device:CPU:0"}},
+      /*ret_def=*/{{"ret", "arg"}});
+  EXPECT_EQ(flib.function(0).node_def(0).device(), "device:CPU:0");
+  StripDevicePlacement(&flib);
+  EXPECT_EQ(flib.function(0).node_def(0).device(), "");
 }
 
 TEST(DatasetUtilsTest, RunnerWithMaxParallelism) {
