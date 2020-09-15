@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import tf_inspect
 
 
@@ -184,6 +185,11 @@ class ParameterServerStrategyV2Extended(
     initial_value = kwargs.get("initial_value", None)
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
+
+    # Two cases where initial_value can be a callable:
+    #   1. initial_value is passed as a callable, e.g, an `initializer` class.
+    #   2. restoring from checkpoint, initial_value is a
+    #     "CheckpointInitialValueCallable".
     init_from_fn = callable(initial_value)
 
     dtype = kwargs.get("dtype", None)
@@ -237,9 +243,9 @@ class ParameterServerStrategyV2Extended(
             shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS)
         return initial_value[offsets[shard_index]:offsets[shard_index + 1]]
       arg_spec = tf_inspect.getfullargspec(initial_value)
-      if ("partition" not in arg_spec.args and
-          "partition" not in arg_spec.kwonlyargs):
-        # `initial_value` is a callable that doesn't accept `Partition`.
+      if ("shard_info" not in arg_spec.args and
+          "shard_info" not in arg_spec.kwonlyargs):
+        # `initial_value` is a callable that doesn't accept `shard_info`.
         logging.log_if(
             logging.WARNING, _INEFFICIENT_INIT_WARNING % name,
             shard_index == 0 and
@@ -248,14 +254,14 @@ class ParameterServerStrategyV2Extended(
         return full_value[offsets[shard_index]:offsets[shard_index + 1]]
       else:
         # Memory-efficient way of initializing sharded variable. It requires
-        # the `init_fn` to accept a namedtuple `Partition`.
+        # the `init_fn` to accept a namedtuple `shard_info`.
         component_shape = (offsets[shard_index + 1] -
                            offsets[shard_index],) + shape[1:]
         offsets_all_axes = (offsets[shard_index],) + (0,) * len(shape[1:])
         return initial_value(
-            partition=sharded_variable.Partition(
+            shard_info=trackable.ShardInfo(
                 shape=tensor_shape.as_shape(component_shape),
-                offsets=offsets_all_axes))
+                offset=offsets_all_axes))
 
     var_list = []
     for i in range(num_partitions):
