@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
+import functools
 import math
 import numbers
 import numpy as np
@@ -1525,8 +1527,15 @@ def _as_index(idx, need_scalar=True):
   return data, data.shape.rank == 0
 
 
-def _slice_helper(tensor, slice_spec, updates=None):
-  """Helper function for __getitem__ and _with_update.
+class _UpdateMethod(enum.Enum):
+  UPDATE = 0
+  ADD = 1
+  MIN = 2
+  MAX = 3
+
+
+def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
+  """Helper function for __getitem__ and _with_index_update_helper.
 
   This function collects the indices in `slice_spec` into two buckets, which we
   can call "idx1" and "idx2" here. idx1 is intended for `strided_slice`, idx2
@@ -1553,10 +1562,14 @@ def _slice_helper(tensor, slice_spec, updates=None):
   Args:
     tensor: the tensor to be read from or write into.
     slice_spec: the indices.
-    updates: the new values to write into `tensor`.
+    update_method: (optional) a member of `_UpdateMethod`, indicating how to
+      update the values (replacement, add, etc.). `None` indicates just reading.
+    updates: (optional) the new values to write into `tensor`. It must have the
+      same dtype as `tensor`.
 
   Returns:
-    The result of reading or the updated `tensor` after writing.
+    The result of reading (if `update_method` is `None`) or the updated `tensor`
+    after writing.
   """
   begin, end, strides = [], [], []
   new_axis_mask, shrink_axis_mask = 0, 0
@@ -1627,7 +1640,7 @@ def _slice_helper(tensor, slice_spec, updates=None):
     else:
       var_empty = constant_op.constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
-    if updates is not None and not advanced_indices:
+    if update_method == _UpdateMethod.UPDATE and not advanced_indices:
       return array_ops.tensor_strided_slice_update(
           tensor,
           packed_begin,
@@ -1657,8 +1670,30 @@ def _slice_helper(tensor, slice_spec, updates=None):
           new_axis_mask=new_axis_mask,
           ellipsis_mask=ellipsis_mask,
           name=name)
-    if updates is None and not advanced_indices:
-      return tensor
+    if not advanced_indices:
+      if update_method is None:
+        return tensor
+      assert update_method != _UpdateMethod.UPDATE
+      # TF lacks TensorStridedSliceAdd and alike, so we need to do
+      # read+add+update.
+      if update_method == _UpdateMethod.ADD:
+        update_op = math_ops.add
+      elif update_method == _UpdateMethod.MIN:
+        update_op = math_ops.minimum
+      elif update_method == _UpdateMethod.MAX:
+        update_op = math_ops.maximum
+      return array_ops.tensor_strided_slice_update(
+          original_tensor,
+          packed_begin,
+          packed_end,
+          packed_strides,
+          update_op(tensor, updates),
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          shrink_axis_mask=shrink_axis_mask,
+          new_axis_mask=new_axis_mask,
+          ellipsis_mask=ellipsis_mask,
+          name=name + '_2')
     advanced_indices_map = {}
     for index, data, had_ellipsis in advanced_indices:
       if had_ellipsis:
@@ -1709,7 +1744,15 @@ def _slice_helper(tensor, slice_spec, updates=None):
             return range(start, start + length)
           updates = moveaxis(updates, range_(batch_start, batch_size),
                              range(batch_size)).data
-        tensor = array_ops.tensor_scatter_update(
+        if update_method == _UpdateMethod.UPDATE:
+          update_op = array_ops.tensor_scatter_update
+        elif update_method == _UpdateMethod.ADD:
+          update_op = array_ops.tensor_scatter_add
+        elif update_method == _UpdateMethod.MIN:
+          update_op = array_ops.tensor_scatter_min
+        elif update_method == _UpdateMethod.MAX:
+          update_op = array_ops.tensor_scatter_max
+        tensor = update_op(
             tensor, stacked_indices, updates)
         if range(len(dims)) != dims:
           tensor = moveaxis(tensor, range(len(dims)), dims).data
@@ -1784,8 +1827,8 @@ def _getitem(self, slice_spec):
   return np_utils.tensor_to_ndarray(result_t)
 
 
-def _with_update(a, slice_spec, updates):
-  """Implementation of ndarray._with_update."""
+def _with_index_update_helper(update_method, a, slice_spec, updates):
+  """Implementation of ndarray._with_index_*."""
   if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
                                        slice_spec.dtype == dtypes.bool) or
       (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
@@ -1795,10 +1838,18 @@ def _with_update(a, slice_spec, updates):
   if not isinstance(slice_spec, tuple):
     slice_spec = _as_spec_tuple(slice_spec)
 
-  updates = asarray(updates, a.dtype)
-  result_t = _slice_helper(a.data, slice_spec, updates.data)
-  return np_utils.tensor_to_ndarray(result_t)
+  a_dtype = a.dtype
+  a, updates = _promote_dtype_binary(a, updates)
+  result_t = _slice_helper(a.data, slice_spec, update_method, updates.data)
+  return np_utils.tensor_to_ndarray(result_t).astype(a_dtype)
 
 
 setattr(np_arrays.ndarray, '__getitem__', _getitem)
-setattr(np_arrays.ndarray, '_with_update', _with_update)
+setattr(np_arrays.ndarray, '_with_index_update',
+        functools.partial(_with_index_update_helper, _UpdateMethod.UPDATE))
+setattr(np_arrays.ndarray, '_with_index_add',
+        functools.partial(_with_index_update_helper, _UpdateMethod.ADD))
+setattr(np_arrays.ndarray, '_with_index_min',
+        functools.partial(_with_index_update_helper, _UpdateMethod.MIN))
+setattr(np_arrays.ndarray, '_with_index_max',
+        functools.partial(_with_index_update_helper, _UpdateMethod.MAX))
