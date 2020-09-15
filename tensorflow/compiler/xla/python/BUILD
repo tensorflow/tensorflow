@@ -6,7 +6,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//learning/pathways/data_parallel/jax:__subpackages__",
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
