@@ -436,12 +436,17 @@ TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannel) {
   const int input_zero_point = 0;
   const int output_zero_point = 0;
 
-  int8_t input_quantized[kInputElements];
-  int8_t filter_quantized[kFilterElements];
-  int32_t bias_quantized[kBiasElements];
-  int8_t golden_quantized[kOutputElements];
-  int zero_points[kBiasElements + 1];
-  float scales[kBiasElements + 1];
+  // Avoid variable length array error for Arm Compiler armclang.
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kInputElements, kInputElements);
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kFilterElements, kFilterElements);
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kBiasElements, kBiasElements);
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kOutputElements, kOutputElements);
+  int8_t input_quantized[tflite::testing::kInputElements];
+  int8_t filter_quantized[tflite::testing::kFilterElements];
+  int32_t bias_quantized[tflite::testing::kBiasElements];
+  int8_t golden_quantized[tflite::testing::kOutputElements];
+  int zero_points[tflite::testing::kBiasElements + 1];
+  float scales[tflite::testing::kBiasElements + 1];
 
   tflite::testing::TestConvQuantizedPerChannel(
       kInputShape, kInputData, input_quantized, input_scale, input_zero_point,
@@ -480,12 +485,17 @@ TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannelRelu6) {
   const int input_zero_point = -128;
   const int output_zero_point = -128;
 
-  int8_t input_quantized[kInputElements];
-  int8_t filter_quantized[kFilterElements];
-  int32_t bias_quantized[kBiasElements];
-  int8_t golden_quantized[kOutputElements];
-  int zero_points[kBiasElements + 1];
-  float scales[kBiasElements + 1];
+  // Avoid variable length array error for Arm Compiler armclang.
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kInputElements, kInputElements);
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kFilterElements, kFilterElements);
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kBiasElements, kBiasElements);
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::kOutputElements, kOutputElements);
+  int8_t input_quantized[tflite::testing::kInputElements];
+  int8_t filter_quantized[tflite::testing::kFilterElements];
+  int32_t bias_quantized[tflite::testing::kBiasElements];
+  int8_t golden_quantized[tflite::testing::kOutputElements];
+  int zero_points[tflite::testing::kBiasElements + 1];
+  float scales[tflite::testing::kBiasElements + 1];
 
   tflite::testing::TestConvQuantizedPerChannel(
       kInputShape, kInputData, input_quantized, input_scale, input_zero_point,

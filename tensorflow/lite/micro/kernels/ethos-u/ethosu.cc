@@ -17,7 +17,15 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/tools/make/downloads/flatbuffers/include/flatbuffers/flexbuffers.h"
+#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
+// TODO remove this once error is fixed in Flatbuffers.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdouble-promotion"
+#include "flatbuffers/flexbuffers.h"
+#pragma clang diagnostic pop
+#else
+#include "flatbuffers/flexbuffers.h"
+#endif
 
 namespace tflite {
 namespace ops {
