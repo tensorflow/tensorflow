@@ -264,7 +264,7 @@ Status AddInputList(AbstractOperation* op_,
 Status SetAttrString(AbstractOperation* op_, const char* attr_name,
                      const char* data, size_t length,
                      ForwardOperation* forward_op_) {
-  forward_op_->attrs.Set(attr_name, StringPiece(data, length));
+  forward_op_->attrs.Set(attr_name, StringPiece(data, length)); 
   return op_->SetAttrString(attr_name, data, length);
 }
 Status SetAttrInt(AbstractOperation* op_, const char* attr_name, int64_t value,
@@ -278,7 +278,7 @@ Status SetAttrFloat(AbstractOperation* op_, const char* attr_name, float value,
   return op_->SetAttrFloat(attr_name, value);
 }
 Status SetAttrBool(AbstractOperation* op_, const char* attr_name, bool value,
-                   ForwardOperation* forward_op_) {
+                   ForwardOperation* forward_op_) {       
   forward_op_->attrs.Set(attr_name, value);
   return op_->SetAttrBool(attr_name, value);
 }
