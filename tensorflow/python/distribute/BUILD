@@ -601,7 +601,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_ops",
         "//third_party/py/numpy",
     ],
 )

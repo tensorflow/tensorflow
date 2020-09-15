@@ -42,7 +42,7 @@ py_test(
 )
 
 py_library(
-    name = "tpu_py",
+    name = "tpu_ops",
     srcs = ["ops/tpu_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -196,20 +196,18 @@ py_library(
         "tensor_tracer_flags.py",
         "tensor_tracer_report.py",
         "topology.py",
-        "tpu.py",
         "tpu_feed.py",
-        "tpu_function.py",
         "tpu_optimizer.py",
         "tpu_sharding.py",
         "tpu_strategy_util.py",
-        "tpu_system_metadata.py",
         "training_loop.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
         ":functional",
-        ":tpu_py",
+        ":tpu_function",
+        ":tpu_ops",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/core:protos_all_py",
@@ -233,10 +231,68 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/compiler/xla",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
         "//tensorflow/python/tpu/profiler",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_py",
+    srcs = ["tpu.py"],
+    deps = [
+        ":tpu_function",
+        ":tpu_ops",
+        "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:auto_control_deps",
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:config",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:func_graph",
+        "//tensorflow/python:function",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/compiler/xla",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/logging",
+        "@enum34_archive//:enum",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_function",
+    srcs = ["tpu_function.py"],
+    deps = [
+    ],
+)
+
+py_library(
+    name = "tpu_system_metadata",
+    srcs = ["tpu_system_metadata.py"],
+    deps = [
+        ":tpu_py",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
+        "//tensorflow/python:config",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute:device_util",
     ],
 )
 
@@ -446,7 +502,7 @@ py_library(
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],
@@ -460,9 +516,11 @@ py_library(
         ":tpu_embedding_v2_utils",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],
