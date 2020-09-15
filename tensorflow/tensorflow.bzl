@@ -739,7 +739,8 @@ def tf_gen_op_wrapper_cc(
         deps = None,
         include_internal_ops = 0,
         # ApiDefs will be loaded in the order specified in this list.
-        api_def_srcs = []):
+        api_def_srcs = [],
+        compatible_with = []):
     # Construct an op generator binary for these ops.
     tool = out_ops_file + "_gen_cc"
     if deps == None:
@@ -781,6 +782,7 @@ def tf_gen_op_wrapper_cc(
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
+        compatible_with = compatible_with,
     )
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -830,7 +832,8 @@ def tf_gen_op_wrappers_cc(
         # ApiDefs will be loaded in the order specified in this list.
         api_def_srcs = [],
         # Any extra dependencies that the wrapper generator might need.
-        extra_gen_deps = []):
+        extra_gen_deps = [],
+        compatible_with = []):
     subsrcs = other_srcs[:]
     subhdrs = other_hdrs[:]
     internalsrcs = other_srcs_internal[:]
@@ -844,6 +847,7 @@ def tf_gen_op_wrappers_cc(
             op_gen = op_gen,
             pkg = pkg,
             deps = [pkg + ":" + n + "_op_lib"] + extra_gen_deps,
+            compatible_with = compatible_with,
         )
         subsrcs += ["ops/" + n + ".cc"]
         subhdrs += ["ops/" + n + ".h"]
@@ -866,6 +870,7 @@ def tf_gen_op_wrappers_cc(
         copts = tf_copts(),
         alwayslink = 1,
         visibility = visibility,
+        compatible_with = compatible_with,
     )
     cc_library(
         name = name + "_internal",
@@ -883,6 +888,7 @@ def tf_gen_op_wrappers_cc(
         copts = tf_copts(),
         alwayslink = 1,
         visibility = [clean_dep("//tensorflow:internal")],
+        compatible_with = compatible_with,
     )
 
 # Generates a Python library target wrapping the ops registered in "deps".
@@ -1736,11 +1742,15 @@ _transitive_parameters_library = rule(
 #   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
-    _transitive_hdrs(name = name + "_gather", deps = deps)
+    _transitive_hdrs(
+        name = name + "_gather",
+        deps = deps,
+        compatible_with = compatible_with,
+    )
     _transitive_parameters_library(
         name = name + "_gathered_parameters",
-        compatible_with = compatible_with,
         original_deps = deps,
+        compatible_with = compatible_with,
     )
     cc_library(
         name = name,
@@ -2489,13 +2499,13 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         srcs = srcs + protodeps + [clean_dep("//tensorflow/tools/proto_text:placeholder.txt")],
         outs = out_hdrs + out_srcs,
         visibility = visibility,
-        compatible_with = compatible_with,
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
         exec_tools = [
             clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions"),
         ],
+        compatible_with = compatible_with,
     )
 
     native.filegroup(
@@ -2506,6 +2516,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
     )
 
     cc_library(
+        compatible_with = compatible_with,
         name = name,
         srcs = out_srcs,
         hdrs = out_hdrs,
@@ -2934,8 +2945,11 @@ def tf_grpc_cc_dependency():
 def get_compatible_with_portable():
     return []
 
+def get_compatible_with_cloud():
+    return []
+
 def filegroup(**kwargs):
-    return native.filegroup(**kwargs)
+    native.filegroup(**kwargs)
 
 def genrule(**kwargs):
-    return native.genrule(**kwargs)
+    native.genrule(**kwargs)
