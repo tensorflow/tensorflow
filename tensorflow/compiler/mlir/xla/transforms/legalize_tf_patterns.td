@@ -31,7 +31,7 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 //===----------------------------------------------------------------------===//
 
 def FeatureDimension : NativeCodeCall<
-    "getFeatureDimensionAttr($_builder, $0, $1)">;
+    "getFeatureDimensionAttr($_builder, $0.getValue(), $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
