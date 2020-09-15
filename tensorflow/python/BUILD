@@ -5566,6 +5566,8 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_windows",  # b/168523121
+        "noasan",  # b/168523121
+        "notsan",  # b/168523121
     ],
     deps = [
         ":_function_parameter_canonicalizer_binding_for_test",
