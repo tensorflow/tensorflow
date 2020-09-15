@@ -27,6 +27,7 @@ from absl import logging
 import six
 from six.moves import range
 
+import flatbuffers
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
@@ -577,7 +578,7 @@ def _convert_model_from_bytearray_to_object(model_bytearray):
 def _convert_model_from_object_to_bytearray(model_object):
   """Converts a tflite model from a parsable object into a bytearray."""
   # Initial size of the buffer, which will grow automatically if needed
-  builder = schema_fb.flatbuffers.Builder(1024)
+  builder = flatbuffers.Builder(1024)
   model_offset = model_object.Pack(builder)
   builder.Finish(model_offset, file_identifier=_TFLITE_FILE_IDENTIFIER)
   return bytes(builder.Output())
