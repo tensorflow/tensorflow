@@ -307,6 +307,7 @@ Status GpuCompiler::OptimizeHloModule(
     horizontal_fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
   }
+
   {
     HloPassPipeline pipeline("all_reduce_combiner");
     pipeline.AddPass<AllReduceCombiner>(
@@ -483,7 +484,8 @@ static Status CompileModuleToLlvmIrImpl(
     int pointer_size, const HloProfileIndexMap* profile_index_map,
     std::unique_ptr<llvm::Module>* llvm_module,
     std::unique_ptr<BufferAssignment>* buffer_assignment,
-    std::unique_ptr<ThunkSchedule>* thunk_schedule) {
+    std::unique_ptr<ThunkSchedule>* thunk_schedule,
+    std::vector<GpuExecutable::ConstantInfo>* constants) {
   *llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
 
   (*llvm_module)->setTargetTriple(target_triple);
@@ -529,8 +531,6 @@ static Status CompileModuleToLlvmIrImpl(
       auto ir_emitter,
       IrEmitterUnnested::Create(hlo_module->config(), entry_computation,
                                 &ir_emitter_context));
-
-  TF_RETURN_IF_ERROR(ir_emitter->EmitConstantGlobals());
 
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
@@ -580,6 +580,10 @@ static Status CompileModuleToLlvmIrImpl(
     *thunk_schedule = absl::make_unique<ThunkSchedule>(
         std::make_unique<ThunkSequence>(std::move(thunk_sequence)),
         std::move(stream_assignment), std::move(thunk_to_hlo));
+
+    if (constants) {
+      *constants = std::move(ir_emitter_context.constants());
+    }
   }
 
   return Status::OK();
@@ -645,12 +649,13 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<ThunkSchedule> thunk_schedule;
+  std::vector<GpuExecutable::ConstantInfo> constants;
 
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
       stream_exec->platform()->Name(), gpu_device_info, cuda_compute_capability,
       GetCanShareBuffer(), pointer_size_, profile_index_map.get(), &llvm_module,
-      &buffer_assignment, &thunk_schedule));
+      &buffer_assignment, &thunk_schedule, &constants));
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*llvm_module);
@@ -696,7 +701,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       backend_result.first, backend_result.second, gpu_version,
       std::move(thunk_schedule), std::move(module),
       std::move(buffer_assignment), std::move(profile_printer),
-      std::move(profile_index_map));
+      std::move(profile_index_map), std::move(constants));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -730,7 +735,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
       gpu_device_info, cuda_compute_capability, DummyCanShareBufferFunction,
       pointer_size, /*profile_index_map=*/nullptr, &llvm_module,
-      &buffer_assignment, &thunk_schedule));
+      &buffer_assignment, &thunk_schedule, nullptr));
   return llvm_module;
 }
 }  // namespace gpu

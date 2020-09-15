@@ -83,6 +83,8 @@ void HloToIrBindings::EmitBasePointersForHlos(
           if (non_io_hlo->opcode() == HloOpcode::kConstant) {
             llvm::Value* global_for_constant = module_->getGlobalVariable(
                 llvm_ir::ConstantHloToGlobalName(*non_io_hlo));
+            CHECK(global_for_constant)
+                << llvm_ir::ConstantHloToGlobalName(*non_io_hlo);
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
             llvm::Type* pointee_type =
