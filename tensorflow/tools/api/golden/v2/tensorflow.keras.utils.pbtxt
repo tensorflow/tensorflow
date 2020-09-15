@@ -9,10 +9,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "HDF5Matrix"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "OrderedEnqueuer"
     mtype: "<type \'type\'>"
   }
