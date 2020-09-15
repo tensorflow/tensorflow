@@ -105,7 +105,6 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
@@ -121,6 +120,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(CreateTPUParallelExecuteSinkResourceWritePass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
   pm.addPass(CreateTPUVariableReformattingPass());
 }
 
