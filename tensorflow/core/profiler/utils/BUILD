@@ -437,10 +437,28 @@ cc_library(
 )
 
 cc_library(
-    name = "step_interval",
-    hdrs = ["step_interval.h"],
+    name = "step_intersection",
+    srcs = ["step_intersection.cc"],
+    hdrs = ["step_intersection.h"],
     deps = [
+        ":timespan",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "step_intersection_test",
+    srcs = ["step_intersection_test.cc"],
+    deps = [
+        ":step_intersection",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
