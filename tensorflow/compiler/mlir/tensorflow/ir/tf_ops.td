@@ -1264,12 +1264,12 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$y
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$z
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
