@@ -1256,26 +1256,23 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
-  // See comments in register_kernel::Name in header for info on _no_register.
-  if (kernel_def->op() != "_no_register") {
-    const string key =
-        Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-            kernel_def->label());
+  const string key =
+      Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
+          kernel_def->label());
 
-    // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
-    // here.
-    // InitInternal gets called by static initializers, so it ends up executing
-    // before main. This causes LoadKernelLibraries function to get called
-    // before some file libraries can initialize, which in turn crashes the
-    // program flakily. Until we get rid of static initializers in kernel
-    // registration mechanism, we have this workaround here.
-    auto global_registry =
-        reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
-    mutex_lock l(global_registry->mu);
-    global_registry->registry.emplace(
-        key,
-        KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
-  }
+  // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
+  // here.
+  // InitInternal gets called by static initializers, so it ends up executing
+  // before main. This causes LoadKernelLibraries function to get called
+  // before some file libraries can initialize, which in turn crashes the
+  // program flakily. Until we get rid of static initializers in kernel
+  // registration mechanism, we have this workaround here.
+  auto global_registry =
+      reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
+  mutex_lock l(global_registry->mu);
+  global_registry->registry.emplace(
+      key,
+      KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
   delete kernel_def;
 }
 
