@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implementation of Cluster Resolvers for TF_CONFIG Environment Variables."""
+"""Implementation of Cluster Resolvers for SageMaker Environment."""
 
 
 from __future__ import absolute_import
@@ -29,7 +29,6 @@ from tensorflow.python.util.tf_export import tf_export
 #List of envs: https://github.com/aws/sagemaker-training-toolkit/blob/master/ENVIRONMENT_VARIABLES.md
 #Only support Multi-Worker Mirrored Strategy
 
-#_TF_CONFIG_ENV = 'TF_CONFIG'
 _SESSION_MASTER_KEY = 'session_master'
 _RPC_LAYER_KEY = 'rpc_layer'
 _TASK_KEY = 'task'
@@ -79,6 +78,9 @@ class SageMakerClusterResolver(ClusterResolver):
   This is an implementation of cluster resolvers when running in a SageMaker
   environment to set information about the cluster. The cluster spec returned
   will be initialized from the SageMaker environment variables.
+
+  Currently this Cluster Resolver only supports Multi-Worker Mirrored Strategy.
+  It assumes all nodes in a SageMaker Cluster are workers.
 
   """
 
@@ -153,10 +155,10 @@ class SageMakerClusterResolver(ClusterResolver):
         task_type, task_id, config_proto)
 
   def cluster_spec(self):
-    """Returns a ClusterSpec based on the TF_CONFIG environment variable.
+    """Returns a ClusterSpec based on the SageMaker environment variables.
 
     Returns:
-      A ClusterSpec with information from the TF_CONFIG environment variable.
+      A ClusterSpec with information from the SageMaker environment variables.
     """
     tf_config = _load_tf_config(self._port)
     if 'cluster' not in tf_config:
@@ -181,7 +183,7 @@ class SageMakerClusterResolver(ClusterResolver):
 
     Raises:
       RuntimeError: If the task_type or task_id is not specified and the
-        `TF_CONFIG` environment variable does not contain a task section.
+        SageMaker environment variables does not contain a task section.
     """
 
     # If `session_master` is set, just use that.
