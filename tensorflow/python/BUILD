@@ -5569,6 +5569,7 @@ tf_py_test(
         "noasan",  # b/168523121
         "notsan",  # b/168523121
     ],
+    tfrt_enabled = True,
     deps = [
         ":_function_parameter_canonicalizer_binding_for_test",
         ":client_testlib",
