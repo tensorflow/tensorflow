@@ -46,8 +46,8 @@ from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
+from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
-from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
 
