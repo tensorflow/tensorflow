@@ -128,18 +128,6 @@ PoolParameters::PoolParameters(OpKernelContext* context,
               errors::InvalidArgument(
                   "tensor_in_shape must have 2 spatial dimensions. ",
                   tensor_in_shape.dims(), " ", data_format));
-  OP_REQUIRES(context, stride.size() == tensor_in_shape.dims(),
-              errors::InvalidArgument("Number of strides (", stride.size(),
-                                      ") != tensor rank (",
-                                      tensor_in_shape.dims(), ")"));
-  if (tensor_in_shape.num_elements() > 0) {
-    for (int i = 0; i < stride.size(); i++) {
-      OP_REQUIRES(
-          context, stride[i] != 0,
-          errors::InvalidArgument(
-              "Pooling stride must be non-zero, got stride[", i, "] == 0"));
-    }
-  }
 
   this->data_format = data_format;
   depth = GetTensorDim(tensor_in_shape, data_format, 'C') *

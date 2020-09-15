@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -152,14 +151,6 @@ class PoolingTest(test.TestCase):
         strides=(2, 3, 1),
         padding="SAME",
         expected=expected_output)
-
-  def testInvalidStrides(self):
-    for op in (nn_ops.avg_pool3d, nn_ops.max_pool3d):
-      with self.cached_session(use_gpu=True):
-        t = constant_op.constant([[[[[1e+40]]]]], dtype=np.float32)
-        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError,
-                                errors_impl.UnimplementedError)):
-          self.evaluate(op(t, ksize=1, strides=0, padding="SAME"))
 
     # Test pooling on a larger input, with different stride and kernel
     # size for the 'z' dimension.
