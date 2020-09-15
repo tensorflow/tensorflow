@@ -144,8 +144,9 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
-inline int16_t SoftMaxCalculateExp(const SoftmaxParams& params, const int16_t* input_data,
-                     const int depth, int16_t max_in_row, int i, int c) {
+inline int16_t SoftMaxCalculateExp(const SoftmaxParams& params,
+                                   const int16_t* input_data, const int depth,
+                                   int16_t max_in_row, int i, int c) {
   int32_t input_diff = input_data[i * depth + c] - max_in_row;
   // scale the input_diff such that [-65535, 0] correspond to [-10.0, 0.0]
   int32_t scaled_diff = MultiplyByQuantizedMultiplier(
@@ -180,8 +181,11 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
     // Compute exp(input - max_input)
     // sum_of_exps is a Q16.15 fixed point format.
     int32_t sum_of_exps = 0;
+    int16_t* exp_results_Q015 = output_data + i * depth;
     for (int c = 0; c < depth; ++c) {
-      sum_of_exps += SoftMaxCalculateExp(params, input_data, depth, max_in_row, i, c);
+      exp_results_Q015[c] =
+          SoftMaxCalculateExp(params, input_data, depth, max_in_row, i, c);
+      sum_of_exps += exp_results_Q015[c];
     }
 
     // Compute the reciprocal 1/sum_of_exps
@@ -207,9 +211,7 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
     for (int c = 0; c < depth; ++c) {
       uint8_t right_shift = 31 - headroom_plus_one;
       int64_t round = 1 << (right_shift - 1);
-      int16_t exp_result_Q015 =
-          SoftMaxCalculateExp(params, input_data, depth, max_in_row, i, c);
-      int32_t result = (static_cast<int64_t>(exp_result_Q015) *
+      int32_t result = (static_cast<int64_t>(exp_results_Q015[c]) *
                             static_cast<int64_t>(reciprocal_scale_Q015) +
                         round) >>
                        right_shift;
