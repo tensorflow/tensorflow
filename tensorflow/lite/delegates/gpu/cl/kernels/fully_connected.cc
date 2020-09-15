@@ -35,6 +35,8 @@ FullyConnected::FullyConnected(const OperationDef& definition,
     } else {
       work_group_size_ = int3(32, 4, 1);
     }
+  } else if (device_info.IsIntel()) {
+    work_group_size_ = int3(8, 4, 1);
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
