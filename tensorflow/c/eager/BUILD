@@ -282,6 +282,7 @@ cc_library(
         ":c_api_experimental",
         ":c_api_unified_internal",
         ":gradients_internal",
+        ":gradients_util",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/c/experimental/ops",
