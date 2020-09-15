@@ -50,9 +50,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -632,48 +629,6 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename Scalar>
-struct ParallelMatMulKernelSYCL {
-  static void Run(const OpKernelContext* context, const Tensor& in_x,
-                  const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                  bool trans_y, const MatMulBCast& bcast, Tensor* out,
-                  int start, int limit) {
-    auto Tx = in_x.tensor<Scalar, 3>();
-    auto Ty = in_y.tensor<Scalar, 3>();
-    auto Tz = out->tensor<Scalar, 3>();
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
-    contract_pairs[0] = ContractionDims(adj_x || trans_x, adj_y || trans_y);
-    auto d = context->eigen_sycl_device();
-
-    const bool should_bcast = bcast.IsBroadcastingRequired();
-    const auto& x_batch_indices = bcast.x_batch_indices();
-    const auto& y_batch_indices = bcast.y_batch_indices();
-    for (int64 i = start; i < limit; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
-
-      auto x = Tx.template chip<0>(x_batch_index);
-      auto y = Ty.template chip<0>(y_batch_index);
-      auto z = Tz.template chip<0>(i);
-      z.device(d) = x.contract(y, contract_pairs);
-    }
-  }
-};
-
-template <typename Scalar>
-struct LaunchBatchMatMul<SYCLDevice, Scalar> {
-  static void Launch(OpKernelContext* context, const Tensor& in_x,
-                     const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out) {
-    // Number of matrix multiplies i.e. size of the batch.
-    const int64 batch_size = bcast.output_batch_size();
-    ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y,
-                                          trans_x, trans_y, bcast, out, 0,
-                                          batch_size);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename Scalar>
 class BaseBatchMatMulOp : public OpKernel {
@@ -826,15 +781,6 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
       Name("BatchMatMulV2").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
       BatchMatMulV2Op<GPUDevice, TYPE>)
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_BATCH_MATMUL_SYCL(TYPE)                                   \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("BatchMatMul").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"),   \
-      BatchMatMulOp<SYCLDevice, TYPE>);                                    \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("BatchMatMulV2").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<SYCLDevice, TYPE>)
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_

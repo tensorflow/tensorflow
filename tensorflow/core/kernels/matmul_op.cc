@@ -36,9 +36,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, bool USE_CUBLAS>
 struct LaunchMatMul;
@@ -123,18 +120,14 @@ struct LaunchMatMulBase {
       OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
       std::vector<AlgorithmType>* algorithms, bool use_autotune, Tensor* out) {
-#ifndef TENSORFLOW_USE_SYCL
     // An explicit vector-matrix multiply is much better optimized than an
     // implicit one and this is a bottleneck during non-batched inference.
     bool was_vector = ExplicitVectorMatrixOptimization<T>(a, b, dim_pair, out);
     if (!was_vector) {
-#endif  // TENSORFLOW_USE_SYCL
       functor::MatMulFunctor<Device, T>()(ctx->eigen_device<Device>(),
                                           out->matrix<T>(), a.matrix<T>(),
                                           b.matrix<T>(), dim_pair);
-#ifndef TENSORFLOW_USE_SYCL
     }
-#endif  // TENSORFLOW_USE_SYCL
   }
 
   static void GetBlasGemmAlgorithm(OpKernelConstruction* ctx,
@@ -148,13 +141,6 @@ struct LaunchMatMulCPU : LaunchMatMulBase<CPUDevice, T> {};
 template <typename T, bool USE_CUBLAS>
 struct LaunchMatMul<CPUDevice, T, USE_CUBLAS> : public LaunchMatMulCPU<T> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct LaunchMatMulSYCL : LaunchMatMulBase<SYCLDevice, T> {};
-
-template <typename T, bool USE_CUBLAS>
-struct LaunchMatMul<SYCLDevice, T, USE_CUBLAS> : public LaunchMatMulSYCL<T> {};
-#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -544,19 +530,6 @@ struct MatMulFunctor<CPUDevice, T> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-// Partial specialization MatMulFunctor<Device=SYCLDevice, T>.
-template <typename T>
-struct MatMulFunctor<SYCLDevice, T> {
-  void operator()(
-      const SYCLDevice& d, typename MatMulTypes<T>::out_type out,
-      typename MatMulTypes<T>::in_type in0,
-      typename MatMulTypes<T>::in_type in1,
-      const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair) {
-    MatMul<SYCLDevice>(d, out, in0, in1, dim_pair);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 
@@ -591,18 +564,4 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(T)                                         \
-  REGISTER_KERNEL_BUILDER(                                       \
-      Name("MatMul").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
-      MatMulOp<SYCLDevice, T, false /* xxblas */>);              \
-  REGISTER_KERNEL_BUILDER(Name("MatMul")                         \
-                              .Device(DEVICE_SYCL)               \
-                              .TypeConstraint<T>("T")            \
-                              .Label("eigen"),                   \
-                          MatMulOp<SYCLDevice, T, false /* xxblas */>)
-TF_CALL_float(REGISTER_SYCL);
-TF_CALL_double(REGISTER_SYCL);
-
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

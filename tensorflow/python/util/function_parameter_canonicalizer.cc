@@ -61,7 +61,8 @@ bool FunctionParameterCanonicalizer::Canonicalize(
   for (int i = 0; i < args_size; ++i) result[i] = PyTuple_GET_ITEM(args, i);
 
   // Fill default arguments.
-  for (int i = args_size; i < interned_arg_names_.size(); ++i)
+  for (int i = std::max(positional_args_size_, args_size);
+       i < interned_arg_names_.size(); ++i)
     result[i] = defaults_[i - positional_args_size_].get();
 
   // Fill keyword arguments.

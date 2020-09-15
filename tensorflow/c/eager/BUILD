@@ -111,6 +111,7 @@ filegroup(
         "mnist_gradients_testutil.h",
         "tape.h",
         "tfe_cancellation_manager_internal.h",
+        "tfe_context_internal.h",
         "tfe_executor_internal.h",
         "tfe_monitoring_internal.h",
         "tfe_op_attrs_internal.h",

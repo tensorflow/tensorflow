@@ -119,9 +119,9 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
 static bool IsDefaultDataFormat(StringRef format) { return format == "NHWC"; }
 
 /// Returns the feature dimension for the given format and input type.
-static size_t GetFeatureDimension(StringAttr format,
+static size_t GetFeatureDimension(StringRef format,
                                   RankedTensorType inputType) {
-  return IsDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+  return IsDefaultDataFormat(format) ? inputType.getRank() - 1 : 1;
 }
 
 // Gets all integer values from the given attribute and push them to `values`.
@@ -731,7 +731,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 // BatchNorm op utilities.
 //===----------------------------------------------------------------------===//
 
-static IntegerAttr getFeatureDimensionAttr(Builder &b, StringAttr format,
+static IntegerAttr getFeatureDimensionAttr(Builder &b, StringRef format,
                                            Value input) {
   return b.getI64IntegerAttr(
       GetFeatureDimension(format, input.getType().cast<RankedTensorType>()));
@@ -1128,7 +1128,7 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
                                 PatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
     auto feature_dim = GetFeatureDimension(
-        op.data_formatAttr(), op.value().getType().cast<RankedTensorType>());
+        op.data_format(), op.value().getType().cast<RankedTensorType>());
     auto bias_broadcast = Broadcast1DToFeatureDim(loc, op.value(), op.bias(),
                                                   feature_dim, rewriter);
     rewriter.replaceOpWithNewOp<AddOp>(op, op.value(), bias_broadcast);
@@ -1814,7 +1814,7 @@ class ConvertFusedBatchNormGradBase
     act = rewriter.create<ConvertOp>(loc, act, kernel_type);
 
     auto feature_dim_attr =
-        getFeatureDimensionAttr(rewriter, op.data_formatAttr(), act);
+        getFeatureDimensionAttr(rewriter, op.data_format(), act);
     auto feature_dim = feature_dim_attr.getValue().getSExtValue();
 
     // Gets the result values.
@@ -1908,7 +1908,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
   LogicalResult matchAndRewrite(FusedBatchNormOpT op,
                                 PatternRewriter &rewriter) const override {
     auto feature_dim =
-        getFeatureDimensionAttr(rewriter, op.data_formatAttr(), op.x());
+        getFeatureDimensionAttr(rewriter, op.data_format(), op.x());
 
     auto input_type_tensor = op.x().getType().template cast<TensorType>();
     auto input_element_type = input_type_tensor.getElementType();

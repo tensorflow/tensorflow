@@ -15,7 +15,6 @@ load(
     "tf_kernel_library",
     "tf_opts_nortti_if_lite_protos",
 )
-load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
 
 # buildifier: disable=same-origin-load
@@ -922,7 +921,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
-] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
+]
 
 tf_kernel_library(
     name = "immutable_constant_op",
@@ -1240,7 +1239,6 @@ tf_kernel_library(
         "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
         "tile_functor_cpu_variant.cc",
-        "tile_functor_sycl.cc",
     ],
     hdrs = ["tile_functor.h"],
     gpu_srcs = [
@@ -4206,7 +4204,7 @@ tf_kernel_library(
         "maxpooling_op.h",
         "pooling_ops_3d.h",
         "pooling_ops_common.h",
-    ] + if_sycl(["pooling_ops_3d_sycl.h"]),
+    ],
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",
@@ -4872,7 +4870,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
+]
 
 tf_kernel_library(
     name = "count_up_to_op",
@@ -6393,7 +6391,6 @@ filegroup(
             "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
             "xsmm_*",
-            "cwise_ops_sycl_common.h",
             "nextafter_op.cc",
         ] + ANDROID_TEXTUAL_HDRS,
     ) + [

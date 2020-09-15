@@ -217,6 +217,7 @@ py_library(
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/eager:wrap_function",
         "@absl_py//absl/logging",
+        "@flatbuffers//:runtime_py",
         "@six_archive//:six",
     ],
 )

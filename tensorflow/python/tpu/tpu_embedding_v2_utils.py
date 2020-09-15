@@ -36,11 +36,22 @@ class _Optimizer(object):
   def __init__(self, learning_rate, use_gradient_accumulation, clip_weight_min,
                clip_weight_max, weight_decay_factor,
                multiply_weight_decay_factor_by_learning_rate,
+               clipvalue=None,
                slot_variable_creation_fn=None):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
     self.clip_weight_min = clip_weight_min
     self.clip_weight_max = clip_weight_max
+    if not use_gradient_accumulation and clipvalue is not None:
+      raise ValueError("Received non-None gradient clipping limit {} but "
+                       "use_gradient_accumulation is not set to True.".format(
+                           clipvalue))
+    if clipvalue is None:
+      clipvalue = (None, None)
+    elif not isinstance(clipvalue, tuple):
+      clipvalue = (-1. * clipvalue, clipvalue)
+    self.clip_gradient_min, self.clip_gradient_max = clipvalue
+
     self.weight_decay_factor = weight_decay_factor
     self.multiply_weight_decay_factor_by_learning_rate = (
         multiply_weight_decay_factor_by_learning_rate)
@@ -83,6 +94,12 @@ class _Optimizer(object):
 
     if self.clip_weight_max is not None:
       parameters.clipping_limits.upper.value = self.clip_weight_max
+
+    if self.clip_gradient_min is not None:
+      parameters.gradient_clipping_limits.lower.value = self.clip_gradient_min
+
+    if self.clip_gradient_max is not None:
+      parameters.gradient_clipping_limits.upper.value = self.clip_gradient_max
 
     if self.weight_decay_factor:
       parameters.weight_decay_factor = self.weight_decay_factor
@@ -173,7 +190,8 @@ class SGD(_Optimizer):
                clip_weight_min=None,
                clip_weight_max=None,
                weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+               multiply_weight_decay_factor_by_learning_rate=None,
+               clipvalue=None):
     """Optimization parameters for stochastic gradient descent.
 
     Args:
@@ -186,10 +204,22 @@ class SGD(_Optimizer):
         by this factor each step.
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tiple of scalar values
+        (min, max) to set a separate maximum or minimum. If one of the two
+        entries is None, then there will be no clipping that direction. Note if
+        this is set, you may see a decrease in performance as  gradient
+        accumulation will be enabled (it is normally off for SGD as
+        it has no affect on accuracy). See
+        'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for more
+        information on gradient accumulation and its impact on tpu embeddings.
     """
+    use_gradient_accumulation = clipvalue is not None
+
     super(SGD, self).__init__(
-        learning_rate, False, clip_weight_min, clip_weight_max,
-        weight_decay_factor, multiply_weight_decay_factor_by_learning_rate)
+        learning_rate, use_gradient_accumulation, clip_weight_min,
+        clip_weight_max, weight_decay_factor,
+        multiply_weight_decay_factor_by_learning_rate, clipvalue)
 
   def _slot_names(self):
     return []
@@ -263,7 +293,8 @@ class Adagrad(_Optimizer):
                clip_weight_max=None,
                weight_decay_factor=None,
                multiply_weight_decay_factor_by_learning_rate=None,
-               slot_variable_creation_fn=None):
+               slot_variable_creation_fn=None,
+               clipvalue=None):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -284,11 +315,15 @@ class Adagrad(_Optimizer):
         it. This function should return a dict with the slot names as keys and
         the created variables as values. When set to None (the default), uses
         the built-in variable creation.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tiple of scalar values
+        (min, max) to set a separate maximum or minimum. If one of the two
+        entries is None, then there will be no clipping that direction.
     """
     super(Adagrad, self).__init__(
         learning_rate, use_gradient_accumulation, clip_weight_min,
         clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
       raise ValueError("Adagrad initial_accumulator_value must be positive")
@@ -374,7 +409,8 @@ class Adam(_Optimizer):
                clip_weight_max=None,
                weight_decay_factor=None,
                multiply_weight_decay_factor_by_learning_rate=None,
-               slot_variable_creation_fn=None):
+               slot_variable_creation_fn=None,
+               clipvalue=None):
     """Optimization parameters for Adam.
 
     See 'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for a
@@ -406,11 +442,15 @@ class Adam(_Optimizer):
         and a list of slot names to create for it. This function should return
         a dict with the slot names as keys and the created variables as values.
         When set to None (the default), uses the built-in variable creation.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tiple of scalar values
+        (min, max) to set a separate maximum or minimum. If one of the two
+        entries is None, then there will be no clipping that direction.
     """
     super(Adam, self).__init__(
         learning_rate, use_gradient_accumulation, clip_weight_min,
         clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if beta_1 < 0. or beta_1 >= 1.:
       raise ValueError("beta1 must be in the range [0, 1), but received {}."

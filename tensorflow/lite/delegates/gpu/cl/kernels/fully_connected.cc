@@ -35,6 +35,8 @@ FullyConnected::FullyConnected(const OperationDef& definition,
     } else {
       work_group_size_ = int3(32, 4, 1);
     }
+  } else if (device_info.IsIntel()) {
+    work_group_size_ = int3(8, 4, 1);
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
@@ -78,8 +80,9 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int gid = get_global_id(0);\n";
-  c += "  bool inside = gid < args.dst_tensor.Slices();\n";
-  c += "  gid = min(gid, args.dst_tensor.Slices() - 1);\n";
+  c += "  if (gid >= args.dst_tensor.Slices()) {\n";
+  c += "    return;\n";
+  c += "  }\n";
   c += "  int2 tid = (int2)(get_local_id(0), get_local_id(1));\n";
   c += "  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);\n";
   c += "  for (uint c = tid.y; c < args.src_tensor.Slices(); c += " + wg_y +
@@ -94,7 +97,7 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   c += "  __local ACCUM_FLT4 temp[" + wg_x + "][" + wg_y + "];\n";
   c += "  temp[tid.x][tid.y] = s;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  c += "  if (tid.y == 0 && inside) {\n";
+  c += "  if (tid.y == 0) {\n";
   for (int i = 1; i < work_group_size.y; ++i) {
     c += "    s += temp[tid.x][" + std::to_string(i) + "];\n";
   }

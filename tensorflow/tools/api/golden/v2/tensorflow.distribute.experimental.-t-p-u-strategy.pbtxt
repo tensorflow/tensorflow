@@ -29,10 +29,6 @@ tf_class {
     argspec: "args=[\'self\', \'session_config\', \'cluster_spec\', \'task_type\', \'task_id\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "experimental_assign_to_logical_device"
-    argspec: "args=[\'self\', \'tensor\', \'logical_device_id\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "experimental_distribute_dataset"
     argspec: "args=[\'self\', \'dataset\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -53,16 +49,8 @@ tf_class {
     argspec: "args=[\'self\', \'numpy_input\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "experimental_replicate_to_logical_devices"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "experimental_run"
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "experimental_split_to_logical_devices"
-    argspec: "args=[\'self\', \'tensor\', \'partition_dimensions\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "group"

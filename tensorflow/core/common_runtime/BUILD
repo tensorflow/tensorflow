@@ -88,7 +88,6 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/common_runtime/sycl:sycl_runtime",
     ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 

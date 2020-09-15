@@ -112,6 +112,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/lite/python:schema_py",
+        "@flatbuffers//:runtime_py",
     ],
 )
 
@@ -137,6 +138,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/lite/python:schema_py",
+        "@flatbuffers//:runtime_py",
     ],
 )
 

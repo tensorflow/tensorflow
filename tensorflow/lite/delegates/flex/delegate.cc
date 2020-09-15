@@ -145,6 +145,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 // Exported C interface function which is used by AcquireFlexDelegate() at
 // interpreter_build.cc. To export the function name globally, the function name
 // must be matched with patterns in tf_version_script.lds
+#if !defined(__ANDROID__)
 extern "C" {
 #if defined(_WIN32)
 __declspec(dllexport)
@@ -153,3 +154,4 @@ __declspec(dllexport)
   return tflite::FlexDelegate::Create();
 }
 }  // extern "C"
+#endif  // !defined(__ANDROID__)
