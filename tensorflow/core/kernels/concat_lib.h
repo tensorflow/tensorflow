@@ -73,14 +73,6 @@ TF_CALL_GPU_ALL_TYPES(REGISTER);
 #undef REGISTER
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-void ConcatSYCL(
-    const Eigen::SyclDevice& d,
-    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
-        inputs,
-    typename TTypes<T, 2>::Matrix* output);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONCAT_LIB_H_

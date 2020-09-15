@@ -9,7 +9,6 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
-    "tf_sycl_tests_tags",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -2352,44 +2351,6 @@ def cuda_py_test(*args, **kwargs):
 
 register_extension_info(
     extension_name = "cuda_py_test",
-    label_regex_map = {"deps": "deps:{extension_name}"},
-)
-
-def sycl_py_test(
-        name,
-        srcs,
-        size = "medium",
-        data = [],
-        main = None,
-        args = [],
-        shard_count = 1,
-        kernels = [],
-        tags = [],
-        flaky = 0,
-        xla_enabled = False,
-        grpc_enabled = False,
-        **kwargs):
-    test_tags = tags + tf_sycl_tests_tags()
-    if "additional_deps" in kwargs:
-        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
-    tf_py_test(
-        name = name,
-        size = size,
-        srcs = srcs,
-        args = args,
-        data = data,
-        flaky = flaky,
-        grpc_enabled = grpc_enabled,
-        kernels = kernels,
-        main = main,
-        shard_count = shard_count,
-        tags = test_tags,
-        xla_enabled = xla_enabled,
-        **kwargs
-    )
-
-register_extension_info(
-    extension_name = "sycl_py_test",
     label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
