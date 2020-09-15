@@ -180,6 +180,7 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
 
     // Compute exp(input - max_input)
     // sum_of_exps is a Q16.15 fixed point format.
+	//the output buffer is used as scratch memory and overwritten when the results are written.
     int32_t sum_of_exps = 0;
     int16_t* exp_results_Q015 = output_data + i * depth;
     for (int c = 0; c < depth; ++c) {
