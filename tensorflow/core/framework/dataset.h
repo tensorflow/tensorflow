@@ -121,6 +121,10 @@ class IteratorStateWriter {
   virtual ~IteratorStateWriter() {}
 };
 
+// Generates a full name key for iterator checkpointing. All keys generated for
+// iterator checkpoints should go through this function.
+std::string FullName(const std::string& prefix, const std::string& name);
+
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
 class GraphDefBuilderWrapper {
  public:
@@ -972,12 +976,7 @@ class DatasetBaseIterator : public IteratorBase {
                               bool* end_of_sequence, int* num_skipped);
 
   string full_name(const string& name) const {
-    if (str_util::StrContains(name, kColon)) {
-      LOG(ERROR) << name << " should not contain " << kColon;
-    }
-
-    return strings::StrCat(kFullNameRandomHex, kPipe, params_.prefix, kColon,
-                           name);
+    return FullName(params_.prefix, name);
   }
 
   // Returns a map of key-value pairs to included in the TraceMe string.

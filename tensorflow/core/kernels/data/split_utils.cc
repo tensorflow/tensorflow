@@ -12,18 +12,50 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/data/split_providers.h"
-
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/kernels/data/split_utils.h"
 
 namespace tensorflow {
 namespace data {
-
 namespace {
 constexpr char kNumToSkip[] = "num_to_skip";
 constexpr char kSplitProvider[] = "split_provider";
 constexpr char kSlash[] = "/";
+constexpr char kIndex[] = "index";
 }  // namespace
+
+IndexSplitProvider::IndexSplitProvider(int64 n) : i_(0), n_(n) {}
+
+Status IndexSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
+  mutex_lock l(mu_);
+  if (i_ >= n_) {
+    *end_of_splits = true;
+    return Status::OK();
+  }
+  *end_of_splits = false;
+  *split = Tensor(DT_INT64, TensorShape{});
+  split->scalar<int64>()() = i_++;
+  return Status::OK();
+}
+
+Status IndexSplitProvider::Reset() {
+  mutex_lock l(mu_);
+  i_ = 0;
+  return Status::OK();
+}
+
+Status IndexSplitProvider::Save(
+    std::function<std::string(std::string)> full_name,
+    IteratorStateWriter* writer) {
+  mutex_lock l(mu_);
+  return writer->WriteScalar(full_name(kIndex), i_);
+}
+
+Status IndexSplitProvider::Restore(
+    std::function<std::string(std::string)> full_name,
+    IteratorStateReader* reader) {
+  mutex_lock l(mu_);
+  return reader->ReadScalar(full_name(kIndex), &i_);
+}
 
 ShardingSplitProvider::ShardingSplitProvider(
     int64 num_shards, int64 shard_index,

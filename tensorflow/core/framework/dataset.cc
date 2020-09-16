@@ -383,6 +383,14 @@ int64 GetTotalBytes(const std::vector<Tensor>& element) {
   return total_bytes;
 }
 
+std::string FullName(const std::string& prefix, const std::string& name) {
+  if (str_util::StrContains(name, kColon)) {
+    LOG(ERROR) << name << " should not contain " << kColon;
+  }
+
+  return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&

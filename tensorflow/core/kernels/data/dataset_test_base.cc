@@ -62,7 +62,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
-#include "tensorflow/core/kernels/data/split_providers.h"
+#include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

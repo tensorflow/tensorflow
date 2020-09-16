@@ -26,7 +26,7 @@ cc_library(
         ":map_dataset_op",
         ":name_utils",
         ":range_dataset_op",
-        ":split_providers",
+        ":split_utils",
         ":take_dataset_op",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu",
@@ -738,31 +738,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "split_providers",
-    srcs = ["split_providers.cc"],
-    hdrs = ["split_providers.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:errors",
-    ],
-)
-
-tf_cc_test(
-    name = "split_providers_test",
-    size = "small",
-    srcs = ["split_providers_test.cc"],
-    deps = [
-        ":dataset_test_base",
-        ":dataset_utils",
-        ":split_providers",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/framework:tensor_testutil",
-    ],
-)
-
 tf_kernel_library(
     name = "take_dataset_op",
     srcs = ["take_dataset_op.cc"],
@@ -923,6 +898,32 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "split_utils",
+    srcs = ["split_utils.cc"],
+    hdrs = ["split_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:iterator_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "split_utils_test",
+    size = "small",
+    srcs = ["split_utils_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":split_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+    ],
+)
+
 tf_kernel_library(
     name = "tensor_dataset_op",
     srcs = ["tensor_dataset_op.cc"],
@@ -955,6 +956,7 @@ tf_kernel_library(
     deps = [
         ":dataset_utils",
         ":name_utils",
+        ":split_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
