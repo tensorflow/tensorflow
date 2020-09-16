@@ -47,7 +47,7 @@ REGISTER_OP("_MklNativeConv3D")
 MKL version of Conv3D operator that does not depend on layout propagation.
 Uses oneDNN APIs to perform 3D convolution.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -74,7 +74,7 @@ MKL version of Convolution3D backward input op that does not depend on layout
 propagation. Uses oneDNN APIs to compute the gradients of convolution with
 respect to the input.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -100,7 +100,7 @@ MKL version of Conv3DBackpropFilter op that does not depend on layout
 propagation. Uses oneDNN APIs to compute the gradients of convolution
 with respect to the filter.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
