@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -transform-unranked-hlo -split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt --transform-unranked-hlo --split-input-file %s | FileCheck %s
 
 // Check the validity of expected IR.
 // CHECK-LABEL: @sqr_transform_result
@@ -78,5 +78,21 @@ func @add_unranked(%a : tensor<*xf32>, %b : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[FLAT_RESULT]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
   // CHECK: return %[[RESULT]] : tensor<*xf32>
   %result = mhlo.add %a, %b : tensor<*xf32>
+  return %result : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @tan
+// CHECK-SAME: (%[[A:.*]]: tensor<*xf32>) -> tensor<*xf32>
+func @tan(%a : tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[A]] : tensor<*xf32> -> tensor<?xindex>
+  // CHECK: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
+  // CHECK: %[[FLAT_SHAPE:.*]] = tensor_from_elements %[[NUM_ELEMENTS]] : tensor<1xindex>
+  // CHECK: %[[FLAT_A:.*]] = "mhlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[FLAT_B:.*]] = chlo.tan %[[FLAT_A]] : tensor<?xf32>
+  // CHECK: %[[B:.*]] = "mhlo.dynamic_reshape"(%[[FLAT_B]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+  // CHECK: return %[[B]] : tensor<*xf32>
+  %result = chlo.tan %a : tensor<*xf32>
   return %result : tensor<*xf32>
 }

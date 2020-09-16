@@ -14,6 +14,7 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace mhlo {
 namespace {
 
 // TODO(herhut): Generate these out of op definitions.
@@ -45,6 +45,9 @@ namespace {
       sep fn(MinOp) sep fn(MulOp) sep fn(PowOp) sep fn(RemOp)             \
           sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp)              \
               sep fn(ShiftRightLogicalOp) sep fn(SubOp)
+
+// TODO(herhut): Generate these out of op definitions.
+#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep) fn(TanOp) sep fn(AcosOp)
 
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
@@ -101,8 +104,8 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
           operand.getType().template cast<ShapedType>().getElementType();
       Type flatTy =
           RankedTensorType::get({ShapedType::kDynamicSize}, operandElementTy);
-      Value flat =
-          rewriter.create<DynamicReshapeOp>(loc, flatTy, operand, flatShape);
+      Value flat = rewriter.create<mhlo::DynamicReshapeOp>(loc, flatTy, operand,
+                                                           flatShape);
       flatOperands.push_back(flat);
     }
 
@@ -115,8 +118,8 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
         rewriter.create<OpTy>(loc, flatResultTy, flatOperands, op.getAttrs());
 
     // Restore original shape.
-    rewriter.replaceOpWithNewOp<DynamicReshapeOp>(op, op.getType(), flatResult,
-                                                  shape);
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, op.getType(),
+                                                        flatResult, shape);
 
     return success();
   }
@@ -132,13 +135,16 @@ struct TransformUnrankedHloPass
     // Setup conversion target.
     MLIRContext &ctx = getContext();
     ConversionTarget target(ctx);
-    target.addLegalDialect<MhloDialect, StandardOpsDialect,
+    target.addLegalDialect<mhlo::MhloDialect, StandardOpsDialect,
                            shape::ShapeDialect>();
     target.addLegalOp<FuncOp>();
-#define ADD_LEGAL(op) AddLegalOpOnRankedTensor<op>(&target)
-    MAP_XLA_OPERATION_CWISE_UNARY(ADD_LEGAL, ;);
-    MAP_XLA_OPERATION_CWISE_BINARY(ADD_LEGAL, ;);
-#undef ADD_LEGAL
+#define ADD_LEGAL_MHLO(op) AddLegalOpOnRankedTensor<mhlo::op>(&target)
+#define ADD_LEGAL_CHLO(op) AddLegalOpOnRankedTensor<chlo::op>(&target)
+    MAP_XLA_OPERATION_CWISE_UNARY(ADD_LEGAL_MHLO, ;);
+    MAP_XLA_OPERATION_CWISE_BINARY(ADD_LEGAL_MHLO, ;);
+    MAP_CHLO_OPERATION_CWISE_UNARY(ADD_LEGAL_CHLO, ;);
+#undef ADD_LEGAL_MHLO
+#undef ADD_LEGAL_CHLO
 
     // Populate rewrite patterns.
     OwningRewritePatternList patterns;
@@ -154,16 +160,19 @@ struct TransformUnrankedHloPass
 
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
-#define MAP_UNARY(op) ElementwiseOpConversion<op>
-#define MAP_BINARY(op) ElementwiseOpConversion<op>
+#define MAP_UNARY(op) ElementwiseOpConversion<mhlo::op>
+#define MAP_BINARY(op) ElementwiseOpConversion<mhlo::op>
+#define MAP_CHLO_UNARY(op) ElementwiseOpConversion<chlo::op>
 #define COMMA ,
   // clang-format off
   patterns->insert<
       MAP_XLA_OPERATION_CWISE_UNARY(MAP_UNARY, COMMA),
-      MAP_XLA_OPERATION_CWISE_BINARY(MAP_BINARY, COMMA)>(context);
+      MAP_XLA_OPERATION_CWISE_BINARY(MAP_BINARY, COMMA),
+      MAP_CHLO_OPERATION_CWISE_UNARY(MAP_CHLO_UNARY, COMMA)>(context);
   // clang-format on
 #undef MAP_UNARY
 #undef MAP_BINARY
+#undef MAP_CHLO_UNARY
 #undef COMMA
 }
 
@@ -171,5 +180,4 @@ std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {
   return std::make_unique<TransformUnrankedHloPass>();
 }
 
-}  // namespace mhlo
 }  // namespace mlir

@@ -1957,7 +1957,7 @@ func @abs_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: @acos
 // CHLO-LABEL: @acos
 func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK:  "chlo.acos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK:  chlo.acos %arg0 : tensor<2xf32>
 // CHLO:   %[[VAL_1:.*]] = "mhlo.compare"({{.*}}) {comparison_direction = "NE"}
 // CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
 // CHLO:   %[[VAL_4:.*]] = mhlo.constant dense<1.000000e+00>
@@ -1978,7 +1978,7 @@ func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: @acos_dynamic
 // CHLO-LABEL: @acos_dynamic
 func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  "chlo.acos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK:  chlo.acos %arg0 : tensor<*xf32>
 // CHLO:   %[[VAL_1:.*]] = "mhlo.compare"({{.*}}) {comparison_direction = "NE"}
 // CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
 // CHLO:   %[[VAL_4:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32}
@@ -2001,7 +2001,7 @@ func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHLO-LABEL: @tan
 // CHLO-SAME: (%[[ARG:.*]]: tensor<2xf32>) -> tensor<2xf32>
 func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: "chlo.tan"(%[[ARG]]) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: chlo.tan %[[ARG]] : tensor<2xf32>
   // CHLO: %[[SINE:.*]] = "mhlo.sine"(%[[ARG]])
   // CHLO  %[[COSINE:.*]] = "mhlo.cosine"(%[[ARG]])
   // CHLO  %[[RESULT:.*]] = "mhlo.divide"(%[[SINE]], %[[COSINE]])
@@ -2014,7 +2014,7 @@ func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
 // CHLO-LABEL: @tan_unranked
 // CHLO-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
 func @tan_unranked(%arg : tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "chlo.tan"(%[[ARG]]) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK: chlo.tan %[[ARG]] : tensor<*xf32>
   // CHLO: %[[SINE:.*]] = "mhlo.sine"(%[[ARG]])
   // CHLO  %[[COSINE:.*]] = "mhlo.cosine"(%[[ARG]])
   // CHLO  %[[RESULT:.*]] = "mhlo.divide"(%[[SINE]], %[[COSINE]])
