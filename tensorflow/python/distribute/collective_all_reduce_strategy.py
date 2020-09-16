@@ -471,6 +471,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     return input_context
 
   def _experimental_distribute_dataset(self, dataset, options):
+    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+      raise NotImplementedError("InputReplicationMode.PER_REPLICA "
+                                "is only supported in `experimental_distribute_datasets_from_function`.")
     input_context = self._make_input_context()
     return input_lib.get_distributed_dataset(
         dataset,

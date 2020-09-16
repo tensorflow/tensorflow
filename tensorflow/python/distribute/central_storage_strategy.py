@@ -102,6 +102,9 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     Returns:
       A "distributed `Dataset`" that the caller can iterate over.
     """
+    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+      raise NotImplementedError("InputReplicationMode.PER_REPLICA "
+                                "is only supported in `experimental_distribute_datasets_from_function`.")
     return super(CentralStorageStrategy, self).experimental_distribute_dataset(
         dataset, options)
 
