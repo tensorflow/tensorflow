@@ -21,10 +21,11 @@ from __future__ import print_function
 import glob
 import itertools
 import math
-import numpy as np
 import os
 import six
 import tempfile
+
+import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -57,6 +58,8 @@ from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.util import compat
 from tensorflow.python.ops import dynamic_embedding_ops as deo
@@ -404,7 +407,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
       self.assertAllEqual([[0], [1], [2], [-1], [-1]], self.evaluate(output))
       del table
 
-  def test_traing_save_restore(self):
+  def test_training_save_restore(self):
     dtype = dtypes.int64
     dim = 6
     opt = adam.AdamOptimizer(0.3)
@@ -423,7 +426,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
                                   0.0, 0.01),
                               dim=dim)
     _, var0 = deo.embedding_lookup(params, ids, return_trainable=True)
-    loss = lambda : var0 * var0
+    loss = lambda: var0 * var0
 
     params_keys, params_vals = params.export()
     mini = opt.minimize(loss, var_list=[var0])
@@ -912,6 +915,172 @@ class DynamicEmbeddingOpTest(test.TestCase):
 
       result = self.evaluate(output)
       self.assertNotEqual([-1.], result[2])
+
+
+class DynamicEmbeddingOpV2Test(test.TestCase):
+
+  @test_util.run_v2_only
+  def test_object_oriented_save_restore(self):
+    ckpt_dir = os.path.join(self.get_temp_dir(), "save_restore")
+
+    v0 = variables.Variable(10.0, name="v0")
+    v1 = variables.Variable(20.0, name="v1")
+    table = deo.Variable(key_dtype=dtypes.int64,
+                         value_dtype=dtypes.float32,
+                         initializer=-1.,
+                         name='t1',
+                         dim=1)
+
+    self.assertEqual(10.0, v0)
+    self.assertEqual(20.0, v1)
+    self.assertAllEqual(0, table.size())
+
+    keys = constant_op.constant([0, 1, 2], dtypes.int64)
+    values = constant_op.constant([[0.], [1.], [2.]], dtypes.float32)
+    table.upsert(keys, values)
+    self.assertAllEqual(3, table.size())
+    self.assertAllEqual([[0.], [1.], [-1.]], table.lookup([0, 1, 4]))
+
+    root = tracking.AutoTrackable()
+    root.v0 = v0
+    root.v1 = v1
+    root.table = table
+    checkpoint = trackable_utils.Checkpoint(root=root)
+    ckpt_path = checkpoint.save(
+        os.path.join(tempfile.mkdtemp(prefix=ckpt_dir), "test.ckpt"))
+    del v0, v1, table, root
+
+    v2 = variables.Variable(-1.0, name="v2")
+    v3 = variables.Variable(-1.0, name="v3")
+    table = deo.Variable(key_dtype=dtypes.int64,
+                         value_dtype=dtypes.float32,
+                         initializer=-2.,
+                         name='t1',
+                         dim=1)
+
+    self.assertEqual(-1.0, v2)
+    self.assertEqual(-1.0, v3)
+    table.upsert(constant_op.constant([0, 1], dtypes.int64),
+                 constant_op.constant([[12.], [24.]], dtypes.float32))
+    self.assertAllEqual(2, table.size())
+
+    root = tracking.AutoTrackable()
+    root.v0 = v2
+    root.v1 = v3
+    root.table = table
+    checkpoint = trackable_utils.Checkpoint(root=root)
+    checkpoint.restore(ckpt_path)
+    self.assertEqual(10.0, v2)
+    self.assertEqual(20.0, v3)
+    self.assertAllEqual(3, table.size())
+    self.assertAllEqual([[0.], [1.], [-2.]], table.lookup([0, 1, 4]))
+    del v2, v3, table, root
+
+  @test_util.run_v2_only
+  def test_object_oriented_save_restore_only_table(self):
+    ckpt_dir = os.path.join(self.get_temp_dir(), "save_restore")
+
+    v0 = variables.Variable(10.0, name="v0")
+    v1 = variables.Variable(20.0, name="v1")
+    table = deo.Variable(key_dtype=dtypes.int64,
+                         value_dtype=dtypes.float32,
+                         initializer=-1.,
+                         name='t1',
+                         dim=1)
+
+    self.assertEqual(10.0, v0)
+    self.assertEqual(20.0, v1)
+    self.assertAllEqual(0, table.size())
+
+    keys = constant_op.constant([0, 1, 2], dtypes.int64)
+    values = constant_op.constant([[0.], [1.], [2.]], dtypes.float32)
+    table.upsert(keys, values)
+    self.assertAllEqual(3, table.size())
+    self.assertAllEqual([[0.], [1.], [-1.]], table.lookup([0, 1, 4]))
+
+    checkpoint = trackable_utils.Checkpoint(table=table)
+    ckpt_path = checkpoint.save(
+        os.path.join(tempfile.mkdtemp(prefix=ckpt_dir), "test.ckpt"))
+    del v0, v1, table
+
+    v2 = variables.Variable(-1.0, name="v2")
+    v3 = variables.Variable(-1.0, name="v3")
+    table = deo.Variable(key_dtype=dtypes.int64,
+                         value_dtype=dtypes.float32,
+                         initializer=-2.,
+                         name='t1',
+                         dim=1)
+
+    self.assertEqual(-1.0, v2)
+    self.assertEqual(-1.0, v3)
+    table.upsert(constant_op.constant([0, 1], dtypes.int64),
+                 constant_op.constant([[12.], [24.]], dtypes.float32))
+    self.assertAllEqual(2, table.size())
+
+    checkpoint = trackable_utils.Checkpoint(table=table)
+    checkpoint.restore(ckpt_path)
+    self.assertEqual(-1.0, v2)
+    self.assertEqual(-1.0, v3)
+    self.assertAllEqual(3, table.size())
+    self.assertAllEqual([[0.], [1.], [-2.]], table.lookup([0, 1, 4]))
+    del v2, v3, table
+
+  @test_util.run_v2_only
+  def test_object_oriented_training_save_restore(self):
+    dtype = dtypes.int64
+    dim = 6
+    opt = adam.AdamOptimizer(0.3)
+    step = 100
+
+    ckpt_dir = os.path.join(self.get_temp_dir(), "save_restore")
+
+    ids = script_ops.py_func(_create_dynamic_shape_tensor(),
+                             inp=[],
+                             Tout=dtype,
+                             stateful=True)
+
+    params = deo.get_variable(name="params-test",
+                              initializer=init_ops.random_normal_initializer(
+                                  0.0, 0.01),
+                              dim=dim)
+    _, var0 = deo.embedding_lookup(params, ids, return_trainable=True)
+    loss = lambda: var0 * var0
+
+    params_keys, params_vals = params.export()
+    opt_slots = [opt.get_slot(var0, _s) for _s in opt.get_slot_names()]
+
+    for _ in range(step):
+      opt.minimize(loss, var_list=[var0])
+
+    size1 = params.size()
+    keys1 = params_keys.numpy()
+    values1 = params_vals.numpy()
+    slots_kv_pairs1 = [_kv for _kv in [_s.params.export() for _s in opt_slots]]
+
+    checkpoint = trackable_utils.Checkpoint(params=params)
+    ckpt_path = checkpoint.save(
+        os.path.join(tempfile.mkdtemp(prefix=ckpt_dir), "test.ckpt"))
+
+    params = deo.get_variable(name="params-test",
+                              initializer=init_ops.random_normal_initializer(
+                                  0.0, 0.01),
+                              dim=dim)
+    checkpoint = trackable_utils.Checkpoint(params=params)
+    checkpoint.restore(ckpt_path)
+    size2 = params.size()
+    params_keys_restored, params_vals_restored = params.export()
+    keys2 = params_keys_restored.numpy()
+    values2 = params_vals_restored.numpy()
+    slots_kv_pairs2 = [_kv for _kv in [_s.params.export() for _s in opt_slots]]
+
+    self.assertAllEqual(size1, size2)
+    self.assertAllEqual(np.sort(keys1), np.sort(keys2))
+    self.assertAllEqual(np.sort(values1, axis=0), np.sort(values2, axis=0))
+    for pairs1, pairs2 in zip(slots_kv_pairs1, slots_kv_pairs2):
+      self.assertAllEqual(np.sort(pairs1[0], axis=0), np.sort(pairs2[0],
+                                                              axis=0))
+      self.assertAllEqual(np.sort(pairs1[1], axis=0), np.sort(pairs2[1],
+                                                              axis=0))
 
 
 @test_util.deprecated_graph_mode_only
@@ -1842,8 +2011,8 @@ class EmbeddingLookupTrainableTest(test.TestCase, CommonTrainableTestBase):
         def loss_fn(x, trainables):
           ids = constant_op.constant(raw_ids, dtype=k_dtype)
           pred, trainable = deo.embedding_lookup([x],
-                                                  ids,
-                                                  return_trainable=True)
+                                                 ids,
+                                                 return_trainable=True)
           trainables.clear()
           trainables.append(trainable)
           return pred * pred

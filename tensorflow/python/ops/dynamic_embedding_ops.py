@@ -367,7 +367,7 @@ class Variable(trackable.TrackableResource):
       saveable_dict = table._gather_saveables_for_checkpoint()
       for (_, saveable) in saveable_dict.items():
         # merge all tables saveable to one dict with their own name.
-        saveables[table.name] = saveable
+        saveables[saveable.keywords["name"]] = saveable
     return saveables
 
 
