@@ -101,7 +101,7 @@ REGISTER_OP("_MklNativeConv2DWithBias")
 MKL version of Conv2D and BiasAdd operator. Uses DNNL APIs to perform
 2D convolution and add Bias to the output of convolution.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke this operator.
 )doc");
 
@@ -274,7 +274,7 @@ MKL version of Pad and Conv2D fusion that does not depend
 on layout propagation. Uses oneDNN APIs to perform
 the fusion.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
