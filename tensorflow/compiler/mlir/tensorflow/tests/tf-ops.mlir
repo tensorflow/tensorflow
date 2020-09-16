@@ -183,6 +183,20 @@ func @testLeakyWrongAlphaType(tensor<16xf32>) -> tensor<16xf32> {
 
 // -----
 
+// Test tf.Min with complex numbers.
+// Previous versions of tensorflow said complex numbers were allowed with
+// tf.Min even though it doesn't make sense. The legalization of tf to xla
+// requires that complex types are not allowed in tf.Min, so we have an
+// explicit unit here to make sure that invariant is enforced.
+func @testMinComplex(%arg0: tensor<4x8xcomplex<f32>>) -> tensor<4x1xcomplex<f32>> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  // expected-error@below {{'tf.Min' op operand #0 must be tensor of}}
+  %0 = "tf.Min"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xcomplex<f32>>, tensor<1xi64>) -> tensor<4x1xcomplex<f32>>
+  return %0 : tensor<4x1xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @testMul
 func @testMul(%arg0: tensor<2xui16>) -> (tensor<2xui16>) {
   %0 = "tf.Mul"(%arg0, %arg0) {T = "tfdtype$DT_UINT16", device = "/device:CPU:0", name = "Mul"} : (tensor<2xui16>, tensor<2xui16>) -> tensor<2xui16>
