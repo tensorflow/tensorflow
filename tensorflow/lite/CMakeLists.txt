@@ -56,7 +56,6 @@ option(TFLITE_ENABLE_GPU "Enable GPU (not supported)" OFF)
 # This is currently not supported.
 option(TFLITE_ENABLE_FLEX "Enable SELECT_TF_OPS" OFF) # TODO: Add support
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" OFF) # TODO: Add XNNPACK
-option(TFLITE_ENABLE_PROFILING "Enable profiling" OFF)
 set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_NNAPI "${TFLITE_ENABLE_NNAPI}")
@@ -277,19 +276,6 @@ populate_tflite_source_vars("kernels/internal/reference/integer_ops"
 populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
   TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS
 )
-if(TFLITE_ENABLE_PROFILING)
-  populate_tflite_source_vars("profiling" TFLITE_KERNEL_PROFILING_SRCS)
-endif()
-populate_tflite_source_vars("tools/optimize" TFLITE_TOOLS_OPTIMIZE_SRCS)
-populate_tflite_source_vars("tools/optimize/calibration"
-  TFLITE_TOOLS_OPTIMIZE_CALIBRATION_SRCS
-)
-populate_tflite_source_vars("tools/optimize/calibration/builtin_logging_ops"
-  TFLITE_TOOLS_OPTIMIZE_CALIBRATION_OPS_SRCS
-)
-populate_tflite_source_vars("tools/optimize/sparsity"
-  TFLITE_TOOLS_OPTIMIZE_SPARSITY_SRCS
-)
 add_library(tensorflowlite
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_SRCS}
@@ -309,14 +295,9 @@ add_library(tensorflowlite
   ${TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SRCS}
   ${TFLITE_KERNEL_INTERNAL_SRCS}
-  ${TFLITE_KERNEL_PROFILING_SRCS}
   ${TFLITE_KERNEL_SRCS}
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
-  ${TFLITE_TOOLS_OPTIMIZE_CALIBRATION_OPS_SRCS}
-  ${TFLITE_TOOLS_OPTIMIZE_CALIBRATION_SRCS}
-  ${TFLITE_TOOLS_OPTIMIZE_SPARSITY_SRCS}
-  ${TFLITE_TOOLS_OPTIMIZE_SRCS}
 )
 target_link_libraries(tensorflowlite
   PUBLIC
@@ -346,3 +327,35 @@ target_compile_options(tensorflowlite
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
 add_library(tensorflow::tensorflowlite ALIAS tensorflowlite)
+
+# Benchmark Tool
+# TODO(b/165466903): Enable Android build with delegates support.
+populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
+  TFLITE_BENCHMARK_SRCS
+  FILTER "(_test|_plus_flex_main|_performance_options_main)\\.cc$"
+)
+add_executable(benchmark_model
+  EXCLUDE_FROM_ALL
+  ${TFLITE_BENCHMARK_SRCS}
+  ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
+  ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
+  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
+  ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
+  ${TFLITE_SOURCE_DIR}/profiling/time.cc
+  ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
+  ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
+  ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
+)
+target_link_libraries(benchmark_model
+  PUBLIC
+    tensorflowlite
+    ${CMAKE_DL_LIBS}
+)
+target_include_directories(benchmark_model
+  PUBLIC
+   "${TENSORFLOW_SOURCE_DIR}"
+  PRIVATE
+    "${TFLITE_FLATBUFFERS_GEN_DIR}"
+)
+
