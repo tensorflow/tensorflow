@@ -211,6 +211,39 @@ TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
   EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule NonfusionInstrs
+
+ %add_f16 {
+   %x = f16[] parameter(0)
+   %y = f16[] parameter(1)
+   ROOT %add = f16[] add(%x, %y)
+ }
+
+ ENTRY entry_computation {
+   arg.0 = f16[1024]{0} parameter(0)
+   arg.1 = f16[1024]{0} parameter(1)
+   constant0 = f16[] constant(0)
+   reduce.0 = f16[] reduce(arg.0, constant0), dimensions={0}, to_apply=%add_f16
+   reduce.1 = f16[] reduce(arg.1, constant0), dimensions={0}, to_apply=%add_f16
+   ROOT tuple.0 = (f16[], f16[]) tuple(reduce.0, reduce.1)
+ }
+)").ValueOrDie();
+
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(entry_root, op::Tuple((op::GetTupleElement(op::Fusion())),
+                                    (op::GetTupleElement(op::Fusion()))));
+
+  const HloInstruction* fusion = entry_root->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Reduce(), op::Reduce()));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
