@@ -30,7 +30,7 @@ REGISTER_OP("TPUExecute")
       shape_inference::ShapeHandle key;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &key));
       shape_inference::DimensionHandle unused;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 2, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 3, &unused));
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
@@ -50,7 +50,7 @@ REGISTER_OP("TPUExecuteAndUpdateVariables")
       shape_inference::ShapeHandle key;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &key));
       shape_inference::DimensionHandle unused;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 2, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 3, &unused));
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
