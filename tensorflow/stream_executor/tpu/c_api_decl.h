@@ -35,6 +35,7 @@ enum TpuVersionEnum {
   kUnknownTpuVersion,
   kTpuV2,
   kTpuV3,
+  kTpuV4,
 };
 
 typedef struct SE_Status SE_Status;

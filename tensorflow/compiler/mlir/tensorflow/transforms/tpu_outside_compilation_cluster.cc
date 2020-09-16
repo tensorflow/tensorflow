@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -44,24 +45,19 @@ class OutsideCompiledCluster {
   explicit OutsideCompiledCluster(int number)
       : cluster_name_(llvm::formatv("cluster{0}", number).str()) {}
 
-  // Attempts to add an op to this cluster.
-  // This function requires all ops to be added before their uses.
+  // Attempts to add an op to this cluster. Ops can be grouped to the same
+  // cluster if they have data dependency and are inside the same block.
+  // TODO(kfranko): Ensure that side effecting ops are checked before being
+  // grouped to a same cluster.
   bool AddOp(Operation* op) {
     // Check if the op is safe to add before adding it.
-    bool add = IsSafeToAdd(op);
-    if (add) {
-      // Set the ops kXlaOutsideCompilationAttr to the cluster name.
+    if (IsSafeToAdd(op)) {
       op->setAttr(kXlaOutsideCompilationAttr,
                   StringAttr::get(cluster_name_, op->getContext()));
-
-      // Since we are adding the op to the cluster, the op is no longer
-      // considered a user of this cluster.
-      users_.erase(op);
+      host_cluster_ops_.insert(op);
+      return true;
     }
-
-    // Add this op's users to the cluster users.
-    users_.insert(op->user_begin(), op->user_end());
-    return add;
+    return false;
   }
 
  private:
@@ -72,26 +68,27 @@ class OutsideCompiledCluster {
     if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
       return false;
 
-    // Checks to see if the op's operands are related to this
-    // clusters users. If they are related, then there is an op between this
-    // op and the cluster. Since ops are added before their uses, there
-    // is no way for the op in-between to ever be added to this cluster
-    // therefore there is no way this op can ever be added to the cluster.
-    for (const Value& value : op->getOperands()) {
-      Operation* op_operand = value.getDefiningOp();
-      if (op_operand && users_.find(op_operand) != users_.end()) return false;
-    }
-    return true;
+    if (host_cluster_ops_.empty()) return true;
+
+    // Checks to see if there is data dependency between ops in
+    // `host_cluster_ops_` and `op`.
+    const bool contains_data_dependency = llvm::any_of(
+        op->getUsers(),
+        [&](Operation* user) { return host_cluster_ops_.contains(user); });
+
+    const bool inside_same_block =
+        llvm::all_of(host_cluster_ops_, [&](Operation* op_in_cluster) {
+          return op_in_cluster->getBlock() == op->getBlock();
+        });
+
+    return inside_same_block && contains_data_dependency;
   }
 
-  // users_ stores the direct and indirect users of the outside compiled ops in
-  // this cluster. It does NOT store the outside compiled ops that are a part
-  // of this cluster that will be collectively extracted and run on the cpu.
-  // users_ is consulted when attempting to add a new outside compiled to the
-  // cluster. If the new op's operand(s) are already in users_, it means that
-  // the operand(s) were not added to the cluster so it is not safe to add the
-  // new op to the cluster either.
-  llvm::SmallPtrSet<Operation*, 8> users_;
+  // `host_cluster_op_` stores a set of ops that will be grouped and computed
+  // on host as single XlaHostCompute op. An outside compiled op can be grouped
+  // to a single cluster if it has data dependency to another op already in the
+  // cluster.
+  llvm::SmallPtrSet<Operation*, 8> host_cluster_ops_;
   std::string cluster_name_;
 };
 
@@ -100,16 +97,23 @@ void TPUOutsideCompilationCluster::runOnFunction() {
   int cluster_counter = 0;
 
   getFunction().walk([&](tf_device::ClusterOp tpu_cluster) {
-    for (Operation& op : tpu_cluster.GetBody()) {
+    llvm::SmallVector<Operation*, 4> tpu_cluster_ops;
+    tpu_cluster_ops.reserve(tpu_cluster.getBody()->getOperations().size());
+
+    tpu_cluster.walk([&](Operation* op) { tpu_cluster_ops.emplace_back(op); });
+
+    // In order to cluster ops feeding results to the same operation, traverse
+    // the ops in reverse order.
+    for (Operation* op : llvm::reverse(tpu_cluster_ops)) {
       // Try to add the op to existing clusters.
       bool added = false;
       for (auto& cluster : clusters)
-        if ((added = cluster.AddOp(&op))) break;
+        if ((added = cluster.AddOp(op))) break;
 
       // If the op cannot be added to existing clusters, create a new cluster.
       if (!added) {
         OutsideCompiledCluster new_cluster(cluster_counter++);
-        new_cluster.AddOp(&op);
+        new_cluster.AddOp(op);
         clusters.push_back(new_cluster);
       }
     }

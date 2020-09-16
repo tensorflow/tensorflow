@@ -108,7 +108,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
   # _main.c contains application and target specific initialization, like
   # setting clock speed, default uart setups, etc. and an implementation
   # of the DebugLog interfaces.
-  MICROLITE_CC_SRCS += \
+  APOLLO3_SDK_CC_SRCS += \
     $(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/startup_gcc.c \
     $(APOLLO3_SDK)/utils/am_util_delay.c \
     $(APOLLO3_SDK)/utils/am_util_faultisr.c \
@@ -117,21 +117,24 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     $(APOLLO3_SDK)/devices/am_devices_led.c
 
   CMSIS_SRC_DIR := $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source
-  THIRD_PARTY_CC_SRCS := \
-  $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_dot_prod_q15.c \
-  $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_mult_q15.c \
-  $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_init_q15.c \
-  $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_q15.c \
-  $(CMSIS_SRC_DIR)/TransformFunctions/arm_bitreversal2.c \
-  $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_q15.c \
-  $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_radix4_q15.c \
-  $(CMSIS_SRC_DIR)/CommonTables/arm_const_structs.c \
-  $(CMSIS_SRC_DIR)/CommonTables/arm_common_tables.c \
-  $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_mean_q15.c \
-  $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_max_q7.c
+
+  CMSIS_CC_SRCS += \
+    $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_dot_prod_q15.c \
+    $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_mult_q15.c \
+    $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_init_q15.c \
+    $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_q15.c \
+    $(CMSIS_SRC_DIR)/TransformFunctions/arm_bitreversal2.c \
+    $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_q15.c \
+    $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_radix4_q15.c \
+    $(CMSIS_SRC_DIR)/CommonTables/arm_const_structs.c \
+    $(CMSIS_SRC_DIR)/CommonTables/arm_common_tables.c \
+    $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_mean_q15.c \
+    $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_max_q7.c
 
   MICRO_SPEECH_TEST_SRCS += \
-    $(AP3_MICRO_DIR)/_main.c
+    $(AP3_MICRO_DIR)/_main.c \
+    $(APOLLO3_SDK_CC_SRCS) \
+    $(CMSIS_CC_SRCS)
 
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_apollo3evb_binary.sh
   # These are tests that don't currently work on the Apollo3 board.

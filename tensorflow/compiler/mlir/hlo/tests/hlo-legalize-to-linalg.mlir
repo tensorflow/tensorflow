@@ -152,6 +152,16 @@ func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @floor
+func @floor(%input: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: linalg.generic
+  // CHECK: floorf
+  %0 = "mhlo.floor"(%input) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_neg
 func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic

@@ -197,7 +197,7 @@ default options (which are explicated in the Basic Usage example above).
 
 // THIS:
 var options = MetalDelegate.Options()
-options.allowsPrecisionLoss = false
+options.isPrecisionLossAllowed = false
 options.waitType = .passive
 options.isQuantizationEnabled = false
 let delegate = MetalDelegate(options: options)

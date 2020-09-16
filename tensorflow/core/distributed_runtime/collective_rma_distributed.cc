@@ -160,26 +160,17 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     done(s);
   };
 
-  // Logic to execute once we have the device attributes for the server-side
-  // device.
-  auto dev_attributes_callback = [this, state, peer_device, peer_task, key,
-                                  to_device, to_device_ctx, to_alloc_attr,
-                                  to_tensor, client_locality,
-                                  recv_buf_callback](const Status& s) {
-    if (!s.ok()) {
-      recv_buf_callback(s);
-    } else {
-      state->call.reset(new RecvBufCall(
-          step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
-          to_alloc_attr, to_tensor, client_locality, state->server_attributes,
-          &cancel_mgr_, worker_cache_));
-      state->call->Start(recv_buf_callback);
-    }
-  };
-
-  dev_resolver_->GetDeviceAttributesAsync(peer_device, peer_task,
-                                          &state->server_attributes,
-                                          dev_attributes_callback);
+  Status s = dev_resolver_->GetDeviceAttributes(peer_device,
+                                                &state->server_attributes);
+  if (!s.ok()) {
+    recv_buf_callback(s);
+    return;
+  }
+  state->call.reset(
+      new RecvBufCall(step_id_, peer_device, peer_task, key, to_device,
+                      to_device_ctx, to_alloc_attr, to_tensor, client_locality,
+                      state->server_attributes, &cancel_mgr_, worker_cache_));
+  state->call->Start(recv_buf_callback);
 }
 
 void CollectiveRemoteAccessDistributed::CheckPeerHealth(
@@ -209,7 +200,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
       [this, req, resp, wi, peer_task, done](Status s) {
         std::vector<DeviceAttributes> cached_attrs;
         if (s.ok()) {
-          s = dev_resolver_->GetTaskCached(peer_task, &cached_attrs);
+          s = dev_resolver_->GetAllDeviceAttributes(peer_task, &cached_attrs);
         }
         if (s.ok()) {
           absl::flat_hash_set<uint64> remote_incarnations;

@@ -180,6 +180,11 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
         skip=["__init__"])
 
   try:
+    doc_controls.do_not_generate_docs(tf.__internal__)
+  except AttributeError:
+    pass
+
+  try:
     doc_controls.do_not_generate_docs(tf.__operators__)
   except AttributeError:
     pass

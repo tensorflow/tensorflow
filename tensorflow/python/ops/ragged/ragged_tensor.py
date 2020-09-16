@@ -45,6 +45,7 @@ from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 # pylint: disable=protected-access
 _convert_row_partition = RowPartition._convert_row_partition
@@ -74,6 +75,18 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   *ragged-rank*.  A `RaggedTensor`'s ragged-rank is fixed at graph creation
   time: it can't depend on the runtime values of `Tensor`s, and can't vary
   dynamically for different session runs.
+
+  Note that the `__init__` constructor is private. Please use one of the
+  following methods to construct a `RaggedTensor`:
+
+      * `tf.RaggedTensor.from_row_lengths`
+      * `tf.RaggedTensor.from_value_rowids`
+      * `tf.RaggedTensor.from_row_splits`
+      * `tf.RaggedTensor.from_row_starts`
+      * `tf.RaggedTensor.from_row_limits`
+      * `tf.RaggedTensor.from_nested_row_splits`
+      * `tf.RaggedTensor.from_nested_row_lengths`
+      * `tf.RaggedTensor.from_nested_value_rowids`
 
   ### Potentially Ragged Tensors
 
@@ -228,6 +241,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   #=============================================================================
   # Constructor (private)
   #=============================================================================
+  @doc_controls.do_not_generate_docs
   def __init__(self, values, row_partition, internal=False):
     """Creates a `RaggedTensor` with a specified partitioning for `values`.
 

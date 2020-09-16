@@ -1,6 +1,6 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "sycl_py_test", "tf_custom_op_library")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
@@ -926,6 +926,8 @@ cuda_py_test(
     name = "resource_variable_ops_test",
     size = "medium",
     srcs = ["resource_variable_ops_test.py"],
+    # TODO(kkb): CppMemoryChecker is flaky without these two flags, investigate.
+    #
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
     tfrt_enabled = True,
@@ -936,6 +938,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:memory_checker",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "@absl_py//absl/testing:parameterized",
@@ -3651,20 +3654,6 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-sycl_py_test(
-    name = "basic_gpu_test",
-    size = "small",
-    srcs = ["basic_gpu_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:math_ops_gen",
         "//third_party/py/numpy",
     ],
 )

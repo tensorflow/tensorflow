@@ -82,7 +82,7 @@ def TfSavedModel_Dialect : Dialect {
     with "get_global @some_global_tensor" in the function body.
   }];
 
-  let cppNamespace = "tf_saved_model";
+  let cppNamespace = "::mlir::tf_saved_model";
 }
 
 

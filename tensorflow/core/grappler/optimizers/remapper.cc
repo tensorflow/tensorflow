@@ -365,12 +365,12 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 }
 
 bool IsSupportedActivation(const NodeDef& node) {
-// Disable LeakyRelu temporarily before MKL PR is merged.
-#ifndef INTEL_MKL
-  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+#ifdef INTEL_MKL
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsTanh(node);
 #else
-  return IsRelu(node) || IsRelu6(node) || IsElu(node);
-#endif  // !INTEL_MKL
+  // Disable LeakyRelu temporarily before MKL PR is merged.
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+#endif
 }
 
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
@@ -463,6 +463,9 @@ bool FindContractionWithBiasAndActivation(
   const auto* contraction_node_view =
       bias_add_node_view->GetRegularFanin(0).node_view();
   const auto* contraction_node_def = contraction_node_view->node();
+
+  // Currently, only matmul + bias + tanh is enable
+  if (!IsMatMul(*contraction_node_def) && IsTanh(*node_def)) return false;
 
   // Currently, only conv + bias + leakyrelu is enabled
   if (!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) return false;
@@ -715,6 +718,9 @@ bool FindContractionWithBiasAndAddActivation(
   const auto* node_def = node_view->node();
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
+
+  // Currently, Contraction + Bias + Add + Tanh pattern is not supported
+  if (IsTanh(*node_def)) return false;
 
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
   // MKL activation op only supports float and bfloat16 data types.

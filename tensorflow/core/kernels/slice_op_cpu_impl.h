@@ -33,17 +33,6 @@ TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
 
 #undef DEFINE_CPU_KERNELS
 
-#ifdef TENSORFLOW_USE_SYCL
-using SyclDevice = Eigen::SyclDevice;
-
-#define DEFINE_SYCL_KERNELS(T) \
-  template struct functor::Slice<SyclDevice, T, CPU_PROVIDED_IXDIM>;
-
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_SYCL_KERNELS);
-DEFINE_SYCL_KERNELS(int32);
-
-#undef DEFINE_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
 

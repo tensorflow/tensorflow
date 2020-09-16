@@ -3046,7 +3046,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
             dims=reduce_dim))
     if not keepdims:
       my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
-    result = gen_math_ops.add(result, my_max)
+    result = _add_dispatch(result, my_max, name=name)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
 
@@ -4514,7 +4514,7 @@ def tensordot(a, b, axes, name=None):
         rank_a = array_ops.rank(a)
         axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
         axes = array_ops.where(axes >= 0, axes, axes + rank_a)
-        free, _ = array_ops.setdiff1d(range(rank_a), axes)
+        free, _ = gen_array_ops.list_diff(range(rank_a), axes, dtypes.int32)
       free_dims = array_ops.gather(shape_a, free)
       axes_dims = array_ops.gather(shape_a, axes)
       prod_free_dims = reduce_prod(free_dims)

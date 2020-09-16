@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -37,10 +36,10 @@ namespace tensorflow {
 class MklSoftmaxParams {
  public:
   memory::dims src_dims;
-  MKL_TENSOR_FORMAT src_fmt;
+  MklTensorFormat src_fmt;
   int axis;
 
-  MklSoftmaxParams(memory::dims src_dims, MKL_TENSOR_FORMAT src_fmt, int axis)
+  MklSoftmaxParams(memory::dims src_dims, MklTensorFormat src_fmt, int axis)
       : src_dims(src_dims), src_fmt(src_fmt), axis(axis) {}
 };
 
@@ -48,7 +47,7 @@ template <typename T>
 class MklSoftmaxPrimitive : public MklPrimitive {
  public:
   explicit MklSoftmaxPrimitive(const MklSoftmaxParams& fwdParams)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     Setup(fwdParams);
   }
 
@@ -69,13 +68,10 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 #endif  // ENABLE_MKLDNN_THREADPOOL
-#ifdef ENABLE_MKLDNN_V1
+
     DCHECK_EQ(context_.fwd_primitives.size(), context_.fwd_net_args.size());
     execute_primitives(context_.fwd_primitives, fwd_cpu_stream,
                        context_.fwd_net_args);
-#else
-    fwd_cpu_stream->submit(context_.fwd_primitives);
-#endif
 
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
@@ -117,7 +113,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   // Softmax forward primitive setup
   void Setup(const MklSoftmaxParams& fwdParams) {
     // Create memory descriptors for softmax data with specified format.
-    auto src_format = GET_TENSOR_FORMAT(fwdParams.src_fmt);
+    auto src_format = MklTensorFormatToMklDnnDataFormat(fwdParams.src_fmt);
     context_.src_md.reset(
         new memory::desc({fwdParams.src_dims}, MklDnnType<T>(), src_format));
 
@@ -128,21 +124,15 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         *context_.fwd_desc, cpu_engine_));
 
     // Create memory primitive based on dummy data.
-    context_.src_mem.reset(new MEMORY_CONSTRUCTOR_USING_MD(
-        *context_.src_md, cpu_engine_, DummyData));
-    context_.dst_mem.reset(new MEMORY_CONSTRUCTOR_PD(
-        context_.fwd_pd.get()->PRIMITIVE_DESC_DST, cpu_engine_, DummyData));
+    context_.src_mem.reset(
+        new memory(*context_.src_md, cpu_engine_, DummyData));
+    context_.dst_mem.reset(
+        new memory(context_.fwd_pd.get()->dst_desc(), cpu_engine_, DummyData));
 
-#ifdef ENABLE_MKLDNN_V1
     // Create softmax primitive and add it to net
     context_.softmax_fwd.reset(new mkldnn::softmax_forward(*context_.fwd_pd));
     context_.fwd_net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                                     { MKLDNN_ARG_DST,
-                                       *context_.dst_mem }});
-#else
-    context_.softmax_fwd.reset(new mkldnn::softmax_forward(
-        *context_.fwd_pd, *context_.src_mem, *context_.dst_mem));
-#endif  // ENABLE_MKLDNN_V1
+                                     {MKLDNN_ARG_DST, *context_.dst_mem}});
 
     context_.fwd_primitives.push_back(*context_.softmax_fwd);
   }
@@ -209,7 +199,7 @@ class MklSoftmaxOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     try {
-      auto cpu_engine = engine(ENGINE_CPU, 0);
+      auto cpu_engine = engine(engine::kind::cpu, 0);
       // src_tensor points to the 0-th input of global data struct "context".
       size_t src_idx = 0;
       const Tensor& src_tensor = MklGetInput(context, src_idx);
@@ -231,7 +221,7 @@ class MklSoftmaxOp : public OpKernel {
         src_dims = TFShapeToMklDnnDims(src_tf_shape);
         axis = input_dims - 1;
       }
-      MKL_TENSOR_FORMAT layout_type;
+      MklTensorFormat layout_type;
       // In MKL, data format passed to mkl softmax op depends on dimension of
       // the input tensor. Here "x" data format in MKL is used for 1 dim tensor,
       // "nc" for 2 dim tensor, "tnc" for 3 dim tensor, "nchw" for 4 dim tensor,
@@ -243,26 +233,26 @@ class MklSoftmaxOp : public OpKernel {
       // dimension to do softmax.
       switch (input_dims) {
         case 1:
-          layout_type = MKL_TENSOR_FORMAT_X;
+          layout_type = MklTensorFormat::FORMAT_X;
           break;
         case 2:
-          layout_type = MKL_TENSOR_FORMAT_NC;
+          layout_type = MklTensorFormat::FORMAT_NC;
           break;
         case 3:
-          layout_type = MKL_TENSOR_FORMAT_TNC;
+          layout_type = MklTensorFormat::FORMAT_TNC;
           break;
         case 4:
           if (src_mkl_shape.IsMklTensor()) {
-            layout_type = MKL_TENSOR_FORMAT_NHWC;
+            layout_type = MklTensorFormat::FORMAT_NHWC;
           } else {
-            layout_type = MKL_TENSOR_FORMAT_NCHW;
+            layout_type = MklTensorFormat::FORMAT_NCHW;
           }
           break;
         case 5:
           if (src_mkl_shape.IsMklTensor()) {
-            layout_type = MKL_TENSOR_FORMAT_NDHWC;
+            layout_type = MklTensorFormat::FORMAT_NDHWC;
           } else {
-            layout_type = MKL_TENSOR_FORMAT_NCDHW;
+            layout_type = MklTensorFormat::FORMAT_NCDHW;
           }
           break;
         default:
@@ -274,7 +264,7 @@ class MklSoftmaxOp : public OpKernel {
       // If input is in MKL layout, then simply get the format from input;
       // otherwise, use TF layout defined before.
       auto src_fmt = src_mkl_shape.IsMklTensor()
-                         ? GET_FORMAT_FROM_SHAPE(src_mkl_shape)
+                         ? MklTensorFormat::FORMAT_BLOCKED
                          : layout_type;
 
       // Get a softmax fwd primitive from primitive pool.
@@ -287,7 +277,7 @@ class MklSoftmaxOp : public OpKernel {
       MklDnnShape output_mkl_shape;
       TensorShape output_tf_shape;  // shape of output TF tensor.
 
-      auto dst_pd = softmax_fwd->GetSoftmaxFwdPd()->PRIMITIVE_DESC_DST;
+      auto dst_pd = softmax_fwd->GetSoftmaxFwdPd()->dst_desc();
 
       // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.

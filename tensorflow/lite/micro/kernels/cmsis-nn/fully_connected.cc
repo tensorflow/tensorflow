@@ -154,6 +154,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
     cmsis_nn_fc_params fc_params;
     fc_params.input_offset = -data.input_zero_point;
     fc_params.output_offset = data.output_zero_point;
+    fc_params.filter_offset = -data.filter_zero_point;
     fc_params.activation.min = data.output_activation_min;
     fc_params.activation.max = data.output_activation_max;
 

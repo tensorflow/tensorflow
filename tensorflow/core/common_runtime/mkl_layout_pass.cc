@@ -3777,11 +3777,16 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
     return nullptr;
   }
 
-  // We make an exception for Conv2D, as the corresponding MKL ops
-  // currently do not support the case of padding == EXPLICIT yet.
+  // We make an exception for Conv2D and MaxPool related ops as
+  // the corresponding MKL ops currently do not support the case
+  // of padding == EXPLICIT yet.
   if (n->type_string() == csinfo_.conv2d ||
       n->type_string() == csinfo_.conv2d_grad_input ||
-      n->type_string() == csinfo_.conv2d_grad_filter) {
+      n->type_string() == csinfo_.conv2d_grad_filter ||
+      n->type_string() == csinfo_.max_pool ||
+      n->type_string() == csinfo_.max_pool_grad ||
+      n->type_string() == csinfo_.max_pool3d ||
+      n->type_string() == csinfo_.max_pool3d_grad) {
     string padding;
     TF_CHECK_OK(GetNodeAttr(n->def(), "padding", &padding));
     if (padding == "EXPLICIT") return nullptr;

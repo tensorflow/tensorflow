@@ -133,6 +133,7 @@ cc_test(
 cc_library(
     name = "context",
     hdrs = ["context.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:common"],
 )

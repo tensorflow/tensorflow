@@ -113,4 +113,9 @@ int64 TpuExecutable::ShapeSize(const Shape& shape) {
   return size;
 }
 
+absl::string_view TpuExecutable::fingerprint() const {
+  // TODO(skye): the fingerprint can be plumbed through via core_program_
+  LOG(FATAL) << "TpuExecutable::fingerprint() unimplemented";
+}
+
 }  // namespace xla

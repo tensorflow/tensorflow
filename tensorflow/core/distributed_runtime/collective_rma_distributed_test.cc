@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 // The only interesting method on CollectiveRemoteAccessDistributed
 // that's not on CollectiveRemoteAccessLocal is RecvFromPeer which
@@ -224,6 +224,18 @@ class CollRMADistTest : public ::testing::Test {
     }
   }
 
+  // Populates all device resolvers with device attributes of the cluster. This
+  // should be called in the beginning of all tests unless you would like to
+  // simulate a situation that is before parameter resolution.
+  void ResolveDeviceAttributes() {
+    for (auto& dev_resolver_item : dev_resolvers_) {
+      DeviceResolverDistributed* dev_resolver = dev_resolver_item.second;
+      for (const auto& item : dev_by_task_) {
+        TF_CHECK_OK(dev_resolver->UpdateDeviceAttributes(item.second));
+      }
+    }
+  }
+
   void DefineWorker(const string& worker_name, const string& device_type,
                     int num_devices, bool is_failed = false) {
     std::vector<std::unique_ptr<Device>> devices;
@@ -234,13 +246,12 @@ class CollRMADistTest : public ::testing::Test {
     }
     DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     device_mgrs_.push_back(dev_mgr);
-    std::vector<string>* dv = &dev_by_task_[worker_name];
+    std::vector<DeviceAttributes>* dv = &dev_by_task_[worker_name];
     dv->clear();
     for (auto d : dev_mgr->ListDevices()) {
-      dv->push_back(d->name());
+      dv->push_back(d->attributes());
     }
-    DeviceResolverDistributed* dev_res =
-        new DeviceResolverDistributed(dev_mgr, &wc_, worker_name);
+    DeviceResolverDistributed* dev_res = new DeviceResolverDistributed(dev_mgr);
     dev_resolvers_[worker_name] = dev_res;
     FakeWorker* fw = new FakeWorker(worker_name, dev_mgr, dev_res, is_failed);
     workers_.push_back(fw);
@@ -254,6 +265,9 @@ class CollRMADistTest : public ::testing::Test {
       delete it->second;
       dev_resolvers_.erase(it);
     }
+    // After restarting a worker, the other workers already have the device
+    // attributes of the old worker. We don't broadcast device attributes of the
+    // new worker to mimic the real world.
     DefineWorker(worker_name, device_type, num_devices, is_failed);
   }
 
@@ -269,7 +283,7 @@ class CollRMADistTest : public ::testing::Test {
   CancellationManager cm_;
   std::vector<DeviceMgr*> device_mgrs_;
   std::unordered_map<string, DeviceResolverDistributed*> dev_resolvers_;
-  std::unordered_map<string, std::vector<string>> dev_by_task_;
+  std::unordered_map<string, std::vector<DeviceAttributes>> dev_by_task_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<FakeWorker*> workers_;
   std::unique_ptr<CollectiveRemoteAccessDistributed> rma_;
@@ -284,6 +298,7 @@ class CollRMADistTest : public ::testing::Test {
 };
 
 TEST_F(CollRMADistTest, ProdFirstOK) {
+  ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
   Status consumer_status;
@@ -319,6 +334,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
 }
 
 TEST_F(CollRMADistTest, ConsFirstOK) {
+  ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
   Status consumer_status;
@@ -354,6 +370,7 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
 }
 
 TEST_F(CollRMADistTest, ConsFirstAbort) {
+  ResolveDeviceAttributes();
   Notification consumer_note;
   Status consumer_status;
   const string kBufKey = "fake_buf_key";
@@ -377,6 +394,7 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
 }
 
 TEST_F(CollRMADistTest, WorkerRestart) {
+  ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
   Status consumer_status;
@@ -428,21 +446,7 @@ TEST_F(CollRMADistTest, WorkerRestart) {
 }
 
 TEST_F(CollRMADistTest, CheckHealthOKWithCachedAttr) {
-  DeviceAttributes attr;
-  Status get_attr_status;
-  Notification get_attr_done;
-  // Call GetDeviceAttributesAsync to cache the device attributes of a remote
-  // worker.
-  dev_resolvers_["/job:worker/replica:0/task:0"]->GetDeviceAttributesAsync(
-      "/job:worker/replica:0/task:1/device:CPU:0",
-      "/job:worker/replica:0/task:1", &attr,
-      [&get_attr_status, &get_attr_done](const Status& s) {
-        get_attr_status = s;
-        get_attr_done.Notify();
-      });
-  get_attr_done.WaitForNotification();
-  TF_ASSERT_OK(get_attr_status);
-
+  ResolveDeviceAttributes();
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
@@ -469,21 +473,7 @@ TEST_F(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
 }
 
 TEST_F(CollRMADistTest, CheckHealthRestarted) {
-  DeviceAttributes attr;
-  Status get_attr_status;
-  Notification get_attr_done;
-  // Call GetDeviceAttributesAsync to cache the device attributes of a remote
-  // worker.
-  dev_resolvers_["/job:worker/replica:0/task:0"]->GetDeviceAttributesAsync(
-      "/job:worker/replica:0/task:1/device:CPU:0",
-      "/job:worker/replica:0/task:1", &attr,
-      [&get_attr_status, &get_attr_done](const Status& s) {
-        get_attr_status = s;
-        get_attr_done.Notify();
-      });
-  get_attr_done.WaitForNotification();
-  TF_ASSERT_OK(get_attr_status);
-
+  ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1);
 
   Status check_health_status;
@@ -499,21 +489,7 @@ TEST_F(CollRMADistTest, CheckHealthRestarted) {
 }
 
 TEST_F(CollRMADistTest, CheckHealthFailedPeer) {
-  DeviceAttributes attr;
-  Status get_attr_status;
-  Notification get_attr_done;
-  // Call GetDeviceAttributesAsync to cache the device attributes of a remote
-  // worker.
-  dev_resolvers_["/job:worker/replica:0/task:0"]->GetDeviceAttributesAsync(
-      "/job:worker/replica:0/task:1/device:CPU:0",
-      "/job:worker/replica:0/task:1", &attr,
-      [&get_attr_status, &get_attr_done](const Status& s) {
-        get_attr_status = s;
-        get_attr_done.Notify();
-      });
-  get_attr_done.WaitForNotification();
-  TF_ASSERT_OK(get_attr_status);
-
+  ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1,
                 /*is_failed*/ true);
 
@@ -530,25 +506,8 @@ TEST_F(CollRMADistTest, CheckHealthFailedPeer) {
 }
 
 TEST_F(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
+  ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "GPU", /*num_devices*/ 1);
-
-  DeviceAttributes attr;
-  Status get_attr_status;
-  Notification get_attr_done;
-  // Call GetDeviceAttributesAsync to cache the device attributes of a remote
-  // worker.
-  dev_resolvers_["/job:worker/replica:0/task:0"]->GetDeviceAttributesAsync(
-      "/job:worker/replica:0/task:1/device:GPU:0",
-      "/job:worker/replica:0/task:1", &attr,
-      [&get_attr_status, &get_attr_done](const Status& s) {
-        get_attr_status = s;
-        get_attr_done.Notify();
-      });
-  get_attr_done.WaitForNotification();
-  TF_ASSERT_OK(get_attr_status);
-
-  RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1);
-
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(

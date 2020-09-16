@@ -53,7 +53,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
 // Transforms unranked HLO operations to ranked ones where possible.
-std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
@@ -94,12 +94,6 @@ std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
 // default.
 std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
     bool use_parallel_loops = false, llvm::ArrayRef<unsigned> tile_sizes = {});
-
-// Removes unnecessary LHLO copies which copy from the allocated buffers to the
-// block arguments. The block arguments are used instead of all uses of these
-// buffers. The buffers are freed. This pass only works in regions that contain
-// a single block.
-std::unique_ptr<Pass> createLhloCopyRemovalPass();
 
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();

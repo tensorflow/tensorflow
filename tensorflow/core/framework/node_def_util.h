@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -391,6 +392,13 @@ Status AttachDef(const Status& status, const NodeDef& node_def,
 Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
                                 NodeDef* node_def,
                                 bool uniquify_frame_name = true);
+
+// Appends the given prefix to the colocation group name if the name exists
+// in `to_match`.
+Status MaybeAddPrefixToColocationConstraints(
+    const absl::flat_hash_set<string>& match, StringPiece prefix,
+    NodeDef* node_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_

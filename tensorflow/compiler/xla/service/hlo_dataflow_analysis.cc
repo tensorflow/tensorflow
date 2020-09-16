@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -42,7 +44,45 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+// CalculatePostOrderSchedule traverses a module and assign a ordinal to each
+// instruction based the postorder dependency.
+int64 CalculatePostOrderScheduleHelper(
+    const HloComputation* comp, int64 start_ordinal,
+    absl::flat_hash_map<HloInstruction*, int64>* ordinal_map) {
+  int64 ordinal = start_ordinal;
+  for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
+    if (instruction->opcode() == HloOpcode::kCall ||
+        instruction->opcode() == HloOpcode::kConditional) {
+      for (const HloComputation* called_computation :
+           instruction->called_computations()) {
+        ordinal = CalculatePostOrderScheduleHelper(called_computation, ordinal,
+                                                   ordinal_map);
+      }
+    }
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      ordinal = CalculatePostOrderScheduleHelper(instruction->while_condition(),
+                                                 ordinal, ordinal_map);
+      ordinal = CalculatePostOrderScheduleHelper(instruction->while_body(),
+                                                 ordinal, ordinal_map);
+    }
+    // It's possible that in some unit tests the computation graph is not
+    // flatten (meaning we could have multiple callers for one computation). In
+    // that case the oridinal_map will see the instruction multiple times. We
+    // consider that case to be ok as it only shows up in unit tests.
+    ordinal_map->insert({instruction, ordinal++});
+  }
+  return ordinal;
+}
 
+absl::flat_hash_map<HloInstruction*, int64> CalculatePostOrderSchedule(
+    const HloModule& module) {
+  absl::flat_hash_map<HloInstruction*, int64> map;
+  CalculatePostOrderScheduleHelper(module.entry_computation(), 0, &map);
+  return map;
+}
+
+}  // namespace
 using absl::StrAppend;
 using absl::StrCat;
 
@@ -757,27 +797,35 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 }
 
 void HloDataflowAnalysis::Propagate() {
-  std::queue<HloInstruction*> worklist;
+  using Work = std::pair<int64, HloInstruction*>;
+  // Avoid duplicating work by preferring work items early in the post order
+  // schedule. Intuitively, we start from entry parameters and propagate buffers
+  // updates throughout the module only once.
+  std::priority_queue<Work, std::vector<Work>, std::greater<Work>> worklist;
   absl::flat_hash_set<HloInstruction*> workset;
-  auto add_to_worklist = [&worklist, &workset](HloInstruction* instruction) {
+  auto priority_map = CalculatePostOrderSchedule(module_);
+  auto add_to_worklist = [&priority_map, &worklist,
+                          &workset](HloInstruction* instruction) {
     if (workset.insert(instruction).second) {
-      worklist.push(instruction);
+      worklist.emplace(priority_map[instruction], instruction);
     }
   };
 
-  for (HloComputation* computation : module_.computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
+  auto comps = module_.MakeComputationPostOrder();
+  for (HloComputation* computation : comps) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
       add_to_worklist(instruction);
     }
   }
   VLOG(1) << "SSA_FORM_: " << ssa_form_;
 
   while (!worklist.empty()) {
-    HloInstruction* instruction = worklist.front();
+    HloInstruction* instruction = worklist.top().second;
     auto add_to_worklist = [&](HloInstruction* todo) {
       if (workset.insert(todo).second) {
         VLOG(1) << "  Adding todo : " << todo->name();
-        worklist.push(todo);
+        worklist.emplace(priority_map[todo], todo);
       }
     };
     worklist.pop();

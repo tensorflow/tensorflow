@@ -107,6 +107,8 @@
     * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
       with a new `output_signature` argument, which allows `from_generator` to
       produce any type describable by a `tf.TypeSpec`.
+    * `tf.data.experimental.AUTOTUNE` is now available in the core API as
+      `tf.data.AUTOTUNE`.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op

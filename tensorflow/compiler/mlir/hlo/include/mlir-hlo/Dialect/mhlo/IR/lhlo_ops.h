@@ -27,14 +27,17 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Interfaces/CopyOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
 namespace mlir {
 class OpBuilder;
+}  // namespace mlir
 
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc"
 
+namespace mlir {
 namespace lmhlo {
 
 class LmhloDialect : public Dialect {
@@ -43,10 +46,10 @@ class LmhloDialect : public Dialect {
   static StringRef getDialectNamespace() { return "lmhlo"; }
 };
 
-#define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
-
 }  // namespace lmhlo
 }  // end namespace mlir
+
+#define GET_OP_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_

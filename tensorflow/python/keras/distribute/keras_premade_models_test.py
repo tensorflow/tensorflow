@@ -20,8 +20,9 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adagrad
@@ -59,7 +60,7 @@ def get_dataset():
 
 class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(strategy_combinations_eager_data_fn())
+  @ds_combinations.generate(strategy_combinations_eager_data_fn())
   def test_linear_model(self, distribution, data_fn):
     with distribution.scope():
       model = linear.LinearModel()
@@ -72,7 +73,7 @@ class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
         hist = model.fit(get_dataset(), epochs=5)
       self.assertLess(hist.history['loss'][4], 0.2)
 
-  @combinations.generate(strategy_combinations_eager_data_fn())
+  @ds_combinations.generate(strategy_combinations_eager_data_fn())
   def test_wide_deep_model(self, distribution, data_fn):
     with distribution.scope():
       linear_model = linear.LinearModel(units=1)

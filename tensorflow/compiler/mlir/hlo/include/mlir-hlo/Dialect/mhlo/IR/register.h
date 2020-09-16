@@ -20,8 +20,6 @@ namespace mlir {
 class DialectRegistry;
 namespace mhlo {
 
-void registerAllDialects();
-
 // Add chlo, mhlo, lmhlo dialects to the provided registry.
 void registerAllMhloDialects(DialectRegistry &registry);
 }

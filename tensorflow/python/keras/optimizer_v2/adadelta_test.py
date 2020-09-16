@@ -148,9 +148,9 @@ class AdadeltaOptimizerTest(test.TestCase, parameterized.TestCase):
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testBasicCallableParams(self):
-    with context.eager_mode():
-      self.doTestBasic(use_resource=True, use_callable_params=True)
+    self.doTestBasic(use_resource=True, use_callable_params=True)
 
   def testMinimizeSparseResourceVariable(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.

@@ -21,6 +21,10 @@ sh_binary(
     srcs = [
         "hide_symbols_with_allowlist.sh",
     ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
 )
 
 strip_common_include_path_prefix(

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import weakref
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -446,6 +447,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     self._aggregation = aggregation
     super(DistributedVariable, self).__init__(values)
     self._common_name = self._primary.name.split(":")[0]
+    # Use a weakref to make it easy to map from the contained values
+    # to the container without introducing a reference cycle.
+    for v in values:
+      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
 
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a

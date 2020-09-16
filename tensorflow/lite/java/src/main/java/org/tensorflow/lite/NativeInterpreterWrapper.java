@@ -70,6 +70,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this.errorHandle = errorHandle;
     this.modelHandle = modelHandle;
     this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
+    if (options.allowCancellation != null && options.allowCancellation) {
+      this.cancellationFlagHandle = createCancellationFlag(interpreterHandle);
+    }
     this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
     this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
     if (options.allowFp16PrecisionForFp32 != null) {
@@ -105,9 +108,11 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       }
     }
     delete(errorHandle, modelHandle, interpreterHandle);
+    deleteCancellationFlag(cancellationFlagHandle);
     errorHandle = 0;
     modelHandle = 0;
     interpreterHandle = 0;
+    cancellationFlagHandle = 0;
     modelByteBuffer = null;
     inputsIndexes = null;
     outputsIndexes = null;
@@ -333,6 +338,21 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return getExecutionPlanLength(interpreterHandle);
   }
 
+  /**
+   * Sets internal cancellation flag. If it's true, the interpreter will try to interrupt any
+   * invocation between ops.
+   */
+  void setCancelled(boolean value) {
+    if (cancellationFlagHandle == 0) {
+      throw new IllegalStateException(
+          "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+    }
+    setCancelled(interpreterHandle, cancellationFlagHandle, value);
+  }
+
+  private static native void setCancelled(
+      long interpreterHandle, long cancellationFlagHandle, boolean value);
+
   private void applyDelegates(Interpreter.Options options) {
     // First apply the flex delegate if necessary. This ensures the graph is fully resolved before
     // applying other delegates.
@@ -397,6 +417,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private long modelHandle;
 
+  private long cancellationFlagHandle = 0;
+
   private long inferenceDurationNanoseconds = -1;
 
   private ByteBuffer modelByteBuffer;
@@ -457,6 +479,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       long interpreterHandle, long errorHandle, long delegateHandle);
 
   private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
+
+  private static native long createCancellationFlag(long interpreterHandle);
+
+  private static native long deleteCancellationFlag(long cancellationFlagHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
 }
