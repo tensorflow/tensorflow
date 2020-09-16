@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
@@ -568,21 +568,11 @@ cc_library(
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-    ] + if_not_android([
         "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
-        "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
-    ]),
-)
-
-filegroup(
-    name = "mobile_srcs",
-    srcs = [
-        "post_process_single_host_xplane.cc",
-        "post_process_single_host_xplane.h",
+        "//tensorflow/core/profiler/utils:xplane_utils",
     ],
-    visibility = ["//visibility:public"],
 )

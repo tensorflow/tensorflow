@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_lock.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
@@ -81,7 +81,9 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
     active_ = false;
   }
 
+#if !defined(IS_MOBILE_PLATFORM)
   PostProcessSingleHostXSpace(space, start_time_ns_);
+#endif
 
   return Status::OK();
 }

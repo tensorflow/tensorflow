@@ -25,12 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-#if defined(IS_MOBILE_PLATFORM)
-
-void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {}
-
-#else
-
 void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {
   VLOG(3) << "Post processing local profiler XSpace.";
   // Post processing the collected XSpace without hold profiler lock.
@@ -70,7 +64,6 @@ void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {
   // 5. Generated miscellaneous derived time lines for device planes.
   GenerateDerivedTimeLines(group_metadata_map, space);
 }
-#endif  // defined(IS_MOBILE_PLATFORM)
 
 }  // namespace profiler
 }  // namespace tensorflow

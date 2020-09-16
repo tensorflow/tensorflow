@@ -45,7 +45,6 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
@@ -55,6 +54,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
         ":profiler_lock",
+        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
