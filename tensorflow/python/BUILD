@@ -213,7 +213,6 @@ py_library(
         "//tensorflow/python/data",
         "//tensorflow/python/debug:debug_py",
         "//tensorflow/python/distribute",
-        "//tensorflow/python/distribute:combinations",  # For tf.__internal__ API.
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/dlpack",
@@ -256,6 +255,7 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":framework_combinations",
         ":no_contrib",
     ],
 )

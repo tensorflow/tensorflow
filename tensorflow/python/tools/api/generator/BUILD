@@ -88,7 +88,6 @@ py_test(
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python:no_contrib",
-        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/tools/api/generator:create_python_api",
     ],
 )
