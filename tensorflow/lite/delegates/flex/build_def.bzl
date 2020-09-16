@@ -72,7 +72,7 @@ def generate_flex_kernel_header(
         name = "%s_kernel_registration" % name,
         srcs = [list_ops_output],
         outs = [header],
-        tools = [tool],
+        exec_tools = [tool],
         message = "Processing %s..." % list_ops_output,
         cmd = ("$(location " + tool + ")" +
                " --default_ops=\"\"" +
