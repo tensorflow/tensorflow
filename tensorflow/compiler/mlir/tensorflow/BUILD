@@ -1673,29 +1673,6 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_test(
-    name = "compile_mlir_util_test",
-    size = "small",
-    srcs = ["utils/compile_mlir_util_test.cc"],
-    deps = [
-        ":compile_mlir_util",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:resource_variable_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/lib",
-    ],
-)
-
 cc_library(
     name = "mlir_passthrough_op",
     srcs = ["ops/mlir_passthrough_op.cc"],
