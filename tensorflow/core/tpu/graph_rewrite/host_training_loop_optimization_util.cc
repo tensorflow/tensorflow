@@ -504,10 +504,9 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
       "TPUVariableReshard/default_shard_state", "/_", internal::GetNodeId())));
   AddNodeAttr("dtype", DT_STRING, &default_sharding);
 
-  Tensor t(DT_STRING, {3});
+  Tensor t(DT_STRING, {2});
   t.vec<tstring>()(0) = kDefaultShardingValue;
   t.vec<tstring>()(1) = kDefaultShardingValue;
-  t.vec<tstring>()(2) = kDefaultShardingValue;
   t.AsProtoTensorContent(
       (*default_sharding.mutable_attr())["value"].mutable_tensor());
 

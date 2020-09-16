@@ -657,11 +657,10 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
 
   int64 uid;
   std::vector<std::string> proto_key;
-  std::vector<std::string> sharding_key;
   std::vector<bool> may_modify_variables;
   absl::Span<const xla::HloProto* const> hlo_metadatas;
   Status status = cache->CompileIfKeyAbsent(
-      key, ctx->session_metadata(), ref_holder, &uid, &proto_key, &sharding_key,
+      key, ctx->session_metadata(), ref_holder, &uid, &proto_key,
       &may_modify_variables, &hlo_metadatas,
       [&](TpuProgramGroupInterface* tpu_program_group) {
         VLOG(1) << "Cloud TPU: Compiling TPU program";
@@ -779,21 +778,13 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
 
   if (status.ok()) {
     for (int i = 0; i < num_cores_with_compiled_programs; ++i) {
-      Tensor output(DT_STRING, TensorShape({3}));
+      Tensor output(DT_STRING, TensorShape({2}));
       if (proto_key.size() == 1) {
         output.vec<tstring>()(0) = proto_key[0];
       } else {
         output.vec<tstring>()(0) = proto_key[i];
       }
       output.vec<tstring>()(1) = rendezvous_key_base;
-      if (sharding_key.empty()) {
-        output.vec<tstring>()(2) = "";
-      } else if (sharding_key.size() == 1) {
-        output.vec<tstring>()(2) = sharding_key[0];
-      } else {
-        TF_RET_CHECK(sharding_key.size() == num_cores_with_compiled_programs);
-        output.vec<tstring>()(2) = sharding_key[i];
-      }
       ctx->set_output(i + 1, output);
     }
     if (!use_mlir_) {
@@ -814,10 +805,9 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   } else {
     // Return error in the invalid case.
     for (int i = 0; i < num_computations_; ++i) {
-      Tensor output(DT_STRING, TensorShape({3}));
+      Tensor output(DT_STRING, TensorShape({2}));
       output.vec<tstring>()(0) = "<<NO PROGRAM AS COMPILATION FAILED>>";
       output.vec<tstring>()(1) = "<<NO RENDEZVOUS KEY AS COMPILATION FAILED>>";
-      output.vec<tstring>()(2) = "<<NO SHARDing KEY AS COMPILATION FAILED>>";
       ctx->set_output(i + 1, output);
     }
     if (!use_mlir_) {
