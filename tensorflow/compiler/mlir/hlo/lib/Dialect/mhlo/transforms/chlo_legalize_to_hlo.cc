@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <numeric>
+
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -30,6 +32,39 @@ limitations under the License.
 namespace mlir {
 namespace chlo {
 namespace {
+
+struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
+  using OpConversionPattern<ConstantLikeOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      ConstantLikeOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    auto result_ty = op.getType().cast<ShapedType>();
+
+    // Unranked uses are not supported.  Consider `transform-unranked-hlo`.
+    if (!result_ty.hasRank()) return failure();
+
+    // Lower to MHLO constant if statically shaped.
+    if (result_ty.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<mhlo::ConstOp>(
+          op, DenseElementsAttr::get(result_ty, op.value()));
+      return success();
+    }
+
+    // Lower to broadcasted constant.
+    ConstantLikeOp::Adaptor transformed(operands);
+    auto loc = op.getLoc();
+    Type extent_tensor_type = shape::getExtentTensorType(op.getContext());
+    Value constant = rewriter.create<mhlo::ConstOp>(loc, op.value());
+    Value uncasted_shape = rewriter.create<shape::ShapeOfOp>(
+        loc, extent_tensor_type, transformed.operand());
+    Type shape_ty =
+        RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType());
+    Value shape = rewriter.create<TensorCastOp>(loc, shape_ty, uncasted_shape);
+    rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
+        op, result_ty, constant, shape, rewriter.getI64TensorAttr({}));
+    return success();
+  }
+};
 
 // Converts binary ops that statically are determined to not broadcast directly
 // to the corresponding mhlo non-broadcasting op.
@@ -505,6 +540,9 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns);
   PopulateForBinaryOp<BroadcastCompareOp, mhlo::CompareOp, HloCompareAdaptor>(
       context, patterns);
+
+  // Other patterns.
+  patterns->insert<ConvertConstantLikeOp>(context);
 }
 
 }  // namespace chlo
