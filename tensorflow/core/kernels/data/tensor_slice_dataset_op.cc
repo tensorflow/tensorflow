@@ -69,6 +69,10 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return tensors_[0].dim_size(0); }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
