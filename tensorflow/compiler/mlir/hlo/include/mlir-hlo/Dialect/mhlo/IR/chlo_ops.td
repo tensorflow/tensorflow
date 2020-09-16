@@ -37,7 +37,7 @@ include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLOClient_Dialect : Dialect {
   let name = "chlo";
-  let cppNamespace = "chlo";
+  let cppNamespace = "::mlir::chlo";
   let summary = [{
     Client HLO Ops
   }];

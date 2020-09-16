@@ -2198,6 +2198,27 @@ cc_library(
 )
 
 cc_library(
+    name = "HelloNew",
+    srcs = glob([
+        "lib/Transforms/HelloNew/*.c",
+        "lib/Transforms/HelloNew/*.cpp",
+        "lib/Transforms/HelloNew/*.inc",
+        "lib/Transforms/HelloNew/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/HelloNew/*.h",
+        "include/llvm/Transforms/HelloNew/*.def",
+        "include/llvm/Transforms/HelloNew/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Core",
+        ":Support",
+        ":config",
+    ],
+)
+
+cc_library(
     name = "HexagonAsmParser",
     srcs = glob([
         "lib/Target/Hexagon/AsmParser/*.c",
@@ -3343,6 +3364,7 @@ cc_library(
         ":CodeGen",
         ":Core",
         ":Coroutines",
+        ":HelloNew",
         ":IPO",
         ":InstCombine",
         ":Instrumentation",

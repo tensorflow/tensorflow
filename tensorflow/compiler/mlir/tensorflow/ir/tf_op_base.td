@@ -46,7 +46,7 @@ Invariants:
 TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
-  let cppNamespace = "TF";
+  let cppNamespace = "::mlir::TF";
 }
 
 //===----------------------------------------------------------------------===//

@@ -20,13 +20,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 
-namespace mlir {
-namespace TF {
-
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h.inc"
-
-}  // namespace TF
-}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TFRT_OPS_H_

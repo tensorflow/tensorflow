@@ -60,7 +60,11 @@ limitations under the License.
 
 namespace mlir {
 #include "hlo_patterns.cc.inc"
+}  // namespace mlir
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.cc.inc"
+
+namespace mlir {
 namespace mhlo {
 
 Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
@@ -2469,8 +2473,14 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
   build(builder, result, new_type, lhs, rhs, comparison_direction);
 }
 
+}  // namespace mhlo
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
+
+namespace mlir {
+namespace mhlo {
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Interfaces
