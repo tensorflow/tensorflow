@@ -133,6 +133,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "//tensorflow/core/profiler/convert:mobile_srcs",
         "//tensorflow/core/profiler/internal:mobile_srcs",
         "//tensorflow/core/profiler/lib:mobile_srcs",
     ],

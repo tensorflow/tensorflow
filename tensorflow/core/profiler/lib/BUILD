@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
+        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",

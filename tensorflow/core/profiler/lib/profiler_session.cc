@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -80,44 +81,7 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
     active_ = false;
   }
 
-#if !defined(IS_MOBILE_PLATFORM)
-  // Post processing the collected XSpace without hold profiler lock.
-  // 1. Merge plane of host events with plane of CUPTI driver api.
-  const profiler::XPlane* cupti_driver_api_plane =
-      profiler::FindPlaneWithName(*space, profiler::kCuptiDriverApiPlaneName);
-  const profiler::XPlane* python_tracer_plane =
-      profiler::FindPlaneWithName(*space, profiler::kPythonTracerPlaneName);
-  if (cupti_driver_api_plane || python_tracer_plane) {
-    profiler::XPlane* host_plane = profiler::FindOrAddMutablePlaneWithName(
-        space, profiler::kHostThreadsPlaneName);
-    if (cupti_driver_api_plane) {
-      profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
-    }
-    if (python_tracer_plane) {
-      profiler::MergePlanes(*python_tracer_plane, host_plane);
-    }
-    profiler::SortXLinesBy(host_plane, profiler::XLinesComparatorByName());
-    // NOTE: RemovePlaneWithName might invalidate plane pointers. so do these
-    // at the last step.
-    if (cupti_driver_api_plane) {
-      profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
-    }
-    if (python_tracer_plane) {
-      profiler::RemovePlaneWithName(space, profiler::kPythonTracerPlaneName);
-    }
-  }
-
-  // 2. Normalize all timestamps by shifting timeline to profiling start time.
-  // NOTE: this have to be done before sorting XSpace due to timestamp overflow.
-  profiler::NormalizeTimestamps(space, start_time_ns_);
-  // 3. Sort each plane of the XSpace
-  profiler::SortXSpace(space);
-  // 4. Grouping (i.e. marking step number) events in the XSpace.
-  profiler::GroupMetadataMap group_metadata_map;
-  profiler::GroupTfEvents(space, &group_metadata_map);
-  // 5. Generated miscellaneous derived time lines for device planes.
-  profiler::GenerateDerivedTimeLines(group_metadata_map, space);
-#endif
+  PostProcessSingleHostXSpace(space, start_time_ns_);
 
   return Status::OK();
 }
