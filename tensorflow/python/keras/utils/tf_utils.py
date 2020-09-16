@@ -85,7 +85,8 @@ def get_reachable_from_inputs(inputs, targets=None):
     elif tensor_util.is_tensor(x):
       outputs = x.consumers()
     else:
-      raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
+      if not isinstance(x, str):
+        raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
 
     for y in outputs:
       if y not in reachable:
