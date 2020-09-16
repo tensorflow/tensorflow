@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import threading
+import warnings
 import weakref
 
 import numpy as np
@@ -54,6 +55,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -81,8 +84,6 @@ from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -425,10 +426,10 @@ def set_learning_phase(value):
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
   """
-  logging.warning('`tf.keras.backend.set_learning_phase` is deprecated and '
-                  'will be removed after 2020-10-11. To update it, simply '
-                  'pass a True/False value to the `training` argument of the '
-                  '`__call__` method of your layer or model.')
+  warnings.warn('`tf.keras.backend.set_learning_phase` is deprecated and '
+                'will be removed after 2020-10-11. To update it, simply '
+                'pass a True/False value to the `training` argument of the '
+                '`__call__` method of your layer or model.')
   deprecated_internal_set_learning_phase(value)
 
 
@@ -483,10 +484,10 @@ def learning_phase_scope(value):
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
-  logging.warning('`tf.keras.backend.learning_phase_scope` is deprecated and '
-                  'will be removed after 2020-10-11. To update it, simply '
-                  'pass a True/False value to the `training` argument of the '
-                  '`__call__` method of your layer or model.')
+  warnings.warn('`tf.keras.backend.learning_phase_scope` is deprecated and '
+                'will be removed after 2020-10-11. To update it, simply '
+                'pass a True/False value to the `training` argument of the '
+                '`__call__` method of your layer or model.')
   with deprecated_internal_learning_phase_scope(value):
     try:
       yield
@@ -6018,8 +6019,9 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
   dtype=float32)>
   """
-  logging.warning('`tf.keras.backend.random_binomial` is deprecated. '
-                  'Please use `tf.keras.backend.random_bernoulli` instead.')
+  warnings.warn('`tf.keras.backend.random_binomial` is deprecated, '
+                'and will be removed in a future version.'
+                'Please use `tf.keras.backend.random_bernoulli` instead.')
   return random_bernoulli(shape, p, dtype, seed)
 
 

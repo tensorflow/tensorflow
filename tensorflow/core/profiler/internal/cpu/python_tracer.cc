@@ -87,11 +87,13 @@ Status PythonTracer::CollectData(RunMetadata* run_metadata) {
   // in the wrong threads.
   // We had assumed HostTracer::Stop is called when ProfilerSession try to
   // serialize PythonTracer.
+  VLOG(2) << "Collecting data to RunMetaData from PythonTracer.";
   PythonHooks::GetSingleton()->Finalize(nullptr);
   return Status::OK();
 }
 
 Status PythonTracer::CollectData(XSpace* space) {
+  VLOG(2) << "Collecting data to XSpace from PythonTracer.";
   PythonHooks::GetSingleton()->Finalize(space);
   return Status::OK();
 }

@@ -20,7 +20,7 @@ py_library(
     deps = [
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_system_metadata",
         "//tensorflow/python/tpu/client",
     ] + tf_additional_rpc_deps(),
 )

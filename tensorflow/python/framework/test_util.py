@@ -133,7 +133,7 @@ def _get_object_count_by_type():
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
-    if x.device_type == "GPU" or x.device_type == "SYCL":
+    if x.device_type == "GPU":
       return compat.as_str(x.name)
   return ""
 
@@ -1563,6 +1563,10 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Returns:
     True if a GPU device of the requested kind is available.
   """
+
+  # This was needed earlier when we had support for SYCL in TensorFlow.
+  del cuda_only
+
   try:
     for local_device in device_lib.list_local_devices():
       if local_device.device_type == "GPU":
@@ -1570,8 +1574,6 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
         cc = gpu_info.compute_capability or (0, 0)
         if not min_cuda_compute_capability or cc >= min_cuda_compute_capability:
           return True
-      if local_device.device_type == "SYCL" and not cuda_only:
-        return True
     return False
   except errors_impl.NotFoundError as e:
     if not all(x in str(e) for x in ["CUDA", "not find"]):

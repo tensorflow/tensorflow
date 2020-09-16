@@ -601,7 +601,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -1059,8 +1059,12 @@ py_library(
     srcs = ["sharded_variable.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
     ],
@@ -1074,7 +1078,9 @@ tf_py_test(
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_spec",
@@ -1130,6 +1136,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+        "notsan",  # b/168645872
     ],
     tpu_tags = [
         "no_oss",  # b/150954621 Target too big to run serially reliably.
@@ -1795,6 +1802,8 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_decorator",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/training:server_lib",
+        "//tensorflow/python/training/tracking:base",
         "@absl_py//absl/logging",
     ],
 )
@@ -1803,20 +1812,27 @@ tf_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
+    tags = [
+        "notsan",  # b/168675975
+    ],
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:linalg_ops_impl",
         "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/training:server_lib",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

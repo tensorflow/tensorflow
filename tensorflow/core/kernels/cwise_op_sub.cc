@@ -45,14 +45,4 @@ REGISTER_KERNEL_BUILDER(Name("Sub")
                         BinaryOp<CPUDevice, functor::sub<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "Sub", functor::sub, float, double, int64);
-REGISTER_KERNEL_BUILDER(Name("Sub")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::sub<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

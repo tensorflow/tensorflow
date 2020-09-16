@@ -230,7 +230,7 @@ upper_tabs:
       - title: "API Reference"
         path: /lite/api_docs/
       - heading: "Python"
-      - include: /lite/api_docs/python/_toc.yaml
+      - include: /lite/api_docs/python/tf/lite/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
       - heading: "C++"

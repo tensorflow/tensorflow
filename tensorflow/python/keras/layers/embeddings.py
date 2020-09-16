@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
@@ -131,7 +132,7 @@ class Embedding(Layer):
     # When eager execution is enabled, the placement decision has to be made
     # right now. Checking for the presence of GPUs to avoid complicating the
     # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and context.context().num_gpus():
+    if context.executing_eagerly() and tf_config.list_logical_devices('GPU'):
       with ops.device('cpu:0'):
         self.embeddings = self.add_weight(
             shape=(self.input_dim, self.output_dim),

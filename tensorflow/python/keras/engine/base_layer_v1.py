@@ -22,6 +22,7 @@ import collections
 import functools
 import itertools
 import threading
+import warnings
 
 import numpy as np
 import six
@@ -51,6 +52,7 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
@@ -66,10 +68,8 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import doc_controls
 
 
@@ -1694,8 +1694,6 @@ class Layer(base_layer.Layer):
   # Methods & attributes below are public aliases of other methods.            #
   ##############################################################################
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.__call__` method instead.')
   @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
     """Deprecated, do NOT use!
@@ -1710,13 +1708,17 @@ class Layer(base_layer.Layer):
     Returns:
       Output tensor(s).
     """
+    warnings.warn('`layer.apply` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.__call__` method instead.')
     return self.__call__(inputs, *args, **kwargs)
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.add_weight` method instead.')
   @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
     """Deprecated, do NOT use! Alias for `add_weight`."""
+    warnings.warn('`layer.add_variable` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.add_weight` method instead.')
     return self.add_weight(*args, **kwargs)
 
   @property

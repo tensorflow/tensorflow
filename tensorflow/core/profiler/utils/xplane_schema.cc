@@ -108,6 +108,9 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"MapAndBatchConsume", kMapAndBatchConsume},
       {"ParseExampleProduce", kParseExampleProduce},
       {"ParseExampleConsume", kParseExampleConsume},
+      // Batching related.
+      {"BatchingSession", kBatchingSession},
+      {"ProcessBatch", kProcessBatch},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.

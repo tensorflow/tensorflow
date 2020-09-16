@@ -4,9 +4,10 @@
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
 load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
 
-licenses(["notice"])
-
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],
+)
 
 package_group(
     name = "subpackages",
@@ -3923,6 +3924,7 @@ exports_files(
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "include/mlir/Interfaces/CopyOpInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",

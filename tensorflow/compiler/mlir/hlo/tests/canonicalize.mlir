@@ -834,3 +834,46 @@ func @fold_xor_zeros_constants() -> tensor<4xi32> {
   // CHECK: return %0
   return %2 : tensor<4xi32>
 }
+
+// CHECK-LABEL: func @fold_negate_int
+func @fold_negate_int() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[0, 1, 6, -3]> : tensor<4xi32>
+  // CHECK: mhlo.constant dense<[0, -1, -6, 3]>
+  %1 = "mhlo.negate"(%0) : (tensor<4xi32>) -> tensor<4xi32>
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_negate_float
+func @fold_negate_float() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<[0., 1., 6., -3.]> : tensor<4xf32>
+  // CHECK: mhlo.constant dense<[-0.000000e+00, -1.000000e+00, -6.000000e+00, 3.000000e+00]>
+  %1 = "mhlo.negate"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_sqrt_f32_constants
+func @fold_sqrt_f32_constants() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<1.0> : tensor<4xf32>
+  %1 = "mhlo.sqrt"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<1.000000e+00> : tensor<4xf32>
+  // CHECK-NOT: mhlo.sqrt
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_sqrt_f64_constants
+func @fold_sqrt_f64_constants() -> tensor<4xf64> {
+  %0 = mhlo.constant dense<[1.0, 4.0, 9.0, 16.0]> : tensor<4xf64>
+  %1 = "mhlo.sqrt"(%0) : (tensor<4xf64>) -> tensor<4xf64>
+  //     CHECK: mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf64>
+  // CHECK-NOT: mhlo.sqrt
+  return %1 : tensor<4xf64>
+}
+
+// CHECK-LABEL: func @not_fold_sqrt_neg_constants
+func @not_fold_sqrt_neg_constants() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<-1.0> : tensor<4xf32>
+  %1 = "mhlo.sqrt"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: mhlo.constant dense<-1.000000e+00> : tensor<4xf32>
+  // CHECK: mhlo.sqrt
+  return %1 : tensor<4xf32>
+}

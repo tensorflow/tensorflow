@@ -3046,7 +3046,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
             dims=reduce_dim))
     if not keepdims:
       my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
-    result = gen_math_ops.add(result, my_max)
+    result = _add_dispatch(result, my_max, name=name)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
 

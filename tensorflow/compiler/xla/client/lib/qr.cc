@@ -252,78 +252,58 @@ StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
 // representation for products of Householder transformations." SIAM Journal on
 // Scientific and Statistical Computing 10.1 (1989): 53-57.
 //
-// m, n = vs.shape[-2:]
-// t = np.zeros((n, n))
-// Y = np.zeros([m, n])
-// t[0, 0] = -taus[0]
-// Y[:, 0] = vs[:, 0]
-// for i in range(1, n):
-//   z = -taus[i] * np.dot(t, np.dot(Y.T, vs[:, i]))
-//   Y[:, i] = vs[:, i]
-//   t[:i, i] = z[:i]
-//   t[i, i] = -taus[i]
+// def compact_wy(vs, taus):
+//   m, n = vs.shape[-2:]
+//   t = np.eye(n) * -taus
+//   # We premultiply Y.T @ vs, since we would prefer to compute a single matrix
+//   # multiplication to many matrix-vector products.
+//   vtv = -taus[None, :] * np.triu(vs.T @ vs, 1) + np.eye(n)
+//   for i in range(1, n):
+//     t[:, i] = np.dot(t, vtv[:, i])
+//   return t
 StatusOr<XlaOp> CompactWYRepresentation(PrimitiveType type,
                                         absl::Span<const int64> batch_dims,
                                         XlaOp vs, XlaOp taus, int64 m, int64 n,
                                         PrecisionConfig::Precision precision) {
   std::vector<int64> batch_dim_indices(batch_dims.size());
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
-  int64 m_index = batch_dims.size();
   int64 n_index = batch_dims.size() + 1;
 
   auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
                      XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
     // w has shape [..., m, n]
     auto t = values[0];
-    const auto vs = values[1];
-    const auto taus = values[2];
+    const auto vtv = values[1];
 
     // Want j values in range [1, ... n).
     j = j + ConstantR0<int32>(builder, 1);
-    // vs has shape [..., m, 1]
-    auto v = DynamicSliceInMinorDims(vs, {j}, {1});
-    // beta has shape [..., 1]
-    auto beta = DynamicSliceInMinorDims(taus, {j}, {1});
-
-    auto iota_mn = Iota(
-        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
-        n_index);
-
-    // y has shape [..., m, n]
-    auto y = Select(Ge(iota_mn, j), ZerosLike(vs), vs);
 
     // yv has shape [..., n, 1]
-    auto yv =
-        BatchDot(y, /*transpose_x=*/true, v, /*transpose_y=*/false, precision);
+    auto yv = DynamicSliceInMinorDims(vtv, {j}, {1});
+
     // wyv has shape [..., n, 1]
-    auto wyv = BatchDot(t, yv, precision);
-
-    auto z = Mul(
-        -beta, wyv,
-        /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
-    beta = BroadcastInDim(beta, ConcatVectors(batch_dims, {n, 1}),
-                          ConcatVectors(batch_dim_indices, {n_index}));
-    auto iota_n = Iota(
-        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {n, 1})),
-        m_index);
-
-    z = Select(Lt(iota_n, j), z, Select(Eq(iota_n, j), -beta, ZerosLike(beta)));
+    auto z = BatchDot(t, yv, precision);
 
     t = DynamicUpdateSliceInMinorDims(t, z, {j});
 
-    return std::vector<XlaOp>{t, vs, taus};
+    return std::vector<XlaOp>{t, vtv};
   };
 
   XlaBuilder* builder = vs.builder();
-  auto t = Zeros(builder,
-                 ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {n, n})));
-  auto beta = SliceInMinorDims(taus, {0}, {1});
-  beta = BroadcastInDim(beta, ConcatVectors(batch_dims, {1, 1}),
-                        ConcatVectors(batch_dim_indices, {n_index}));
-  t = UpdateSliceInMinorDims(t, -beta, {0});
 
-  TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(n - 1, S32, body_fn,
-                                                {t, vs, taus}, "wy", builder));
+  auto tau_scale = BroadcastInDim(-taus, ConcatVectors(batch_dims, {1, n}),
+                                  ConcatVectors(batch_dim_indices, {n_index}));
+
+  auto eye = Broadcast(IdentityMatrix(builder, type, n, n), batch_dims);
+  auto t = eye * tau_scale;
+
+  auto vtv =
+      BatchDot(vs, /*transpose_x=*/true, vs, /*transpose_y=*/false, precision);
+  vtv = Select(TriangleMask(vtv, 0), ZerosLike(vtv), vtv) * tau_scale;
+  vtv = vtv + eye;
+
+  TF_ASSIGN_OR_RETURN(
+      auto values, ForEachIndex(n - 1, S32, body_fn, {t, vtv}, "wy", builder));
   return values[0];
 }
 

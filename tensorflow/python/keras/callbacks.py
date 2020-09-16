@@ -37,6 +37,7 @@ from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -1580,7 +1581,8 @@ class BackupAndRestore(Callback):
     self._supported_strategies = (
         distribute_lib._DefaultDistributionStrategy,
         mirrored_strategy.MirroredStrategy,
-        collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+        collective_all_reduce_strategy.CollectiveAllReduceStrategy,
+        tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
 
     if not context.executing_eagerly():
       if ops.inside_function():
@@ -1608,8 +1610,10 @@ class BackupAndRestore(Callback):
     if not isinstance(self.model.distribute_strategy,
                       self._supported_strategies):
       raise NotImplementedError(
-          'Currently only support empty strategy, MirroredStrategy and '
-          'MultiWorkerMirroredStrategy.')
+          '%s is not supported yet. '
+          'Currently BackupAndRestore callback only supports empty strategy, '
+          'MirroredStrategy, MultiWorkerMirroredStrategy and TPUStrategy.' %
+          type(self.model.distribute_strategy).__name__)
     self.model._training_state = (
         worker_training_state.WorkerTrainingState(self.model, self.backup_dir))
     self._training_state = self.model._training_state

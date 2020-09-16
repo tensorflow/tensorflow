@@ -35,16 +35,5 @@ REGISTER_KERNEL_BUILDER(Name("NotEqual")
                         BinaryOp<CPUDevice, functor::not_equal_to<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(BinaryOp, SYCL, "NotEqual", functor::not_equal_to, float, double);
-
-REGISTER_KERNEL_BUILDER(Name("NotEqual")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::not_equal_to<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
