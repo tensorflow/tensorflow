@@ -649,7 +649,7 @@ class InputOptions(
       using TPUEmbedding API.
     replication_mode: Replication mode for the input function. Currently, the
       InputReplicationMode.PER_REPLICA works only under 
-      tf.distribute.MirroredStrategy for the supported input functions.
+      tf.distribute.MirroredStrategy for the input functions.
       The default value is InputReplicationMode.PER_WORKER.
   """
 

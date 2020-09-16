@@ -1190,7 +1190,6 @@ class DistributedDatasetsFromFunction(_IterableInput):
         iterators = _create_iterators_per_worker(self._datasets,
                                                  self._input_workers,
                                                  enable_legacy_iterators)
-
         if enable_legacy_iterators:
           iterator = DistributedIteratorV1(self._input_workers, iterators,
                                            self._strategy)
@@ -1198,12 +1197,10 @@ class DistributedDatasetsFromFunction(_IterableInput):
           iterator = DistributedIterator(self._input_workers, iterators,
                                          self._strategy)
       else:
-        iterators, element_spec = _create_iterators_per_replica_with_input_context(
+        iterators = _create_iterators_per_replica(
             self._input_contexts, self._input_workers, self._dataset_fn)
         iterator = DistributedIteratorForReplicas(
             self._input_workers, iterators, self._strategy)
-        self._element_spec = _create_distributed_tensor_spec(
-            self._strategy,	element_spec)
 
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
@@ -1713,7 +1710,7 @@ class _SingleWorkerDatasetIterator(_SingleWorkerDatasetIteratorBase):
     return dataset_ops.get_legacy_output_types(self._iterator)
 
 
-class _SingleReplicaDatasetIterator(_SingleWorkerDatasetIterator):
+class _SingleReplicaDatasetIterator(_SingleWorkerOwnedDatasetIterator):
   def __init__(self, dataset, device):
     super(_SingleReplicaDatasetIterator, self).__init__(dataset, device, [])
 
@@ -1757,9 +1754,8 @@ class _SingleWorkerCallableIterator(object):
     return []
 
 
-def _create_iterators_per_replica_with_input_context(input_contexts,
-                                                    input_workers,
-                                                    dataset_fn):
+def _create_iterators_per_replica(input_contexts,input_workers,
+                                  dataset_fn):
   """Create a multidevice iterator per workers given a dataset function."""
   iterators = []
   for i, ctx in enumerate(input_contexts):
@@ -1769,7 +1765,7 @@ def _create_iterators_per_replica_with_input_context(input_contexts,
       # Wrapping dataset here (ex. applying options) might result in moving it to the CPU
       iterator = _SingleReplicaDatasetIterator(dataset, devices[0])
       iterators.append(iterator)
-  return iterators, dataset.element_spec
+  return iterators
 
 
 
