@@ -92,6 +92,44 @@ class UnifiedApiTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(eager_outputs[0].numpy(), [1.0, 1.0])
       self.assertAllEqual(eager_outputs[1].numpy(), [1.0, 1.0])
 
+  @parameterized.named_parameters([
+      ("Graph", False),
+      ("Mlir", True),
+  ])
+  def testTimeMNISTGrad(self, use_mlir):
+    if use_mlir:
+      SetTracingImplementation("mlir")
+ 
+    # 2-layer Net Model
+    def model(X, W1, W2, labels):
+      with tape_lib.GradientTape() as tape:
+        tape.watch(W1)
+        tape.watch(W2)
+        mm = math_ops.matmul(X, W1)
+        hidden = math_ops.relu(mm)
+        scores = math_ops.matmul(hidden, W2)
+        loss = math_ops.softmax_loss(scores, labels)
+      
+      grads = tape.gradient(loss, [W1, W2])
+      return grads
+ 
+    times_recorded = []
+    num_iters = 500
+    for i in range(num_iters):
+      t1 = time.time()
+      with context_lib.set_default(get_immediate_execution_context()):
+        X = eager_ctx.CreateFloatTensorHandle([1., 2., 3., 4.], [2,2])
+        W1 = eager_ctx.CreateFloatTensorHandle([-1., 10., 0.5, 1.], [2,2])
+        W2 = eager_ctx.CreateFloatTensorHandle([.1, .2, .3, -.5], [2,2])
+        labels = eager_ctx.CreateIntTensorHandle([1,1], [2])
+      
+        eager_outputs = model(X, W1, W2, labels)
+        t2 = time.time()
+  
+        delta_t = t2 - t1
+        times_recorded.append(delta_t)
+
+    print(times_recorded) # Need this for comparison to default grads using TF
 
 if __name__ == "__main__":
   ops.enable_eager_execution()
