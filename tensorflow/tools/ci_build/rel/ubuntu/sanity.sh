@@ -28,6 +28,12 @@ sudo pip3 install pep8
 sudo python2 -m pip install pylint==1.6.4
 sudo python3 -m pip install pylint==1.6.4
 
+#Pin isort version to 4.3.21
+sudo python2 -m pip uninstall -y isort
+sudo python3 -m pip uninstall -y isort
+sudo python2 -m pip install isort==4.3.21
+sudo python3 -m pip install isort==4.3.21
+
 # TODO(yifeif): print pylint version for debug. remove later.
 python3 -m pylint --version
 
