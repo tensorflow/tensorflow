@@ -373,30 +373,37 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value lhs_shape = if_builder.create<shape::ShapeOfOp>(loc, lhs);
     Value rhs_shape = if_builder.create<shape::ShapeOfOp>(loc, rhs);
     SmallVector<int64_t, 6> ranked_shape(targeted_rank, 1);
-    auto extent_tensor_type =
+    auto unknown_rank_extent_tensor_type = RankedTensorType::get(
+        {RankedTensorType::kDynamicSize}, builder.getIndexType());
+    auto known_rank_extent_tensor_type =
         RankedTensorType::get({targeted_rank}, builder.getIndexType());
     auto reshaped_type = RankedTensorType::get(
         llvm::SmallVector<int64_t, 6>(targeted_rank,
                                       RankedTensorType::kDynamicSize),
         lhs.getType().template dyn_cast<TensorType>().getElementType());
     Value ranked_shape_val = if_builder.create<shape::ConstShapeOp>(
-        loc, extent_tensor_type,
-        mlir::DenseIntElementsAttr::get(extent_tensor_type, ranked_shape));
-    // TODO(tpopp): Return extent tensors when possible to signal that this is a
-    // guaranteed safe broadcast by construction.
+        loc, known_rank_extent_tensor_type,
+        mlir::DenseIntElementsAttr::get(known_rank_extent_tensor_type,
+                                        ranked_shape));
     Value extended_lhs = if_builder.create<shape::BroadcastOp>(
-        loc, extent_tensor_type, lhs_shape, ranked_shape_val, nullptr);
+        loc, unknown_rank_extent_tensor_type, lhs_shape, ranked_shape_val,
+        nullptr);
+    Value extended_lhs_casted = if_builder.create<TensorCastOp>(
+        loc, known_rank_extent_tensor_type, extended_lhs);
     Value extended_rhs = if_builder.create<shape::BroadcastOp>(
-        loc, extent_tensor_type, rhs_shape, ranked_shape_val, nullptr);
+        loc, unknown_rank_extent_tensor_type, rhs_shape, ranked_shape_val,
+        nullptr);
+    Value extended_rhs_casted = if_builder.create<TensorCastOp>(
+        loc, known_rank_extent_tensor_type, extended_rhs);
 
     // 1. Reshape operands to the given rank (with the same number of elements)
     // 2. Compute the ranked-broadcasted ChloOp (which will assert that the ops
     //    can be broadcasted and do the actual broadcasting)
     // 3. Type erase the output back to unranked
     Value reshaped_lhs = if_builder.create<mhlo::DynamicReshapeOp>(
-        loc, reshaped_type, lhs, extended_lhs);
+        loc, reshaped_type, lhs, extended_lhs_casted);
     Value reshaped_rhs = if_builder.create<mhlo::DynamicReshapeOp>(
-        loc, reshaped_type, rhs, extended_rhs);
+        loc, reshaped_type, rhs, extended_rhs_casted);
     Value result = if_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{reshaped_type},
         ArrayRef<Value>{reshaped_lhs, reshaped_rhs}, op.getAttrs());
