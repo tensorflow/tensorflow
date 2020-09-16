@@ -39,7 +39,6 @@ using namespace std;
 Status ScalarTensorHandleHelper(TFE_Context* ctx, float value,
                                 TFE_TensorHandle** result) {
   float data[] = {value};
-  // TF_Status* status = TF_NewStatus();
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TF_Tensor* t =
