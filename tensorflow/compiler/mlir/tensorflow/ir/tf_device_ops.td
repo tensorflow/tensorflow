@@ -36,7 +36,7 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let cppNamespace = "tf_device";
+  let cppNamespace = "::mlir::tf_device";
 }
 
 //===----------------------------------------------------------------------===//

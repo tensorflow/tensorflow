@@ -25,12 +25,14 @@ from six.moves import range
 from six.moves import zip
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -803,6 +805,31 @@ class ArrayMethodsTest(test.TestCase):
 
   def testAmax(self):
     self._testReduce(np_array_ops.amax, np.amax, 'amax')
+
+  def testSize(self):
+
+    def run_test(arr, axis=None):
+      onp_arr = np.array(arr)
+      self.assertEqual(np_array_ops.size(arr, axis), np.size(onp_arr, axis))
+
+    run_test(np_array_ops.array([1]))
+    run_test(np_array_ops.array([1, 2, 3, 4, 5]))
+    run_test(np_array_ops.ones((2, 3, 2)))
+    run_test(np_array_ops.ones((3, 2)))
+    run_test(np_array_ops.zeros((5, 6, 7)))
+    run_test(1)
+    run_test(np_array_ops.ones((3, 2, 1)))
+    run_test(constant_op.constant(5))
+    run_test(constant_op.constant([1, 1, 1]))
+    self.assertRaises(NotImplementedError, np_array_ops.size, np.ones((2, 2)),
+                      1)
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(shape=None)])
+    def f(arr):
+      arr = np_array_ops.asarray(arr)
+      return np_array_ops.size(arr)
+
+    self.assertEqual(f(np_array_ops.ones((3, 2))).data.numpy(), 6)
 
   def testRavel(self):
 

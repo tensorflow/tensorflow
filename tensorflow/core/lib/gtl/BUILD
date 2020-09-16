@@ -129,7 +129,7 @@ cc_library(
     name = "map_util",
     srcs = [
         "map_util.h",
-        "subtle/map_traits.h",
+        "//tensorflow/core/lib/gtl/subtle:map_traits",
     ],
     hdrs = ["map_util.h"],
 )
@@ -221,7 +221,7 @@ filegroup(
         "map_util.h",
         "optional.h",
         "priority_queue_util.h",
-        "subtle/map_traits.h",
+        "//tensorflow/core/lib/gtl/subtle:map_traits",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -243,8 +243,8 @@ filegroup(
         "map_util.h",
         "optional.h",
         "priority_queue_util.h",
-        "subtle/map_traits.h",
         "top_n.h",
+        "//tensorflow/core/lib/gtl/subtle:map_traits",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -250,7 +250,7 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
         strides.getSplatValue().cast<IntegerAttr>().getInt() != 1)
       return failure();
 
-    rewriter.setInsertionPointAfter(slice_op);
+    rewriter.setInsertionPointAfter(slice_op.getOperation());
     auto start_indices = slice_op.start_indices();
     auto limit_indices = slice_op.limit_indices();
     std::vector<int64_t> size_values;

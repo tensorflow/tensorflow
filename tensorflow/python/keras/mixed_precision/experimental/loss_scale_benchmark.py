@@ -24,6 +24,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import math_ops
@@ -136,7 +137,7 @@ class LossScaleBenchmark(test.Benchmark):
                             wall_time=(end - start) / num_iters, name=name)
 
   def _gpus_to_test_with(self):
-    num_gpus = context.num_gpus()
+    num_gpus = len(config.list_logical_devices('GPU'))
     gpus_to_test_with = []
     if num_gpus >= 1:
       gpus_to_test_with.append(1)

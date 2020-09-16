@@ -4117,16 +4117,25 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
 class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
  public:
   explicit FakeMemorySpaceAssignmentRepacker(
-      absl::flat_hash_map<std::pair<int64, int64>, int64>& repack_map)
+      absl::flat_hash_map<std::pair<int64, int64>, int64>& repack_map,
+      std::function<void(absl::Span<AllocationBlock*>)> check_fun = nullptr)
       : MemorySpaceAssignmentRepacker(/*max_size=*/128, /*alignment=*/8),
-        repack_map_(repack_map) {}
+        repack_map_(repack_map),
+        check_fun_(check_fun) {}
 
   StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override {
     bool modified = false;
     for (AllocationBlock* block : allocations) {
-      VLOG(1) << "Alloc time: [" << block->start_time << ", " << block->end_time
-              << "] size: " << block->size
-              << " init offset: " << block->initial_offset;
+      absl::flat_hash_set<int64> colocations;
+      std::string colocations_str;
+      for (const AllocationBlock* colocation : block->colocations) {
+        absl::StrAppend(&colocations_str, colocation->id, ", ");
+        colocations.insert(colocation->id);
+      }
+      VLOG(1) << "Alloc id: " << block->id << " time: [" << block->start_time
+              << ", " << block->end_time << "] size: " << block->size
+              << " init offset: " << block->initial_offset << " colocations: {"
+              << colocations_str << "}";
       auto it = repack_map_.find({block->start_time, block->initial_offset});
       if (it != repack_map_.end()) {
         modified = true;
@@ -4135,14 +4144,15 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
         block->offset = block->initial_offset;
       }
       for (AllocationBlock* colocation : block->colocations) {
-        VLOG(1) << "  [" << colocation->start_time << ", "
-                << colocation->end_time << "]";
         if (it != repack_map_.end()) {
           colocation->offset = it->second;
         } else {
           colocation->offset = colocation->initial_offset;
         }
       }
+    }
+    if (check_fun_) {
+      check_fun_(allocations);
     }
 
     return modified;
@@ -4151,6 +4161,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
  private:
   // A map from (start_time, offset) to new_offset.
   absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map_;
+  std::function<void(absl::Span<AllocationBlock*>)> check_fun_;
 };
 
 TEST_P(MemorySpaceAssignmentTest, Repack) {
@@ -4272,6 +4283,121 @@ TEST_P(MemorySpaceAssignmentTest, Repack) {
   const HloInstruction* d =
       module->entry_computation()->GetInstructionWithName("d");
   EXPECT_EQ(d->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
+  // This test is that we are correctly exporting aliased offsets for repacking.
+  // In this example, the buffer produced at HLO "a" will be allocated first,
+  // and will consist of four allocations:
+  //    1) a produced in the alternate memory (and then evicted to the default
+  //    memory). 2) a prefetched to the alternate memory to be used by q and
+  //    while HLOs. 3) a used within the while loop body. 4) the output of while
+  //    HLO, used by u.
+  //
+  // Since a will be allocated first (the test is crafted to prioritize sine
+  // HLO), all four allocations should get the same (zero) offsets. However,
+  // while allocations 2, 3, and 4 need to be colocated with each other,
+  // allocation 1 doesn't need to be colocated with the other three.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  while_condition {
+    param1 = (f32[2,4], f32[2,4]) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+
+  while_body {
+    param2 = (f32[2,4], f32[2,4]) parameter(0)
+    gte2 = f32[2,4] get-tuple-element(param2), index=0
+    gte3 = f32[2,4] get-tuple-element(param2), index=1
+    add = f32[2,4] add(gte2, gte3)
+    ROOT tuple2 = (f32[2,4], f32[2,4]) tuple(add, gte3)
+  }
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    a = f32[2,4] sine(param0)
+    b = f32[2,4] negate(a)
+    c = f32[2,4] negate(b)
+    d = f32[2,4] negate(c)
+    e = f32[2,4] negate(d)
+    f = f32[2,4] negate(e)
+    g = f32[2,4] negate(f)
+    h = f32[2,4] negate(g)
+    i = f32[2,4] negate(h)
+    j = f32[2,4] negate(i)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] negate(k)
+    m = f32[2,4] negate(l)
+    n = f32[2,4] negate(m)
+    o = f32[2,4] negate(n)
+    p = f32[2,4] negate(o)
+    q = f32[2,4] add(p, a)
+    tuple = (f32[2,4], f32[2,4]) tuple(q, a)
+    while = (f32[2,4], f32[2,4]) while(tuple), condition=while_condition, body=while_body
+    gte0 = f32[2,4] get-tuple-element(while), index=0
+    gte1 = f32[2,4] get-tuple-element(while), index=1
+    r = f32[2,4] negate(gte0)
+    s = f32[2,4] negate(r)
+    t = f32[2,4] negate(s)
+    constant = f32[] constant(0)
+    broadcast = f32[8,4] broadcast(constant), dimensions={}
+    cos = f32[8,4] cosine(broadcast)
+    u = f32[2,4] add(t, gte1)
+    v = f32[2,4] add(u, param0)
+    w = f32[8,4] negate(cos)
+    ROOT tuple3 = (f32[2,4], f32[8,4]) tuple(v, w)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kSin:
+              return 0;
+            case HloOpcode::kCos:
+              return 1;
+            case HloOpcode::kTanh:
+              return 2;
+            default:
+              return 3;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+
+  // Expect that of the four separate allocations for the "a" buffer, the first
+  // and the next three are in separate colocations.
+  auto check_fun =
+      [](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
+             allocations) {
+        EXPECT_TRUE(allocations.at(0)->colocations.size() == 1 ||
+                    allocations.at(0)->colocations.size() == 3);
+        EXPECT_EQ(allocations.at(1)->colocations.size(), 3);
+        EXPECT_EQ(allocations.at(2)->colocations.size(), 3);
+        EXPECT_TRUE(allocations.at(3)->colocations.size() == 1 ||
+                    allocations.at(3)->colocations.size() == 3);
+      };
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
+  MemorySpaceAssignment::Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.max_repacks = 1;
+  options.repacker = &repacker;
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &prefetch_interval_picker,
+                    options);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Determinism) {

@@ -37,9 +37,9 @@ filegroup(
     visibility = ["//tensorflow:internal"],
 )
 
-filegroup(
+alias(
     name = "java_api_def",
-    srcs = glob(["java_api/*"]),
+    actual = "//tensorflow/core/api_def/java_api:java_api_def",
     visibility = ["//tensorflow:internal"],
 )
 

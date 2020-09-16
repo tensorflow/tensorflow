@@ -315,6 +315,9 @@ std::vector<tstring> SelectOptimizations(
     const std::vector<tstring>& optimizations_default,
     std::function<uint64(const string&)> hash_func);
 
+// Removes device placements from the ops of all functions in `library`.
+void StripDevicePlacement(FunctionDefLibrary* library);
+
 }  // namespace data
 }  // namespace tensorflow
 

@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 @deprecation.deprecated(
     None,
     "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
-    "num_parallel_calls=tf.data.experimental.AUTOTUNE)` instead. If sloppy "
+    "num_parallel_calls=tf.data.AUTOTUNE)` instead. If sloppy "
     "execution is desired, use `tf.data.Options.experimental_deterministic`.")
 @tf_export("data.experimental.parallel_interleave")
 def parallel_interleave(map_func,

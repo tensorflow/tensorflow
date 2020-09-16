@@ -32,7 +32,8 @@ static constexpr int kGetTpuProgramServingThreads = 32;
 
 TpuCompilationCacheService::TpuCompilationCacheService(
     ::grpc::ServerBuilder* server_builder, TpuCompilationCacheInterface* cache)
-    : cache_(cache),
+    : running_(true),
+      cache_(cache),
       server_builder_(server_builder),
       cq_(server_builder_->AddCompletionQueue()),
       thread_pool_(absl::make_unique<thread::ThreadPool>(

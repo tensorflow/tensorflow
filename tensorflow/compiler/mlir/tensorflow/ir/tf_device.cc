@@ -670,12 +670,12 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<DropEmptyLaunch>(context);
 }
 
+}  // namespace tf_device
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
-
-}  // namespace tf_device
-}  // namespace mlir

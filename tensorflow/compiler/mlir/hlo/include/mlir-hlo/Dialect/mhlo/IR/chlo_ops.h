@@ -44,11 +44,18 @@ class HloClientDialect : public Dialect {
   static StringRef getDialectNamespace() { return "chlo"; }
 };
 
+}  // namespace chlo
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc"
 
+namespace mlir {
+namespace chlo {
+
 template <typename T>
-static Value getConstantLike(OpBuilder& b, T constant, Value val) {
+static Value getConstantLike(OpBuilder& b, Location loc, T constant,
+                             Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
 
   auto getAttr = [&]() -> Attribute {
@@ -56,8 +63,7 @@ static Value getConstantLike(OpBuilder& b, T constant, Value val) {
     if (ty.isa<FloatType>()) return b.getFloatAttr(ty, constant);
     llvm_unreachable("unhandled element type");
   };
-  // TODO(jpienaar): Add ability to pass loc via native call and update.
-  return b.create<ConstantLikeOp>(b.getUnknownLoc(), getAttr(), val);
+  return b.create<ConstantLikeOp>(loc, getAttr(), val);
 }
 
 }  // namespace chlo

@@ -841,7 +841,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    ReshapeOpConverter<lmhlo::ReshapeOp>,
                    ReverseConverter<lmhlo::ReverseOp>,
                    ScalarPointwiseToStandardConverter<lmhlo::AddOp>,
-                   SliceConverter
+                   SliceConverter,
+                   TransposeConverter<lmhlo::TransposeOp>
                   >(context);
   // clang-format on
 }

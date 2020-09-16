@@ -123,8 +123,10 @@ block_z:1)MULTI";
       absl::StrCat(kTfOp3, ":", kTfOp3), kKernel5StartNs, kKernel5DurationNs,
       /*on_device=*/true, kKernel5, kKernelDetails, &device_plane, &stream2);
 
-  const OpStats op_stats =
-      ConvertXSpaceToOpStats(space, {OP_METRICS_DB, KERNEL_STATS_DB});
+  OpStatsOptions options;
+  options.generate_kernel_stats_db = true;
+  options.generate_op_metrics_db = true;
+  const OpStats op_stats = ConvertXSpaceToOpStats(space, options);
   const TfStatsDatabase tf_stats = ConvertOpStatsToTfStats(op_stats);
 
   EXPECT_EQ(tf_stats.device_type(), op_stats.run_environment().device_type());

@@ -1060,5 +1060,15 @@ std::vector<tstring> SelectOptimizations(
   return optimizations;
 }
 
+void StripDevicePlacement(FunctionDefLibrary* library) {
+  for (auto& function : (*library->mutable_function())) {
+    for (auto& node : (*function.mutable_node_def())) {
+      if (!node.device().empty()) {
+        *node.mutable_device() = "";
+      }
+    }
+  }
+}
+
 }  // namespace data
 }  // namespace tensorflow

@@ -281,7 +281,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // starve executor threads.
   col_impl->Ref();
   profiler::TraceMeProducer producer("BaseCollectiveExecutor::ExecuteAsync");
-  RunClosure([col_impl, col_ctx, done_safe, ctx, &producer]() {
+  RunClosure([col_impl, col_ctx, done_safe, ctx,
+              context_id = producer.GetContextId()]() {
     core::ScopedUnref unref(col_impl);
     profiler::TraceMeConsumer consumer(
         [ctx] {
@@ -290,7 +291,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
           return profiler::TraceMeEncode(std::move(op),
                                          {{"id", ctx->step_id()}});
         },
-        producer.GetContextId());
+        context_id);
     col_impl->Ref();
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       core::ScopedUnref unref(col_impl);

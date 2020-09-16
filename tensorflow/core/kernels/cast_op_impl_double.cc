@@ -33,12 +33,5 @@ CastFunctorType GetGpuCastFromDouble(DataType dst_dtype) {
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-CastFunctorType GetSyclCastFromDouble(DataType dst_dtype) {
-  CURRY_TYPES3_NO_HALF(CAST_CASE, SYCLDevice, double);
-  return nullptr;
-}
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

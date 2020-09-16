@@ -144,10 +144,6 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64 block_size,
           "block_size argument to Cholesky must be >= 1; got %d", block_size);
     }
 
-    if (n == 1) {
-      return Sqrt(a);
-    }
-
     // Blocked left-looking Cholesky factorization.
     // Algorithm 1 from
     // Haidar, Azzam, et al. "High-performance Cholesky factorization for
@@ -170,9 +166,16 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64 block_size,
       // l[i:i+k, i:i+k] = cholesky_unblocked(a[i:i+k, i:i+k])
       auto x = SliceInMinorDims(panel, {0, 0}, {k, k});
       XlaOp factorized;
+      // TODO(b/167896062): A failure in one element of a batch shouldn't fail
+      // other elements.
       XlaOp factorized_error;
-      TF_ASSIGN_OR_RETURN(auto tile_output, CholeskyUnblocked(x, precision));
-      std::tie(factorized, factorized_error) = tile_output;
+      if (k == 1) {
+        factorized = Sqrt(x);
+        factorized_error = Any(IsNan(factorized));
+      } else {
+        TF_ASSIGN_OR_RETURN(auto tile_output, CholeskyUnblocked(x, precision));
+        std::tie(factorized, factorized_error) = tile_output;
+      }
       seen_error = Or(seen_error, factorized_error);
       l = UpdateSliceInMinorDims(l, factorized, {i, i});
 

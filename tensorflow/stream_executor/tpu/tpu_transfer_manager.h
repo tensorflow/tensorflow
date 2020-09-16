@@ -67,6 +67,10 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   int64 GetByteSizeRequirement(const xla::Shape& shape) const override;
 
+  bool CanShapedBufferBeAccessedNow(
+      stream_executor::StreamExecutor* executor,
+      const xla::ShapedBuffer& device_buffer) const override;
+
   Status WriteSingleTupleIndexTable(
       stream_executor::Stream* stream,
       absl::Span<const stream_executor::DeviceMemoryBase> elements,

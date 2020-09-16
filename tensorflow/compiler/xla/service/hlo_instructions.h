@@ -244,6 +244,15 @@ class HloChannelInstruction : public HloInstruction {
   absl::optional<int64> channel_id() const { return channel_id_; }
   void set_channel_id(const absl::optional<int64>& channel_id);
 
+  // Whether this instruction is identical to `other` except for the values of
+  // channel IDs, as long as both have channel IDs or neither has a channel ID.
+  virtual bool IdenticalSlowPathIgnoringChannelIdValues(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const {
+    return channel_id_.has_value() == other.channel_id().has_value();
+  }
+
  protected:
   explicit HloChannelInstruction(HloOpcode opcode, const Shape& shape,
                                  const absl::optional<int64>& channel_id);
@@ -252,10 +261,13 @@ class HloChannelInstruction : public HloInstruction {
 
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
+
+  // Do not override IdenticalSlowPath(). Override
+  // IdenticalSlowPathIgnoringChannelIdValues() instead.
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
+          eq_computations) const final;
 
   absl::optional<int64> channel_id_;
 };
@@ -275,7 +287,7 @@ class HloSendRecvInstruction : public HloChannelInstruction {
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
+  bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
@@ -363,7 +375,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
 
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
+  bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
@@ -390,7 +402,7 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  bool IdenticalSlowPath(
+  bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
@@ -434,7 +446,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  bool IdenticalSlowPath(
+  bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
@@ -471,7 +483,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  bool IdenticalSlowPath(
+  bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
@@ -501,7 +513,7 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
+  bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
@@ -1182,6 +1194,8 @@ class HloOutfeedInstruction : public HloInstruction {
                                  absl::string_view outfeed_config);
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const { return outfeed_shape_; }
+  // Returns the mutable shape for the Outfeed instruction.
+  Shape* mutable_outfeed_shape() { return &outfeed_shape_; }
   // Returns the config for the Outfeed instruction.
   const string& outfeed_config() const { return outfeed_config_; }
   void set_outfeed_config(const string& config) { outfeed_config_ = config; }

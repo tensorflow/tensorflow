@@ -1972,6 +1972,28 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     # Check that 'b' was used and 'a' was ignored.
     self.assertEqual(res.shape.as_list(), [1, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_nested_dict_mapping(self):
+    a = input_layer_lib.Input(shape=(1,), dtype='int32', name='a')
+    b = input_layer_lib.Input(shape=(1,), dtype='int32', name='b')
+    c = input_layer_lib.Input(shape=(1,), dtype='int32', name='c')
+    d = input_layer_lib.Input(shape=(1,), dtype='int32', name='d')
+    inputs = {'a': (a, b), 'c': (c, d)}
+    outputs = 1000 * a + 100 * b + 10 * c + d
+    model = training_lib.Model(inputs, outputs)
+
+    a_val = array_ops.ones((1, 1), dtype='int32')
+    b_val = 2 * array_ops.ones((1, 1), dtype='int32')
+    c_val = 3 * array_ops.ones((1, 1), dtype='int32')
+    d_val = 4 * array_ops.ones((1, 1), dtype='int32')
+
+    inputs_val = {'a': (a_val, b_val), 'c': (c_val, d_val)}
+    res = model(inputs_val)
+
+    # Check that inputs were flattened in the correct order.
+    self.assertFalse(model._enable_dict_to_input_mapping)
+    self.assertEqual(self.evaluate(res), [1234])
+
 
 @combinations.generate(combinations.keras_mode_combinations())
 class AddLossTest(keras_parameterized.TestCase):

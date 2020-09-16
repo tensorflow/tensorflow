@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -265,92 +264,92 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertEqual(adapter.get_size(), 10)
     self.assertFalse(adapter.has_partial_batch())
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_shuffle_correctness(self):
-    with context.eager_mode():
-      num_samples = 100
-      batch_size = 32
-      x = np.arange(num_samples)
-      np.random.seed(99)
-      adapter = self.adapter_cls(
-          x, y=None, batch_size=batch_size, shuffle=True, epochs=2)
+    num_samples = 100
+    batch_size = 32
+    x = np.arange(num_samples)
+    np.random.seed(99)
+    adapter = self.adapter_cls(
+        x, y=None, batch_size=batch_size, shuffle=True, epochs=2)
 
-      def _get_epoch(ds_iter):
-        ds_data = []
-        for _ in range(int(math.ceil(num_samples / batch_size))):
-          ds_data.append(next(ds_iter).numpy())
-        return np.concatenate(ds_data)
+    def _get_epoch(ds_iter):
+      ds_data = []
+      for _ in range(int(math.ceil(num_samples / batch_size))):
+        ds_data.append(next(ds_iter).numpy())
+      return np.concatenate(ds_data)
 
-      ds_iter = iter(adapter.get_dataset())
+    ds_iter = iter(adapter.get_dataset())
 
-      # First epoch.
-      epoch_data = _get_epoch(ds_iter)
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(epoch_data))
+    # First epoch.
+    epoch_data = _get_epoch(ds_iter)
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(epoch_data))
 
-      # Second epoch.
-      second_epoch_data = _get_epoch(ds_iter)
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, second_epoch_data)
-      # Check that shuffling is different across epochs.
-      self.assertNotAllClose(epoch_data, second_epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(second_epoch_data))
+    # Second epoch.
+    second_epoch_data = _get_epoch(ds_iter)
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, second_epoch_data)
+    # Check that shuffling is different across epochs.
+    self.assertNotAllClose(epoch_data, second_epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(second_epoch_data))
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_batch_shuffle_correctness(self):
-    with context.eager_mode():
-      num_samples = 100
-      batch_size = 6
-      x = np.arange(num_samples)
-      np.random.seed(99)
-      adapter = self.adapter_cls(
-          x, y=None, batch_size=batch_size, shuffle='batch', epochs=2)
+    num_samples = 100
+    batch_size = 6
+    x = np.arange(num_samples)
+    np.random.seed(99)
+    adapter = self.adapter_cls(
+        x, y=None, batch_size=batch_size, shuffle='batch', epochs=2)
 
-      def _get_epoch_batches(ds_iter):
-        ds_data = []
-        for _ in range(int(math.ceil(num_samples / batch_size))):
-          ds_data.append(next(ds_iter)[0].numpy())
-        return ds_data
+    def _get_epoch_batches(ds_iter):
+      ds_data = []
+      for _ in range(int(math.ceil(num_samples / batch_size))):
+        ds_data.append(next(ds_iter)[0].numpy())
+      return ds_data
 
-      ds_iter = iter(adapter.get_dataset())
+    ds_iter = iter(adapter.get_dataset())
 
-      # First epoch.
-      epoch_batch_data = _get_epoch_batches(ds_iter)
-      epoch_data = np.concatenate(epoch_batch_data)
+    # First epoch.
+    epoch_batch_data = _get_epoch_batches(ds_iter)
+    epoch_data = np.concatenate(epoch_batch_data)
 
-      def _verify_batch(batch):
-        # Verify that a batch contains only contiguous data, and that it has
-        # been shuffled.
-        shuffled_batch = np.sort(batch)
-        self.assertNotAllClose(batch, shuffled_batch)
-        for i in range(1, len(batch)):
-          self.assertEqual(shuffled_batch[i-1] + 1, shuffled_batch[i])
+    def _verify_batch(batch):
+      # Verify that a batch contains only contiguous data, and that it has
+      # been shuffled.
+      shuffled_batch = np.sort(batch)
+      self.assertNotAllClose(batch, shuffled_batch)
+      for i in range(1, len(batch)):
+        self.assertEqual(shuffled_batch[i-1] + 1, shuffled_batch[i])
 
-      # Assert that the data within each batch remains contiguous
-      for batch in epoch_batch_data:
-        _verify_batch(batch)
+    # Assert that the data within each batch remains contiguous
+    for batch in epoch_batch_data:
+      _verify_batch(batch)
 
-      # Check that individual batches are unshuffled
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(epoch_data))
+    # Check that individual batches are unshuffled
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(epoch_data))
 
-      # Second epoch.
-      second_epoch_batch_data = _get_epoch_batches(ds_iter)
-      second_epoch_data = np.concatenate(second_epoch_batch_data)
+    # Second epoch.
+    second_epoch_batch_data = _get_epoch_batches(ds_iter)
+    second_epoch_data = np.concatenate(second_epoch_batch_data)
 
-      # Assert that the data within each batch remains contiguous
-      for batch in second_epoch_batch_data:
-        _verify_batch(batch)
+    # Assert that the data within each batch remains contiguous
+    for batch in second_epoch_batch_data:
+      _verify_batch(batch)
 
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, second_epoch_data)
-      # Check that shuffling is different across epochs.
-      self.assertNotAllClose(epoch_data, second_epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(second_epoch_data))
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, second_epoch_data)
+    # Check that shuffling is different across epochs.
+    self.assertNotAllClose(epoch_data, second_epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(second_epoch_data))
 
   @parameterized.named_parameters(
       ('batch_size_5', 5, None, 5),
@@ -494,92 +493,92 @@ class GenericArrayLikeDataAdapterTest(DataAdapterTestBase):
     self.model.evaluate(self.arraylike_input,
                         self.tensor_target, batch_size=5)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_shuffle_correctness(self):
-    with context.eager_mode():
-      num_samples = 100
-      batch_size = 32
-      x = DummyArrayLike(np.arange(num_samples))
-      np.random.seed(99)
-      adapter = self.adapter_cls(
-          x, y=None, batch_size=batch_size, shuffle=True, epochs=2)
+    num_samples = 100
+    batch_size = 32
+    x = DummyArrayLike(np.arange(num_samples))
+    np.random.seed(99)
+    adapter = self.adapter_cls(
+        x, y=None, batch_size=batch_size, shuffle=True, epochs=2)
 
-      def _get_epoch(ds_iter):
-        ds_data = []
-        for _ in range(int(math.ceil(num_samples / batch_size))):
-          ds_data.append(next(ds_iter).numpy())
-        return np.concatenate(ds_data)
+    def _get_epoch(ds_iter):
+      ds_data = []
+      for _ in range(int(math.ceil(num_samples / batch_size))):
+        ds_data.append(next(ds_iter).numpy())
+      return np.concatenate(ds_data)
 
-      ds_iter = iter(adapter.get_dataset())
+    ds_iter = iter(adapter.get_dataset())
 
-      # First epoch.
-      epoch_data = _get_epoch(ds_iter)
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(epoch_data))
+    # First epoch.
+    epoch_data = _get_epoch(ds_iter)
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(epoch_data))
 
-      # Second epoch.
-      second_epoch_data = _get_epoch(ds_iter)
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, second_epoch_data)
-      # Check that shuffling is different across epochs.
-      self.assertNotAllClose(epoch_data, second_epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(second_epoch_data))
+    # Second epoch.
+    second_epoch_data = _get_epoch(ds_iter)
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, second_epoch_data)
+    # Check that shuffling is different across epochs.
+    self.assertNotAllClose(epoch_data, second_epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(second_epoch_data))
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_batch_shuffle_correctness(self):
-    with context.eager_mode():
-      num_samples = 100
-      batch_size = 6
-      x = DummyArrayLike(np.arange(num_samples))
-      np.random.seed(99)
-      adapter = self.adapter_cls(
-          x, y=None, batch_size=batch_size, shuffle='batch', epochs=2)
+    num_samples = 100
+    batch_size = 6
+    x = DummyArrayLike(np.arange(num_samples))
+    np.random.seed(99)
+    adapter = self.adapter_cls(
+        x, y=None, batch_size=batch_size, shuffle='batch', epochs=2)
 
-      def _get_epoch_batches(ds_iter):
-        ds_data = []
-        for _ in range(int(math.ceil(num_samples / batch_size))):
-          ds_data.append(next(ds_iter)[0].numpy())
-        return ds_data
+    def _get_epoch_batches(ds_iter):
+      ds_data = []
+      for _ in range(int(math.ceil(num_samples / batch_size))):
+        ds_data.append(next(ds_iter)[0].numpy())
+      return ds_data
 
-      ds_iter = iter(adapter.get_dataset())
+    ds_iter = iter(adapter.get_dataset())
 
-      # First epoch.
-      epoch_batch_data = _get_epoch_batches(ds_iter)
-      epoch_data = np.concatenate(epoch_batch_data)
+    # First epoch.
+    epoch_batch_data = _get_epoch_batches(ds_iter)
+    epoch_data = np.concatenate(epoch_batch_data)
 
-      def _verify_batch(batch):
-        # Verify that a batch contains only contiguous data, but that it has
-        # been shuffled.
-        shuffled_batch = np.sort(batch)
-        self.assertNotAllClose(batch, shuffled_batch)
-        for i in range(1, len(batch)):
-          self.assertEqual(shuffled_batch[i-1] + 1, shuffled_batch[i])
+    def _verify_batch(batch):
+      # Verify that a batch contains only contiguous data, but that it has
+      # been shuffled.
+      shuffled_batch = np.sort(batch)
+      self.assertNotAllClose(batch, shuffled_batch)
+      for i in range(1, len(batch)):
+        self.assertEqual(shuffled_batch[i-1] + 1, shuffled_batch[i])
 
-      # Assert that the data within each batch is shuffled contiguous data
-      for batch in epoch_batch_data:
-        _verify_batch(batch)
+    # Assert that the data within each batch is shuffled contiguous data
+    for batch in epoch_batch_data:
+      _verify_batch(batch)
 
-      # Check that individual batches are unshuffled
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(epoch_data))
+    # Check that individual batches are unshuffled
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(epoch_data))
 
-      # Second epoch.
-      second_epoch_batch_data = _get_epoch_batches(ds_iter)
-      second_epoch_data = np.concatenate(second_epoch_batch_data)
+    # Second epoch.
+    second_epoch_batch_data = _get_epoch_batches(ds_iter)
+    second_epoch_data = np.concatenate(second_epoch_batch_data)
 
-      # Assert that the data within each batch remains contiguous
-      for batch in second_epoch_batch_data:
-        _verify_batch(batch)
+    # Assert that the data within each batch remains contiguous
+    for batch in second_epoch_batch_data:
+      _verify_batch(batch)
 
-      # Check that shuffling occurred.
-      self.assertNotAllClose(x, second_epoch_data)
-      # Check that shuffling is different across epochs.
-      self.assertNotAllClose(epoch_data, second_epoch_data)
-      # Check that each elements appears, and only once.
-      self.assertAllClose(x, np.sort(second_epoch_data))
+    # Check that shuffling occurred.
+    self.assertNotAllClose(x, second_epoch_data)
+    # Check that shuffling is different across epochs.
+    self.assertNotAllClose(epoch_data, second_epoch_data)
+    # Check that each elements appears, and only once.
+    self.assertAllClose(x, np.sort(second_epoch_data))
 
   @parameterized.named_parameters(
       ('batch_size_5', 5, None, 5),
@@ -711,15 +710,15 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
       self.adapter_cls(
           self.generator_input, sample_weights=self.generator_input)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_not_shuffled(self):
     def generator():
       for i in range(10):
         yield np.ones((1, 1)) * i
 
     adapter = self.adapter_cls(generator(), shuffle=True)
-    with context.eager_mode():
-      for i, data in enumerate(adapter.get_dataset()):
-        self.assertEqual(i, data[0].numpy().flatten())
+    for i, data in enumerate(adapter.get_dataset()):
+      self.assertEqual(i, data[0].numpy().flatten())
 
 
 class KerasSequenceAdapterTest(DataAdapterTestBase):

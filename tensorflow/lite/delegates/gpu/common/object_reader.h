@@ -86,6 +86,8 @@ class ObjectReader {
 
   absl::Status AddInput(const Node* node, uint32_t idx);
 
+  absl::Status AddUpdate(const Node* node, uint32_t idx);
+
   TfLiteTensor* GetInputTensor(int index) const;
 
   TfLiteTensor* GetOutputTensor(int index) const;
