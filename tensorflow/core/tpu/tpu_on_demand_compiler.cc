@@ -123,7 +123,8 @@ class TpuExecutable : public TpuExecutableInterface {
       auto* arg_buffers = arg.MutableBuffers();
       absl::InlinedVector<SE_MaybeOwningDeviceMemory, 2> se_buffers;
       for (auto& pair : *arg_buffers) {
-        se_buffers.push_back(ApiConverter::ToC(pair.second));
+        bool aliased = arg.unowned_indices().count(pair.first) > 0;
+        se_buffers.push_back(ApiConverter::ToC(pair.second, aliased));
       }
       se_args[i]->shape_tree.buffers =
           new SE_MaybeOwningDeviceMemory[se_buffers.size()];
