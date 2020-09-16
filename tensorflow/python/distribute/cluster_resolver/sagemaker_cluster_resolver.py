@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,8 +26,9 @@ from tensorflow.python.distribute.cluster_resolver.cluster_resolver import Clust
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util.tf_export import tf_export
 
-#List of envs: https://github.com/aws/sagemaker-training-toolkit/blob/master/ENVIRONMENT_VARIABLES.md
-#Only support Multi-Worker Mirrored Strategy
+# List of envs
+# https://github.com/aws/sagemaker-training-toolkit/blob/master/ENVIRONMENT_VARIABLES.md
+# Only support Multi-Worker Mirrored Strategy
 
 _SESSION_MASTER_KEY = 'session_master'
 _RPC_LAYER_KEY = 'rpc_layer'
@@ -37,8 +38,8 @@ _WORKER_KEY = 'worker'
 _INDEX_KEY = 'index'
 _TYPE_KEY = 'type'
 
-_SM_CURRENT_HOST = "SM_CURRENT_HOST"
-_SM_HOSTS = "SM_HOSTS"
+_SM_CURRENT_HOST = 'SM_CURRENT_HOST'
+_SM_HOSTS = 'SM_HOSTS'
 
 def format_master_url(master, rpc_layer=None):
   if rpc_layer:
@@ -48,19 +49,20 @@ def format_master_url(master, rpc_layer=None):
 
 
 def _load_tf_config(port):
-  #Create a tf_config from SM Variables
-  assert all([x in os.environ for x in [_SM_CURRENT_HOST, _SM_HOSTS]]),\
-              "This isn't a SageMaker Environment"
-  hosts = sorted(json.loads(os.environ[_SM_HOSTS])) if os.environ[_SM_HOSTS] != '' else []
+  # Create a tf_config from SM Variables
+  assert all([x in os.environ
+      for x in [_SM_CURRENT_HOST, _SM_HOSTS]]), "Not a SageMaker Environment"
+  hosts = sorted(json.loads(os.environ[_SM_HOSTS])
+                ) if os.environ[_SM_HOSTS] != '' else []
   current_host = os.environ[_SM_CURRENT_HOST]
-  
+
   if current_host not in hosts:
     return {}
-    
+
   host_index = hosts.index(current_host)
-  #Assign ports
+  # Assign ports
   hosts = [f"{host}:{port}" for host in hosts]
-  
+
   tf_config = {_CLUSTER_KEY: {_WORKER_KEY: hosts},
                _TASK_KEY: {_TYPE_KEY: _WORKER_KEY, _INDEX_KEY: host_index}}
   return tf_config
@@ -81,7 +83,6 @@ class SageMakerClusterResolver(ClusterResolver):
 
   Currently this Cluster Resolver only supports Multi-Worker Mirrored Strategy.
   It assumes all nodes in a SageMaker Cluster are workers.
-
   """
 
   def __init__(self,
@@ -187,7 +188,7 @@ class SageMakerClusterResolver(ClusterResolver):
     """
 
     # If `session_master` is set, just use that.
-    session_master = _get_value_in_tfconfig(_SESSION_MASTER_KEY,self._port)
+    session_master = _get_value_in_tfconfig(_SESSION_MASTER_KEY, self._port)
     if session_master is not None:
       return session_master
 

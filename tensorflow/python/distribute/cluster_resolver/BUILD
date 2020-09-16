@@ -23,7 +23,7 @@ py_library(
         ":slurm_cluster_resolver_py",
         ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
-	":sagemaker_cluster_resolver_py",
+        ":sagemaker_cluster_resolver_py",
         "//tensorflow/python:util",
     ],
 )
