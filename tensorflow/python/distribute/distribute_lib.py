@@ -2348,35 +2348,6 @@ class StrategyExtendedV2(object):
   def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
 
-  @doc_controls.do_not_generate_docs
-  def update_non_slot(
-      self, colocate_with, fn, args=(), kwargs=None, group=True):
-    """Runs `fn(*args, **kwargs)` on `colocate_with` devices.
-
-    Used to update non-slot variables.
-
-    Args:
-      colocate_with: Devices returned by `non_slot_devices()`.
-      fn: Function to execute.
-      args: Tuple or list. Positional arguments to pass to `fn()`.
-      kwargs: Dict with keyword arguments to pass to `fn()`.
-      group: Boolean. Defaults to True. If False, the return value will be
-        unwrapped.
-
-    Returns:
-      Return value of `fn`, possibly merged across devices.
-    """
-    _require_cross_replica_or_default_context_extended(self)
-    if kwargs is None:
-      kwargs = {}
-    fn = autograph.tf_convert(
-        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
-    with self._container_strategy().scope():
-      return self._update_non_slot(colocate_with, fn, args, kwargs, group)
-
-  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
-    raise NotImplementedError("must be implemented in descendants")
-
   def _local_results(self, distributed_value):
     raise NotImplementedError("must be implemented in descendants")
 
@@ -2428,26 +2399,6 @@ class StrategyExtendedV2(object):
   def parameter_devices(self):
     """Returns the tuple of all devices used to place variables."""
     # TODO(josh11b): More docstring
-    raise NotImplementedError("must be implemented in descendants")
-
-  @doc_controls.do_not_generate_docs
-  def non_slot_devices(self, var_list):
-    """Device(s) for non-slot variables.
-
-    This method returns non-slot devices where non-slot variables are placed.
-    Users can create non-slot variables on these devices by using a block:
-
-    ```python
-    with tf.distribute.StrategyExtended.colocate_vars_with(tf.distribute.StrategyExtended.non_slot_devices(...)):
-      ...
-    ```
-
-    Args:
-      var_list: The list of variables being optimized, needed with the
-        default `tf.distribute.Strategy`.
-    Returns:
-      A sequence of devices for non-slot variables.
-    """
     raise NotImplementedError("must be implemented in descendants")
 
   def _configure(self,
@@ -2645,6 +2596,57 @@ class StrategyExtendedV1(StrategyExtendedV2):
     Returns:
       A tensor representing the value of `v`, aggregated across replicas if
       necessary.
+    """
+    raise NotImplementedError("must be implemented in descendants")
+
+  def update_non_slot(
+      self, colocate_with, fn, args=(), kwargs=None, group=True):
+    """Runs `fn(*args, **kwargs)` on `colocate_with` devices.
+
+    Used to update non-slot variables.
+
+    DEPRECATED: TF 1.x ONLY.
+
+    Args:
+      colocate_with: Devices returned by `non_slot_devices()`.
+      fn: Function to execute.
+      args: Tuple or list. Positional arguments to pass to `fn()`.
+      kwargs: Dict with keyword arguments to pass to `fn()`.
+      group: Boolean. Defaults to True. If False, the return value will be
+        unwrapped.
+
+    Returns:
+      Return value of `fn`, possibly merged across devices.
+    """
+    _require_cross_replica_or_default_context_extended(self)
+    if kwargs is None:
+      kwargs = {}
+    fn = autograph.tf_convert(
+        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
+    with self._container_strategy().scope():
+      return self._update_non_slot(colocate_with, fn, args, kwargs, group)
+
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
+    raise NotImplementedError("must be implemented in descendants")
+
+  def non_slot_devices(self, var_list):
+    """Device(s) for non-slot variables.
+
+    DEPRECATED: TF 1.x ONLY.
+
+    This method returns non-slot devices where non-slot variables are placed.
+    Users can create non-slot variables on these devices by using a block:
+
+    ```python
+    with tf.distribute.StrategyExtended.colocate_vars_with(tf.distribute.StrategyExtended.non_slot_devices(...)):
+      ...
+    ```
+
+    Args:
+      var_list: The list of variables being optimized, needed with the
+        default `tf.distribute.Strategy`.
+    Returns:
+      A sequence of devices for non-slot variables.
     """
     raise NotImplementedError("must be implemented in descendants")
 
