@@ -74,6 +74,12 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def mkdtemp(self):
     return tempfile.mkdtemp(dir=self.get_temp_dir())
 
+  def testTRTEngineInstanceAvailable(self):
+    # test if we can access the TRTEngineInstance protobuf
+    from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 \
+        import TRTEngineInstance
+    assert hasattr(TRTEngineInstance(), 'serialized_engine')
+
   def testGetTensorrtRewriterConfig(self):
     """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
     if not is_tensorrt_enabled():
