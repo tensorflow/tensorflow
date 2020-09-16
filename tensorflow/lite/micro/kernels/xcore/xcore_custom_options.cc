@@ -26,6 +26,7 @@ uint32_t get_named_uint32_custom_option(TfLiteContext *context, const char *buff
   // This has no return value as the TF_LITE_FATAL will abort and not return.
   // A flexbuffer where the custom option is missing is broken so returning a 
   // default value will hide the underlying problem.
+
 }
 
 //*****************************
