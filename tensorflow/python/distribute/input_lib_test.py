@@ -1270,7 +1270,8 @@ class DistributedIteratorPerReplicaTest(test.TestCase, parameterized.TestCase):
       return tf.data.Dataset.from_tensor_slices(
           np.array(np.arange(0, 16)).reshape(4, 4))
 
-    input_options = tf.distribute.InputOptions(replication_mode = tf.distribute.InputReplicationMode.PER_REPLICA)
+    input_options = tf.distribute.InputOptions(
+        replication_mode=tf.distribute.InputReplicationMode.PER_REPLICA)
 
     ds = distribution.experimental_distribute_datasets_from_function(
         dataset_fn, input_options)
@@ -1285,18 +1286,19 @@ class DistributedIteratorPerReplicaTest(test.TestCase, parameterized.TestCase):
     for x in ds:
       process_inputs(x)
       self.assertEqual(
-        x.values[0].device,
-        distribution.extended.worker_devices[0])
+          x.values[0].device,
+          distribution.extended.worker_devices[0])
       self.assertEqual(
-        x.values[0].backing_device,
-        distribution.extended.worker_devices[0])
+          x.values[0].backing_device,
+          distribution.extended.worker_devices[0])
       self.assertEqual(
-        x.values[1].device,
-        distribution.extended.worker_devices[1])
+          x.values[1].device,
+          distribution.extended.worker_devices[1])
       self.assertEqual(
-        x.values[1].backing_device,
-        distribution.extended.worker_devices[1])
+          x.values[1].backing_device,
+          distribution.extended.worker_devices[1])
       break
+
 
 if __name__ == "__main__":
   combinations.main()
