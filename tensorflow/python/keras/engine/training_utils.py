@@ -1567,61 +1567,6 @@ def is_eager_dataset_or_iterator(data):
 
 
 # pylint: disable=protected-access
-def assert_not_batched(dataset):
-  """Asserts that `dataset` is not batched.
-
-  The algorithm used by this method is sound but not complete. In other words,
-  if the method fails to establish the assertion, it does not mean the dataset
-  is batched.
-
-  Example usage:
-  ```python
-  try:
-    assert_not_batched(dataset)
-    # safe to assume `dataset` it not batched here
-  expect ValueError:
-    # make no assumptions about `dataset`
-  ```
-
-  Args:
-    dataset: The dataset to analyze.
-
-  Raises:
-    ValueError: If the method cannot establish the assertion.
-  """
-  if isinstance(dataset, dataset_ops.DatasetV1Adapter):
-    return assert_not_batched(dataset._dataset)
-  else:
-    allowed_types = [
-        dataset_ops._OptionsDataset,
-        dataset_ops.ConcatenateDataset,
-        dataset_ops.CacheDataset,
-        dataset_ops.FilterDataset,
-        dataset_ops.MapDataset,
-        dataset_ops.ParallelMapDataset,
-        dataset_ops.PrefetchDataset,
-        dataset_ops.RangeDataset,
-        dataset_ops.RepeatDataset,
-        dataset_ops.ShuffleDataset,
-        dataset_ops.SkipDataset,
-        dataset_ops.SparseTensorSliceDataset,
-        dataset_ops.TakeDataset,
-        dataset_ops.TensorDataset,
-        dataset_ops.TensorSliceDataset,
-        dataset_ops.ZipDataset,
-        readers.FixedLengthRecordDatasetV2,
-        readers.TextLineDatasetV2,
-        readers.TFRecordDatasetV2,
-    ]
-    for ty in allowed_types:
-      if isinstance(dataset, ty):
-        for input_dataset in dataset._inputs():
-          assert_not_batched(input_dataset)
-        return
-    raise ValueError('Could not assert that dataset is not batched.')
-
-
-# pylint: disable=protected-access
 def assert_not_shuffled(dataset):
   """Asserts that `dataset` is not shuffled.
 
