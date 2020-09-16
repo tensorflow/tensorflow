@@ -19,10 +19,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 using ::testing::ElementsAreArray;
 using ::testing::FloatNear;
@@ -175,8 +180,7 @@ TEST_F(OpenCLOperationTest, RearrageWeights) {
   };
 
   std::vector<float> data(8 * 8);
-  float4* data_ptr = static_cast<float4*>(static_cast<void*>(data.data()));
-  RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(data_ptr, 8 * 8 / 4));
+  RearrangeFCWeightsToIOO4I4(weights, data.data());
 
   EXPECT_THAT(data, ElementsAreArray(expected_rearranged_data));
 }
@@ -202,8 +206,7 @@ TEST_F(OpenCLOperationTest, RearrageWeightsWhenPaddingIsRequired) {
   };
 
   std::vector<float> data(8 * 8);
-  float4* data_ptr = static_cast<float4*>(static_cast<void*>(data.data()));
-  RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(data_ptr, 8 * 8 / 4));
+  RearrangeFCWeightsToIOO4I4(weights, data.data());
 
   EXPECT_THAT(data, ElementsAreArray(expected_rearranged_data));
 }
