@@ -209,7 +209,7 @@ void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer) {
 }
 
 void Free(XLA_Shape* shape) { delete[] shape->bytes; }
-void Free(XLA_ShapeIndex* shape_index) { delete shape_index; }
+void Free(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
 void Free(SE_DeviceMemoryBase*) {}
 
 void Free(XLA_Literal* c_literal) {

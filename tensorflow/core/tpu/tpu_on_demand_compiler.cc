@@ -156,10 +156,6 @@ class TpuExecutable : public TpuExecutableInterface {
       ApiConverter::Free(&se_args[i]->shape_tree.shape);
       ApiConverter::Free(&se_args[i]->dynamic_shape);
       ApiConverter::Free(&se_args[i]->host_shape);
-
-      for (int j = 0; j < se_args[i]->unowned_indices_size; ++i) {
-        ApiConverter::Free(&se_args[i]->unowned_indices[j]);
-      }
       delete[] se_args[i]->unowned_indices;
       delete[] se_args[i]->shape_tree.buffers;
       delete se_args[i];
@@ -180,6 +176,7 @@ class TpuExecutable : public TpuExecutableInterface {
       output.AddAliasedIndex(
           ApiConverter::FromC(&se_execution_output.aliased_indices[i]));
     }
+    ApiConverter::Free(se_execution_output.aliased_indices);
 
     for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
       output.AddToBeReleased(
