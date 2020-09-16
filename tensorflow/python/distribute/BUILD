@@ -147,7 +147,7 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":sharded_variable",
-        "//tensorflow/python/distribute/client:parameter_server_client",
+        "//tensorflow/python/distribute/client",
         "//tensorflow/python/distribute/experimental",
     ],
 )

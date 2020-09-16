@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for parameter_server_client.py."""
+"""Tests for `Client` when used together with `ParameterServerStrategyV2."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,8 +26,8 @@ from absl import logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute.client import client
-from tensorflow.python.distribute.client import parameter_server_client
+from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute.client import client as client_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -93,7 +93,9 @@ def make_client(num_workers, num_ps):
   ]
   cluster_resolver = SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer="grpc")
-  return parameter_server_client.ParameterServerClient(cluster_resolver)
+  strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+      cluster_resolver)
+  return client_lib.Client(strategy)
 
 
 class ParameterServerClientTest(TestCaseWithErrorReportingThread):
@@ -102,13 +104,14 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
   def setUpClass(cls):
     super(ParameterServerClientTest, cls).setUpClass()
     cls.client = make_client(num_workers=3, num_ps=2)
+    cls.strategy = cls.client.strategy
 
   def testBasic(self):
-    self.client._strategy.extended._variable_count = 0
-    with self.client.strategy.scope():
+    self.strategy.extended._variable_count = 0
+    with self.strategy.scope():
       v1 = variables.Variable(initial_value=0.0)
       v2 = variables.Variable(initial_value=1.0)
-    self.assertEqual(self.client._strategy.extended._variable_count, 2)
+    self.assertEqual(self.strategy.extended._variable_count, 2)
 
     @def_function.function
     def worker_fn():
@@ -139,7 +142,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.range(1, 2)
 
-    with self.client.strategy.scope():
+    with self.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int64)
 
     @def_function.function
@@ -163,7 +166,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.from_tensor_slices([2] * 10)
 
-    with self.client.strategy.scope():
+    with self.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int32)
 
     # TODO(yuefengz): the following tf.function has a return value which is None
@@ -268,7 +271,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
 class LimitedClosureQueueSizeBasicTest(ParameterServerClientTest):
   """Test basic functionality works with explicit maximum closure queue size.
 
-  Execute the same set of test cases as in ParameterServerClientTest, with an
+  Execute the same set of test cases as in `ParameterServerClientTest`, with an
   explicit size limit for the closure queue. Note that even when the queue size
   is set to infinite, there is still a maximum practical size (depends on host
   memory limit) that might cause the queue.put operations to be blocking when
@@ -279,8 +282,9 @@ class LimitedClosureQueueSizeBasicTest(ParameterServerClientTest):
   @classmethod
   def setUpClass(cls):
     super(LimitedClosureQueueSizeBasicTest, cls).setUpClass()
-    client._CLOSURE_QUEUE_MAX_SIZE = 2
+    client_lib._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.client = make_client(num_workers=3, num_ps=2)
+    cls.strategy = cls.client.strategy
 
 
 class ErrorReportingTest(TestCaseWithErrorReportingThread):
@@ -289,8 +293,9 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
   def setUpClass(cls):
     super(ErrorReportingTest, cls).setUpClass()
     cls.client = make_client(num_workers=3, num_ps=2)
+    cls.strategy = cls.client.strategy
 
-    with cls.client.strategy.scope():
+    with cls.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
   @def_function.function
@@ -373,10 +378,10 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
       self.client.join()
 
     result = self.client.schedule(func, args=(aborted,))
-    with self.assertRaises(client.InputError):
+    with self.assertRaises(client_lib.InputError):
       result.fetch()
 
-    with self.assertRaises(client.InputError):
+    with self.assertRaises(client_lib.InputError):
       self.client.join()
 
   def testCancellation(self):
@@ -388,7 +393,7 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     with self.assertRaises(errors.InvalidArgumentError):
       self.client.join()
 
-    with self.assertRaises(client.FunctionRetryableError):
+    with self.assertRaises(client_lib.FunctionRetryableError):
       long_function.fetch()
 
     for _ in range(3):
@@ -406,8 +411,9 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
   @classmethod
   def setUpClass(cls):
     super(LimitedClosureQueueErrorTest, cls).setUpClass()
-    client._CLOSURE_QUEUE_MAX_SIZE = 2
+    client_lib._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.client = make_client(num_workers=3, num_ps=2)
+    cls.strategy = cls.client.strategy
 
     with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
@@ -419,10 +425,11 @@ class StrategyRunTest(test.TestCase):
   def setUpClass(cls):
     super(StrategyRunTest, cls).setUpClass()
     cls.client = make_client(num_workers=1, num_ps=1)
+    cls.strategy = cls.client.strategy
 
   def testStrategyRun(self):
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
-    with self.client._strategy.scope():
+    with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       v = variables.Variable(initial_value=1)
 
@@ -435,11 +442,11 @@ class StrategyRunTest(test.TestCase):
               distribution_strategy_context.in_cross_replica_context())
           return input_tensor + v
 
-        return self.client._strategy.run(replica_fn, args=(input_tensor,))
+        return self.strategy.run(replica_fn, args=(input_tensor,))
 
       # Asserting scheduling in scope has the expected behavior.
       result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
-      self.assertIsInstance(result, client.RemoteValue)
+      self.assertIsInstance(result, client_lib.RemoteValue)
       self.assertEqual(result.fetch(), 4)
 
     # Asserting scheduling out of scope has the expected behavior.

@@ -384,7 +384,7 @@ class _CoordinatedClosureQueue(object):
 
     if _CLOSURE_QUEUE_MAX_SIZE <= 0:
       logging.warning(
-          "In ParameterServerClient, creating an infinite closure queue can "
+          "In a `Client`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
     self._error = None
@@ -846,9 +846,7 @@ class Client(object):
   functions to be executed, and fetch the results of the functions.
 
   Currently, `Client` is not supported to be used in a standalone manner.
-  It should be used in conjunction with `ParameterServerStrategyV2`. The
-  recommended way of using the combination is through a `ParameterServerClient`
-  object. Please see `ParameterServerClient` for more information.
+  It should be used in conjunction with `ParameterServerStrategyV2`.
 
   This is currently under development, and the API as well as implementation
   is subject to changes.
