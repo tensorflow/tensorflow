@@ -2418,10 +2418,10 @@ func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<2x1xf32> {
 }
 
 // CHECK-LABEL: reshape_dynamic
-func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<1x1xf32> {
-  // CHECK:  "mhlo.reshape"
-  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<1x1xf32>
-  return %0 : tensor<1x1xf32>
+func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
+  // CHECK:  "mhlo.dynamic_reshape"
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: reshape_unranked
@@ -2450,6 +2450,25 @@ func @expand_dims(%arg0: tensor<2xf32>, %axis: tensor<i32>) -> tensor<1x2xf32> {
   // CHECK: "mhlo.reshape"
   %0 = "tf.ExpandDims"(%arg0, %axis) : (tensor<2xf32>, tensor<i32>) -> tensor<1x2xf32>
   return %0 : tensor<1x2xf32>
+}
+
+// CHECK-LABEL: expand_dims_dynamic
+func @expand_dims_dynamic(%arg0: tensor<?x?xf32>) -> tensor<?x1x?xf32> {
+  %axis = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> (tensor<i32>)
+
+  // CHECK-DAG: [[SHAPEOF:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[CST0:%.+]] = constant 0
+  // CHECK-DAG: [[CST1:%.+]] = constant 1
+  // CHECK-DAG: [[GETEXTENT0:%.+]] = shape.get_extent [[SHAPEOF]], [[CST0]]
+  // CHECK-DAG: [[CST1_0:%.+]] = constant 1
+  // CHECK-DAG: [[GETEXTENT1:%.+]] = shape.get_extent [[SHAPEOF]], [[CST1_0]]
+  // CHECK-DAG: [[FROMEXTENTS:%.+]] = shape.from_extents [[GETEXTENT0]], [[CST1]], [[GETEXTENT1]]
+  // CHECK-DAG: [[TOEXTENTS:%.+]] = shape.to_extent_tensor [[FROMEXTENTS]]
+  // CHECK-DAG: [[RESHAPE:%.+]] = "mhlo.dynamic_reshape"(%arg0, [[TOEXTENTS]])
+  %0 = "tf.ExpandDims"(%arg0, %axis) : (tensor<?x?xf32>, tensor<i32>) -> tensor<?x1x?xf32>
+
+  // CHECK: return [[RESHAPE]]
+  return %0 : tensor<?x1x?xf32>
 }
 
 // CHECK-LABEL: func @sign

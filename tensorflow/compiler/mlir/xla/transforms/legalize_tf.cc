@@ -5333,6 +5333,101 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
   }
 };
 
+class ConvertDynamicReshapeOp : public OpRewritePattern<TF::ReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::ReshapeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto tensor = op.tensor();
+    auto shape = op.shape();
+
+    auto tensor_ty = tensor.getType().cast<ShapedType>();
+    auto shape_ty = shape.getType().cast<ShapedType>();
+    auto result_ty = op.getType().cast<ShapedType>();
+
+    if (!result_ty.hasRank() || !tensor_ty.hasRank() || !shape_ty.hasRank()) {
+      return failure();
+    }
+
+    // Handle with the static case.
+    if (result_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, tensor,
+                                                        shape);
+    return success();
+  }
+};
+
+class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::ExpandDimsOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input = op.input();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto result_ty = op.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || !input_ty.hasRank() ||
+        result_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    DenseIntElementsAttr expand_dims_attr;
+    if (!matchPattern(op.dim(), m_Constant(&expand_dims_attr))) {
+      return failure();
+    }
+
+    auto shape = rewriter.create<shape::ShapeOfOp>(
+        op.getLoc(),
+        RankedTensorType::get({input_ty.getRank()}, rewriter.getIndexType()),
+        input);
+    auto expand_dims = llvm::to_vector<6>(expand_dims_attr.getIntValues());
+
+    llvm::SmallVector<Value, 4> dims;
+    dims.resize(result_ty.getRank());
+
+    auto inserted_dim = expand_dims_attr.getValue({})
+                            .cast<IntegerAttr>()
+                            .getValue()
+                            .getSExtValue();
+
+    // Handle the negative value use case.
+    if (inserted_dim < 0) {
+      inserted_dim += result_ty.getRank();
+      // This means the value is completely incorrect, just return.
+      if (inserted_dim < 0) {
+        return failure();
+      }
+    }
+
+    dims[inserted_dim] = rewriter.create<ConstantIndexOp>(op.getLoc(), 1);
+
+    for (int i = 0; i < dims.size() - 1; i++) {
+      // Add the extracted dim.
+      auto index = rewriter.create<ConstantIndexOp>(op.getLoc(), i);
+      auto dim = rewriter.create<shape::GetExtentOp>(
+          op.getLoc(), rewriter.getIndexType(), shape, index);
+
+      dims[i >= inserted_dim ? i + 1 : i] = dim;
+    }
+
+    auto from_extents = rewriter.create<shape::FromExtentsOp>(
+        op.getLoc(), shape::ShapeType::get(op.getContext()), dims);
+
+    auto to_extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
+        op.getLoc(),
+        RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType()),
+        from_extents);
+
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, input,
+                                                        to_extent_tensor);
+    return success();
+  }
+};
+
 // Converts a TF QR op to HLO.
 class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
  public:
@@ -5969,7 +6064,8 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertConv2DOp, ConvertConv3DOp, ConvertDepthConv2DOp,
       ConvertConv2DBackpropFilterOp, ConvertConv3DBackpropFilterOp,
       ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
-      ConvertCumprodOp, ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
+      ConvertCumprodOp, ConvertCumsumOp, ConvertDiagPartOp,
+      ConvertDynamicExpandDimsOp, ConvertDynamicReshapeOp, ConvertEinsumOp,
       ConvertRFFTOp, ConvertIRFFTOp, ConvertFusedBatchNormGradOp,
       ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
       ConvertFusedBatchNormV2Op, ConvertFusedBatchNormV3Op,
