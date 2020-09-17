@@ -1219,15 +1219,9 @@ REGISTER_OP("GatherV2")
       // Note, batch_dims can be negative.
       int32 batch_dims;
       TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
-      // -rank(indices) <= batch_dims <= rank(indices)
-      TF_RETURN_IF_ERROR(
-          c->WithRankAtLeast(indices_shape, std::abs(batch_dims), &unused));
-      if (batch_dims < 0) {
-        batch_dims += c->Rank(indices_shape);
-      }
-      // rank(params) > batch_dims
-      TF_RETURN_IF_ERROR(
-          c->WithRankAtLeast(params_shape, batch_dims + 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          params_shape, batch_dims < 0 ? -batch_dims : batch_dims + 1,
+          &unused));
 
       ShapeHandle params_outer_subshape;
       TF_RETURN_IF_ERROR(
