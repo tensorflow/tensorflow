@@ -25,10 +25,8 @@ struct PadOpData {
 };
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  PadOpData *op = nullptr;
-
-  context->AllocatePersistentBuffer(context, sizeof(PadOpData),
-                                    reinterpret_cast<void **>(&op));
+  PadOpData *op = reinterpret_cast<PadOpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(PadOpData)));
 
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);
@@ -52,6 +50,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
         op->pv.height_offset = vec[1].AsInt32();
         op->pv.width = vec[2].AsInt32();
         op->pv.width_offset = vec[3].AsInt32();
+        break;
     }
   }
 
