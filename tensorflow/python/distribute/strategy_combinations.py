@@ -41,6 +41,8 @@ from tensorflow.python.tpu import tpu_strategy_util
 FLAGS = flags.FLAGS
 
 _did_connect_to_cluster = False
+CollectiveAllReduceExtended = (
+    collective_all_reduce_strategy.CollectiveAllReduceExtended)
 
 
 # pylint: disable=missing-docstring
@@ -109,6 +111,11 @@ def _get_multi_worker_mirrored_creator(required_gpus):
         num_accelerators={"GPU": required_gpus},
         rpc_layer=tf_config.rpc_layer or "grpc",
     )
+    # Disable health check. We don't have a reliable to shutdown the strategy
+    # (and thus the health check) at the end of a test. Turning on health check
+    # causes some flakiness since we re-create part of the server when creating
+    # a strategy, and our tests are capable of handling failures.
+    CollectiveAllReduceExtended._enable_check_health = False  # pylint: disable=protected-access
     # Always create the strategy in eager mode so that it starts the server and
     # configures the eager context. The eager context can no longer be
     # configured after initialization.

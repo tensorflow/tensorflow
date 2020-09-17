@@ -399,8 +399,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._communication)
 
   def __del__(self):
-    if self._enable_check_health:
-      self._stop_check_health_thread()
+    self._stop_check_health_thread()
 
   def _input_workers_with_options(self, options=None):
     host_device = device_util.get_host_for_device(self._worker_device)
@@ -683,11 +682,18 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       time.sleep(self._check_health_interval)
 
   def _start_check_health_thread(self):
+    if not context.executing_eagerly():
+      logging.info("Check health is only supported in eager.")
+      return
     # Use a dummy all-reduce as a barrier to wait for all workers to be up,
     # otherwise the check health may fail immediately.
+
+    # Use array_ops.identity to create the dummy tensor so that we have a new
+    # Tensor. If we use constant it may be a cached from on a /job:localhost
+    # device, which will cause some code that relies on tensor.device to error.
     #
     # TODO(b/151232436): change to an explicit barrier if we have it.
-    dummy_value = ops.convert_to_tensor([])
+    dummy_value = array_ops.identity([])
     logging.info("Waiting for the cluster, timeout = %s",
                  self._check_health_initial_timeout or "inf")
     try:
@@ -703,6 +709,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       raise RuntimeError(
           "Timeout waiting for the cluster, timeout is %d seconds" %
           self._check_health_initial_timeout)
+    logging.info("Cluster is ready.")
     self._check_health_thread_should_stop = threading.Event()
     # Start the thread as daemon to avoid it blocking the program from exiting.
     # We try best to shutdown the thread but __del__ is not guaranteed to be
@@ -713,9 +720,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._check_health_thread.start()
 
   def _stop_check_health_thread(self):
-    self._check_health_thread_should_stop.set()
-    self._check_health_thread.join()
-    self._check_health_thread = None
+    if getattr(self, "_check_health_thread", None):
+      logging.info("stopping check health thread")
+      self._check_health_thread_should_stop.set()
+      self._check_health_thread.join()
+      self._check_health_thread = None
+      logging.info("check health thread stopped")
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==
