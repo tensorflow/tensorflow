@@ -63,7 +63,8 @@ TEST_F(OpenCLOperationTest, FullyConnected) {
           CreateFullyConnected(creation_context_.GetDeviceInfo(), op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, 2), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {14.5f, 37.5f}));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {14.5f, 37.5f}))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }
@@ -110,7 +111,8 @@ TEST_F(OpenCLOperationTest, FullyConnectedLarge) {
           dst_tensor.data,
           Pointwise(FloatNear(eps),
                     {139.4f, 363.5f, 587.6f, 811.7f, 1035.8f, 1259.9f, 1484.1f,
-                     1708.2f, 1932.3f, 2156.4f, 2380.5f, 2604.6f}));
+                     1708.2f, 1932.3f, 2156.4f, 2380.5f, 2604.6f}))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }
@@ -154,7 +156,8 @@ TEST_F(OpenCLOperationTest, FullyConnectedExtraLarge) {
           CreateFullyConnected(creation_context_.GetDeviceInfo(), op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, kOutputSize), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }
