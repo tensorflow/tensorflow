@@ -74,6 +74,20 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+
+# For each tag specified on the command line we add -D<tag> to the cflags to
+# allow for #idefs in the code.
+#
+# We apply the following transformations (via the tr command):
+#   1. Convert the tag name to uppercase (TAGS=xtensa_hifimini -> -DXTENSA_HIFIMINI)
+#   2. (Temporarily) Replace dash with underscore (TAGS=cmsis-nn -> -DCMSIS_NN)
+#
+# Transformation 2 is needed because CMSIS-NN is not a valid macro name.
+#
+# TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
+# and ethos-u directories have been renamed.
+TAG_DEFINES := $(foreach TAG,$(TAGS),-D$(shell echo $(TAG) | tr [a-z] [A-Z] | tr - _))
+
 OPTIMIZATION_LEVEL := -O3
 
 CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
@@ -81,8 +95,9 @@ CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
                -Wunused-function -Wswitch -Wvla
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
 CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
-	          $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
-CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
+	    $(CC_WARNINGS) $(OPTIMIZATION_LEVEL) $(TAG_DEFINES)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL) \
+            $(TAG_DEFINES)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
