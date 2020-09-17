@@ -1016,7 +1016,11 @@ filegroup(
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
             "c_api_unified_experimental_internal.h",
+            "gradient_checker.cc",
+            "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.
+            "gradients_util.cc",
+            "gradients_util.h",
             "*test*",
             "*dlpack*",
         ],
