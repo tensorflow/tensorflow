@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_OPS_WHILE_LOOP_H_
 #define TENSORFLOW_CC_OPS_WHILE_LOOP_H_
 
+#include <vector>
+#include <string>
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 
