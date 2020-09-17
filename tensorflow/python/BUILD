@@ -4412,6 +4412,7 @@ cuda_py_test(
         "//tensorflow/python/eager:def_function",
     ],
     shard_count = 2,
+    tags = ["no_pip"],
 )
 
 cuda_py_test(
