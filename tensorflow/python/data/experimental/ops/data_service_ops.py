@@ -330,7 +330,7 @@ def distribute(processing_mode,
            port=0, dispatcher_address=dispatcher_address)
   ```
 
-  Now, when the operations on a `tf.data.Dataset` can distributed to the worker.
+  Now, the operations on a `tf.data.Dataset` can be distributed to the worker.
 
   ```
   dataset = tf.data.Dataset.range(5)
