@@ -39,6 +39,10 @@ struct Summary : ::mlir::SideEffects::Resource::Base<Summary> {
   StringRef getName() final { return "Summary"; }
 };
 
+struct LookupTable : ::mlir::SideEffects::Resource::Base<LookupTable> {
+  StringRef getName() final { return "LookupTable"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

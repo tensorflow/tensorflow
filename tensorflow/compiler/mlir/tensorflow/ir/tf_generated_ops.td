@@ -4235,7 +4235,7 @@ table will be immutable.
   );
 
   let results = (outs
-    TF_ResourceTensor:$table_handle
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
   );
 }
 
@@ -4556,33 +4556,21 @@ A placeholder op for a value that will be fed into the computation.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_InitializeTableFromTextFileV2Op : TF_Op<"InitializeTableFromTextFileV2", []> {
-  let summary = "Initializes a table from a text file.";
-
-  let description = [{
-It inserts one key-value pair into the table for each line of the file.
-The key and value is extracted from the whole line content, elements from the
-split line based on `delimiter` or the line number (starting from zero).
-Where to extract the key and value from a line is specified by `key_index` and
-`value_index`.
-
-- A value of -1 means use the line number(starting from zero), expects `int64`.
-- A value of -2 means use the whole line content, expects `string`.
-- A value >= 0 means use the index (starting at zero) of the split line based
-  on `delimiter`.
+def TF_InitializeTableV2Op : TF_Op<"InitializeTableV2", []> {
+  let summary = [{
+Table initializer that takes two tensors for keys and values respectively.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
-    TF_StrTensor:$filename,
-
-    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
-    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
-    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
-    DefaultValuedAttr<StrAttr, "\t">:$delimiter
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$values
   );
 
   let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tval = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr Tkey = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
@@ -5273,6 +5261,22 @@ def TF_LogicalOrOp : TF_Op<"LogicalOr", [Commutative, NoSideEffect, ResultsBroad
   );
 }
 
+def TF_LookupTableExportV2Op : TF_Op<"LookupTableExportV2", []> {
+  let summary = "Outputs all keys and values in the table.";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableRead]>:$table_handle
+  );
+
+  let results = (outs
+    TF_Tensor:$keys,
+    TF_Tensor:$values
+  );
+
+  TF_DerivedResultTypeAttr Tkeys = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tvalues = TF_DerivedResultTypeAttr<1>;
+}
+
 def TF_LookupTableFindV2Op : TF_Op<"LookupTableFindV2", []> {
   let summary = "Looks up keys in a table, outputs the corresponding values.";
 
@@ -5285,7 +5289,7 @@ table. It must also be of the same type as the table values.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
+    Arg<TF_ResourceTensor, "", [TF_LookupTableRead]>:$table_handle,
     TF_Tensor:$keys,
     TF_Tensor:$default_value
   );
@@ -5309,7 +5313,7 @@ The tensor `values` must be of the type of the table values.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
     TF_Tensor:$keys,
     TF_Tensor:$values
   );
@@ -5318,6 +5322,44 @@ The tensor `values` must be of the type of the table values.
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableInsertV2Op : TF_Op<"LookupTableInsertV2", []> {
+  let summary = "Updates the table to associates keys with values.";
+
+  let description = [{
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$values
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableRemoveV2Op : TF_Op<"LookupTableRemoveV2", []> {
+  let summary = "Removes keys and its associated values from a table.";
+
+  let description = [{
+The tensor `keys` must of the same type as the keys of the table. Keys not
+already in the table are silently ignored.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_Tensor:$keys
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
@@ -6711,6 +6753,85 @@ def TF_MultinomialOp : TF_Op<"Multinomial", [TF_CannotDuplicate]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr output_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_MutableDenseHashTableV2Op : TF_Op<"MutableDenseHashTableV2", []> {
+  let summary = [{
+Creates an empty hash table that uses tensors as the backing store.
+  }];
+
+  let description = [{
+It uses "open addressing" with quadratic reprobing to resolve
+collisions.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$empty_key,
+    TF_Tensor:$deleted_key,
+
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$value_dtype,
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::ArrayRef<int64_t>({})">:$value_shape,
+    DefaultValuedAttr<I64Attr, "131072">:$initial_num_buckets,
+    DefaultValuedAttr<F32Attr, "0.8f">:$max_load_factor
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
+  );
+
+  TF_DerivedOperandTypeAttr key_dtype = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MutableHashTableOfTensorsV2Op : TF_Op<"MutableHashTableOfTensorsV2", []> {
+  let summary = "Creates an empty hash table.";
+
+  let description = [{
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a vector. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype,
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::ArrayRef<int64_t>({})">:$value_shape
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
+  );
+}
+
+def TF_MutableHashTableV2Op : TF_Op<"MutableHashTableV2", []> {
+  let summary = "Creates an empty hash table.";
+
+  let description = [{
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
+  );
 }
 
 def TF_NdtriOp : TF_Op<"Ndtri", [NoSideEffect]> {

@@ -1383,7 +1383,7 @@ The generated values will have mean 0 and standard deviation 1.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     I64Tensor:$algorithm,
     TF_I32OrI64Tensor:$shape
   );
@@ -1831,6 +1831,48 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
   let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+}
+
+// TODO(b/168035831): Model dataset read.
+def TF_InitializeTableFromDatasetOp : TF_Op<"InitializeTableFromDataset", []> {
+  let summary = "";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_VariantTensor:$dataset
+  );
+
+  let results = (outs);
+}
+
+// TODO(b/168035831): Model filename read.
+def TF_InitializeTableFromTextFileV2Op : TF_Op<"InitializeTableFromTextFileV2", []> {
+  let summary = "Initializes a table from a text file.";
+
+  let description = [{
+It inserts one key-value pair into the table for each line of the file.
+The key and value is extracted from the whole line content, elements from the
+split line based on `delimiter` or the line number (starting from zero).
+Where to extract the key and value from a line is specified by `key_index` and
+`value_index`.
+
+- A value of -1 means use the line number(starting from zero), expects `int64`.
+- A value of -2 means use the whole line content, expects `string`.
+- A value >= 0 means use the index (starting at zero) of the split line based
+  on `delimiter`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_StrTensor:$filename,
+
+    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
+    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
+    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
+    DefaultValuedAttr<StrAttr, "\t">:$delimiter
+  );
+
+  let results = (outs);
 }
 
 #endif // TF_OPS

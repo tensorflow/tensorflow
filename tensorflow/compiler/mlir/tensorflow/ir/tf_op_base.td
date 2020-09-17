@@ -109,20 +109,24 @@ def TF_VariableResource : TF_ResourceBase<"Variable">;
 def TF_StackResource : TF_ResourceBase<"Stack">;
 def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
 def TF_SummaryResource : TF_ResourceBase<"Summary">;
+def TF_LookupTableResource : TF_ResourceBase<"LookupTable">;
 
 def TF_VariableRead : MemRead<TF_VariableResource>;
 def TF_StackRead : MemRead<TF_StackResource>;
 def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
+def TF_LookupTableRead : MemRead<TF_LookupTableResource>;
 
 def TF_VariableWrite : MemWrite<TF_VariableResource>;
 def TF_StackWrite : MemWrite<TF_StackResource>;
 def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
 def TF_SummaryWrite : MemWrite<TF_SummaryResource>;
+def TF_LookupTableWrite : MemWrite<TF_LookupTableResource>;
 
 def TF_VariableAlloc : MemAlloc<TF_VariableResource>;
 def TF_StackAlloc : MemAlloc<TF_StackResource>;
 def TF_TensorArrayAlloc : MemAlloc<TF_TensorArrayResource>;
 def TF_SummaryAlloc : MemAlloc<TF_SummaryResource>;
+def TF_LookupTableAlloc : MemAlloc<TF_LookupTableResource>;
 
 def TF_StackFree : MemFree<TF_StackResource>;
 def TF_TensorArrayFree : MemFree<TF_TensorArrayResource>;
