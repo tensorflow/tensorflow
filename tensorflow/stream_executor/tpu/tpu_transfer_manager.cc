@@ -230,6 +230,17 @@ bool TpuTransferManager::CanShapedBufferBeAccessedNow(
           manager_, tpu_executor->se_executor(), &c_device_buffer);
 }
 
+bool TpuTransferManager::CanBufferBeAccessedNow(
+    se::StreamExecutor* executor,
+    const se::DeviceMemoryBase& device_buffer) const {
+  auto* tpu_executor = down_cast<TpuExecutor*>(executor->implementation());
+  SE_DeviceMemoryBase c_device_buffer{const_cast<void*>(device_buffer.opaque()),
+                                      device_buffer.size(),
+                                      device_buffer.payload()};
+  return tpu::ExecutorApiFn()->TpuTransferManager_CanBufferBeAccessedNowFn(
+      manager_, tpu_executor->se_executor(), &c_device_buffer);
+}
+
 Status TpuTransferManager::WriteSingleTupleIndexTable(
     stream_executor::Stream* stream,
     absl::Span<const stream_executor::DeviceMemoryBase> elements,
