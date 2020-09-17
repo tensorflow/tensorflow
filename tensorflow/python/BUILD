@@ -1975,7 +1975,7 @@ py_library(
     name = "composite_tensor",
     srcs = ["framework/composite_tensor.py"],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":tensor_util",
@@ -2050,7 +2050,7 @@ py_library(
     name = "type_spec",
     srcs = ["framework/type_spec.py"],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":tensor_shape",
@@ -5602,7 +5602,6 @@ py_library(
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
-        "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
         ":_pywrap_tensor_float_32_execution",
