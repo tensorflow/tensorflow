@@ -727,6 +727,7 @@ cuda_py_test(
     name = "matrix_solve_ls_op_test",
     size = "medium",
     srcs = ["matrix_solve_ls_op_test.py"],
+    tags = ["no_mac"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
