@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_FUSION_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_FUSION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_LOOP_FUSION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_LOOP_FUSION_H_
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -94,11 +94,13 @@ namespace gpu {
 // output dims of the concatenate will be used as the kernel launch dims.
 // Instruction bitcasts can be used for Reshape2 and Reshape3 as long as the
 // outputs of Mul and Add are row-major.
-class GpuHorizontalFusion : public HloModulePass {
+class GpuHorizontalLoopFusion : public HloModulePass {
  public:
-  GpuHorizontalFusion() {}
+  GpuHorizontalLoopFusion() {}
 
-  absl::string_view name() const override { return "gpu_horizontal_fusion"; }
+  absl::string_view name() const override {
+    return "gpu_horizontal_loop_fusion";
+  }
 
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -109,4 +111,4 @@ class GpuHorizontalFusion : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_FUSION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_LOOP_FUSION_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -37,9 +37,9 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HorizontalFusionTest : public HloTestBase {};
+class HorizontalLoopFusionTest : public HloTestBase {};
 
-TEST_F(HorizontalFusionTest, BasicTest) {
+TEST_F(HorizontalLoopFusionTest, BasicTest) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule BasicTest
 
@@ -67,10 +67,9 @@ TEST_F(HorizontalFusionTest, BasicTest) {
    ROOT tuple.1 = (f16[1024]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
-  EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
   const HloInstruction* entry_root =
@@ -88,7 +87,7 @@ TEST_F(HorizontalFusionTest, BasicTest) {
 }
 
 // Horizontal fusion should not be triggered as fusion will create cycles.
-TEST_F(HorizontalFusionTest, NegativeTestForCycle) {
+TEST_F(HorizontalLoopFusionTest, NegativeTestForCycle) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule NegativeTestForCycle
 
@@ -119,13 +118,12 @@ TEST_F(HorizontalFusionTest, NegativeTestForCycle) {
    ROOT tuple.1 = (f16[123]{0}, f16[123]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2, add.2)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
-  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
 
-TEST_F(HorizontalFusionTest, NegativeTestForIncompatibleTypes) {
+TEST_F(HorizontalLoopFusionTest, NegativeTestForIncompatibleTypes) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule NegativeTestForIncompatibleTypes
 
@@ -155,13 +153,12 @@ TEST_F(HorizontalFusionTest, NegativeTestForIncompatibleTypes) {
    ROOT tuple.1 = (f16[1024]{0}, s32[123]{0})
        tuple(fusion.1, fusion.2)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
-  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
 
-TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
+TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule MergeSharedFusionInstruction
 
@@ -183,14 +180,13 @@ TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
   mul.2.2     = f32[321,5]{1,0} multiply(param.2.3, broadcast.2)
   add.2       = f32[321,5]{1,0} add(mul.2.1, mul.2.2)
   ROOT tuple = (f32[4,1024]{1,0}, f32[321,5]{1,0}) tuple(add.1, add.2)
-})")
-                    .ValueOrDie();
+})").ValueOrDie();
 
   HloPassPipeline fusion("fusion");
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false);
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true);
   EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
-  EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -198,7 +194,7 @@ TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalFusionTest, GradientDescentOptimizerLike) {
+TEST_F(HorizontalLoopFusionTest, GradientDescentOptimizerLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> var_outs;
@@ -229,7 +225,7 @@ TEST_F(HorizontalFusionTest, GradientDescentOptimizerLike) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalFusionTest, FusingDifferentOutputs) {
+TEST_F(HorizontalLoopFusionTest, FusingDifferentOutputs) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule HeterogeneousMultiOutputFusions
 
@@ -277,10 +273,9 @@ TEST_F(HorizontalFusionTest, FusingDifferentOutputs) {
    ROOT tuple.1 = (f16[1024]{0}, f16[1024]{0}, f16[123]{0}, f16[123]{0})
        tuple(gte.1, gte.2, gte.3, gte.4)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
-  EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
   VLOG(2) << "Dump after horizontal fusion:";
@@ -289,7 +284,7 @@ TEST_F(HorizontalFusionTest, FusingDifferentOutputs) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalFusionTest, RMSPropLike) {
+TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> all_outputs;
@@ -364,7 +359,7 @@ TEST_F(HorizontalFusionTest, RMSPropLike) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
-TEST_F(HorizontalFusionTest, NegativeTestForDynamicUpdateSlice) {
+TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule NegativeTestForDynamicUpdateSlice
 
@@ -397,10 +392,9 @@ TEST_F(HorizontalFusionTest, NegativeTestForDynamicUpdateSlice) {
     f1 = f16[5,9,10] fusion(p.00, p.10, p.20), kind=kLoop, calls=fusion.1
     f2 = f16[5,9,10] fusion(p.01, p.11, p.21), kind=kLoop, calls=fusion.2
     ROOT tuple = (f16[5,9,10],f16[5,9,10]) tuple(f1, f2)
-  })")
-                    .ValueOrDie();
+  })").ValueOrDie();
 
-  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
 
 }  // namespace
