@@ -88,9 +88,9 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   int2 tid = (int2)(get_local_id(0), get_local_id(1));
   ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);
   if (gid < args.dst_tensor.Slices()) {
-    for (uint c = tid.y; c < args.src_tensor.Slices(); c += WG_Y) {
+    for (int c = tid.y; c < args.src_tensor.Slices(); c += WG_Y) {
       FLT4 v = args.src_tensor.Read(0, 0, c);
-      FLT16 w = args.weights.Read(c*args.dst_tensor.Slices() + gid);
+      FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);
       accumulate(v.s0, w.s0123, s);
       accumulate(v.s1, w.s4567, s);
       accumulate(v.s2, w.s89ab, s);
