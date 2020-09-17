@@ -28,9 +28,11 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/dlpack.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/get_compiler_ir.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -285,6 +287,74 @@ static py::object TFE_ClearScalarCache() {
   return py::none();
 }
 
+// Returns compiler IR for a given function.
+static std::string TFE_GetCompilerIr(py::handle& ctx,
+                                     const char* concrete_function_name,
+                                     const char* stage, const char* device_name,
+                                     py::handle& inputs) {
+  EagerContext* context = ContextFromInterface(
+      reinterpret_cast<ImmediateExecutionContext*>(InputTFE_Context(ctx)));
+
+  std::string s_stage(stage);
+  IrExportStage selected_stage = [&] {
+    if (s_stage == "hlo") {
+      return IrExportStage::HLO;
+    } else if (s_stage == "optimized_hlo") {
+      return IrExportStage::OPTIMIZED_HLO;
+    } else {
+      ThrowValueError(
+          absl::StrFormat("Invalid stage selected: '%s'. Valid values are: "
+                          "'hlo', 'optimized_hlo'",
+                          s_stage)
+              .c_str());
+    }
+  }();
+
+  TFE_InputTensorHandles handles = InputTFE_InputTensorHandles(inputs);
+
+  std::vector<const Tensor*> input_tensors;
+  for (TFE_TensorHandle* tensor_handle : handles) {
+    AbstractTensorHandle* abstract_tensor_handle = unwrap(tensor_handle);
+    TensorHandle* th = TensorHandleFromInterface(abstract_tensor_handle);
+
+    const Tensor* t;
+    Status st = th->Tensor(&t);
+    if (!st.ok()) {
+      ThrowValueError(
+          absl::StrFormat("Could not resolve tensor: '%s'", st.error_message())
+              .c_str());
+    }
+    input_tensors.push_back(t);
+  }
+
+  DeviceNameUtils::ParsedName input_device_name;
+  if (!DeviceNameUtils::ParseFullOrLocalName(device_name, &input_device_name)) {
+    ThrowValueError(
+        absl::StrFormat("Failed parsing device name: '%s'", device_name)
+            .c_str());
+  }
+
+  std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
+  auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
+    return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
+                                                  d->parsed_name());
+  });
+  if (selected_device == devices.end()) {
+    ThrowValueError("No matching device found");
+  }
+
+  xla::StatusOr<std::string> hlo_text =
+      GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
+                    *selected_device, input_tensors);
+
+  if (!hlo_text.ok()) {
+    ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
+                                    hlo_text.status().error_message())
+                        .c_str());
+  }
+  return *hlo_text;
+}
+
 }  // namespace tensorflow
 
 namespace {
@@ -513,6 +583,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_SetXlaConstantFoldingDisabled", &TF_SetXlaConstantFoldingDisabled);
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
+  m.def("TF_GetCompilerIr", &tensorflow::TFE_GetCompilerIr);
 
   // MLIR Logic
   m.def("TF_IsMlirBridgeEnabled", [] {

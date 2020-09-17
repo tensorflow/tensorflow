@@ -914,6 +914,76 @@ class Function(object):
     return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
                                             filtered_flat_args)
 
+  def experimental_get_compiler_ir(self, *args, **kwargs):
+    """Returns compiler IR for the compiled function.
+
+    This API is intended *only* for debugging as there are no guarantees on
+    backwards compatibility of returned IR or the allowed values of `stage`.
+
+    Args:
+      *args: Arguments used for compilation; same arguments as used for calling
+        the function. Need to be eager tensors.
+      **kwargs: Keyword arguments used for compilation.
+
+    Returns:
+      Function callable with the stage at which the compiler IR should be
+      serialized. Allowed values for the `stage` are `hlo` and `optimized_hlo`.
+      When called, the returned function returns string representation of the
+      compiler IR at a given stage.
+
+      For example, for
+
+      ```python
+      @tf.function(experimental_compile=True)
+      def f(x):
+        return x + 1
+
+      f.experimental_get_compiler_ir(tf.random.normal([10, 10])(stage='hlo')
+      ```
+
+      the output is:
+
+      ```
+      HloModule a_inference_f_13__.9
+
+      ENTRY %a_inference_f_13__.9 (arg0.1: f32[10,10]) -> f32[10,10] {
+        %arg0.1 = f32[10,10]{1,0} parameter(0), parameter_replication={false}
+        %reshape.2 = f32[10,10]{1,0} reshape(f32[10,10]{1,0} %arg0.1)
+        %constant.3 = f32[] constant(1)
+        %broadcast.4 = f32[10,10]{1,0} broadcast(f32[] %constant.3)
+        %add.5 = f32[10,10]{1,0} add(f32[10,10]{1,0} %reshape.2,
+                                     f32[10,10]{1,0} %broadcast.4)
+        %reshape.6 = f32[10,10]{1,0} reshape(f32[10,10]{1,0} %add.5)
+        %tuple.7 = (f32[10,10]{1,0}) tuple(f32[10,10]{1,0} %reshape.6)
+        ROOT %get-tuple-element.8 = f32[10,10]{1,0}
+          get-tuple-element((f32[10,10]{1,0}) %tuple.7), index=0
+      }
+      ```
+
+    Raises:
+      ValueError: If an invalid `stage` is selected or if applied to a function
+        which is not compiled (`experimental_compile=True` is not set).
+      TypeError: When called with input in graph mode.
+    """
+    context.ensure_initialized()
+    if not self._experimental_compile:
+      raise ValueError(
+          "Compiler IR can only be returned for functions marked with "
+          "experimental_compile=True")
+
+    concrete_fn = self.get_concrete_function(*args, **kwargs)
+    fn_name = concrete_fn.name
+
+    # pylint: disable=protected-access
+    canon_args, _, _, _ = \
+        concrete_fn._function_spec.canonicalize_function_inputs(
+            *args, **kwargs)
+
+    return functools.partial(
+        context.context().get_compiler_ir,
+        function_name=fn_name,
+        args=list(canon_args) + concrete_fn.captured_inputs)
+
   @property
   def python_function(self):
     """The python function wrapped in this tf.function."""

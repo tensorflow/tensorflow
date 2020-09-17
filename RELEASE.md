@@ -185,6 +185,8 @@
 *   XLA Support:
     * xla.experimental.compile is deprecated, use
       `tf.function(experimental_compile=True)` instead
+    * Added `tf.function.experimental_get_compiler_ir` which returns compiler IR
+    (currently 'hlo' and 'optimized_hlo') for given input for given function.
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>

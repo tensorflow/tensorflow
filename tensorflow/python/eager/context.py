@@ -1494,6 +1494,10 @@ class Context(object):
 
     self._virtual_device_map[dev] = virtual_devices
 
+  def get_compiler_ir(self, function_name, args, stage="hlo"):
+    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
+                                       stage, self.device_name, args)
+
   @deprecated(
       None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
   def enable_xla_devices(self):

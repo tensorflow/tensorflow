@@ -377,6 +377,7 @@ tf_cuda_library(
         "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:get_compiler_ir",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
