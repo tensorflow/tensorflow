@@ -151,11 +151,9 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_googlesource_code_re2//:re2",
     ],
-    linkopts = tflite_linkopts() + select({
-        "//tensorflow:android": [
-            "-lm",
-        ],
-        "//conditions:default": [],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
     }),
 )
 
@@ -284,11 +282,9 @@ cc_test(
         "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
-    linkopts = tflite_linkopts() + select({
-        "//tensorflow:android": [
-            "-lm",
-        ],
-        "//conditions:default": [],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
     }),
 )
 
@@ -473,11 +469,9 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
-    linkopts = tflite_linkopts() + select({
-        "//tensorflow:android": [
-            "-lm"
-        ],
-        "//conditions:default": [],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
     }),
 )
 
