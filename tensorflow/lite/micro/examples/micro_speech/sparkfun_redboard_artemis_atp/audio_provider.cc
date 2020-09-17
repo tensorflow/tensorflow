@@ -129,28 +129,6 @@ am_hal_pdm_config_t g_sPdmConfig = {
 };
 
 //*****************************************************************************
-//
-//  MIC_DATA pin: Data line for PDM microphones.
-//
-//*****************************************************************************
-#define ADK_AM_BSP_GPIO_MIC_DATA            	11
-const am_hal_gpio_pincfg_t g_ADK_AM_BSP_GPIO_MIC_DATA =
-{
-    .uFuncSel            = AM_HAL_PIN_11_PDMDATA
-};
-
-//*****************************************************************************
-//
-//  MIC_CLK pin: Clock line for PDM microphones.
-//
-//*****************************************************************************
-#define ADK_AM_BSP_GPIO_MIC_CLK             	12
-const am_hal_gpio_pincfg_t g_ADK_AM_BSP_GPIO_MIC_CLK =
-{
-    .uFuncSel            = AM_HAL_PIN_12_PDMCLK
-};
-
-//*****************************************************************************
 // PDM initialization.
 //*****************************************************************************
 extern "C" void pdm_init(void) {
@@ -164,8 +142,8 @@ extern "C" void pdm_init(void) {
   //
   // Configure the necessary pins.
   //
-  am_hal_gpio_pinconfig(ADK_AM_BSP_GPIO_MIC_CLK, g_ADK_AM_BSP_GPIO_MIC_CLK);
-  am_hal_gpio_pinconfig(ADK_AM_BSP_GPIO_MIC_DATA, g_ADK_AM_BSP_GPIO_MIC_DATA);
+  am_hal_gpio_pinconfig(AM_BSP_PDM_CLOCK_PIN, g_AM_BSP_PDM_CLOCK);
+  am_hal_gpio_pinconfig(AM_BSP_PDM_DATA_PIN, g_AM_BSP_PDM_DATA);
 
   //
   // Configure and enable PDM interrupts (set up to trigger on DMA
