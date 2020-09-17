@@ -4761,6 +4761,7 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
+    tags = ["no_pip"],
     deps = [
         ":array_ops",
         ":cond_v2",
@@ -4783,7 +4784,6 @@ cuda_py_test(
         ":while_v2",
         "//tensorflow/python/eager:def_function",
     ],
-    tags = ["no_pip"],
 )
 
 cuda_py_test(
