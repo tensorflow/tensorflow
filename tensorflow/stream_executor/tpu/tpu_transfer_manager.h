@@ -67,6 +67,9 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   int64 GetByteSizeRequirement(const xla::Shape& shape) const override;
 
+  StatusOr<xla::Shape> ChooseCompactLayoutForShape(
+      const xla::Shape& host_shape) const override;
+
   bool CanShapedBufferBeAccessedNow(
       stream_executor::StreamExecutor* executor,
       const xla::ShapedBuffer& device_buffer) const override;
