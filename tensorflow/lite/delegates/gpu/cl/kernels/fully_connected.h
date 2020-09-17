@@ -48,36 +48,43 @@ void RearrangeFCWeightsToIOO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
   const int dst_channels = weights.shape.o;
   const int padded_dst_channels = AlignByN(dst_channels, 4);
 
-  // Change the travelsal order of the weight matrix in such a way that the
-  // first 4 elements of all rows are scanned first, followed by elements 5 to 8
-  // of all rows, then elements 9 to 12 of all rows, and so on. As an example,
-  // an 8x8 matrix would be traversed as below.
+  // Change the travelsal order of the weight matrix in the following way:
+  // The matrix is segmented to blocks of 4x4. If (any) dimension of the matrix
+  // size is not divisible by 4, then pad with zeros. Each block is stored
+  // contigously. The 16 elements within a block are ordered as 4 elements of
+  // the first column, 4 elems of the second, etc. Blocks then traversed as
+  // columns first, rows last. As an example, an 8x8 matrix would be traversed
+  // as below.
   //
-  //  |  0  1  2  3 32 33 34 35 |
-  //  |  4  5  6  7 36 37 38 39 |
-  //  |  8  9 10 11 40 41 42 43 |
-  //  | 12 13 14 15 44 45 46 47 |
-  //  | 16 17 18 19 48 49 50 51 |
-  //  | 20 21 22 23 52 53 54 55 |
-  //  | 24 25 26 27 56 57 58 59 |
-  //  | 28 29 30 31 60 61 62 63 |
-  //
-  // If (any) dimension of the weight matrix size is not divisible by 4, then
-  // the output is padded with zeros.
+  //  |  0  4  8 12 32 36 40 44 |
+  //  |  1  5  9 13 33 37 41 45 |
+  //  |  2  6 10 14 34 38 42 46 |
+  //  |  3  7 11 15 35 39 43 47 |
+  //  | 16 20 24 28 48 52 56 60 |
+  //  | 17 21 25 29 49 53 57 61 |
+  //  | 18 22 26 30 50 54 58 62 |
+  //  | 19 23 27 31 51 55 59 63 |
   //
   // The benefit of doing this is that reading contigous 16 elements gives a 4x4
   // block of the matrix, where the first 4 elements is the first row of the
-  // block, second 4 elements is the second row of the block, etc.
+  // block, second 4 elements is the second row of the block, etc. Subsequent
+  // blocks contain elements of the same 4 columns.
 
-  for (int y = 0; y < padded_dst_channels; y++) {
-    for (int block_x = 0; 4 * block_x < padded_src_channels; block_x++) {
-      for (int x_in_block = 0; x_in_block < 4; x_in_block++) {
-        int x = 4 * block_x + x_in_block;
-        int dst_index = padded_dst_channels * 4 * block_x + 4 * y + x_in_block;
-        if (x < src_channels && y < dst_channels) {
-          dst[dst_index] = weights.data[src_channels * y + x];
-        } else {
-          dst[dst_index] = 0.0f;
+  for (int block_y = 0; 4 * block_y < padded_dst_channels; block_y++) {
+    for (int y_in_block = 0; y_in_block < 4; y_in_block++) {
+      for (int block_x = 0; 4 * block_x < padded_src_channels; block_x++) {
+        for (int x_in_block = 0; x_in_block < 4; x_in_block++) {
+          int y = 4 * block_y + y_in_block;
+          int x = 4 * block_x + x_in_block;
+          // Consider destination as an array with extents
+          // [padded_src_channels/4][padded_dst_channels/4][4][4]
+          int dst_index = block_x * padded_dst_channels * 4 + block_y * 16 +
+                          x_in_block * 4 + y_in_block;
+          if (x < src_channels && y < dst_channels) {
+            dst[dst_index] = weights.data[src_channels * y + x];
+          } else {
+            dst[dst_index] = 0.0f;
+          }
         }
       }
     }

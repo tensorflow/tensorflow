@@ -67,10 +67,15 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
+      c += "#define accumulate(a, b, c) c = mad(a, b, c)\n";
       c += "#define FLT16 float16\n";
       break;
     case CalculationsPrecision::F32_F16:
+      c += "#define accumulate(a, b, c) c += convert_float4(a * b)\n";
+      c += "#define FLT16 half16\n";
+      break;
     case CalculationsPrecision::F16:
+      c += "#define accumulate(a, b, c) c = mad(a, b, c)\n";
       c += "#define FLT16 half16\n";
       break;
   }
@@ -86,10 +91,10 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
     for (uint c = tid.y; c < args.src_tensor.Slices(); c += WG_Y) {
       FLT4 v = args.src_tensor.Read(0, 0, c);
       FLT16 w = args.weights.Read(c*args.dst_tensor.Slices() + gid);
-      s.x += dot(v, w.s0123);
-      s.y += dot(v, w.s4567);
-      s.z += dot(v, w.s89ab);
-      s.w += dot(v, w.scdef);
+      accumulate(v.s0, w.s0123, s);
+      accumulate(v.s1, w.s4567, s);
+      accumulate(v.s2, w.s89ab, s);
+      accumulate(v.s3, w.scdef, s);
     }
   }
   __local ACCUM_FLT4 temp[WG_X][WG_Y];
