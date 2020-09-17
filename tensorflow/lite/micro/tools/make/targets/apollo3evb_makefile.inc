@@ -2,7 +2,11 @@
 ifeq ($(TARGET),$(filter $(TARGET),\
   apollo3evb\
   sparkfun_edge\
+  sparkfun_edge2\
   sparkfun_redboard_artemis_atp\
+  sparkfun_redboard_artemis_nano\
+  sparkfun_redboard_artemis\
+  sparkfun_artemis_thing_plus\
   sparkfun_artemis_dk\
   ))
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
@@ -27,7 +31,11 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
   endif
 
   ifeq ($(TARGET),$(filter $(TARGET),\
+    sparkfun_edge2\
     sparkfun_redboard_artemis_atp\
+    sparkfun_redboard_artemis_nano\
+    sparkfun_redboard_artemis\
+    sparkfun_artemis_thing_plus\
     sparkfun_artemis_dk\
     ))
 
