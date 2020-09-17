@@ -175,7 +175,7 @@ def DecomposeResourceApplyKerasMomentumOpNesterov :
     ]
   >;
 
-// Pattern to Decompose ResourceApplyAdagrad.
+// Pattern to Decompose ResourceApplyAdagradV2.
 // This decomposition is only correct inside XLA as it ignores use_locking
 // attribute.
 // accum <- accum + grad * grad
@@ -200,6 +200,21 @@ def DecomposeResourceApplyAdagradV2 :
       (TF_AssignVariableOp $accum_resource, $new_accum),
     ]
   >;
+
+// ResourceApplyAdagrad op can be canonicalized to ResourceApplyAdagradV2 with
+// zero epsilon and then decomposed using DecomposeResourceApplyAdagradV2
+// pattern.
+def DecomposeResourceApplyAdagrad :
+  Pattern<
+    (TF_ResourceApplyAdagradOp $var_resource, $accum_resource, $lr, $grad,
+       $use_locking, $update_slots),
+    [
+      (TF_ConstOp:$zero_epsilon (GetScalarOfType<0> $grad)),
+      (TF_ResourceApplyAdagradV2Op $var_resource, $accum_resource, $lr,
+          $zero_epsilon, $grad, $use_locking, $update_slots
+      )
+    ]>;
+
 
 // Pattern to Decompose ResourceApplyAdam without Nesterov momentum.
 // This decomposition is only correct inside XLA as it ignores use_locking
