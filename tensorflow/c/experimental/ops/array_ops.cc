@@ -49,5 +49,22 @@ Status ZerosLike(AbstractContext* ctx,
   return z_op->Execute(outputs, &num_retvals);
 }
 
+Status Shape(AbstractContext* ctx,
+             absl::Span<AbstractTensorHandle* const> inputs,
+             absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr shape_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(shape_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(shape_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0]));  // input
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(shape_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
 }  // namespace ops
 }  // namespace tensorflow

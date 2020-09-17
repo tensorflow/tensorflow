@@ -14,11 +14,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/gradients_util.h"
 #include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
@@ -56,85 +56,6 @@ Status RegisterGradients(GradientRegistry* registry) {
                          SparseSoftmaxCrossEntropyLossRegisterer));
   return Status::OK();
 }
-
-// ========================= Test Util Functions ==============================
-
-// Get a scalar TensorHandle with given value
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a Matrix TensorHandle with given float values and dimensions
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
-                                     int64_t dims[], int num_dims,
-                                     AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsFloat(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a Matrix TensorHandle with given int values and dimensions
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
-                                   int64_t dims[], int num_dims,
-                                   AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsInt(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_TensorHandle* result_t =
-      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
-  return Status::OK();
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilFloat(AbstractContext* ctx,
-                                                 float vals[], int64_t dims[],
-                                                 int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsFloat(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
-                                               int64_t dims[], int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsInt(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
-
-// =========================== Start Tests ================================
 
 TEST_P(CppGradients, TestMatMulGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -607,7 +528,6 @@ TEST_P(CppGradients, TestMNISTGrad) {
          TF_TensorByteSize(dW1_tensor));
 
   float expected_dW1[4] = {0.0f, 3.2f, 0.0f, 4.8f};
-  ;  // dLoss
   for (int j = 0; j < 4; j++) {
     ASSERT_NEAR(result_data[j], expected_dW1[j], tolerance);
   }
@@ -647,7 +567,7 @@ TEST_P(CppGradients, TestScalarMul) {
   AbstractTensorHandlePtr eta;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 1.5f, &x_raw);
+    Status s = ScalarTensorHandle(ctx.get(), 1.5f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     eta.reset(x_raw);
   }
@@ -737,7 +657,7 @@ TEST_P(CppGradients, TestMNIST_Training) {
 
   // Set learning rate to be 1e-1
   AbstractTensorHandle* learning_rate = nullptr;
-  s = TestScalarTensorHandle(ctx.get(), 1e-1, &learning_rate);
+  s = ScalarTensorHandle(ctx.get(), 1e-1, &learning_rate);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Train
