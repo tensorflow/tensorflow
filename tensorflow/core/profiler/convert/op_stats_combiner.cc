@@ -47,7 +47,8 @@ void CombinePerCoreStepInfo(
   // Since we have assigned a new step number to the combined result, update
   // the step number on each core to this new step number.
   uint32 new_step_num = dst->step_num();
-  for (auto& [_, stepinfo] : *dst->mutable_step_info_per_core()) {
+  for (auto& percore_stepinfo : *dst->mutable_step_info_per_core()) {
+    auto& stepinfo = percore_stepinfo.second;
     stepinfo.set_step_num(new_step_num);
   }
 
