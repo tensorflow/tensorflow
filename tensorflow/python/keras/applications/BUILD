@@ -60,7 +60,10 @@ tf_py_test(
     size = "medium",
     srcs = ["applications_test.py"],
     shard_count = 36,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "notsan",  # b/168814536
+    ],
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -80,6 +83,7 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # b/168814536
     ],
     deps = [
         ":applications",
