@@ -4783,6 +4783,7 @@ cuda_py_test(
         ":while_v2",
         "//tensorflow/python/eager:def_function",
     ],
+    tags = ["no_pip"],
 )
 
 cuda_py_test(
