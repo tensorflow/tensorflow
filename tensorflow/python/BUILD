@@ -5246,7 +5246,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_linspace_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "notsan",  # b/168815578
+    ],
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
