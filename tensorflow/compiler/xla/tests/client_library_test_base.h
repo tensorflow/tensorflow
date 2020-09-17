@@ -270,14 +270,14 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // server, then stores into "data_handle" the global handle for that
   // parameter. When the use_bfloat16 flag is set but the literal has F32
   // elements, the literal will be converted to BF16 before being transferred.
-  std::unique_ptr<GlobalData> CreateParameterAndTransferLiteral(
+  StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
       int64 parameter_number, const Literal& literal, const string& name,
       XlaBuilder* builder, XlaOp* data_handle);
 
   // As above, but the caller can specify the device that the literal is
   // transferred to. If device_handle is nullptr, the literal will be
   // transferred to the default device.
-  std::unique_ptr<GlobalData> CreateParameterAndTransferLiteral(
+  StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
       int64 parameter_number, const Literal& literal, const string& name,
       const DeviceHandle* device_handle, XlaBuilder* builder,
       XlaOp* data_handle);

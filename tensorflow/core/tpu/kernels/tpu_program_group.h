@@ -95,15 +95,6 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const XLA_TpuMeshState* mesh_state,
       TpuProgramGroupInterface* tpu_program_group_interface);
 
-  // Compiles HLO IR and returns TPU programs ready for execution.
-  static Status Build(
-      const TPUCompileMetadataProto& metadata,
-      const tensorflow::XlaCompiler::CompilationResult& compilation_result,
-      const std::vector<ShardingAndIndex>& arg_core_mapping,
-      const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-      const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-      TpuProgramGroupInterface* tpu_program_group_interface);
-
   // Initializes `TpuProgramGroup` object with `xla_tpu_programs`.
   void Initialize(absl::Span<XLA_TpuProgram* const> xla_tpu_programs);
 

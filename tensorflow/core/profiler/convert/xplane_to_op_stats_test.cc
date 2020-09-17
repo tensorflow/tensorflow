@@ -62,7 +62,9 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
       absl::StrCat(kComputeCapMinor));
 
   GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
-  OpStats op_stats = ConvertXSpaceToOpStats(space, {OP_METRICS_DB});
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(900, perf_env.peak_hbm_bw_giga_bytes_per_second(), kMaxError);
@@ -77,7 +79,7 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/1));
 
   GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
-  OpStats op_stats = ConvertXSpaceToOpStats(space, {});
+  OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
   const RunEnvironment& run_env = op_stats.run_environment();
 
   EXPECT_EQ("GPU", run_env.device_type());
@@ -107,7 +109,10 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
   GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
-  OpStats op_stats = ConvertXSpaceToOpStats(space, {OP_METRICS_DB, STEP_DB});
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  options.generate_step_db = true;
+  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
   const StepDatabaseResult& step_db = op_stats.step_db();
 
   EXPECT_EQ(step_db.step_sequence_size(), 1);
@@ -144,7 +149,10 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
                {{StatType::kCorrelationId, kCorrelationId}});
 
   GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
-  OpStats op_stats = ConvertXSpaceToOpStats(space, {OP_METRICS_DB, STEP_DB});
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  options.generate_step_db = true;
+  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
   const StepDatabaseResult& step_db = op_stats.step_db();
 
   EXPECT_EQ(step_db.step_sequence_size(), 1);
@@ -161,7 +169,7 @@ TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
   *space.add_errors() = kError;
   *space.add_errors() = kError;
 
-  OpStats op_stats = ConvertXSpaceToOpStats(space, {});
+  OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
 
   EXPECT_EQ(1, op_stats.diagnostics().errors_size());
   EXPECT_EQ(kError, op_stats.diagnostics().errors(/*index=*/0));

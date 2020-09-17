@@ -103,6 +103,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/168051787): Enable.
         "no_pip",  # TODO(b/168051787): Enable.
     ],
+    tfrt_enabled = True,
     deps = [
         ":pywrap_tensor_test_util",
         ":test",

@@ -54,17 +54,6 @@ struct FillPhiloxRandom<GPUDevice, Distribution> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-// Declares the partially SYCL-specialized functor struct.
-template <class Distribution>
-struct FillPhiloxRandom<SYCLDevice, Distribution> {
-  void operator()(OpKernelContext* ctx, const SYCLDevice& d,
-                  random::PhiloxRandom gen,
-                  typename Distribution::ResultElementType* data, int64 size,
-                  Distribution dist);
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -513,6 +513,33 @@ def set_visible_devices(devices, device_type=None):
   context.context().set_visible_devices(devices, device_type)
 
 
+@tf_export('config.experimental.get_memory_usage')
+def get_memory_usage(device):
+  """Get the memory usage, in bytes, for the chosen device.
+
+  See https://www.tensorflow.org/api_docs/python/tf/device for specifying device
+  strings.
+
+  For example:
+
+  >>> gpu_devices = tf.config.list_physical_devices('GPU')
+  >>> if gpu_devices:
+  ...   tf.config.experimental.get_memory_usage('GPU:0')
+
+  Does not work for CPU.
+
+  Args:
+    device: Device string to get the bytes in use for.
+
+  Returns:
+    Total memory usage in bytes.
+
+  Raises:
+    ValueError: Non-existent or CPU device specified.
+  """
+  return context.context().get_total_memory_usage(device)
+
+
 @tf_export('config.experimental.get_memory_growth')
 def get_memory_growth(device):
   """Get if memory growth is enabled for a `PhysicalDevice`.

@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import uuid
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
@@ -67,8 +67,10 @@ _CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
 
 
 def _use_new_code():
-  return compat.forward_compatible(2020, 9, 9)
-  
+  # TODO(b/168313799): Enable when the new codepath doesn't break deepcopy of
+  # built LSTM layers.
+  return False
+
 
 @keras_export('keras.layers.GRUCell', v1=[])
 class GRUCell(recurrent.GRUCell):
@@ -129,12 +131,6 @@ class GRUCell(recurrent.GRUCell):
       linear transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 (default) will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications. Default: 2.
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before",
       True = "after" (default and CuDNN compatible).
@@ -165,7 +161,6 @@ class GRUCell(recurrent.GRUCell):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                reset_after=True,
                **kwargs):
     super(GRUCell, self).__init__(
@@ -184,7 +179,7 @@ class GRUCell(recurrent.GRUCell):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         reset_after=reset_after,
         **kwargs)
 
@@ -274,12 +269,6 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications. Default: 2.
     return_sequences: Boolean. Whether to return the last output
       in the output sequence, or the full sequence. Default: `False`.
     return_state: Boolean. Whether to return the last state in addition to the
@@ -338,7 +327,6 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -368,7 +356,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         return_sequences=return_sequences,
         return_state=return_state,
         go_backwards=go_backwards,
@@ -383,7 +371,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         reset_after and ops.executing_eagerly_outside_functions())
-    if context.num_gpus() > 0:
+    if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
       # about the cuDNN if there isn't any GPU.
       if self._could_use_gpu_kernel:
@@ -524,7 +512,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         can_use_gpu = (
             # Either user specified GPU or unspecified but GPU is available.
             (device_type == _GPU_DEVICE_NAME or
-             (device_type is None and context.num_gpus() > 0)) and
+             (device_type is None and config.list_logical_devices('GPU'))) and
             (mask is None or is_cudnn_supported_inputs(mask, self.time_major)))
         # Under eager context, check the device placement and prefer the
         if can_use_gpu:
@@ -898,11 +886,6 @@ class LSTMCell(recurrent.LSTMCell):
       transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of smaller dot
-      products and additions, whereas mode 2 (default) will batch them into
-      fewer, larger operations. These modes will have different performance
-      profiles on different hardware and for different applications. Default: 2.
 
   Call arguments:
     inputs: A 2D tensor, with shape of `[batch, feature]`.
@@ -933,7 +916,6 @@ class LSTMCell(recurrent.LSTMCell):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                **kwargs):
     super(LSTMCell, self).__init__(
         units,
@@ -952,7 +934,7 @@ class LSTMCell(recurrent.LSTMCell):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         **kwargs)
 
 
@@ -1032,11 +1014,6 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2. Mode 1 will structure
-      its operations as a larger number of smaller dot products and additions,
-      whereas mode 2 will batch them into fewer, larger operations. These modes
-      will have different performance profiles on different hardware and for
-      different applications. Default: 2.
     return_sequences: Boolean. Whether to return the last output. in the output
       sequence, or the full sequence. Default: `False`.
     return_state: Boolean. Whether to return the last state in addition to the
@@ -1090,7 +1067,6 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -1120,7 +1096,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         return_sequences=return_sequences,
         return_state=return_state,
         go_backwards=go_backwards,
@@ -1137,7 +1113,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         ops.executing_eagerly_outside_functions())
-    if context.num_gpus() > 0:
+    if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
       # about the cuDNN if there isn't any GPU.
       if self._could_use_gpu_kernel:
@@ -1266,7 +1242,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           can_use_gpu = (
               # Either user specified GPU or unspecified but GPU is available.
               (device_type == _GPU_DEVICE_NAME or
-               (device_type is None and context.num_gpus() > 0)) and
+               (device_type is None and config.list_logical_devices('GPU'))) and
               (mask is None or
                is_cudnn_supported_inputs(mask, self.time_major)))
           # Under eager context, check the device placement and prefer the

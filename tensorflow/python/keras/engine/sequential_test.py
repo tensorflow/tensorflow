@@ -24,7 +24,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -456,7 +456,7 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 
       def __init__(self, name=None):
         super(MySequential, self).__init__(name=name)
-        self.call = function.defun(self.call)
+        self.call = def_function.function(self.call)
 
     model = MySequential()
     model.add(keras.layers.Dense(4, activation='relu'))

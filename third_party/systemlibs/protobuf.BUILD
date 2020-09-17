@@ -12,49 +12,24 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-HEADERS = [
-    "google/protobuf/any.pb.h",
+PROTO_FILES = [
     "google/protobuf/any.proto",
-    "google/protobuf/api.pb.h",
     "google/protobuf/api.proto",
-    "google/protobuf/arena.h",
-    "google/protobuf/compiler/importer.h",
-    "google/protobuf/compiler/plugin.h",
-    "google/protobuf/compiler/plugin.pb.h",
     "google/protobuf/compiler/plugin.proto",
-    "google/protobuf/descriptor.h",
-    "google/protobuf/descriptor.pb.h",
     "google/protobuf/descriptor.proto",
-    "google/protobuf/duration.pb.h",
     "google/protobuf/duration.proto",
-    "google/protobuf/dynamic_message.h",
-    "google/protobuf/empty.pb.h",
     "google/protobuf/empty.proto",
-    "google/protobuf/field_mask.pb.h",
     "google/protobuf/field_mask.proto",
-    "google/protobuf/io/coded_stream.h",
-    "google/protobuf/io/zero_copy_stream.h",
-    "google/protobuf/io/zero_copy_stream_impl_lite.h",
-    "google/protobuf/map.h",
-    "google/protobuf/repeated_field.h",
-    "google/protobuf/source_context.pb.h",
     "google/protobuf/source_context.proto",
-    "google/protobuf/struct.pb.h",
     "google/protobuf/struct.proto",
-    "google/protobuf/text_format.h",
-    "google/protobuf/timestamp.pb.h",
     "google/protobuf/timestamp.proto",
-    "google/protobuf/type.pb.h",
     "google/protobuf/type.proto",
-    "google/protobuf/util/json_util.h",
-    "google/protobuf/util/type_resolver_util.h",
-    "google/protobuf/wrappers.pb.h",
     "google/protobuf/wrappers.proto",
 ]
 
 genrule(
-    name = "link_headers",
-    outs = HEADERS,
+    name = "link_proto_files",
+    outs = PROTO_FILES,
     cmd = """
       for i in $(OUTS); do
         f=$${i#$(@D)/}
@@ -66,14 +41,12 @@ genrule(
 
 cc_library(
     name = "protobuf",
-    hdrs = HEADERS,
     linkopts = ["-lprotobuf"],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "protobuf_headers",
-    hdrs = HEADERS,
     linkopts = ["-lprotobuf"],
     visibility = ["//visibility:public"],
 )
@@ -94,7 +67,6 @@ genrule(
 
 cc_proto_library(
     name = "cc_wkt_protos",
-    hdrs = HEADERS,
     internal_bootstrap_hack = 1,
     protoc = ":protoc",
     visibility = ["//visibility:public"],
@@ -109,7 +81,6 @@ proto_gen(
 
 py_library(
     name = "protobuf_python",
-    data = [":link_headers"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )

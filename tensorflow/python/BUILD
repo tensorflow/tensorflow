@@ -1586,6 +1586,7 @@ py_library(
         "framework/convert_to_constants.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = visibility + ["//waymo/ml:__subpackages__"],
     deps = [
         ":dtypes",
         ":framework_ops",
@@ -5528,6 +5529,48 @@ cc_library(
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "function_parameter_canonicalizer",
+    srcs = ["util/function_parameter_canonicalizer.cc"],
+    hdrs = ["util/function_parameter_canonicalizer.h"],
+    deps = [
+        ":py_util",
+        ":safe_pyobject_ptr",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_function_parameter_canonicalizer_binding_for_test",
+    testonly = True,
+    srcs = ["util/function_parameter_canonicalizer_binding_for_test.cc"],
+    module_name = "_function_parameter_canonicalizer_binding_for_test",
+    deps = [
+        ":function_parameter_canonicalizer",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "function_parameter_canonicalizer_test",
+    srcs = ["util/function_parameter_canonicalizer_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # b/168621686
+    ],
+    tfrt_enabled = True,
+    deps = [
+        ":_function_parameter_canonicalizer_binding_for_test",
+        ":client_testlib",
     ],
 )
 

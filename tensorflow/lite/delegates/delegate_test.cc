@@ -526,6 +526,35 @@ TEST_F(TestDelegate, SecondDelegationInvokeFailure) {
   }
 }
 
+// This test ensures that node indices in multi-delegate application are handled
+// correctly by the TFLite partitioning algorithm.
+TEST_F(TestDelegate, TwoDelegates_ExecutionPlanIndicesDifferent) {
+  // First delegate supports nodes 0, 1.
+  // After this delegation, the execution plan size is 2.
+  delegate_ = std::unique_ptr<SimpleDelegate>(
+      new SimpleDelegate({0, 1}, kTfLiteDelegateFlagsAllowDynamicTensors));
+  // Second delegate supports (original) node index 2.
+  // The execution plan has 2 nodes, so this verifies that the partitioning
+  // algorithm correctly refers to (original) node indices instead of execution
+  // plan indices.
+  delegate2_ = std::unique_ptr<SimpleDelegate>(
+      new SimpleDelegate({2}, kTfLiteDelegateFlagsNone));
+
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  // Verify Invoke works.
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+}
+
 TEST_F(TestDelegate, StaticDelegateMakesGraphImmutable) {
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   ASSERT_EQ(

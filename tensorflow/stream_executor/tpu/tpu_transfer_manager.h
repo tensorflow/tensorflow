@@ -71,6 +71,10 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
       stream_executor::StreamExecutor* executor,
       const xla::ShapedBuffer& device_buffer) const override;
 
+  bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const override;
+
   Status WriteSingleTupleIndexTable(
       stream_executor::Stream* stream,
       absl::Span<const stream_executor::DeviceMemoryBase> elements,
