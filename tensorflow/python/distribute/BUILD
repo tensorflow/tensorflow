@@ -1700,9 +1700,6 @@ distribute_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
-        # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
-        # runner can run on guitar.
-        "noguitar",
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,
