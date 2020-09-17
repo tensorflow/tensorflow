@@ -35,6 +35,14 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result);
 
+// Matrix multiplication for quantized values using symmetric quantization
+// with additional scratch memory for GEMM operation prior to scaling.
+void SseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch, int32_t* scratch,
+    float* __restrict__ result, CpuBackendContext* context);
+
 // Matrix multiplication for quantized values using asymmetric quantization.
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,

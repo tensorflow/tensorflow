@@ -116,6 +116,15 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // within the specified duration, the execution will be aborted. If set to
     // 0, the default timeout for loops will be used.
     uint64_t max_execution_loop_timeout_duration_ns = 0;
+
+    // Whether to allow dynamic dimension sizes without re-compilation.
+    // A tensor of with dynamic dimension must have a valid dim_signature
+    // defined.
+    // Only supported in NNAPI 1.1 and newer versions.
+    // WARNING: Setting this flag to true may result in model being rejected by
+    // accelerator. This should only be enabled if the target device supports
+    // dynamic dimensions of the model.
+    bool allow_dynamic_dimensions = false;
   };
 
   // Uses default options.
@@ -224,6 +233,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Specifies the maximum expected duration in nanosecond for WHILE loops in
     // the execution
     uint64_t max_execution_loop_timeout_duration_ns = 0;
+    // Whether to allow dynamic dimension sizes without re-compilation.
+    bool allow_dynamic_dimensions = false;
 
     explicit Data(const NnApi* nnapi);
     ~Data();

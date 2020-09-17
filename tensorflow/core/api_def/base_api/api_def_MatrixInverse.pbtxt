@@ -16,9 +16,8 @@ Equivalent to np.linalg.inv
 @end_compatibility
 END
   }
-  summary: "Computes the inverse of one or more square invertible matrices or their"
+  summary: "Computes the inverse of one or more square invertible matrices or their adjoints (conjugate transposes)."
   description: <<END
-adjoints (conjugate transposes).
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor of the same shape as the input

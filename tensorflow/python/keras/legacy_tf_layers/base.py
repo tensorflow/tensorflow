@@ -18,20 +18,21 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import warnings
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 # Avoid breaking users who directly import this symbol from this file.
@@ -236,11 +237,11 @@ class Layer(base_layer.Layer):
   # We no longer track graph in tf.layers layers. This property is only kept to
   # maintain API backward compatibility.
   @property
-  @deprecation.deprecated(
-      date=None,
-      instructions='Stop using this property because tf.layers layers no '
-      'longer track their graph.')
   def graph(self):
+    warnings.warn('`Layer.graph` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please stop using this property because tf.layers layers no '
+                  'longer track their graph.')
     if context.executing_eagerly():
       raise RuntimeError('Layer.graph not supported when executing eagerly.')
     return None
@@ -405,7 +406,7 @@ class Layer(base_layer.Layer):
       trainable = True
 
     def _should_add_regularizer(variable, existing_variable_set):
-      if isinstance(variable, tf_variables.PartitionedVariable):
+      if base_layer_utils.is_split_variable(variable):
         for var in variable:
           if var in existing_variable_set:
             return False
@@ -439,7 +440,7 @@ class Layer(base_layer.Layer):
     with vs.variable_scope(
         self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       self._current_scope = scope
-      with ops.name_scope(self._name_scope(), skip_on_eager=False):
+      with backend.name_scope(self._name_scope()):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)

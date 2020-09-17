@@ -54,6 +54,7 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],

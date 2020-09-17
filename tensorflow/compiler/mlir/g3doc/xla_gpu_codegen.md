@@ -74,7 +74,6 @@ We have several choices on how to lower the host-side part from LHLO:
     *   (Pro) easy to implement library calls (cuDNN, cuBLAS, cuFFT, etc), as
         TFRT ops are interpreted by C++ code.
     *   (Con) host side is under development and not tested.
-    *   (Con) the JAX integration isn’t clear from a runtime point of view
 *   Jitted CPU code
     *   (Pro) great lower-ability. Create a few loops and conditions and it's
         done.
@@ -84,8 +83,7 @@ We have several choices on how to lower the host-side part from LHLO:
         dynamic loading, etc).
 *   Existing (interpreting) XLA runtime
 
-Tentative conclusion: Use jitted CPU code during the transition, and optionally
-adopt TFRT in the end.
+Decision: adopt TFRT, but also support jitting CPU code in TFRT.
 
 ## Migrating Device LLVM IR (Task 3)
 
@@ -114,7 +112,7 @@ end state of each XLA op:
     *   (Cost) Will be throw-away work if we want to ultimately migrate to
         Standard.
     *   (Benefit) It is easy and mechanical. Can be done in a short period.
-    *   (Benefit) It doesn't benefit more compared to a).
+    *   (Benefit) It doesn't benefit more compared to (1).
 1.  Refactor old emitters to be like LHLO -> MLIR GPU + Standard + Loops:
     *   (Cost) Lifting existing emitters to Standard introduces some challenges.
         Pointers and GEPs need to be converted to MemRefs and SubViews. Ensuring
@@ -133,6 +131,19 @@ end state of each XLA op:
         some ops.
     *   (Benefit) unified stack; community support; portability; more
         optimization potentials.
+
+Conclusions:
+
+*   Don't go for (2). (1) or (3) are just better than (2). (2) costs more than
+    (1), since it requires a lot of mechanical refactoring. With (1) we can
+    still achieve the goal of enabling XLA to pick up MLIR emitters. This is by
+    doing LHLO -> LLVM IR -> run legacy device emitters.
+*   ElementalIrEmitter ops go for (4), but not incrementally. There is no way to
+    do it op by op, because all elementally-emitted ops are connected into the
+    same graph. This work can also serve as a unification point of several
+    on-going forces (xla/service/mlir\_gpu, the kernel generator, Linalg).
+*   All other ops go for (1). As a stretch goal, they might be migrated to (3)
+    or (4).
 
 ## Prioritization
 
@@ -210,26 +221,19 @@ The exact profiling can't be easily done for MLIR-generated ops, since:
 
 ### Step 3: (Task 2) Migrating Thunks
 
-This step migrates all host ops and library calls. This step will eliminate most
-of the thunks and produce serializable MLIR instead.
-
-There are roughly three kinds of thunks:
-
+As a note, there are roughly three kinds of thunks:
 *   KernelThunk, which launches a kernel.
 *   Control flow thunks, which has host control flow logic (conditional, while,
     for, sequence) and launch body kernels.
 *   Library thunks: cuDNN, cuBLAS, cuFFT, NCCL, etc.
 
-The **bottom line** is to:
+The plan is:
+*   Make Thunks (de)serializable.
+*   Help improve TFRT to a state where it can support these semantics.
+*   As the state improves, migrate individual thunks incrementally.
 
-*   Create a Thunk dialect that provides (de)serialize logic for all existing
-    C++-based Thunks.
-*   Change emitters to emit a graph of Thunk dialect.
-
-**Optionally**, we can relieve some thunks from C++ implementation. KernelThunk
-can lower to the GPU LaunchKernelOp. Control flow thunks can leverage the CFG
-Dialect for loops and conditions, combined with LaunchKernelOp. This optional
-step requires profiling and stream support.
+These action items are only partially ordered. The actual execution order /
+engineering parallelism is to be evaluated as it goes.
 
 ### Step 4: (Task 3) Migrated ElementalIrEmitter
 

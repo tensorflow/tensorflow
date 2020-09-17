@@ -73,6 +73,7 @@ class NcclAllReduceThunk : public Thunk {
   // build, and we don't want to expose *that* mess in the header.)
   struct AuxData;
 
+  const HloInstruction* hlo_instruction_;
   const int64 replica_count_;
   const std::vector<Buffer> buffers_;
   std::unique_ptr<AuxData> aux_data_;

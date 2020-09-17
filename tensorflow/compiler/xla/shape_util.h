@@ -269,6 +269,14 @@ class ShapeUtil {
     if (SameElementType(a, b)) {
       return a.element_type();
     }
+    // If only one of A and B are floating use the floating point type.
+    if (ElementIsFloating(a) && !ElementIsFloating(b)) {
+      return a.element_type();
+    }
+    if (ElementIsFloating(b) && !ElementIsFloating(a)) {
+      return b.element_type();
+    }
+    // Use the higher precision type.
     return primitive_util::BitWidth(a.element_type()) <
                    primitive_util::BitWidth(b.element_type())
                ? b.element_type()
@@ -376,6 +384,9 @@ class ShapeUtil {
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
+
+  // Copy the dynamic dimensions property from one shape to another.
+  static void CopyDynamicDimensions(Shape* to, const Shape& from);
 
   // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }

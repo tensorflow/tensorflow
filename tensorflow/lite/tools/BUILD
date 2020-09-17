@@ -9,7 +9,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["logging.h"])
+exports_files([
+    "logging.h",
+])
 
 common_copts = ["-Wall"]
 
@@ -74,6 +76,17 @@ py_test(
 py_binary(
     name = "strip_strings",
     srcs = ["strip_strings.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":flatbuffer_utils",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
+    name = "reverse_xxd_dump_from_cc",
+    srcs = ["reverse_xxd_dump_from_cc.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
@@ -265,8 +278,8 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -278,6 +291,38 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops_main_lib",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops_no_kernel",
+    srcs = ["list_flex_ops_no_kernel.cc"],
+    hdrs = ["list_flex_ops.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+tf_cc_binary(
+    name = "list_flex_ops_no_kernel_main",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops_no_kernel",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],

@@ -758,6 +758,44 @@ REGISTER_OP("SampleDistortedBoundingBoxV2")
       return Status::OK();
     });
 
+REGISTER_OP("StatelessSampleDistortedBoundingBox")
+    .Input("image_size: T")
+    .Input("bounding_boxes: float")
+    .Input("min_object_covered: float")
+    .Input("seed: Tseed")
+    .Output("begin: T")
+    .Output("size: T")
+    .Output("bboxes: float")
+    .Attr("T: {uint8, int8, int16, int32, int64}")
+    .Attr("Tseed: {int32, int64}")
+    .Attr("aspect_ratio_range: list(float) = [0.75, 1.33]")
+    .Attr("area_range: list(float) = [0.05, 1.0]")
+    .Attr("max_attempts: int = 100")
+    .Attr("use_image_if_no_bounding_boxes: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle image_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &image_size));
+      ShapeHandle bounding_boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &bounding_boxes));
+      ShapeHandle min_object_covered;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &min_object_covered));
+      ShapeHandle seed;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &seed));
+      // image_size: 1-D with [height, width, channels]
+      // bounding_boxes: 3-D with shape [batch, N, 4]
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(image_size, 0), 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(bounding_boxes, 2), 4, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(seed, 0), 2, &unused));
+
+      c->set_output(0, c->Vector(3));
+      c->set_output(1, c->Vector(3));
+      c->set_output(2, c->MakeShape({1, 1, 4}));
+
+      return Status::OK();
+    });
+
 // --------------------------------------------------------------------------
 
 // glimpse = extract_glimpse(input, size, offsets) extract the glimpse
@@ -1108,12 +1146,29 @@ REGISTER_OP("GenerateBoundingBoxProposals")
       return Status::OK();
     });
 
-// TODO(ringwalt): Add a "fill_constant" argument for constant mode (default 0).
-// V2 op supports output_shape. V1 op is in contrib.
+// V3 op supports fill_value.
+// V2 op supports output_shape.
+// V1 op is in contrib.
 REGISTER_OP("ImageProjectiveTransformV2")
     .Input("images: dtype")
     .Input("transforms: float32")
     .Input("output_shape: int32")
+    .Attr("dtype: {uint8, int32, int64, float16, float32, float64}")
+    .Attr("interpolation: string")
+    .Attr("fill_mode: string = 'CONSTANT'")
+    .Output("transformed_images: dtype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      return SetOutputToSizedImage(c, c->Dim(input, 0), 2 /* size_input_idx */,
+                                   c->Dim(input, 3));
+    });
+
+REGISTER_OP("ImageProjectiveTransformV3")
+    .Input("images: dtype")
+    .Input("transforms: float32")
+    .Input("output_shape: int32")
+    .Input("fill_value: float32")
     .Attr("dtype: {uint8, int32, int64, float16, float32, float64}")
     .Attr("interpolation: string")
     .Attr("fill_mode: string = 'CONSTANT'")

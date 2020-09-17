@@ -65,32 +65,28 @@ tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
 ### Cross build for armhf Python 3.5
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
 ```
 
 ### Cross build for armhf Python 3.7
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
 ```
 
 ### Cross build for aarch64 Python 3.5
 
 ```sh
-  CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```
 
-### Cross build for aarch64 Python 3.7
+### Cross build for aarch64 Python 3.8
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON38 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```
 
@@ -109,12 +105,11 @@ CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
 ```
 
-### Cross build with Flex for armhf Python 3.5
+### Cross build with Flex for armhf Python 3.7
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
-  -e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
-  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
 ```
 

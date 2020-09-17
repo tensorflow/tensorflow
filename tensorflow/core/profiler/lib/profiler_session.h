@@ -40,7 +40,6 @@ class ProfilerSession {
  public:
   // Creates and ProfilerSession and starts profiling.
   static std::unique_ptr<ProfilerSession> Create(const ProfileOptions& options);
-  static std::unique_ptr<ProfilerSession> Create();
 
   static ProfileOptions DefaultOptions() {
     ProfileOptions options;
@@ -67,7 +66,7 @@ class ProfilerSession {
 
  private:
   // Constructs an instance of the class and starts profiling
-  explicit ProfilerSession(const ProfileOptions& options);
+  explicit ProfilerSession(ProfileOptions options);
 
   // ProfilerSession is neither copyable or movable.
   ProfilerSession(const ProfilerSession&) = delete;

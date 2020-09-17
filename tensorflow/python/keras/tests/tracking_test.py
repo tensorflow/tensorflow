@@ -23,11 +23,11 @@ import numpy
 import six
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
@@ -36,9 +36,9 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 
 
@@ -73,43 +73,44 @@ class HasList(training.Model):
     return bn(x) / aggregation
 
 
-class ListTests(test.TestCase):
+class ListTests(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testTracking(self):
-    model = HasList()
-    output = model(array_ops.ones([32, 2]))
-    self.assertAllEqual([32, 12], output.shape)
-    self.assertEqual(11, len(model.layers))
-    self.assertEqual(10, len(model.layer_list.layers))
-    six.assertCountEqual(
-        self,
-        model.layers,
-        model.layer_list.layers + model.layers_with_updates)
-    for index in range(10):
-      self.assertEqual(3 + index, model.layer_list.layers[index].units)
-    self.assertEqual(2, len(model._checkpoint_dependencies))
-    self.assertIs(model.layer_list, model._checkpoint_dependencies[0].ref)
-    self.assertIs(model.layers_with_updates,
-                  model._checkpoint_dependencies[1].ref)
-    self.assertEqual(
-        10, len(model._checkpoint_dependencies[0].ref._checkpoint_dependencies))
-    self.evaluate([v.initializer for v in model.variables])
-    self.evaluate(model.variables[0].assign([[1., 2., 3.], [4., 5., 6.]]))
-    save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    model.save_weights(save_path)
-    self.evaluate(model.variables[0].assign(array_ops.zeros([2, 3])))
-    model.load_weights(save_path)
-    self.assertAllEqual([[1., 2., 3.], [4., 5., 6.]],
-                        self.evaluate(model.variables[0]))
-    v = variables.Variable(1.)
-    model.var_list = [v]
-    self.assertIn(v, model.variables)
-    self.assertIn(v, model.trainable_variables)
-    self.assertNotIn(v, model.non_trainable_variables)
-    self.assertIn(model.layer_list[0].trainable_weights[0],
-                  model.trainable_weights)
+    with self.test_session():
+      model = HasList()
+      output = model(array_ops.ones([32, 2]))
+      self.assertAllEqual([32, 12], output.shape)
+      self.assertEqual(11, len(model.layers))
+      self.assertEqual(10, len(model.layer_list.layers))
+      six.assertCountEqual(
+          self,
+          model.layers,
+          model.layer_list.layers + model.layers_with_updates)
+      for index in range(10):
+        self.assertEqual(3 + index, model.layer_list.layers[index].units)
+      self.assertEqual(2, len(model._checkpoint_dependencies))
+      self.assertIs(model.layer_list, model._checkpoint_dependencies[0].ref)
+      self.assertIs(model.layers_with_updates,
+                    model._checkpoint_dependencies[1].ref)
+      self.assertEqual(
+          10,
+          len(model._checkpoint_dependencies[0].ref._checkpoint_dependencies))
+      self.evaluate([v.initializer for v in model.variables])
+      self.evaluate(model.variables[0].assign([[1., 2., 3.], [4., 5., 6.]]))
+      save_path = os.path.join(self.get_temp_dir(), "ckpt")
+      model.save_weights(save_path)
+      self.evaluate(model.variables[0].assign(array_ops.zeros([2, 3])))
+      model.load_weights(save_path)
+      self.assertAllEqual([[1., 2., 3.], [4., 5., 6.]],
+                          self.evaluate(model.variables[0]))
+      v = variables.Variable(1.)
+      model.var_list = [v]
+    self.assertTrue(any(v is t for t in model.variables))
+    self.assertTrue(any(v is t for t in model.trainable_variables))
+    self.assertFalse(any(v is t for t in model.non_trainable_variables))
+    self.assertTrue(any(model.layer_list[0].trainable_weights[0]
+                        is t for t in model.trainable_weights))
 
   def testSubModelTracking(self):
     model = training.Model()
@@ -176,24 +177,19 @@ class ListTests(test.TestCase):
     m2(m2.null_input())
     self.assertLen(m2.trainable_variables, 6)
 
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testUpdatesForwarded(self):
-    with context.graph_mode():
-      model = HasList()
-      model_input = array_ops.ones([32, 2])
-      model(model_input)
+    model = HasList()
+    model_input = array_ops.ones([32, 2])
+    model(model_input)
+    if context.executing_eagerly():
+      self.assertEqual(0, len(model.updates))
+    else:
       self.assertGreater(len(model.layers_with_updates[0].updates), 0)
       self.assertEqual(set(model.layers_with_updates[0].updates),
                        set(model.updates))
 
-    with context.eager_mode():
-      model = HasList()
-      model_input = array_ops.ones([32, 2])
-      model(model_input)
-      self.assertEqual(0, len(model.updates))
-
-  @test_util.run_in_graph_and_eager_modes
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLossesForwarded(self):
     model = HasList()
     model_input = array_ops.ones([32, 2])
@@ -215,7 +211,7 @@ class ListTests(test.TestCase):
     model.l2.append(second_layer)
     self.assertEqual([first_layer, second_layer], model.layers)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testTensorConversion(self):
 
     class ListToTensor(training.Model):
@@ -266,30 +262,31 @@ class HasMapping(training.Model):
     return self.layer_dict["output"](x) / aggregation
 
 
-class MappingTests(test.TestCase):
+class MappingTests(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testTracking(self):
-    model = HasMapping()
-    output = model(array_ops.ones([32, 2]))
-    self.assertAllEqual([32, 7], output.shape.as_list())
-    self.assertEqual(5, len(model.layers))
-    six.assertCountEqual(self, model.layers, model.layer_dict.layers)
-    self.assertEqual(1, len(model._checkpoint_dependencies))
-    self.assertIs(model.layer_dict, model._checkpoint_dependencies[0].ref)
-    self.evaluate([v.initializer for v in model.variables])
-    test_var = model.layer_dict["output"].kernel
-    self.evaluate(test_var.assign(array_ops.ones([6, 7])))
-    save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    model.save_weights(save_path)
-    self.evaluate(test_var.assign(array_ops.zeros([6, 7])))
-    model.load_weights(save_path)
-    self.assertAllEqual(numpy.ones([6, 7]),
-                        self.evaluate(test_var))
+    with self.test_session():
+      model = HasMapping()
+      output = model(array_ops.ones([32, 2]))
+      self.assertAllEqual([32, 7], output.shape.as_list())
+      self.assertEqual(5, len(model.layers))
+      six.assertCountEqual(self, model.layers, model.layer_dict.layers)
+      self.assertEqual(1, len(model._checkpoint_dependencies))
+      self.assertIs(model.layer_dict, model._checkpoint_dependencies[0].ref)
+      self.evaluate([v.initializer for v in model.variables])
+      test_var = model.layer_dict["output"].kernel
+      self.evaluate(test_var.assign(array_ops.ones([6, 7])))
+      save_path = os.path.join(self.get_temp_dir(), "ckpt")
+      model.save_weights(save_path)
+      self.evaluate(test_var.assign(array_ops.zeros([6, 7])))
+      model.load_weights(save_path)
+      self.assertAllEqual(numpy.ones([6, 7]),
+                          self.evaluate(test_var))
 
   def testLayerCollectionWithExternalMutation(self):
     d = {}
-    root = tracking.AutoTrackable()
+    root = module.Module()
     root.wrapper = d
     self.assertEqual([], root.wrapper.layers)
     self.assertEqual([], root.wrapper.trainable_weights)
@@ -302,7 +299,7 @@ class MappingTests(test.TestCase):
     self.assertEqual([], root.wrapper.trainable_weights)
 
   def testDictWrapperBadKeys(self):
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = {}
     a.d[1] = data_structures.List()
     model = training.Model()
@@ -312,7 +309,7 @@ class MappingTests(test.TestCase):
       model.save_weights(save_path)
 
   def testDictWrapperNoDependency(self):
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = data_structures.NoDependency({})
     a.d[1] = [3]
     self.assertEqual([a], util.list_objects(a))
@@ -323,7 +320,7 @@ class MappingTests(test.TestCase):
     model.load_weights(save_path)
 
   def testNonStringKeyNotTrackableValue(self):
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = data_structures.NoDependency([3])
@@ -337,15 +334,15 @@ class MappingTests(test.TestCase):
   def testNonAppendNotTrackable(self):
     # Non-append mutations (deleting or overwriting values) are OK when the
     # values aren't tracked.
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = 3
     a.d[1] = 2
     self.assertEqual(2, a.d[1])
     del a.d[1]
-    a.d[2] = data_structures.NoDependency(tracking.AutoTrackable())
-    second = tracking.AutoTrackable()
+    a.d[2] = data_structures.NoDependency(module.Module())
+    second = module.Module()
     a.d[2] = data_structures.NoDependency(second)
     self.assertIs(second, a.d[2])
     self.assertEqual([a, a.d, a.d["a"]], util.list_objects(a))
@@ -415,43 +412,45 @@ class HasTuple(training.Model):
     return bn(x) / aggregation
 
 
-class TupleTests(test.TestCase, parameterized.TestCase):
+class TupleTests(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testTracking(self):
-    model = HasTuple()
-    output = model(array_ops.ones([32, 2]))
-    self.assertAllEqual([32, 5], output.shape.as_list())
-    self.assertLen(model.layers, 4)
-    self.assertLen(model.layer_list.layers, 3)
-    six.assertCountEqual(
-        self,
-        model.layers,
-        tuple(model.layer_list.layers) + model.layers_with_updates)
-    self.assertEqual(3, model.layer_list.layers[0].units)
-    self.assertEqual(4, model.layer_list.layers[1].units)
-    self.assertEqual(5, model.layer_list.layers[2].units)
-    self.assertLen(model._checkpoint_dependencies, 2)
-    self.assertIs(model.layer_list, model._checkpoint_dependencies[0].ref)
-    self.assertIs(model.layers_with_updates,
-                  model._checkpoint_dependencies[1].ref)
-    self.assertLen(
-        model._checkpoint_dependencies[0].ref._checkpoint_dependencies, 3)
-    self.evaluate([v.initializer for v in model.variables])
-    self.evaluate(model.variables[0].assign([[1., 2., 3.], [4., 5., 6.]]))
-    save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    model.save_weights(save_path)
-    self.evaluate(model.variables[0].assign(array_ops.zeros([2, 3])))
-    model.load_weights(save_path)
-    self.assertAllEqual([[1., 2., 3.], [4., 5., 6.]],
-                        self.evaluate(model.variables[0]))
-    v = variables.Variable(1.)
-    model.var_list = (v,)
-    self.assertIn(id(v), [id(obj) for obj in model.variables])
-    self.assertIn(id(v), [id(obj) for obj in model.trainable_variables])
-    self.assertNotIn(id(v), [id(obj) for obj in model.non_trainable_variables])
-    self.assertIn(id(model.layer_list[0].trainable_weights[0]),
-                  [id(obj) for obj in model.trainable_weights])
+    with self.test_session():
+      model = HasTuple()
+      output = model(array_ops.ones([32, 2]))
+      self.assertAllEqual([32, 5], output.shape.as_list())
+      self.assertLen(model.layers, 4)
+      self.assertLen(model.layer_list.layers, 3)
+      six.assertCountEqual(
+          self,
+          model.layers,
+          tuple(model.layer_list.layers) + model.layers_with_updates)
+      self.assertEqual(3, model.layer_list.layers[0].units)
+      self.assertEqual(4, model.layer_list.layers[1].units)
+      self.assertEqual(5, model.layer_list.layers[2].units)
+      self.assertLen(model._checkpoint_dependencies, 2)
+      self.assertIs(model.layer_list, model._checkpoint_dependencies[0].ref)
+      self.assertIs(model.layers_with_updates,
+                    model._checkpoint_dependencies[1].ref)
+      self.assertLen(
+          model._checkpoint_dependencies[0].ref._checkpoint_dependencies, 3)
+      self.evaluate([v.initializer for v in model.variables])
+      self.evaluate(model.variables[0].assign([[1., 2., 3.], [4., 5., 6.]]))
+      save_path = os.path.join(self.get_temp_dir(), "ckpt")
+      model.save_weights(save_path)
+      self.evaluate(model.variables[0].assign(array_ops.zeros([2, 3])))
+      model.load_weights(save_path)
+      self.assertAllEqual([[1., 2., 3.], [4., 5., 6.]],
+                          self.evaluate(model.variables[0]))
+      v = variables.Variable(1.)
+      model.var_list = (v,)
+      self.assertIn(id(v), [id(obj) for obj in model.variables])
+      self.assertIn(id(v), [id(obj) for obj in model.trainable_variables])
+      self.assertNotIn(id(v),
+                       [id(obj) for obj in model.non_trainable_variables])
+      self.assertIn(id(model.layer_list[0].trainable_weights[0]),
+                    [id(obj) for obj in model.trainable_weights])
 
   @parameterized.named_parameters(
       ("Module", module.Module),
@@ -498,7 +497,7 @@ class TupleTests(test.TestCase, parameterized.TestCase):
     model(model_input)
     self.assertEmpty(model.updates)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLossesForwarded(self):
     model = HasTuple()
     model_input = array_ops.ones([32, 2])
@@ -526,7 +525,7 @@ class TupleTests(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, d[(second_layer,)])
     self.assertEqual([first_layer, second_layer], model.layers)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testTensorConversion(self):
 
     class TupleToTensor(training.Model):
@@ -544,13 +543,13 @@ class TupleTests(test.TestCase, parameterized.TestCase):
         self.evaluate(array_ops.pack(TupleToTensor().l)))
 
 
-class InterfaceTests(test.TestCase):
+class InterfaceTests(keras_parameterized.TestCase):
 
   def testNoDependency(self):
-    root = tracking.AutoTrackable()
-    hasdep = tracking.AutoTrackable()
+    root = module.Module()
+    hasdep = module.Module()
     root.hasdep = hasdep
-    nodep = tracking.AutoTrackable()
+    nodep = module.Module()
     root.nodep = data_structures.NoDependency(nodep)
     self.assertEqual(1, len(root._checkpoint_dependencies))
     self.assertIs(root._checkpoint_dependencies[0].ref, root.hasdep)
@@ -563,12 +562,12 @@ class InterfaceTests(test.TestCase):
       def __init__(self):
         super(NoDependencyModel, self).__init__()
         self.a = []
-        self.b = tracking.AutoTrackable()
+        self.b = module.Module()
 
     nodeps = NoDependencyModel()
     self.assertEqual([nodeps], util.list_objects(nodeps))
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testDictionariesBasic(self):
     a = training.Model()
     b = training.Model()
@@ -592,7 +591,7 @@ class InterfaceTests(test.TestCase):
     with self.cached_session():
       checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testNoDepList(self):
     a = training.Model()
     a.l1 = data_structures.NoDependency([])
@@ -607,4 +606,5 @@ class InterfaceTests(test.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

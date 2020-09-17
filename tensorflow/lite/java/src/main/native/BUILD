@@ -71,5 +71,6 @@ exports_files(
     [
         "exported_symbols.lds",
         "version_script.lds",
+        "op_resolver.h",
     ],
 )

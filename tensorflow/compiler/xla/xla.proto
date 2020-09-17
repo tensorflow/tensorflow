@@ -270,8 +270,8 @@ message DebugOptions {
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
 
-  // Blacklist for cuDNN convolutions.
-  string xla_gpu_algorithm_blacklist_path = 128;
+  // Denylist for cuDNN convolutions.
+  string xla_gpu_algorithm_denylist_path = 128;
 
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
@@ -349,6 +349,10 @@ message ExecutionOptions {
   // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
   // num_partitions > 1 and XLA is requested to partition the input program.
   bool use_spmd_partitioning = 11;
+
+  // If set, deduplicate hlo into function calls to reduce binary size. Only
+  // works on TPU.
+  bool deduplicate_hlo = 12;
 }
 
 message GetDeviceHandlesRequest {

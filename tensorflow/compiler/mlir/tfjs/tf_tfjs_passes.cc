@@ -45,7 +45,7 @@ void AddTFToTFJSConversionPasses(mlir::OpPassManager* pm) {
   // raise to executor dialect in order to use GraphDef converter
   pm->addNestedPass<mlir::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm->addNestedPass<mlir::FuncOp>(mlir::CreateBreakUpIslandsPass());
+  pm->addPass(mlir::CreateBreakUpIslandsPass());
 }
 
 }  // namespace tensorflow

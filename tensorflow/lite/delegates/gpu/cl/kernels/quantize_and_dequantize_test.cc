@@ -56,9 +56,7 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim2Bits8) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 3, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -92,9 +90,7 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim3Bits8_NegativeRange) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -128,9 +124,7 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim3Bits16) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -164,9 +158,7 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim2Bits16_NegativeRange) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 3, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,

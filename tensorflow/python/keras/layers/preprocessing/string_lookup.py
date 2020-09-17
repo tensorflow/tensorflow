@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -196,6 +197,7 @@ class StringLookup(index_lookup.IndexLookup):
         vocabulary=vocabulary,
         invert=invert,
         **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("StringLookup")
 
   def get_config(self):
     config = {"encoding": self.encoding}

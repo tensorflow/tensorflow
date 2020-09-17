@@ -20,7 +20,7 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.keras import testing_utils
@@ -69,6 +69,8 @@ class _DistributionStrategyRnnModelCorrectnessTest(
     return model
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class DistributionStrategyGruModelCorrectnessTest(
     _DistributionStrategyRnnModelCorrectnessTest):
 
@@ -80,7 +82,7 @@ class DistributionStrategyGruModelCorrectnessTest(
     else:
       return rnn_v1.GRU
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_gru_model_correctness(self, distribution, use_numpy,
                                  use_validation_data):
@@ -88,6 +90,8 @@ class DistributionStrategyGruModelCorrectnessTest(
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class DistributionStrategyLstmModelCorrectnessTest(
     _DistributionStrategyRnnModelCorrectnessTest):
 
@@ -99,13 +103,13 @@ class DistributionStrategyLstmModelCorrectnessTest(
     else:
       return rnn_v1.LSTM
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_lstm_model_correctness(self, distribution, use_numpy,
                                   use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())
   @testing_utils.enable_v2_dtype_behavior
   def test_lstm_model_correctness_mixed_precision(self, distribution, use_numpy,

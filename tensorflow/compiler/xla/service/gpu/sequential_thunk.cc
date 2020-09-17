@@ -28,12 +28,6 @@ SequentialThunk::SequentialThunk(ThunkInfo thunk_info,
                                  std::vector<std::unique_ptr<Thunk>> thunks)
     : Thunk(Kind::kSequential, thunk_info), thunks_(std::move(thunks)) {}
 
-void SequentialThunk::ComputeAnnotations() {
-  for (const auto& thunk : thunks_) {
-    thunk->ComputeAnnotations();
-  }
-}
-
 Status SequentialThunk::Initialize(const GpuExecutable& executable,
                                    se::StreamExecutor* executor) {
   for (auto& thunk : thunks_) {

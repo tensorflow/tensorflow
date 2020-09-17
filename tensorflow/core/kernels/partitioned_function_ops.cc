@@ -257,13 +257,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
-  profiler::TraceMe trace_me(
-      [&] {
-        return absl::StrCat(
-            "PartitionedCallOp #parent_step_id=", ctx->step_id(),
-            ",function_step_id=", run_opts.step_id, "#");
-      },
-      /*level=*/2);
+  profiler::TraceMe trace_me("PartitionedCallOp");
   lib->Run(run_opts, handle, inputs, rets,
            [rets, done = std::move(done), ctx, func_name,
             step_container](const Status& status) {
@@ -295,11 +289,5 @@ REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
 REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");
 REGISTER_INPUT_COLOCATION_EXEMPTION("StatefulPartitionedCall");
 
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_SYCL),
-                        PartitionedCallOp);
-REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_SYCL),
-                        PartitionedCallOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

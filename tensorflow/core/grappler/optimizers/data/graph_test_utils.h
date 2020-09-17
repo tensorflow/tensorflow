@@ -66,6 +66,19 @@ NodeDef MakeShuffleV2Node(StringPiece name, StringPiece input_node_name,
                           StringPiece buffer_size_node_name,
                           StringPiece seed_generator_node_name);
 
+// Creates a test NodeDef for TakeDataset.
+NodeDef MakeTakeNode(StringPiece name, StringPiece input_node_name,
+                     StringPiece count_node_name);
+
+// Creates a test NodeDef for SkipDataset.
+NodeDef MakeSkipNode(StringPiece name, StringPiece input_node_name,
+                     StringPiece count_node_name);
+
+// Creates a test NodeDef for ShardDataset.
+NodeDef MakeShardNode(StringPiece name, StringPiece input_node_name,
+                      StringPiece num_shards_node_name,
+                      StringPiece index_node_name);
+
 }  // namespace graph_tests_utils
 }  // namespace grappler
 }  // namespace tensorflow

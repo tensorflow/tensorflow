@@ -47,6 +47,44 @@ class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
   }
 };
 
+class ElementWiseOpInt8Model : public ElementWiseOpBaseModel {
+ public:
+  ElementWiseOpInt8Model(BuiltinOperator op, TensorData input_tensor_data,
+                         TensorData output_tensor_data) {
+    input_ = AddInput(input_tensor_data);
+    output_ = AddOutput(output_tensor_data);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_tensor_data.shape});
+  }
+
+  template <typename T>
+  void AsymmetricQuantizeAndPopulate(int index,
+                                     const std::vector<float>& data) {
+    std::vector<int8_t> q(data.size());
+    float scaling_factor;
+    int zero_point;
+    tensor_utils::AsymmetricQuantizeFloats(data.data(), data.size(), q.data(),
+                                           &scaling_factor, &zero_point);
+    PopulateTensor<T>(index, /*offset=*/0, reinterpret_cast<T*>(q.data()),
+                      reinterpret_cast<T*>(q.data() + q.size()));
+  }
+
+  template <typename T>
+  std::vector<float> ExtractDequantVector(int index) {
+    auto vec = ExtractVector<T>(index);
+    TfLiteTensor* t = interpreter_->tensor(index);
+    auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
+    float scaling_factor = affine_quantization->scale->data[0];
+    int zero_point = affine_quantization->zero_point->data[0];
+    std::vector<float> output;
+    for (const auto& v : vec) {
+      output.push_back((static_cast<T>(v) - zero_point) * scaling_factor);
+    }
+    return output;
+  }
+};
+
 class ElementWiseOpBoolModel : public ElementWiseOpBaseModel {
  public:
   ElementWiseOpBoolModel(BuiltinOperator op,
@@ -96,6 +134,36 @@ TEST(FloatActivationsOpTest, Abs) {
                                                       0.f, 6.2f, 2.f, 4.f,  //
                                                       3.f, 2.f, 10.f, 1.f,  //
                                                   }));
+}
+
+TEST(FloatActivationsOpTest, AbsInt8) {
+  std::vector<float> data = {15., 46., 78., -142., -1., -17., -49., 113.};
+  std::vector<float> abs_data(data.size());
+  for (int i = 0; i < abs_data.size(); i++) {
+    abs_data[i] = std::abs(data[i]);
+  }
+  const auto minmax = std::minmax_element(data.begin(), data.end());
+  const float abs_max = std::max(std::abs(*minmax.first), *minmax.second);
+  const float kInputScale = (*minmax.second - *minmax.first) / 255.0;
+  const float kOutputScale = abs_max / 255.0;
+  const int input_zero_point = 127 - *minmax.second;
+  const int output_zero_point = -128;
+  ElementWiseOpInt8Model m(
+      BuiltinOperator_ABS,
+      {TensorType_INT8,
+       {1, 8},
+       *minmax.first,
+       *minmax.second,
+       kInputScale,
+       input_zero_point,
+       true,
+       {kInputScale},
+       {input_zero_point}},
+      {TensorType_INT8, {1, 8}, 0, abs_max, kOutputScale, output_zero_point});
+  m.AsymmetricQuantizeAndPopulate<int8_t>(m.input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
+              ElementsAreArray(ArrayFloatNear(abs_data, kInputScale)));
 }
 
 TEST(ElementWise, Sqrt) {

@@ -41,7 +41,6 @@ cc_library(
         ":calibration_reader",
         ":logging_op",
         ":logging_op_resolver",
-        ":node_info_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
@@ -153,41 +152,6 @@ cc_library(
     deps = [
         ":calibration_logger",
         "//tensorflow/lite/c:common",
-    ],
-)
-
-cc_library(
-    name = "node_info_delegate",
-    srcs = ["node_info_delegate.cc"],
-    hdrs = ["node_info_delegate.h"],
-    copts = tflite_copts(),
-    deps = [
-        ":calibration_common",
-        "//tensorflow/lite:framework",
-    ],
-)
-
-tf_cc_test(
-    name = "node_info_delegate_test",
-    srcs = ["node_info_delegate_test.cc"],
-    args = [
-        "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
-    ],
-    data = [
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
-    ],
-    tags = [
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":node_info_delegate",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/tools/optimize:test_util",
-        "@com_google_googletest//:gtest",
     ],
 )
 

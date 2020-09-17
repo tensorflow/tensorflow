@@ -230,6 +230,21 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
+// Aborts all ongoing collectives with the specified status. After abortion,
+// subsequent collectives will error with this status immediately.
+//
+// This is intended to be used when a peer failure is detected. There's yet no
+// way to reset the collectives other than restarting the program.
+TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
+                                                  TF_Status* status);
+
+// Checks the health of collective ops peers. Explicit health check is needed in
+// multi worker collective ops to detect failures in the cluster.  If a peer is
+// down, collective ops may hang.
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(TFE_Context* ctx,
+                                                            const char* task,
+                                                            TF_Status* status);
+
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {
   // Number of dimensions. -1 indicates unknown rank.

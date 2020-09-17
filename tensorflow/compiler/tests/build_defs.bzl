@@ -8,6 +8,7 @@ load(
     "tf_cuda_tests_tags",
     "tf_exec_properties",
 )
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 def all_backends():
     b = ["cpu"] + plugins.keys()
@@ -121,7 +122,7 @@ def tf_xla_py_test(
                     updated_name = updated_name[:-5]
                 updated_name += "_mlir_bridge_test"
 
-            native.py_test(
+            py_test(
                 name = updated_name,
                 srcs = srcs,
                 srcs_version = "PY2AND3",

@@ -14,7 +14,6 @@ load(
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
     _tf_exec_properties = "tf_exec_properties",
     _tf_gpu_tests_tags = "tf_gpu_tests_tags",
-    _tf_sycl_tests_tags = "tf_sycl_tests_tags",
 )
 
 if_dynamic_kernels = _if_dynamic_kernels
@@ -29,4 +28,3 @@ tf_additional_xla_deps_py = _tf_additional_xla_deps_py
 tf_cuda_tests_tags = _tf_cuda_tests_tags
 tf_exec_properties = _tf_exec_properties
 tf_gpu_tests_tags = _tf_gpu_tests_tags
-tf_sycl_tests_tags = _tf_sycl_tests_tags

@@ -1,10 +1,11 @@
 # TFLite Delegate Utilities for Tooling
 
 ## TFLite Delegate Registrar
+
 [A TFLite delegate registrar](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/delegate_provider.h)
 is provided here. The registrar keeps a list of TFLite delegate providers, each
 of which defines a list parameters that could be initialized from commandline
-argumenents and provides a TFLite delegate instance creation based on those
+arguments and provides a TFLite delegate instance creation based on those
 parameters. This delegate registrar has been used in TFLite evaluation tools and
 the benchmark model tool.
 

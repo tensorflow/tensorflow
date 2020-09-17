@@ -138,9 +138,6 @@ static void BM_gpu_float_int64(int iters, int num) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   test::Benchmark("gpu", Cast<float, int64>(num)).Run(iters);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-  test::Benchmark("sycl", Cast<float, int64>(num)).Run(iters);
-#endif  // TENSORFLOW_USE_SYCL
 }
 BENCHMARK(BM_gpu_float_int64)->Arg(64 << 10)->Arg(32 << 20);
 
@@ -161,9 +158,6 @@ static void BM_gpu_bool_float(int iters, int num) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   test::Benchmark("gpu", Cast<bool, float>(num)).Run(iters);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-  test::Benchmark("sycl", Cast<bool, float>(num)).Run(iters);
-#endif  // TENSORFLOW_USE_SYCL
 }
 BENCHMARK(BM_gpu_bool_float)->Arg(64 << 10)->Arg(32 << 20);
 

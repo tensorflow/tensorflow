@@ -325,6 +325,22 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
       {updated_operand, scatter_indices, updates}};
 }
 
+static int64 ScatterTripCount(HloInstruction* scatter) {
+  // Compute the trip count for the while loop to be used for scatter. This
+  // should be the number of indices we should scatter into the operand.
+  HloInstruction* scatter_indices = scatter->mutable_operand(1);
+  const Shape& scatter_indices_shape = scatter_indices->shape();
+  const ScatterDimensionNumbers& dim_numbers =
+      scatter->scatter_dimension_numbers();
+  int64 scatter_loop_trip_count = 1;
+  for (int64 i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
+    if (i != dim_numbers.index_vector_dim()) {
+      scatter_loop_trip_count *= scatter_indices_shape.dimensions(i);
+    }
+  }
+  return scatter_loop_trip_count;
+}
+
 // High Level Algorithm.
 //
 // 1. Canonicalize the scatter_indices tensor such that it has rank 2, where
@@ -342,7 +358,7 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
 //         from c. and d. using the update_computation of scatter.
 //      f. Write the updated value of the slice into the operand tensor.
 
-StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
+StatusOr<HloInstruction*> ScatterExpander::ExpandInstruction(
     HloInstruction* scatter) {
   HloInstruction* operand = scatter->mutable_operand(0);
   HloInstruction* scatter_indices = scatter->mutable_operand(1);
@@ -358,13 +374,7 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
 
   // Compute the trip count for the while loop to be used for scatter. This
   // should be the number of indices we should scatter into the operand.
-  const Shape& scatter_indices_shape = scatter_indices->shape();
-  int64 scatter_loop_trip_count = 1;
-  for (int64 i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
-    if (i != dim_numbers.index_vector_dim()) {
-      scatter_loop_trip_count *= scatter_indices_shape.dimensions(i);
-    }
-  }
+  int64 scatter_loop_trip_count = ScatterTripCount(scatter);
   if (!IsInt32(scatter_loop_trip_count)) {
     return Unimplemented(
         "Scatter operations with more than 2147483647 scatter indices are not "
@@ -408,23 +418,9 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
   return scatter_loop_result.front();
 }
 
-StatusOr<bool> ScatterExpander::Run(HloModule* module) {
-  std::vector<HloInstruction*> scatter_instrs;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    for (HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() == HloOpcode::kScatter) {
-        scatter_instrs.push_back(instr);
-      }
-    }
-  }
-
-  for (auto instr : scatter_instrs) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandScatter(instr));
-    TF_RETURN_IF_ERROR(
-        instr->parent()->ReplaceInstruction(instr, expanded_root));
-  }
-
-  return !scatter_instrs.empty();
+bool ScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kScatter &&
+         (mode_ == kEliminateAllScatters || ScatterTripCount(inst) == 1);
 }
 
 }  // namespace xla

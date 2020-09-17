@@ -60,7 +60,7 @@ class Device : public DeviceBase {
   ~Device() override;
 
   // Full name of this device (see top comment).
-  const string& name() const override { return device_attributes_.name(); }
+  const std::string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
   const DeviceNameUtils::ParsedName& parsed_name() const {
@@ -71,7 +71,9 @@ class Device : public DeviceBase {
   // human-readable and not computer-parsed, except that two devices
   // with the same device_type() are expected to perform similarly
   // (both from a computation and communication perspective).
-  const string& device_type() const { return device_attributes_.device_type(); }
+  const std::string& device_type() const {
+    return device_attributes_.device_type();
+  }
 
   // Returns an aggregation of device attributes.
   const DeviceAttributes& attributes() const override {
@@ -157,15 +159,15 @@ class Device : public DeviceBase {
   virtual ResourceMgr* resource_manager() { return rmgr_; }
 
   // Summarizes the status of this Device, for debugging.
-  string DebugString() const { return device_attributes_.DebugString(); }
+  std::string DebugString() const { return device_attributes_.DebugString(); }
 
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
-      const string& name, DeviceType device, Bytes memory_limit,
-      const DeviceLocality& locality, const string& physical_device_desc);
+      const std::string& name, DeviceType device, Bytes memory_limit,
+      const DeviceLocality& locality, const std::string& physical_device_desc);
 
   static DeviceAttributes BuildDeviceAttributes(
-      const string& name, DeviceType device, Bytes memory_limit,
+      const std::string& name, DeviceType device, Bytes memory_limit,
       const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");

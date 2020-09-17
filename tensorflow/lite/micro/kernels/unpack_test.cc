@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/debug_log.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -24,19 +24,15 @@ namespace tflite {
 namespace testing {
 
 void TestUnpackThreeOutputsFloat(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<float> input_data, int axis,
-    std::initializer_list<int> output1_dims_data,
-    std::initializer_list<float> expected_output1_data,
-    std::initializer_list<int> output2_dims_data,
-    std::initializer_list<float> expected_output2_data,
-    std::initializer_list<int> output3_dims_data,
-    std::initializer_list<float> expected_output3_data, float* output1_data,
-    float* output2_data, float* output3_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output1_dims = IntArrayFromInitializer(output1_dims_data);
-  TfLiteIntArray* output2_dims = IntArrayFromInitializer(output2_dims_data);
-  TfLiteIntArray* output3_dims = IntArrayFromInitializer(output3_dims_data);
+    const int* input_dims_data, const float* input_data, int axis,
+    const int* output1_dims_data, const float* expected_output1_data,
+    const int* output2_dims_data, const float* expected_output2_data,
+    const int* output3_dims_data, const float* expected_output3_data,
+    float* output1_data, float* output2_data, float* output3_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
+  TfLiteIntArray* output2_dims = IntArrayFromInts(output2_dims_data);
+  TfLiteIntArray* output3_dims = IntArrayFromInts(output3_dims_data);
   const int output1_dims_count = ElementCount(*output1_dims);
   const int output2_dims_count = ElementCount(*output2_dims);
   const int output3_dims_count = ElementCount(*output3_dims);
@@ -63,68 +59,44 @@ void TestUnpackThreeOutputsFloat(
     output3_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   TfLiteUnpackParams builtin_data = {
       .num = 3,
       .axis = axis,
   };
 
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {3, 1, 2, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output1_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output1_data.begin()[i], output1_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output1_data[i], output1_data[i], 1e-5f);
   }
 
   for (int i = 0; i < output2_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output2_data.begin()[i], output2_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output2_data[i], output2_data[i], 1e-5f);
   }
 
   for (int i = 0; i < output3_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output3_data.begin()[i], output3_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output3_data[i], output3_data[i], 1e-5f);
   }
 }
 
-void TestUnpackOneOutputFloat(std::initializer_list<int> input_dims_data,
-                              std::initializer_list<float> input_data, int axis,
-                              std::initializer_list<int> output_dims_data,
-                              std::initializer_list<float> expected_output_data,
+void TestUnpackOneOutputFloat(const int* input_dims_data,
+                              const float* input_data, int axis,
+                              const int* output_dims_data,
+                              const float* expected_output_data,
                               float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
   constexpr int input_size = 1;
@@ -139,65 +111,39 @@ void TestUnpackOneOutputFloat(std::initializer_list<int> input_dims_data,
     output_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   TfLiteUnpackParams builtin_data = {
       .num = 1,
       .axis = axis,
   };
 
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 1e-5f);
   }
 }
 
 void TestUnpackThreeOutputsQuantized(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<uint8_t> input_data, int axis,
-    std::initializer_list<int> output1_dims_data,
-    std::initializer_list<uint8_t> expected_output1_data,
-    std::initializer_list<int> output2_dims_data,
-    std::initializer_list<uint8_t> expected_output2_data,
-    std::initializer_list<int> output3_dims_data,
-    std::initializer_list<uint8_t> expected_output3_data, uint8_t* output1_data,
-    uint8_t* output2_data, uint8_t* output3_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output1_dims = IntArrayFromInitializer(output1_dims_data);
-  TfLiteIntArray* output2_dims = IntArrayFromInitializer(output2_dims_data);
-  TfLiteIntArray* output3_dims = IntArrayFromInitializer(output3_dims_data);
+    const int* input_dims_data, const uint8_t* input_data, int axis,
+    const int* output1_dims_data, const uint8_t* expected_output1_data,
+    const int* output2_dims_data, const uint8_t* expected_output2_data,
+    const int* output3_dims_data, const uint8_t* expected_output3_data,
+    uint8_t* output1_data, uint8_t* output2_data, uint8_t* output3_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
+  TfLiteIntArray* output2_dims = IntArrayFromInts(output2_dims_data);
+  TfLiteIntArray* output3_dims = IntArrayFromInts(output3_dims_data);
   const int output1_dims_count = ElementCount(*output1_dims);
   const int output2_dims_count = ElementCount(*output2_dims);
   const int output3_dims_count = ElementCount(*output3_dims);
@@ -227,72 +173,47 @@ void TestUnpackThreeOutputsQuantized(
     output3_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   TfLiteUnpackParams builtin_data = {
       .num = 3,
       .axis = axis,
   };
 
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {3, 1, 2, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output1_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data.begin()[i], output1_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data[i], output1_data[i]);
   }
 
   for (int i = 0; i < output2_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data.begin()[i], output2_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data[i], output2_data[i]);
   }
 
   for (int i = 0; i < output3_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output3_data.begin()[i], output3_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output3_data[i], output3_data[i]);
   }
 }
 
 void TestUnpackThreeOutputsQuantized32(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<int32_t> input_data, int axis,
-    std::initializer_list<int> output1_dims_data,
-    std::initializer_list<int32_t> expected_output1_data,
-    std::initializer_list<int> output2_dims_data,
-    std::initializer_list<int32_t> expected_output2_data,
-    std::initializer_list<int> output3_dims_data,
-    std::initializer_list<int32_t> expected_output3_data, int32_t* output1_data,
-    int32_t* output2_data, int32_t* output3_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output1_dims = IntArrayFromInitializer(output1_dims_data);
-  TfLiteIntArray* output2_dims = IntArrayFromInitializer(output2_dims_data);
-  TfLiteIntArray* output3_dims = IntArrayFromInitializer(output3_dims_data);
+    const int* input_dims_data, const int32_t* input_data, int axis,
+    const int* output1_dims_data, const int32_t* expected_output1_data,
+    const int* output2_dims_data, const int32_t* expected_output2_data,
+    const int* output3_dims_data, const int32_t* expected_output3_data,
+    int32_t* output1_data, int32_t* output2_data, int32_t* output3_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
+  TfLiteIntArray* output2_dims = IntArrayFromInts(output2_dims_data);
+  TfLiteIntArray* output3_dims = IntArrayFromInts(output3_dims_data);
   const int output1_dims_count = ElementCount(*output1_dims);
   const int output2_dims_count = ElementCount(*output2_dims);
   const int output3_dims_count = ElementCount(*output3_dims);
@@ -319,55 +240,34 @@ void TestUnpackThreeOutputsQuantized32(
     output3_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   TfLiteUnpackParams builtin_data = {
       .num = 3,
       .axis = axis,
   };
 
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {3, 1, 2, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output1_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data.begin()[i], output1_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data[i], output1_data[i]);
   }
 
   for (int i = 0; i < output2_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data.begin()[i], output2_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data[i], output2_data[i]);
   }
 
   for (int i = 0; i < output3_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output3_data.begin()[i], output3_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output3_data[i], output3_data[i]);
   }
 }
 
@@ -377,6 +277,14 @@ void TestUnpackThreeOutputsQuantized32(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(UnpackFloatThreeOutputs) {
+  const int input_shape[] = {2, 3, 2};
+  const float input_values[] = {1, 2, 3, 4, 5, 6};
+  const int output1_shape[] = {1, 2};
+  const float output1_golden[] = {1, 2};
+  const int output2_shape[] = {1, 2};
+  const float output2_golden[] = {3, 4};
+  const int output3_shape[] = {1, 2};
+  const float output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;
   constexpr int output3_dims_count = 2;
@@ -384,18 +292,20 @@ TF_LITE_MICRO_TEST(UnpackFloatThreeOutputs) {
   float output2_data[output2_dims_count];
   float output3_data[output3_dims_count];
   tflite::testing::TestUnpackThreeOutputsFloat(
-      {2, 3, 2},           // Input shape
-      {1, 2, 3, 4, 5, 6},  // Input values
-      0, {1, 2},           // Output1 shape
-      {1, 2},              // Output1 values
-      {1, 2},              // Output2 shape
-      {3, 4},              // Output2 values
-      {1, 2},              // Output3 shape
-      {5, 6},              // Output3 values
+      input_shape, input_values, 0, output1_shape, output1_golden,
+      output2_shape, output2_golden, output3_shape, output3_golden,
       output1_data, output2_data, output3_data);
 }
 
 TF_LITE_MICRO_TEST(UnpackFloatThreeOutputsNegativeAxisTwo) {
+  const int input_shape[] = {2, 3, 2};
+  const float input_values[] = {1, 2, 3, 4, 5, 6};
+  const int output1_shape[] = {1, 2};
+  const float output1_golden[] = {1, 2};
+  const int output2_shape[] = {1, 2};
+  const float output2_golden[] = {3, 4};
+  const int output3_shape[] = {1, 2};
+  const float output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;
   constexpr int output3_dims_count = 2;
@@ -403,29 +313,31 @@ TF_LITE_MICRO_TEST(UnpackFloatThreeOutputsNegativeAxisTwo) {
   float output2_data[output2_dims_count];
   float output3_data[output3_dims_count];
   tflite::testing::TestUnpackThreeOutputsFloat(
-      {2, 3, 2},           // Input shape
-      {1, 2, 3, 4, 5, 6},  // Input values
-      -2, {1, 2},          // Output1 shape
-      {1, 2},              // Output1 values
-      {1, 2},              // Output2 shape
-      {3, 4},              // Output2 values
-      {1, 2},              // Output3 shape
-      {5, 6},              // Output3 values
+      input_shape, input_values, -2, output1_shape, output1_golden,
+      output2_shape, output2_golden, output3_shape, output3_golden,
       output1_data, output2_data, output3_data);
 }
 
 TF_LITE_MICRO_TEST(UnpackFloatOneOutput) {
+  const int input_shape[] = {2, 1, 6};
+  const float input_values[] = {1, 2, 3, 4, 5, 6};
+  const int output_shape[] = {1, 6};
+  const float golden[] = {1, 2, 3, 4, 5, 6};
   constexpr int output_dims_count = 6;
   float output_data[output_dims_count];
-  tflite::testing::TestUnpackOneOutputFloat(
-      {2, 1, 6},           // Input shape
-      {1, 2, 3, 4, 5, 6},  // Input values
-      0, {1, 6},           // Output shape
-      {1, 2, 3, 4, 5, 6},  // Output values
-      output_data);
+  tflite::testing::TestUnpackOneOutputFloat(input_shape, input_values, 0,
+                                            output_shape, golden, output_data);
 }
 
 TF_LITE_MICRO_TEST(UnpackQuantizedThreeOutputs) {
+  const int input_shape[] = {2, 3, 2};
+  const uint8_t input_values[] = {1, 2, 3, 4, 5, 6};
+  const int output1_shape[] = {1, 2};
+  const uint8_t output1_golden[] = {1, 2};
+  const int output2_shape[] = {1, 2};
+  const uint8_t output2_golden[] = {3, 4};
+  const int output3_shape[] = {1, 2};
+  const uint8_t output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;
   constexpr int output3_dims_count = 2;
@@ -433,18 +345,20 @@ TF_LITE_MICRO_TEST(UnpackQuantizedThreeOutputs) {
   uint8_t output2_data[output2_dims_count];
   uint8_t output3_data[output3_dims_count];
   tflite::testing::TestUnpackThreeOutputsQuantized(
-      {2, 3, 2},           // Input shape
-      {1, 2, 3, 4, 5, 6},  // Input values
-      0, {1, 2},           // Output1 shape
-      {1, 2},              // Output1 values
-      {1, 2},              // Output2 shape
-      {3, 4},              // Output2 values
-      {1, 2},              // Output3 shape
-      {5, 6},              // Output3 values
+      input_shape, input_values, 0, output1_shape, output1_golden,
+      output2_shape, output2_golden, output3_shape, output3_golden,
       output1_data, output2_data, output3_data);
 }
 
 TF_LITE_MICRO_TEST(UnpackQuantized32ThreeOutputs) {
+  const int input_shape[] = {2, 3, 2};
+  const int32_t input_values[] = {1, 2, 3, 4, 5, 6};
+  const int output1_shape[] = {1, 2};
+  const int32_t output1_golden[] = {1, 2};
+  const int output2_shape[] = {1, 2};
+  const int32_t output2_golden[] = {3, 4};
+  const int output3_shape[] = {1, 2};
+  const int32_t output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;
   constexpr int output3_dims_count = 2;
@@ -452,14 +366,8 @@ TF_LITE_MICRO_TEST(UnpackQuantized32ThreeOutputs) {
   int32_t output2_data[output2_dims_count];
   int32_t output3_data[output3_dims_count];
   tflite::testing::TestUnpackThreeOutputsQuantized32(
-      {2, 3, 2},           // Input shape
-      {1, 2, 3, 4, 5, 6},  // Input values
-      0, {1, 2},           // Output1 shape
-      {1, 2},              // Output1 values
-      {1, 2},              // Output2 shape
-      {3, 4},              // Output2 values
-      {1, 2},              // Output3 shape
-      {5, 6},              // Output3 values
+      input_shape, input_values, 0, output1_shape, output1_golden,
+      output2_shape, output2_golden, output3_shape, output3_golden,
       output1_data, output2_data, output3_data);
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_execute_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"

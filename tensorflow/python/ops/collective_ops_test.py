@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
 import time
 
 from tensorflow.core.protobuf import config_pb2
@@ -41,6 +42,10 @@ from tensorflow.python.platform import tf_logging as logging
 
 
 class CollectiveOpTest(test.TestCase):
+
+  def setUp(self):
+    context._reset_context()  # pylint: disable=protected-access
+    super(CollectiveOpTest, self).setUp()
 
   def _testCollectiveReduce(self,
                             inputs,
@@ -164,7 +169,6 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_v2_only
   def testCollectiveTimeoutV2(self):
-    context._reset_context()
     timeout = 4.5
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
@@ -207,7 +211,6 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_v2_only
   def testParamResolutionAfterTimeoutV2(self):
-    context._reset_context()
     timeout = 1.5
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
@@ -250,6 +253,64 @@ class CollectiveOpTest(test.TestCase):
             merge_op='Add',
             final_op='Id',
             timeout=timeout)
+
+  @test_util.run_v2_only
+  def testExecutionAfterTimeoutV2(self):
+    timeout = 1.5
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    group_key = 20
+    instance_key = 30
+    input_data = constant_op.constant([1, 2, 3, 4])
+
+    @def_function.function
+    def run_all_reduce():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              input_data,
+              group_size=2,
+              group_key=group_key,
+              instance_key=instance_key,
+              merge_op='Add',
+              final_op='Id',
+              timeout=timeout)
+
+    # Run a normal all-reduce to complete param resolution.
+    run_all_reduce()
+
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:0'):
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            instance_key=instance_key,
+            merge_op='Add',
+            final_op='Id',
+            timeout=timeout)
+
+    # We launch the second device after the first device times out. This is to
+    # simulate the situation when other workers are slow and the timeout is
+    # short. It should error immediately.
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:1'):
+        # No timeout.
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            merge_op='Add',
+            final_op='Id',
+            instance_key=instance_key)
 
   def testNcclHintFallbackToRingReduce(self):
     """Tests that setting `communication_hint=nccl` works on non-GPU builds."""
@@ -562,7 +623,6 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_v2_only
   def testCollectiveTensorsHaveNoDeviceSpecified(self):
-    context._reset_context()
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
     config.set_logical_device_configuration(cpus[0], [
@@ -655,7 +715,6 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_v2_only
   def testMultipleGroups(self):
-    context._reset_context()
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
     config.set_logical_device_configuration(cpus[0], [
@@ -687,6 +746,171 @@ class CollectiveOpTest(test.TestCase):
 
     run_and_assert(group_size=2, group_key=1)
     run_and_assert(group_size=3, group_key=2)
+
+  @test_util.run_v2_only
+  def testAbortGroupParamsResolution(self):
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant(1.)
+
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      # This hangs on params resolution since we're only launching one
+      # collective for a group size of 2.
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # Reset the context in order to reset the collective executor.
+    context._reset_context()  # pylint: disable=protected-access
+    t.join()
+
+    # After reset non-NCCL collectives should work.
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+
+    def collective_fn():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='ring')
+
+    def_function.function(collective_fn)()
+
+  @test_util.run_v2_only
+  def testAbortInstanceParamsResolution(self):
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant(1.)
+
+    def collective_fn():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='ring')
+
+    # First perform a normal all-reduce to complete the group resolution.
+    def_function.function(collective_fn)()
+
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    # Use a different instance key to trigger another instance resolution.
+    instance_key = 101
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      # This hangs on params resolution since we're only launching one
+      # collective for a group size of 2.
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # Reset the context in order to reset the collective executor.
+    context._reset_context()  # pylint: disable=protected-access
+    t.join()
+
+    # After reset non-NCCL collectives should work.
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    def_function.function(collective_fn)()
+
+  @test_util.run_v2_only
+  def testAbortRing(self):
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant(1.)
+
+    # First perform a normal collective to finish resolution.
+    def collective_fn():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='ring')
+
+    def_function.function(collective_fn)()
+
+    # Launch a collective that hangs, and abort the collective executor after
+    # the launch.
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # Reset the context in order to reset the collective executor.
+    t.join()
+    context._reset_context()  # pylint: disable=protected-access
+    # After reset non-NCCL collectives should work.
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    def_function.function(collective_fn)()
 
 
 if __name__ == '__main__':

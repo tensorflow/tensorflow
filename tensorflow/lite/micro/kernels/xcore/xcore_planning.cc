@@ -23,8 +23,8 @@ void RowColRegionArray::Init(TfLiteContext *ctx, size_t size) {
   assert(regions_ == nullptr);
 
   size_ = size;
-  ctx->AllocatePersistentBuffer(ctx, sizeof(RowColRegion) * size_,
-                                reinterpret_cast<void **>(&regions_));
+  regions_ = reinterpret_cast<RowColRegion *>(
+      ctx->AllocatePersistentBuffer(ctx, sizeof(RowColRegion) * size_));
 }
 
 const RowColRegion &RowColRegionArray::operator[](int i) {
@@ -55,8 +55,8 @@ void ChannelGroupArray::Init(TfLiteContext *ctx, size_t size) {
   assert(chan_groups_ == nullptr);
 
   size_ = size;
-  ctx->AllocatePersistentBuffer(ctx, sizeof(ChannelGroup) * size_,
-                                reinterpret_cast<void **>(&chan_groups_));
+  chan_groups_ = reinterpret_cast<ChannelGroup *>(
+      ctx->AllocatePersistentBuffer(ctx, sizeof(ChannelGroup) * size_));
 }
 
 const ChannelGroup &ChannelGroupArray::operator[](int i) {

@@ -51,11 +51,6 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   static Status CreateGenericMklOp(EagerOperation* orig_op,
                                    std::unique_ptr<EagerOperation>* mkl_op);
 
-  // Creates new MKL op for Conv2D, Conv2DBackpropInput and
-  // Conv2DBackpropFilter.
-  static Status CreateMklConv2DOp(
-      EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op);
-
   // Rewrite rule for Conv2D, Conv2DBackpropInput and Conv2DBackpropFilter.
   static bool RewriteConv2D(EagerOperation* op);
 
@@ -91,9 +86,21 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line), registered_kernels_map_() {
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
-  InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
-  InsertMKLEagerOps({"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
-  InsertMKLEagerOps({"Conv2DBackpropFilter", RewriteConv2D, CreateMklConv2DOp});
+  InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"Conv2DBackpropFilter", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv2DBackpropInput", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv3D", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"Conv3DBackpropFilterV2", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"Conv3DBackpropInputV2", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"DepthwiseConv2dNative", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropFilter", RewriteConv2D,
+                     CreateGenericMklOp});
+  InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropInput", RewriteConv2D,
+                     CreateGenericMklOp});
   InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
 };
 
@@ -142,16 +149,9 @@ Status MklEagerOpRewrite::SetupNewOp(
 
 Status MklEagerOpRewrite::CreateGenericMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
-  const string mkl_op_name = mkl_op_registry::GetMklOpName(orig_op->Name());
-  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
-  return Status::OK();
-}
-
-Status MklEagerOpRewrite::CreateMklConv2DOp(
-    EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op) {
   const string mkl_op_name =
-      mkl_op_registry::GetMklEagerOpName(orig_op->Name());
-  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_conv2d_op));
+      mkl_op_registry::GetMklNativeOpName(orig_op->Name());
+  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
   return Status::OK();
 }
 
@@ -207,10 +207,10 @@ bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
                                                     DataType dt) {
   // Find if the eager op_name exists in mkl_eager_ops_ list.
   auto element = mkl_eager_ops_.find(op_name);
-  if (element != mkl_eager_ops_.end() && dt == DT_FLOAT) {
+  if (element != mkl_eager_ops_.end()) {
     // Eager Op exists. So verify registry and return registered or not.
     return (mkl_op_registry::IsMklNameChangeOp(
-                mkl_op_registry::GetMklEagerOpName(op_name), dt) ||
+                mkl_op_registry::GetMklNativeOpName(op_name), dt) ||
             mkl_op_registry::IsMklNameChangeOp(
                 mkl_op_registry::GetMklOpName(op_name), dt));
   } else {

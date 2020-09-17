@@ -49,7 +49,7 @@ class SimpleStatefulOp {
   static constexpr int kMedianTensor = 0;
   static constexpr int kInvokeCount = 1;
   struct OpData {
-    int invoke_count = 0;
+    int* invoke_count = nullptr;
     int sorting_buffer = kBufferNotAllocated;
   };
 
@@ -88,10 +88,22 @@ const Model* GetComplexMockModel();
 const Model* GetSimpleModelWithBranch();
 
 // Returns a simple flatbuffer model with offline planned tensors
+// @param[in]       num_tensors           Number of tensors in the model.
+// @param[in]       metadata_buffer       Metadata for offline planner.
+// @param[in]       node_con              List of connections, i.e. operators
+//                                        in the model.
+// @param[in]       num_conns             Number of connections.
+// @param[in]       num_subgraph_inputs   How many of the input tensors are in
+//                                        the subgraph inputs. The default value
+//                                        of 0 means all of the input tensors
+//                                        are in the subgraph input list. There
+//                                        must be at least 1 input tensor in the
+//                                        subgraph input list.
 const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          const int32_t* metadata_buffer,
                                          NodeConnection* node_conn,
-                                         int num_conns);
+                                         int num_conns,
+                                         int num_subgraph_inputs = 0);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
@@ -164,7 +176,7 @@ TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
                                        float weights_scale,
                                        bool is_variable = false);
 
-// Quantizes int32 bias tensor with per-channel weights determined by input
+// Quantizes int32_t bias tensor with per-channel weights determined by input
 // scale multiplied by weight scale for each channel.
 TfLiteTensor CreatePerChannelQuantizedBiasTensor(
     const float* input, int32_t* quantized, TfLiteIntArray* dims,
@@ -176,6 +188,9 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
     const float* input, int8_t* quantized, TfLiteIntArray* dims, float* scales,
     int* zero_points, TfLiteAffineQuantization* affine_quant,
     int quantized_dimension, bool is_variable = false);
+
+// Returns the number of tensors in the default subgraph for a tflite::Model.
+size_t GetModelTensorCount(const Model* model);
 
 }  // namespace testing
 }  // namespace tflite

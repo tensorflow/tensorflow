@@ -86,6 +86,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT16;
     case kTfLiteComplex64:
       return TensorType_COMPLEX64;
+    case kTfLiteComplex128:
+      return TensorType_COMPLEX128;
   }
   // No default to get compiler error when new type is introduced.
 }
@@ -246,6 +248,14 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   tensor = interpreter_->tensor(index);
 
   size_t size = PyArray_NBYTES(array);
+
+  if (tensor->type == kTfLiteString) {
+    tflite::DynamicBuffer buffer;
+    buffer.AddString(reinterpret_cast<const char*>(PyArray_BYTES(array)), size);
+    buffer.WriteToTensor(interpreter_->tensor(index), /*new_shape=*/nullptr);
+    Py_RETURN_NONE;
+  }
+
   if (size != tensor->bytes) {
     PyErr_Format(PyExc_ValueError,
                  "numpy array had %zu bytes but expected %zu bytes.", size,

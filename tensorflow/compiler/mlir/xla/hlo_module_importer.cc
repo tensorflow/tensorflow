@@ -30,6 +30,12 @@ limitations under the License.
 
 namespace xla {
 
+HloModuleImporter::HloModuleImporter(mlir::ModuleOp module)
+    : module_(module), builder_(module.getContext()) {
+  module.getContext()->loadDialect<mlir::StandardOpsDialect>();
+  module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
+}
+
 Status HloModuleImporter::Import(const xla::HloModule& module) {
   // TODO(hinsu): Only import the entry computation here once all HLO ops with
   // reference to other computation are updated to have a region instead of a

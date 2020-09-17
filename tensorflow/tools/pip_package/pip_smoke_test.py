@@ -74,15 +74,15 @@ PYTHON_TARGETS, PY_TEST_QUERY_EXPRESSION = BuildPyTestDependencies()
 # List of dependencies that should not included in the pip package.
 DEPENDENCY_DENYLIST = [
     "//tensorflow/python:extra_py_tests_deps",
+    "//tensorflow/cc/saved_model:saved_model_test_files",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
-    "//tensorflow:enable_mlir_bridge",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/tools/pip_package:win_pip_package_marker",
     "//tensorflow/python:test_ops_2",
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
-    "//tensorflow/core:lmdb_testdata",
+    "//tensorflow/core/lib/lmdb/testdata:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
@@ -175,8 +175,7 @@ def main():
     raise RuntimeError("""
     One or more added test dependencies are not in the pip package.
 If these test dependencies need to be in TensorFlow pip package, please add them to //tensorflow/tools/pip_package/BUILD.
-Else either denylist the dependencies in //tensorflow/tools/pip_package/pip_smoke_test.py
-or add no_pip tag to the test.""")
+Else add no_pip tag to the test.""")
 
   else:
     print("TEST PASSED")

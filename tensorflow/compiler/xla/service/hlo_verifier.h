@@ -78,6 +78,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleBroadcast(HloInstruction* broadcast) override;
   Status HandleReshape(HloInstruction* reshape) override;
+  Status HandleDynamicReshape(HloInstruction* dynamic_reshape) override;
   Status HandleTranspose(HloInstruction* transpose) override;
   Status HandleParameter(HloInstruction*) override;
   Status HandleFusion(HloInstruction*) override;

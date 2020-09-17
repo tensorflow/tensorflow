@@ -53,6 +53,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return builder.getIntegerType(16);
     case tflite::TensorType_COMPLEX64:
       return mlir::ComplexType::get(builder.getF32Type());
+    case tflite::TensorType_COMPLEX128:
+      return mlir::ComplexType::get(builder.getF64Type());
     case tflite::TensorType_INT8:
       return builder.getIntegerType(8);
   }
@@ -64,6 +66,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_BOOL;
     case tflite::TensorType_COMPLEX64:
       return tensorflow::DT_COMPLEX64;
+    case tflite::TensorType_COMPLEX128:
+      return tensorflow::DT_COMPLEX128;
     case tflite::TensorType_FLOAT16:
       return tensorflow::DT_HALF;
     case tflite::TensorType_FLOAT32:

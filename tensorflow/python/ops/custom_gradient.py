@@ -125,6 +125,42 @@ def custom_gradient(f=None):
   With this definition, the gradient at x=100 will be correctly evaluated as
   1.0.
 
+  The variable `dy` is defined as the upstream gradient. i.e. the gradient from
+  all the layers or functions originating from this layer.
+
+  By chain rule we know that
+  `dy/dx = dy/x_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
+
+  In this case the gradient of our current function defined as 
+  `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be
+  `dx_i+1/dx_i+2 * dx_i+2/dx_i+3 * ... * dx_n/dx`. The upstream gradient 
+  multiplied by the current gradient is then passed downstream.
+
+  In case the function takes multiple variables as input, the `grad` 
+  function must also return  the same number of variables.
+  We take the function `z = x * y` as an example.
+
+  >>> @tf.custom_gradient
+  ... def bar(x, y):
+  ...   def grad(upstream):
+  ...     dz_dx = y
+  ...     dz_dy = x
+  ...     return upstream * dz_dx, upstream * dz_dy
+  ...   z = x * y
+  ...   return z, grad
+  >>> x = tf.constant(2.0, dtype=tf.float32)
+  >>> y = tf.constant(3.0, dtype=tf.float32)
+  >>> with tf.GradientTape(persistent=True) as tape:
+  ...   tape.watch(x)
+  ...   tape.watch(y)
+  ...   z = bar(x, y)
+  >>> z
+  <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+  >>> tape.gradient(z, x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=3.0>
+  >>> tape.gradient(z, y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=2.0>
+
   Nesting custom gradients can lead to unintuitive results. The default
   behavior does not correspond to n-th order derivatives. For example
 
@@ -354,9 +390,27 @@ def _graph_mode_decorator(f, args, kwargs):
   variables_in_tape = frozenset([
       v.ref() for v in variable_watcher.watched_variables()
   ])
+
+  graphs = {getattr(o, "graph", None) for o in flat_result}
+  # Not all results may be tensors. However, we want to ensure all tensor
+  # outputs are from the same graph and get a list of captured inputs for
+  # variable search
+  graphs.discard(None)  # Discard non-graph outputs
+  if graphs:
+    if len(graphs) > 1:
+      raise ValueError(
+          "All custom_gradient outputs should be from the same graph")
+    output_graph = graphs.pop()
+    filtered_input_tensors = []
+    for i in args:
+      if i.graph == output_graph:
+        filtered_input_tensors.append(i)
+  else:
+    filtered_input_tensors = args
+
   variables_in_subgraph = frozenset([
-      v.ref()
-      for v in _get_dependent_variables(input_ops=args, output_ops=flat_result)
+      v.ref() for v in _get_dependent_variables(
+          input_ops=filtered_input_tensors, output_ops=flat_result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])

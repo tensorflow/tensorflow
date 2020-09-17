@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -45,6 +46,16 @@ limitations under the License.
 namespace xla {
 
 class XlaBuilder;
+class XlaOp;
+
+namespace internal {
+
+XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
+                            absl::Span<const XlaOp> operands,
+                            absl::string_view fusion_kind,
+                            const XlaComputation& fused_computation);
+
+}  // namespace internal
 
 // This represents an instruction that has been enqueued using the XlaBuilder.
 // This is used to pass to subsequent computations that depends upon the
@@ -152,6 +163,20 @@ class XlaBuilder {
   // instructions generated via this computation builder will have the same
   // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
+
+  // Swaps the passed op metadata with the ones currently set.
+  //
+  // Returns the old op metadata.
+  OpMetadata SwapOpMetadata(OpMetadata metadata) {
+    OpMetadata old_metadata = std::move(metadata_);
+    metadata_ = std::move(metadata);
+    return old_metadata;
+  }
+
+  // Similar to SetOpMetadata, but only set the metadata for the next op.
+  void SetOneShotOpMetadata(OpMetadata metadata) {
+    metadata_ = std::move(metadata);
+  }
 
   // Clears the HloMetadata state.
   void ClearOpMetadata() { metadata_.Clear(); }
@@ -262,6 +287,31 @@ class XlaBuilder {
   StatusOr<XlaComputation> BuildConstantSubGraph(
       XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
 
+  // Similar to BuildConstantSubGraph, but with root element type changed to
+  // boolean. A true value in the root indicates that the value is dynamic while
+  // false value indicates that the value is a constant. This will copy the
+  // needed ops/computations to the subgraph.
+  //
+  // E.g.,
+  // Compuptation {
+  //   a = 3
+  //   b = param(0)
+  //   ROOT Tuple(a + b, a + 1, b + 1)
+  // }
+  // Calling BuildDynamicInferenceGraph on root will produce the following
+  // graph:
+  //
+  // Compuptation {
+  //   a = False
+  //   b = True
+  //   ROOT Tuple(a | b, a, b)
+  // }
+  //
+  // The result, which is (True, False, True) after evaluation, can be
+  // interpreted as "First element is dynamic; Second element is static; Third
+  // element is dynamic".
+  StatusOr<XlaComputation> BuildDynamicInferenceGraph(XlaOp root_op);
+
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
   // XlaOp and inform the user of the error that occurred while
@@ -325,6 +375,7 @@ class XlaBuilder {
   //
   // TODO(b/119520625): Remove this API once we have more dynamic shape infra
   // ready.
+  ABSL_DEPRECATED("Use SetDimensionSize to set a dynamic dimension.")
   Status SetDynamicBinding(int64 dynamic_size_param_num,
                            ShapeIndex dynamic_size_param_index,
                            int64 target_param_num,
@@ -334,12 +385,16 @@ class XlaBuilder {
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
-  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
-  // be aliased with output. If a buffer is not donated at runtime, a copy will
-  // be inserted by XLA to prevent buffer clobbering.
+  // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'
+  // and only donated buffer at runtime will be aliased with output. If a buffer
+  // is not donated at runtime, a copy will be inserted by XLA to prevent buffer
+  // clobbering.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                  const ShapeIndex& param_index) {
-    input_output_aliases_.push_back({output_index, param_number, param_index});
+                  const ShapeIndex& param_index,
+                  HloInputOutputAliasConfig::AliasKind kind =
+                      HloInputOutputAliasConfig::AliasKind::kMayAlias) {
+    input_output_aliases_.push_back(
+        {output_index, param_number, param_index, kind});
   }
 
   // Describes an input/output alias as inserted by the SetUpAlias() API.
@@ -350,6 +405,8 @@ class XlaBuilder {
     int64 param_number;
     // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
+    // Specifies if the alias is a must alias or may alias.
+    HloInputOutputAliasConfig::AliasKind kind;
   };
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to
@@ -406,6 +463,10 @@ class XlaBuilder {
 
   XlaOp Reshape(const Shape& shape, XlaOp operand,
                 int64 inferred_dimension = -1);
+
+  XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                       absl::Span<const int64> new_size_bounds,
+                       const std::vector<bool>& dims_are_dynamic);
 
   XlaOp Collapse(XlaOp operand, absl::Span<const int64> dimensions);
 
@@ -505,6 +566,12 @@ class XlaBuilder {
   virtual StatusOr<XlaOp> FftInternal(const Shape& shape, XlaOp operand,
                                       FftType fft_type,
                                       absl::Span<const int64> fft_length);
+
+  virtual StatusOr<XlaOp> TriangularSolveInternal(
+      const Shape& shape, XlaOp a, XlaOp b, TriangularSolveOptions options);
+
+  virtual StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
+                                           bool lower);
 
   XlaOp Infeed(const Shape& shape, const string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
@@ -624,6 +691,8 @@ class XlaBuilder {
   XlaOp ConvertElementType(XlaOp operand, PrimitiveType new_element_type);
 
   XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
+  virtual StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
+                                                     XlaOp operand);
 
   XlaOp Transpose(XlaOp operand, absl::Span<const int64> permutation);
   virtual StatusOr<XlaOp> TransposeInternal(
@@ -635,6 +704,10 @@ class XlaBuilder {
 
   XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
              int64 dimension = -1, bool is_stable = false);
+  virtual StatusOr<XlaOp> SortInternal(const Shape& shape,
+                                       absl::Span<const XlaOp> operands,
+                                       const XlaComputation& comparator,
+                                       int64 dimension, bool is_stable);
 
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
@@ -648,9 +721,17 @@ class XlaBuilder {
 
   XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                         const Shape& shape);
+  // Internal variant for the op with the full result shape containing both data
+  // and state shape as a tuple.
+  virtual StatusOr<XlaOp> RngBitGeneratorInternal(
+      const Shape& full_result_shape, RandomAlgorithm algorithm,
+      XlaOp initial_state);
 
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
+  virtual StatusOr<XlaOp> WhileInternal(const Shape& shape,
+                                        const XlaComputation& condition,
+                                        const XlaComputation& body, XlaOp init);
 
   XlaOp Conditional(XlaOp predicate, XlaOp true_operand,
                     const XlaComputation& true_computation, XlaOp false_operand,
@@ -717,8 +798,13 @@ class XlaBuilder {
 
   XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 
-  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
-                                 absl::Span<const XlaOp> operands = {});
+  virtual StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                         HloOpcode opcode,
+                                         absl::Span<const XlaOp> operands);
+  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                 HloOpcode opcode) {
+    return AddInstruction(std::move(instr), opcode, /*operands=*/{});
+  }
 
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
@@ -736,14 +822,17 @@ class XlaBuilder {
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks. The direction is
   // only used if opcode is kCompare.
-  XlaOp BinaryOp(
-      HloOpcode binop, XlaOp lhs, XlaOp rhs,
-      absl::Span<const int64> broadcast_dimensions,
-      absl::optional<Comparison::Direction> direction = absl::nullopt);
+  XlaOp BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
+                 absl::Span<const int64> broadcast_dimensions,
+                 absl::optional<ComparisonDirection> direction = absl::nullopt,
+                 absl::optional<Comparison::Type> type = absl::nullopt);
 
   // Internal helper method for binary op compare without broadcast dimensions.
   virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                                  Comparison::Direction direction);
+                                  ComparisonDirection direction);
+  virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                  ComparisonDirection direction,
+                                  Comparison::Type type);
 
   // Internal helper method that does the building for an arbitrary binary op
   // with same ranked operands that doesn't broadcast.
@@ -842,6 +931,9 @@ class XlaBuilder {
   // throughout the TensorFlow op kernel implementations).
   OpMetadata metadata_;
 
+  // A temporary metadata that will only be applied to the next op created.
+  absl::optional<OpMetadata> one_shot_metadata_;
+
   // Sharding for this operator. This is structured as a "model"-like operation,
   // in order to simplify client code, similar to metadata_.
   absl::optional<OpSharding> sharding_;
@@ -878,6 +970,10 @@ class XlaBuilder {
 
   friend XlaOp Reshape(const Shape& shape, XlaOp operand);
 
+  friend XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                              absl::Span<const int64> new_size_bounds,
+                              const std::vector<bool>& dims_are_dynamic);
+
   friend XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                             absl::Span<const int64> new_sizes,
                                             int64 inferred_dimension);
@@ -906,22 +1002,13 @@ class XlaBuilder {
   friend XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
   friend XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
   friend XlaOp GetTupleElement(XlaOp tuple_data, int64 index);
-  friend XlaOp Eq(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Ne(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Ge(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Gt(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Lt(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Le(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64> broadcast_dimensions,
                        ComparisonDirection direction);
-  friend XlaOp Compare(XlaOp lhs, XlaOp rhs, ComparisonDirection direction);
+  friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
+                       absl::Span<const int64> broadcast_dimensions,
+                       ComparisonDirection direction,
+                       Comparison::Type compare_type);
   friend XlaOp Dot(XlaOp lhs, XlaOp rhs,
                    const PrecisionConfig* precision_config);
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
@@ -1205,6 +1292,10 @@ class XlaBuilder {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
+
+  friend XlaOp internal::XlaBuilderBuildFusion(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      absl::string_view fusion_kind, const XlaComputation& fused_computation);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
@@ -1257,6 +1348,25 @@ class XlaScopedFrontendAttributesAssignment {
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedFrontendAttributesAssignment);
 };
+
+// RAII-style object: sets the current op metadata in builder on construction,
+// and sets back to the previous assignment on destruction.
+class XlaScopedOpMetadataAssignment {
+ public:
+  XlaScopedOpMetadataAssignment(xla::XlaBuilder* builder, OpMetadata metadata)
+      : builder_(builder) {
+    saved_ = builder_->SwapOpMetadata(metadata);
+  }
+
+  ~XlaScopedOpMetadataAssignment() { builder_->SwapOpMetadata(saved_); }
+
+ private:
+  xla::XlaBuilder* const builder_;
+  OpMetadata saved_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedOpMetadataAssignment);
+};
+
 // Free functions for building XlaOps. The intention is that these will
 // become the public API for building XlaOps rather than calling methods on
 // XlaBuilder directly.
@@ -1396,9 +1506,16 @@ XlaOp Pad(XlaOp operand, XlaOp padding_value,
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
               absl::Span<const int64> new_sizes);
 
-// Enqueues an operation onto the computation that collapses the operand, from
-// first to last dimension (C order), then reshapes it to the given dimension
-// sizes. Conceptually, this is a limited form of "shape casting".
+// Enqueues a dynamic reshape operation. The dynamic reshape takes additional
+// XlaOps as sizes for the result dimension. The result dim i is a dynamic
+// dimension dimension if dims_are_dynamic[i] is true.
+XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                     absl::Span<const int64> new_size_bounds,
+                     const std::vector<bool>& dims_are_dynamic);
+
+// Enqueues an operation onto the computation that collapses the operand,
+// from first to last dimension (C order), then reshapes it to the given
+// dimension sizes. Conceptually, this is a limited form of "shape casting".
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
 
 // Enqueues a Reshape op that uses an explicit target shape.
@@ -1511,29 +1628,44 @@ XlaOp GetTupleElement(XlaOp tuple_data, int64 index);
 // Enqueues an equal-to comparison instruction onto the computation.
 XlaOp Eq(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp EqTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a not-equal comparison instruction onto the computation.
 XlaOp Ne(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp NeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-or-equal comparison instruction onto the computation.
 XlaOp Ge(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp GeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-than comparison instruction onto the computation.
 XlaOp Gt(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp GtTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-than comparison instruction onto the computation.
 XlaOp Lt(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp LtTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-or-equal comparison instruction onto the computation.
 XlaOp Le(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp LeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a comparison instruction onto the computation (optionally without
 // broadcast_dimensions for consistency with others).
+XlaOp Compare(XlaOp lhs, XlaOp rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction, Comparison::Type compare_type);
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64> broadcast_dimensions,
               ComparisonDirection direction);

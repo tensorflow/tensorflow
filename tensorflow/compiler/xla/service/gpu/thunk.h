@@ -69,10 +69,12 @@ class Thunk {
   };
 
   struct ThunkInfo {
+    // Optional. It's only used by subclasses which haven't been migrated away
+    // from HloInstructions. Once the migration is done, Thunks should be fully
+    // serializable.
     const HloInstruction* hlo_instruction = nullptr;
     absl::optional<int64> profile_index;
-    // TODO(timshen): Remove hlo_instruction and add name(),
-    // profile_annotation() here.
+    std::string profile_annotation;
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
@@ -80,28 +82,14 @@ class Thunk {
   // to Thunk::hlo_instruction, so it can be null.
   explicit Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
-        hlo_instruction_(thunk_info.hlo_instruction),
-        name_(hlo_instruction_ ? hlo_instruction_->name() : ""),
-        profile_index_(thunk_info.profile_index) {}
+        profile_index_(thunk_info.profile_index),
+        profile_annotation_(thunk_info.profile_annotation) {}
   virtual ~Thunk() {}
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
   Kind kind() const { return kind_; }
   string profile_annotation() const { return profile_annotation_; }
-
-  absl::string_view name() const { return name_; }
-
-  // Constructs and caches the profile annotation string for this thunk and
-  // any child thunks.
-  virtual void ComputeAnnotations() {
-    const HloInstruction* hlo = hlo_instruction();
-    if (hlo) {
-      profile_annotation_ =
-          absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s#", hlo->name(),
-                          hlo->GetModule()->name());
-    }
-  }
 
   // Prepares the thunk for execution on the given StreamExecutor.
   //
@@ -134,13 +122,7 @@ class Thunk {
   virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
  protected:
-  const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
-
   absl::optional<int64> profile_index() const { return profile_index_; }
-
-  const HloModuleConfig& GetModuleConfig() const {
-    return hlo_instruction()->GetModule()->config();
-  }
 
   // Safely copies the given buffer to the GPU, deleting it on the host only
   // after the copy has completed.
@@ -156,13 +138,8 @@ class Thunk {
 
  private:
   Kind kind_;
-
-  // Will be removed in the future, as Thunk is migrating away from the
-  // monolithic HloInstruction.
-  const HloInstruction* hlo_instruction_;
-  std::string name_;
   absl::optional<int64> profile_index_;
-  string profile_annotation_;
+  std::string profile_annotation_;
 };
 
 // A sequence of thunks.

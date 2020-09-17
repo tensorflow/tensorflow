@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/debug_log.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -24,19 +25,15 @@ namespace tflite {
 namespace testing {
 
 void TestSplitTwoOutputsFloat(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<float> input_data,
-    std::initializer_list<int> axis_dims_data,
-    std::initializer_list<int32_t> axis_data,
-    std::initializer_list<int> output1_dims_data,
-    std::initializer_list<float> expected_output1_data,
-    std::initializer_list<int> output2_dims_data,
-    std::initializer_list<float> expected_output2_data, float* output1_data,
-    float* output2_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* axis_dims = IntArrayFromInitializer(axis_dims_data);
-  TfLiteIntArray* output1_dims = IntArrayFromInitializer(output1_dims_data);
-  TfLiteIntArray* output2_dims = IntArrayFromInitializer(output2_dims_data);
+    const int* input_dims_data, const float* input_data,
+    const int* axis_dims_data, const int32_t* axis_data,
+    const int* output1_dims_data, const float* expected_output1_data,
+    const int* output2_dims_data, const float* expected_output2_data,
+    float* output1_data, float* output2_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
+  TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
+  TfLiteIntArray* output2_dims = IntArrayFromInts(output2_dims_data);
   const int output1_dims_count = ElementCount(*output1_dims);
   const int output2_dims_count = ElementCount(*output2_dims);
 
@@ -61,76 +58,42 @@ void TestSplitTwoOutputsFloat(
     output2_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  TfLiteSplitParams builtin_data = {
-      .num_splits = 2,
-  };
-
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {2, 2, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_SPLIT();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, nullptr, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output1_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output1_data.begin()[i], output1_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output1_data[i], output1_data[i], 1e-5f);
   }
 
   for (int i = 0; i < output2_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output2_data.begin()[i], output2_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output2_data[i], output2_data[i], 1e-5f);
   }
 }
 
 void TestSplitFourOutputsFloat(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<float> input_data,
-    std::initializer_list<int> axis_dims_data,
-    std::initializer_list<int32_t> axis_data,
-    std::initializer_list<int> output1_dims_data,
-    std::initializer_list<float> expected_output1_data,
-    std::initializer_list<int> output2_dims_data,
-    std::initializer_list<float> expected_output2_data,
-    std::initializer_list<int> output3_dims_data,
-    std::initializer_list<float> expected_output3_data,
-    std::initializer_list<int> output4_dims_data,
-    std::initializer_list<float> expected_output4_data, float* output1_data,
-    float* output2_data, float* output3_data, float* output4_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* axis_dims = IntArrayFromInitializer(axis_dims_data);
-  TfLiteIntArray* output1_dims = IntArrayFromInitializer(output1_dims_data);
-  TfLiteIntArray* output2_dims = IntArrayFromInitializer(output2_dims_data);
-  TfLiteIntArray* output3_dims = IntArrayFromInitializer(output3_dims_data);
-  TfLiteIntArray* output4_dims = IntArrayFromInitializer(output4_dims_data);
+    const int* input_dims_data, const float* input_data,
+    const int* axis_dims_data, const int32_t* axis_data,
+    const int* output1_dims_data, const float* expected_output1_data,
+    const int* output2_dims_data, const float* expected_output2_data,
+    const int* output3_dims_data, const float* expected_output3_data,
+    const int* output4_dims_data, const float* expected_output4_data,
+    float* output1_data, float* output2_data, float* output3_data,
+    float* output4_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
+  TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
+  TfLiteIntArray* output2_dims = IntArrayFromInts(output2_dims_data);
+  TfLiteIntArray* output3_dims = IntArrayFromInts(output3_dims_data);
+  TfLiteIntArray* output4_dims = IntArrayFromInts(output4_dims_data);
   const int output1_dims_count = ElementCount(*output1_dims);
   const int output2_dims_count = ElementCount(*output2_dims);
   const int output3_dims_count = ElementCount(*output3_dims);
@@ -164,77 +127,42 @@ void TestSplitFourOutputsFloat(
     output4_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  TfLiteSplitParams builtin_data = {
-      .num_splits = 4,
-  };
-
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {4, 2, 3, 4, 5};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_SPLIT();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, nullptr, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output1_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output1_data.begin()[i], output1_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output1_data[i], output1_data[i], 1e-5f);
   }
   for (int i = 0; i < output2_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output2_data.begin()[i], output2_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output2_data[i], output2_data[i], 1e-5f);
   }
   for (int i = 0; i < output3_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output3_data.begin()[i], output3_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output3_data[i], output3_data[i], 1e-5f);
   }
   for (int i = 0; i < output4_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output4_data.begin()[i], output4_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output4_data[i], output4_data[i], 1e-5f);
   }
 }
 
 void TestSplitTwoOutputsQuantized(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<uint8_t> input_data,
-    std::initializer_list<int> axis_dims_data,
-    std::initializer_list<int32_t> axis_data,
-    std::initializer_list<int> output1_dims_data,
-    std::initializer_list<uint8_t> expected_output1_data,
-    std::initializer_list<int> output2_dims_data,
-    std::initializer_list<uint8_t> expected_output2_data, uint8_t* output1_data,
-    uint8_t* output2_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* axis_dims = IntArrayFromInitializer(axis_dims_data);
-  TfLiteIntArray* output1_dims = IntArrayFromInitializer(output1_dims_data);
-  TfLiteIntArray* output2_dims = IntArrayFromInitializer(output2_dims_data);
+    const int* input_dims_data, const uint8_t* input_data,
+    const int* axis_dims_data, const int32_t* axis_data,
+    const int* output1_dims_data, const uint8_t* expected_output1_data,
+    const int* output2_dims_data, const uint8_t* expected_output2_data,
+    uint8_t* output1_data, uint8_t* output2_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
+  TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
+  TfLiteIntArray* output2_dims = IntArrayFromInts(output2_dims_data);
   const int output1_dims_count = ElementCount(*output1_dims);
   const int output2_dims_count = ElementCount(*output2_dims);
 
@@ -260,68 +188,37 @@ void TestSplitTwoOutputsQuantized(
     output2_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  TfLiteSplitParams builtin_data = {
-      .num_splits = 2,
-  };
-
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {2, 2, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_SPLIT();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, nullptr, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output1_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data.begin()[i], output1_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data[i], output1_data[i]);
   }
 
   for (int i = 0; i < output2_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data.begin()[i], output2_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data[i], output2_data[i]);
   }
 }
 
 void TestSplitTwoOutputsQuantized32(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<int32_t> input_data,
-    std::initializer_list<int> axis_dims_data,
-    std::initializer_list<int32_t> axis_data,
-    std::initializer_list<int> output1_dims_data,
-    std::initializer_list<int32_t> expected_output1_data,
-    std::initializer_list<int> output2_dims_data,
-    std::initializer_list<int32_t> expected_output2_data, int32_t* output1_data,
-    int32_t* output2_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* axis_dims = IntArrayFromInitializer(axis_dims_data);
-  TfLiteIntArray* output1_dims = IntArrayFromInitializer(output1_dims_data);
-  TfLiteIntArray* output2_dims = IntArrayFromInitializer(output2_dims_data);
+    const int* input_dims_data, const int32_t* input_data,
+    const int* axis_dims_data, const int32_t* axis_data,
+    const int* output1_dims_data, const int32_t* expected_output1_data,
+    const int* output2_dims_data, const int32_t* expected_output2_data,
+    int32_t* output1_data, int32_t* output2_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
+  TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
+  TfLiteIntArray* output2_dims = IntArrayFromInts(output2_dims_data);
   const int output1_dims_count = ElementCount(*output1_dims);
   const int output2_dims_count = ElementCount(*output2_dims);
 
@@ -347,51 +244,24 @@ void TestSplitTwoOutputsQuantized32(
     output2_data[i] = 23;
   }
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  TfLiteSplitParams builtin_data = {
-      .num_splits = 2,
-  };
-
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, nullptr, 0);
-  }
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {2, 2, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_SPLIT();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, nullptr, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output1_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data.begin()[i], output1_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output1_data[i], output1_data[i]);
   }
 
   for (int i = 0; i < output2_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data.begin()[i], output2_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output2_data[i], output2_data[i]);
   }
 }
 
@@ -401,91 +271,119 @@ void TestSplitTwoOutputsQuantized32(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisZero) {
+  const int input_shape[] = {4, 2, 2, 2, 2};
+  const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                              9, 10, 11, 12, 13, 14, 15, 16};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {0};
+  const int output1_shape[] = {4, 1, 2, 2, 2};
+  const float golden1[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  const int output2_shape[] = {4, 1, 2, 2, 2};
+  const float golden2[] = {9, 10, 11, 12, 13, 14, 15, 16};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   float output1_data[output1_dims_count];
   float output2_data[output2_dims_count];
   tflite::testing::TestSplitTwoOutputsFloat(
-      {4, 2, 2, 2, 2},                                          // Input shape
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},  // Input values
-      {1, 1},                                                   // Axis shape
-      {0},                                                      // Axis value
-      {4, 1, 2, 2, 2},                                          // Output1 shape
-      {1, 2, 3, 4, 5, 6, 7, 8},         // Output1 values
-      {4, 1, 2, 2, 2},                  // Output2 shape
-      {9, 10, 11, 12, 13, 14, 15, 16},  // Output2 values
-      output1_data, output2_data);
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisOne) {
+  const int input_shape[] = {4, 2, 2, 2, 2};
+  const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                              9, 10, 11, 12, 13, 14, 15, 16};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {1};
+  const int output1_shape[] = {4, 2, 1, 2, 2};
+  const float golden1[] = {1, 2, 3, 4, 9, 10, 11, 12};
+  const int output2_shape[] = {4, 2, 1, 2, 2};
+  const float golden2[] = {5, 6, 7, 8, 13, 14, 15, 16};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   float output1_data[output1_dims_count];
   float output2_data[output2_dims_count];
   tflite::testing::TestSplitTwoOutputsFloat(
-      {4, 2, 2, 2, 2},                                          // Input shape
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},  // Input values
-      {1, 1},                                                   // Axis shape
-      {1},                                                      // Axis value
-      {4, 2, 1, 2, 2},                                          // Output1 shape
-      {1, 2, 3, 4, 9, 10, 11, 12},   // Output1 values
-      {4, 2, 1, 2, 2},               // Output2 shape
-      {5, 6, 7, 8, 13, 14, 15, 16},  // Output2 values
-      output1_data, output2_data);
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisTwo) {
+  const int input_shape[] = {4, 2, 2, 2, 2};
+  const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                              9, 10, 11, 12, 13, 14, 15, 16};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {2};
+  const int output1_shape[] = {4, 2, 2, 1, 2};
+  const float golden1[] = {1, 2, 5, 6, 9, 10, 13, 14};
+  const int output2_shape[] = {4, 2, 2, 1, 2};
+  const float golden2[] = {3, 4, 7, 8, 11, 12, 15, 16};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   float output1_data[output1_dims_count];
   float output2_data[output2_dims_count];
   tflite::testing::TestSplitTwoOutputsFloat(
-      {4, 2, 2, 2, 2},                                          // Input shape
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},  // Input values
-      {1, 1},                                                   // Axis shape
-      {2},                                                      // Axis value
-      {4, 2, 2, 1, 2},                                          // Output1 shape
-      {1, 2, 5, 6, 9, 10, 13, 14},   // Output1 values
-      {4, 2, 2, 1, 2},               // Output2 shape
-      {3, 4, 7, 8, 11, 12, 15, 16},  // Output2 values
-      output1_data, output2_data);
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisThree) {
+  const int input_shape[] = {4, 2, 2, 2, 2};
+  const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                              9, 10, 11, 12, 13, 14, 15, 16};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {3};
+  const int output1_shape[] = {4, 2, 2, 2, 1};
+  const float golden1[] = {1, 3, 5, 7, 9, 11, 13, 15};
+  const int output2_shape[] = {4, 2, 2, 2, 1};
+  const float golden2[] = {2, 4, 6, 8, 10, 12, 14, 16};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   float output1_data[output1_dims_count];
   float output2_data[output2_dims_count];
   tflite::testing::TestSplitTwoOutputsFloat(
-      {4, 2, 2, 2, 2},                                          // Input shape
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},  // Input values
-      {1, 1},                                                   // Axis shape
-      {3},                                                      // Axis value
-      {4, 2, 2, 2, 1},                                          // Output1 shape
-      {1, 3, 5, 7, 9, 11, 13, 15},   // Output1 values
-      {4, 2, 2, 2, 1},               // Output2 shape
-      {2, 4, 6, 8, 10, 12, 14, 16},  // Output2 values
-      output1_data, output2_data);
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalNegativeAxis) {
+  const int input_shape[] = {4, 2, 2, 2, 2};
+  const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                              9, 10, 11, 12, 13, 14, 15, 16};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {-4};
+  const int output1_shape[] = {4, 1, 2, 2, 2};
+  const float golden1[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  const int output2_shape[] = {4, 1, 2, 2, 2};
+  const float golden2[] = {9, 10, 11, 12, 13, 14, 15, 16};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   float output1_data[output1_dims_count];
   float output2_data[output2_dims_count];
   tflite::testing::TestSplitTwoOutputsFloat(
-      {4, 2, 2, 2, 2},                                          // Input shape
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},  // Input values
-      {1, 1},                                                   // Axis shape
-      {-4},                                                     // Axis value
-      {4, 1, 2, 2, 2},                                          // Output1 shape
-      {1, 2, 3, 4, 5, 6, 7, 8},         // Output1 values
-      {4, 1, 2, 2, 2},                  // Output2 shape
-      {9, 10, 11, 12, 13, 14, 15, 16},  // Output2 values
-      output1_data, output2_data);
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TEST(FourSplit) {
+  const int input_shape[] = {1, 4};
+  const float input_data[] = {1, 2, 3, 4};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {0};
+  const int output1_shape[] = {1, 1};
+  const float golden1[] = {1};
+  const int output2_shape[] = {1, 1};
+  const float golden2[] = {2};
+  const int output3_shape[] = {1, 1};
+  const float golden3[] = {3};
+  const int output4_shape[] = {1, 1};
+  const float golden4[] = {4};
+
   constexpr int output1_dims_count = 1;
   constexpr int output2_dims_count = 1;
   constexpr int output3_dims_count = 1;
@@ -494,70 +392,69 @@ TF_LITE_MICRO_TEST(FourSplit) {
   float output2_data[output2_dims_count];
   float output3_data[output3_dims_count];
   float output4_data[output4_dims_count];
-  tflite::testing::TestSplitFourOutputsFloat({1, 4},        // Input shape
-                                             {1, 2, 3, 4},  // Input values
-                                             {1, 1},        // Axis shape
-                                             {0},           // Axis value
-                                             {1, 1},        // Output1 shape
-                                             {1},           // Output1 values
-                                             {1, 1},        // Output2 shape
-                                             {2},           // Output2 values
-                                             {1, 1},        // Output3 shape
-                                             {3},           // Output3 values
-                                             {1, 1},        // Output4 shape
-                                             {4},           // Output4 values
-                                             output1_data, output2_data,
-                                             output3_data, output4_data);
+  tflite::testing::TestSplitFourOutputsFloat(
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output3_shape, golden3, output4_shape, golden4,
+      output1_data, output2_data, output3_data, output4_data);
 }
 
 TF_LITE_MICRO_TEST(TwoSplitOneDimensional) {
+  const int input_shape[] = {1, 2};
+  const float input_data[] = {1, 2};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {0};
+  const int output1_shape[] = {1, 1};
+  const float golden1[] = {1};
+  const int output2_shape[] = {1, 1};
+  const float golden2[] = {2};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   float output1_data[output1_dims_count];
   float output2_data[output2_dims_count];
-  tflite::testing::TestSplitTwoOutputsFloat({1, 2},  // Input shape
-                                            {1, 2},  // Input values
-                                            {1, 1},  // Axis shape
-                                            {0},     // Axis value
-                                            {1, 1},  // Output1 shape
-                                            {1},     // Output1 values
-                                            {1, 1},  // Output2 shape
-                                            {2},     // Output2 values
-                                            output1_data, output2_data);
+  tflite::testing::TestSplitTwoOutputsFloat(
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalQuantized) {
+  const int input_shape[] = {4, 2, 2, 2, 2};
+  const uint8_t input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                                9, 10, 11, 12, 13, 14, 15, 16};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {1};
+  const int output1_shape[] = {4, 2, 1, 2, 2};
+  const uint8_t golden1[] = {1, 2, 3, 4, 9, 10, 11, 12};
+  const int output2_shape[] = {4, 2, 1, 2, 2};
+  const uint8_t golden2[] = {5, 6, 7, 8, 13, 14, 15, 16};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   uint8_t output1_data[output1_dims_count];
   uint8_t output2_data[output2_dims_count];
   tflite::testing::TestSplitTwoOutputsQuantized(
-      {4, 2, 2, 2, 2},                                          // Input shape
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},  // Input values
-      {1, 1},                                                   // Axis shape
-      {0},                                                      // Axis value
-      {4, 1, 2, 2, 2},                                          // Output1 shape
-      {1, 2, 3, 4, 5, 6, 7, 8},         // Output1 values
-      {4, 1, 2, 2, 2},                  // Output2 shape
-      {9, 10, 11, 12, 13, 14, 15, 16},  // Output2 values
-      output1_data, output2_data);
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalQuantized32) {
+  const int input_shape[] = {4, 2, 2, 2, 2};
+  const int32_t input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                                9, 10, 11, 12, 13, 14, 15, 16};
+  const int axis_shape[] = {1, 1};
+  const int32_t axis_data[] = {1};
+  const int output1_shape[] = {4, 2, 1, 2, 2};
+  const int32_t golden1[] = {1, 2, 3, 4, 9, 10, 11, 12};
+  const int output2_shape[] = {4, 2, 1, 2, 2};
+  const int32_t golden2[] = {5, 6, 7, 8, 13, 14, 15, 16};
+
   constexpr int output1_dims_count = 8;
   constexpr int output2_dims_count = 8;
   int32_t output1_data[output1_dims_count];
   int32_t output2_data[output2_dims_count];
   tflite::testing::TestSplitTwoOutputsQuantized32(
-      {4, 2, 2, 2, 2},                                          // Input shape
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},  // Input values
-      {1, 1},                                                   // Axis shape
-      {0},                                                      // Axis value
-      {4, 1, 2, 2, 2},                                          // Output1 shape
-      {1, 2, 3, 4, 5, 6, 7, 8},         // Output1 values
-      {4, 1, 2, 2, 2},                  // Output2 shape
-      {9, 10, 11, 12, 13, 14, 15, 16},  // Output2 values
-      output1_data, output2_data);
+      input_shape, input_data, axis_shape, axis_data, output1_shape, golden1,
+      output2_shape, golden2, output1_data, output2_data);
 }
 
 TF_LITE_MICRO_TESTS_END

@@ -52,7 +52,7 @@ typedef struct TF_AbstractFunction TF_AbstractFunction;
 // This allows the client to swap the implementation of the tracing engine.
 // Any future call to TF_CreateFunction will use the implementation defined
 // here.
-void TF_SetTracingImplementation(const char* name);
+void TF_SetTracingImplementation(const char* name, TF_Status*);
 
 // Creates a new TensorFlow function. A Function is an execution context, and as
 // such it can trace operations through TF_ExecuteOperation. After completing

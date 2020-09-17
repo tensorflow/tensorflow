@@ -129,6 +129,18 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     bool emit_select_tf_ops, bool emit_custom_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
     mlir::PassManager* pass_manager) {
+  // Register a warning handler only log to std out.
+  mlir::ScopedDiagnosticHandler s(
+      module.getContext(), [](mlir::Diagnostic& diag) {
+        if (diag.getSeverity() == mlir::DiagnosticSeverity::Warning) {
+          for (auto& note : diag.getNotes()) {
+            std::cout << note.str() << "\n";
+            LOG(WARNING) << note.str() << "\n";
+          }
+        }
+        return mlir::failure();
+      });
+
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
 
@@ -186,7 +198,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
-    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
+    absl::Span<std::string> exported_names, const GraphImportConfig& specs,
+    mlir::MLIRContext* context) {
   if (saved_model_version == 2) {
     auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, exported_names, context);
@@ -194,7 +207,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     return module_or.ConsumeValueOrDie();
   } else if (saved_model_version == 1) {
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context);
+        input_filename, tags, exported_names, context, specs.upgrade_legacy);
 
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();

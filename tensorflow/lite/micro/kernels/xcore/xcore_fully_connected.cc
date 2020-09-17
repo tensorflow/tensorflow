@@ -42,8 +42,8 @@ ATTRIBUTE_THREAD_FUNCTION void fully_connected_thread_worker(void* context) {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   FullyConnectedOpData* op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(FullyConnectedOpData),
-                                    reinterpret_cast<void**>(&op));
+  op = reinterpret_cast<FullyConnectedOpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(FullyConnectedOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -54,10 +54,10 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   parse_custom_options(context, buffer, length, &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(
-      context,
-      sizeof(nn_fully_connected_job_t) * op->execution_plan.changrps.GetSize(),
-      reinterpret_cast<void**>(&op->jobs));
+  op->jobs = reinterpret_cast<nn_fully_connected_job_t*>(
+      context->AllocatePersistentBuffer(
+          context, sizeof(nn_fully_connected_job_t) *
+                       op->execution_plan.changrps.GetSize()));
 
   return op;
 }

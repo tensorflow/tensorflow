@@ -309,6 +309,155 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     del x
     self.assertIsNotNone(x_ref.deref())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseAndNumeric(self):
+    x = constant_op.constant([0, 1, 3])
+    y = constant_op.constant([1, 1, 1])
+
+    z = x & y
+
+    self.assertAllEqual(z, [0, 1, 1])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseAndBool(self):
+    x = constant_op.constant([False, False, True, True])
+    y = constant_op.constant([False, True, False, True])
+
+    z = x & y
+
+    self.assertAllEqual(z, [False, False, False, True])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseAndErrors(self):
+    x_int = constant_op.constant(0)
+    x_bool = constant_op.constant(True)
+
+    if context.executing_eagerly():  # :(
+      expected_errtype = errors.InvalidArgumentError
+    else:
+      expected_errtype = TypeError
+
+    with self.assertRaises(expected_errtype):
+      _ = x_int & x_bool
+    with self.assertRaises(expected_errtype):
+      _ = x_int & constant_op.constant("a")
+
+    with self.assertRaises(expected_errtype):
+      _ = x_bool & x_int
+    with self.assertRaises(expected_errtype):
+      _ = x_bool & constant_op.constant("a")
+
+    with self.assertRaises(expected_errtype):
+      _ = constant_op.constant("a") & constant_op.constant("b")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseOrNumeric(self):
+    x = constant_op.constant([0, 1, 2])
+    y = constant_op.constant([1, 1, 1])
+
+    z = x | y
+
+    self.assertAllEqual(z, [1, 1, 3])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseOrBool(self):
+    x = constant_op.constant([False, False, True, True])
+    y = constant_op.constant([False, True, False, True])
+
+    z = x | y
+
+    self.assertAllEqual(z, [False, True, True, True])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseOrErrors(self):
+    x_int = constant_op.constant(0)
+    x_bool = constant_op.constant(True)
+
+    if context.executing_eagerly():  # :(
+      expected_errtype = errors.InvalidArgumentError
+    else:
+      expected_errtype = TypeError
+
+    with self.assertRaises(expected_errtype):
+      _ = x_int | x_bool
+    with self.assertRaises(expected_errtype):
+      _ = x_int | constant_op.constant("a")
+
+    with self.assertRaises(expected_errtype):
+      _ = x_bool | x_int
+    with self.assertRaises(expected_errtype):
+      _ = x_bool | constant_op.constant("a")
+
+    with self.assertRaises(expected_errtype):
+      _ = constant_op.constant("a") | constant_op.constant("b")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseXorNumeric(self):
+    x = constant_op.constant([0, 1, 3])
+    y = constant_op.constant([1, 1, 1])
+
+    z = x ^ y
+
+    self.assertAllEqual(z, [1, 0, 2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseXorBool(self):
+    x = constant_op.constant([False, False, True, True])
+    y = constant_op.constant([False, True, False, True])
+
+    z = x ^ y
+
+    self.assertAllEqual(z, [False, True, True, False])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseXorErrors(self):
+    x_int = constant_op.constant(0)
+    x_bool = constant_op.constant(True)
+
+    if context.executing_eagerly():  # :(
+      expected_errtype = errors.InvalidArgumentError
+    else:
+      expected_errtype = TypeError
+
+    with self.assertRaises(expected_errtype):
+      _ = x_int ^ x_bool
+    with self.assertRaises(expected_errtype):
+      _ = x_int ^ constant_op.constant("a")
+
+    with self.assertRaises(expected_errtype):
+      _ = x_bool ^ x_int
+    with self.assertRaises(expected_errtype):
+      _ = x_bool ^ constant_op.constant("a")
+
+    with self.assertRaises(expected_errtype):
+      _ = constant_op.constant("a") ^ constant_op.constant("b")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseNotNumeric(self):
+    x = constant_op.constant([0, dtypes.int32.min, 1])
+
+    y = ~x
+
+    self.assertAllEqual(y, [-1, dtypes.int32.max, -2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseNotBool(self):
+    x = constant_op.constant([False, True])
+
+    y = ~x
+
+    self.assertAllEqual(y, [True, False])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBitwiseNotErrors(self):
+    if context.executing_eagerly():  # :(
+      expected_errtype = errors.InvalidArgumentError
+    else:
+      expected_errtype = TypeError
+
+    with self.assertRaises(expected_errtype):
+      _ = ~constant_op.constant("a")
+
 
 @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 @test_util.run_all_in_graph_and_eager_modes
@@ -709,12 +858,25 @@ class OperationTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       ops.convert_to_tensor(tensor, dtype=dtypes.int32)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorProtocol(self):
+    class TensorCompatible:
+
+      def __tf_tensor__(self, dtype=None, name=None):
+        return constant_op.constant((1, 2, 3), dtype=dtype, name=name)
+
+    tc = TensorCompatible()
+
+    tensor = ops.convert_to_tensor(tc, dtype=dtypes.int32)
+    self.assertEqual(tensor.dtype, dtypes.int32)
+    self.assertAllEqual((1, 2, 3), self.evaluate(tensor))
+
   @test_util.run_deprecated_v1
   def testNoConvert(self):
     # Operation cannot be converted to Tensor.
     op = control_flow_ops.no_op()
     with self.assertRaisesRegex(TypeError,
-                                r"Can't convert Operation '.*' to Tensor"):
+                                "can't convert Operation '.+' to Tensor"):
       ops.convert_to_tensor(op)
 
   def testStr(self):
@@ -3230,6 +3392,18 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     with ops.colocate_with(a.op):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+
+  @test_util.run_deprecated_v1
+  def testColocateResourceVariablesInFunction(self):
+    with ops.device("/device:CPU:0"):
+      a = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def f():
+      with ops.colocate_with(a):
+        b = array_ops.ones([], name="output")
+        self.assertEqual("/device:CPU:0", b.op.device)
+    f()
 
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def testColocateWithVariableInFunction(self):

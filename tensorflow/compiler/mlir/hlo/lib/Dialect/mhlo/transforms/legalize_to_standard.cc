@@ -16,17 +16,17 @@ limitations under the License.
 // This file implements logic for lowering MHLO dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace {
-#include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc"
+#include "generated_legalize_to_standard.inc"
 }  // end anonymous namespace
 namespace mhlo {
 namespace {
@@ -117,7 +117,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
                                 PatternRewriter &rewriter) const override {
     auto output_type = op.getType().cast<ShapedType>();
     auto output_size = output_type.getNumElements();
-    auto dimension = op.iota_dimension().getSExtValue();
+    auto dimension = op.iota_dimension();
     auto max_dim_size = output_type.getDimSize(dimension);
 
     auto element_type = output_type.getElementType();
@@ -176,15 +176,19 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 }  // end anonymous namespace
 
 namespace {
-struct LegalizeToStandard
-    : public PassWrapper<LegalizeToStandard, FunctionPass> {
+struct LegalizeToStandardPass
+    : public PassWrapper<LegalizeToStandardPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<StandardOpsDialect>();
+  }
+
   /// Perform the lowering to Standard dialect.
   void runOnFunction() override;
 };
 }  // end anonymous namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
-  return std::make_unique<LegalizeToStandard>();
+  return std::make_unique<LegalizeToStandardPass>();
 }
 
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
@@ -194,14 +198,11 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 }
 
 /// Perform the lowering to standard dialect.
-void LegalizeToStandard::runOnFunction() {
+void LegalizeToStandardPass::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
-
-static PassRegistration<LegalizeToStandard> legalize_pass(
-    "mhlo-legalize-to-std", "Legalize from MHLO dialect to standard dialect");
 
 }  // end namespace mhlo
 }  // end namespace mlir

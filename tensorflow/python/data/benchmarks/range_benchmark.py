@@ -24,18 +24,22 @@ from tensorflow.python.data.ops import dataset_ops
 class RangeBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.range()`."""
 
-  def benchmark_range(self):
-    for modeling_enabled in [False, True]:
-      num_elements = 10000000 if modeling_enabled else 50000000
-      options = dataset_ops.Options()
-      options.experimental_optimization.autotune = modeling_enabled
-      dataset = dataset_ops.Dataset.range(num_elements)
-      dataset = dataset.with_options(options)
+  def _benchmark_range(self, num_elements, modeling_enabled):
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune = modeling_enabled
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.with_options(options)
 
-      self.run_and_report_benchmark(
-          dataset,
-          num_elements=num_elements,
-          name="modeling_%s" % ("on" if modeling_enabled else "off"))
+    self.run_and_report_benchmark(
+        dataset,
+        num_elements=num_elements,
+        name="modeling_%s" % ("on" if modeling_enabled else "off"))
+
+  def benchmark_range_with_modeling(self):
+    self._benchmark_range(num_elements=10000000, modeling_enabled=True)
+
+  def benchmark_range_without_modeling(self):
+    self._benchmark_range(num_elements=50000000, modeling_enabled=False)
 
 
 if __name__ == "__main__":

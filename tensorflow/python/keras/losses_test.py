@@ -95,16 +95,19 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     p = backend.placeholder()
     o = losses.categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor_v2([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
-    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
-                                      [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2_with_dispatch([[1., 0., 0.], [0., 1., 0.],
+                                                    [0., 0., 1.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[.9, .05, .05],
+                                                    [.05, .89, .06],
+                                                    [.05, .01, .94]])
     f = backend.function([t, p], o)
 
     result = f([t_val, p_val])
     self.assertArrayNear(result, [.105, .116, .062], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[8., 1., 1.], [0., 9., 1.],
+                                                    [2., 3., 5.]])
     o = losses.categorical_crossentropy(t, p, from_logits=True)
     f = backend.function([t, p], o)
 
@@ -133,16 +136,18 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     p = backend.placeholder()
     o = losses.sparse_categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor_v2([0, 1, 2])
-    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
-                                      [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2_with_dispatch([0, 1, 2])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[.9, .05, .05],
+                                                    [.05, .89, .06],
+                                                    [.05, .01, .94]])
     f = backend.function([t, p], o)
 
     result = f([t_val, p_val])
     self.assertArrayNear(result, [.105, .116, .062], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[8., 1., 1.], [0., 9., 1.],
+                                                    [2., 3., 5.]])
     o = losses.sparse_categorical_crossentropy(t, p, from_logits=True)
     f = backend.function([t, p], o)
 

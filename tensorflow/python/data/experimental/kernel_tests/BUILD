@@ -642,20 +642,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "replicate_cluster_test",
-    srcs = ["replicate_cluster_test.py"],
-    grpc_enabled = True,
-    tags = ["no_oss"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_combinations",
-        "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
 cuda_py_test(
     name = "scan_test",
     size = "small",
@@ -770,6 +756,7 @@ tf_py_test(
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
         "no_pip",
+        "notap",
     ],
     deps = [
         ":reader_dataset_ops_test_base",

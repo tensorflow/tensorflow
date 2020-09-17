@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
@@ -28,10 +29,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/tpu/kernels/tpu_configuration_ops.h"
-#include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
@@ -42,6 +44,58 @@ namespace {
 static bool tpu_autoclustering_flag = false;
 static bool tpu_xla_device_failure_closes_chips_flag = true;
 static bool tpu_use_substreams_for_cross_tpu_device_transfers_flag = true;
+
+// Given a tensor of `shape` and `type`, as what shape should it be stored on
+// the TPU device? This function tranposes or flattens the excessively-padded
+// tensors to rank 1, but leaves other tensor shapes alone.
+xla::StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
+                                                 DataType type,
+                                                 bool use_fast_memory) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(
+      tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
+  ApiConverter::StackHelper<XLA_Shape> se_shape(xla_shape);
+  ApiConverter::StackHelper<XLA_Shape> tpu_shape;
+  StatusHelper status;
+  tpu::ExecutorApiFn()->XlaShapeToTpuShapeRepresentationFn(
+      &se_shape.value, type, use_fast_memory, &tpu_shape.value,
+      status.c_status);
+  if (!status.status().ok()) {
+    return status.status();
+  }
+  return tpu_shape.AsCpp<xla::Shape>();
+}
+
+// Given a tensor, returns the shape of its representation on device,
+// fully padded. Contents of `shape` are undefined on error.
+Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
+  const tensorflow::XlaTensor* xla_tensor =
+      tensorflow::XlaTensor::FromTensor(&tensor);
+  if (xla_tensor == nullptr) {
+    return errors::InvalidArgument(
+        "Expected an XlaTensor when computing padded shape");
+  }
+
+  if (!xla_tensor->has_shaped_buffer()) {
+    return errors::InvalidArgument(
+        "XlaTensor is expected to have device memory allocated when "
+        "computing padded shape");
+  }
+
+  const xla::Shape& on_device_shape =
+      xla_tensor->shaped_buffer().on_device_shape();
+
+  StatusHelper status;
+  ApiConverter::StackHelper<XLA_Shape> se_shape(on_device_shape);
+  ApiConverter::StackHelper<XLA_Shape> tpu_shape;
+  tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
+      &se_shape.value, &tpu_shape.value, status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+  *shape = tpu_shape.AsCpp<xla::Shape>();
+  return Status::OK();
+}
 
 // Check if TPU has been initialized. TPU initialization is not necessary
 // for 1x1.
@@ -315,9 +369,8 @@ Status TpuNodeDeviceFactory::CreateDevices(
     options.device_ordinal = i;
     options.compilation_device_name = DEVICE_TPU_XLA_JIT;
     options.use_multiple_streams = true;
-    // TODO(jiawenhao): Implement and enable these.
-    // options.shape_representation_fn = tpu::TpuShapeRepresentation;
-    // options.padded_shape_fn = tpu::TpuPaddedShapeFn;
+    options.shape_representation_fn = &TpuShapeRepresentation;
+    options.padded_shape_fn = &TpuPaddedShapeFn;
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 
     // The GpuDeviceInfo actually provides information not only for GPU

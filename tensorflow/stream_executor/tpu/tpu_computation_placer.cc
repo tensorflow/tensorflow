@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_computation_placer.h"
 
+#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+
+namespace tensorflow {
+namespace tpu {
 
 template <typename T>
 using StatusOr = TpuComputationPlacer::StatusOr<T>;
 
 TpuComputationPlacer::TpuComputationPlacer() {
-  placer_ = TpuComputationPlacer_New();
+  placer_ = tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_NewFn();
 }
 
 TpuComputationPlacer::~TpuComputationPlacer() {
-  TpuComputationPlacer_Free(placer_);
+  tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
 }
 
 StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
@@ -36,7 +41,30 @@ StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
 
 StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
     int replica_count, int computation_count) {
-  LOG(FATAL) << "Unimplemented.";
+  StatusHelper status;
+  xla::DeviceAssignment result(replica_count, computation_count);
+  tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_AssignDevicesFn(
+      placer_, replica_count, computation_count, result.data(),
+      status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+  return result;
+}
+
+/*static*/ StatusOr<xla::DeviceAssignment>
+TpuComputationPlacer::AssignLocalDevices(TpuHostLocationExternal host_location,
+                                         int replica_count,
+                                         int computation_count) {
+  StatusHelper status;
+  xla::DeviceAssignment result(replica_count, computation_count);
+  tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_AssignLocalDevicesFn(
+      host_location.impl(), replica_count, computation_count, result.data(),
+      status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+  return result;
 }
 
 static std::unique_ptr<xla::ComputationPlacer> CreateTpuComputationPlacer() {
@@ -49,3 +77,6 @@ static bool InitModule() {
   return true;
 }
 static bool module_initialized = InitModule();
+
+}  // namespace tpu
+}  // namespace tensorflow

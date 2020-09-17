@@ -134,7 +134,8 @@ class TestGraphInfo : public GraphInfo {
   TfLiteTensor* tensor(size_t index) override {
     return &graph_->tensors()->at(index);
   }
-  size_t num_nodes() const override { return graph_->nodes().size(); }
+  size_t num_execution_nodes() const override { return graph_->nodes().size(); }
+  size_t num_total_nodes() const override { return graph_->nodes().size(); }
   const TfLiteNode& node(size_t index) const override {
     return graph_->nodes()[index];
   }

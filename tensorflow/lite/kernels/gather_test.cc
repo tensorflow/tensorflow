@@ -272,6 +272,26 @@ TEST(TypesGatherOpTest, Int8Int64) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({14, 15, -13, -120}));
 }
 
+TEST(TypesGatherOpTest, Int16Int32) {
+  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT32, {2}});
+  m.SetInput<int16_t>({-13, -32000, 0, 32500});
+  m.SetPositions<int32_t>({1, 0});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 32500, -13, -32000}));
+}
+
+TEST(TypesGatherOpTest, Int16Int64) {
+  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT64, {2}});
+  m.SetInput<int16_t>({-13, -32000, 0, 32500});
+  m.SetPositions<int64_t>({1LL, 0LL});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 32500, -13, -32000}));
+}
+
 TEST(TypesGatherOpTest, Int64Int32) {
   GatherOpModel m({TensorType_INT64, {2, 2}}, {TensorType_INT32, {2}});
   m.SetInput<int64_t>({-(1LL << 34), 134LL, 14LL, 15LL});
