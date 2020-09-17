@@ -27,6 +27,65 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
+template <typename T, typename Tindex, bool has_l2_shrinkage>
+__global__ void SparseApplyFtrlKernel(T* var, T* accum, T* linear, const T* lr,
+                                      const T* l1, const T* l2,
+                                      const T* l2_shrinkage, const T* lr_power,
+                                      const T* grad, const Tindex* indices,
+                                      Tindex param_rows, Tindex updates_size,
+                                      Tindex indices_size) {
+  Tindex col_size = updates_size / indices_size;
+  GPU_1D_KERNEL_LOOP(grad_index, updates_size) {
+    Tindex indices_row = grad_index / col_size;
+    Tindex param_row = indices[indices_row];
+    if (param_row < 0 || param_row >= param_rows) {
+      // Ignore indices that are out of range.
+      continue;
+    }
+
+    // Compute the index of var and accum.
+    Tindex param_index = param_row * col_size + (grad_index % col_size);
+
+    // Read variables.
+    T var_i = var[param_index];
+    T accum_i = accum[param_index];
+    T linear_i = linear[param_index];
+    T grad_i = grad[grad_index];
+    const T lr_t = *lr;
+    const T l1_t = *l1;
+    const T l2_t = *l2;
+    const T lr_power_t = *lr_power;
+
+    T grad_shr_i = has_l2_shrinkage
+                       ? grad_i + static_cast<T>(2) * (*l2_shrinkage) * var_i
+                       : grad_i;
+    T new_accum_i = accum_i + grad_i * grad_i;
+    if (lr_power_t == static_cast<T>(-0.5)) {
+      linear_i +=
+          grad_shr_i - (sqrt(new_accum_i) - sqrt(accum_i)) / lr_t * var_i;
+    } else {
+      linear_i += grad_shr_i -
+                  (pow(new_accum_i, -lr_power_t) - pow(accum_i, -lr_power_t)) /
+                      lr_t * var_i;
+    }
+    T l1_reg_adjust = max(min(linear_i, l1_t), -l1_t);
+    T x = l1_reg_adjust - linear_i;
+    if (lr_power_t == static_cast<T>(-0.5)) {
+      T y = sqrt(new_accum_i) / lr_t + static_cast<T>(2) * l2_t;
+      var_i = x / y;
+    } else {
+      T y = pow(new_accum_i, -lr_power_t) / lr_t + static_cast<T>(2) * l2_t;
+      var_i = x / y;
+    }
+    accum_i = new_accum_i;
+
+    // Write update back to variables.
+    var[param_index] = var_i;
+    accum[param_index] = accum_i;
+    linear[param_index] = linear_i;
+  }
+}
+
 template <typename T>
 __global__ __launch_bounds__(1024) void ApplyAdamKernel(
     int32 data_dim, T* var, T* m, T* v, const T* const beta1_power_,
@@ -558,6 +617,33 @@ struct ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T> {
   }
 };
 
+template <typename T, typename Tindex, bool has_l2_shrinkage>
+struct SparseApplyFtrl<GPUDevice, T, Tindex, has_l2_shrinkage> {
+  Tindex operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::Matrix linear,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar l1,
+                    typename TTypes<T>::ConstScalar l2,
+                    typename TTypes<T>::ConstScalar l2_shrinkage,
+                    typename TTypes<T>::ConstScalar lr_power,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices,
+                    int64 inner_dim) {
+    const Tindex first_dim_size = var.dimension(0);
+    const Tindex grad_size = grad.size();
+    const Tindex indices_size = indices.size();
+    GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
+    TF_CHECK_OK(GpuLaunchKernel(
+        SparseApplyFtrlKernel<T, Tindex, has_l2_shrinkage>, config.block_count,
+        config.thread_per_block, 0, d.stream(), var.data(), accum.data(),
+        linear.data(), lr.data(), l1.data(), l2.data(), l2_shrinkage.data(),
+        lr_power.data(), grad.data(), indices.data(), first_dim_size, grad_size,
+        indices_size));
+    return static_cast<Tindex>(-1);
+  }
+};
+
 template <typename T>
 struct ApplyMomentum<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -889,6 +975,31 @@ template struct functor::ApplyFtrlV2<GPUDevice, double>;
 template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, Eigen::half>;
 template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, float>;
 template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, double>;
+
+template struct functor::SparseApplyFtrl<GPUDevice, Eigen::half, int32,
+                                         /*has_l2_shrinkage=*/false>;
+template struct functor::SparseApplyFtrl<GPUDevice, Eigen::half, int64,
+                                         /*has_l2_shrinkage=*/false>;
+template struct functor::SparseApplyFtrl<GPUDevice, float, int32,
+                                         /*has_l2_shrinkage=*/false>;
+template struct functor::SparseApplyFtrl<GPUDevice, float, int64,
+                                         /*has_l2_shrinkage=*/false>;
+template struct functor::SparseApplyFtrl<GPUDevice, double, int32,
+                                         /*has_l2_shrinkage=*/false>;
+template struct functor::SparseApplyFtrl<GPUDevice, double, int64,
+                                         /*has_l2_shrinkage=*/false>;
+template struct functor::SparseApplyFtrl<GPUDevice, Eigen::half, int32,
+                                         /*has_l2_shrinkage=*/true>;
+template struct functor::SparseApplyFtrl<GPUDevice, Eigen::half, int64,
+                                         /*has_l2_shrinkage=*/true>;
+template struct functor::SparseApplyFtrl<GPUDevice, float, int32,
+                                         /*has_l2_shrinkage=*/true>;
+template struct functor::SparseApplyFtrl<GPUDevice, float, int64,
+                                         /*has_l2_shrinkage=*/true>;
+template struct functor::SparseApplyFtrl<GPUDevice, double, int32,
+                                         /*has_l2_shrinkage=*/true>;
+template struct functor::SparseApplyFtrl<GPUDevice, double, int64,
+                                         /*has_l2_shrinkage=*/true>;
 
 template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;

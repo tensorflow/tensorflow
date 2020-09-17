@@ -151,6 +151,20 @@ struct ApplyFtrlV2MultiplyLinearByLr {
                   typename TTypes<T>::ConstScalar lr_power);
 };
 
+template <typename Device, typename T, typename Tindex, bool has_l2_shrinkage>
+struct SparseApplyFtrl {
+  Tindex operator()(const Device& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::Matrix linear,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar l1,
+                    typename TTypes<T>::ConstScalar l2,
+                    typename TTypes<T>::ConstScalar l2_shrinkage,
+                    typename TTypes<T>::ConstScalar lr_power,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim);
+};
+
 template <typename Device, typename T>
 struct ApplyMomentum {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
