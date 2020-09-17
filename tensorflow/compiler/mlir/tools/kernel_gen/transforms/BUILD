@@ -1,6 +1,12 @@
 load("//third_party/mlir:tblgen.bzl", "gentbl")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load(
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
     default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
@@ -73,7 +79,7 @@ cc_library(
         "unfuse_batch_norm_pass.cc",
     ],
     hdrs = ["passes.h"],
-    copts = if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
@@ -111,9 +117,9 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_llvm",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
-    ] + if_cuda([
+    ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:asm_compiler",
-    ]) + if_rocm([
+    ]) + if_rocm_is_configured([
         "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )

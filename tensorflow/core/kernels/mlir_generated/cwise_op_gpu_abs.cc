@@ -20,17 +20,21 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/mlir_generated/cwise_op_gpu_base.cu.h"
-#include "tensorflow/core/kernels/mlir_generated/tanh_f16_kernel.h"
-#include "tensorflow/core/kernels/mlir_generated/tanh_f32_kernel.h"
-#include "tensorflow/core/kernels/mlir_generated/tanh_f64_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/abs_f16_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/abs_f32_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/abs_f64_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/abs_i32_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/abs_i64_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/cwise_op_gpu_base.h"
 
 namespace tensorflow {
 namespace {
-GENERATE_OP_KERNEL_BASE(Tanh);
+GENERATE_OP_KERNEL_BASE(Abs);
 }  // namespace
 
-REGISTER_AND_GENERATE_KERNEL(Tanh, F16, Eigen::half)
-REGISTER_AND_GENERATE_KERNEL(Tanh, F32, float)
-REGISTER_AND_GENERATE_KERNEL(Tanh, F64, double)
+REGISTER_AND_GENERATE_KERNEL(Abs, F16, Eigen::half);
+REGISTER_AND_GENERATE_KERNEL(Abs, F32, float);
+REGISTER_AND_GENERATE_KERNEL(Abs, F64, double);
+REGISTER_AND_GENERATE_KERNEL(Abs, I32, int32);
+REGISTER_AND_GENERATE_KERNEL(Abs, I64, int64);
 }  // namespace tensorflow
