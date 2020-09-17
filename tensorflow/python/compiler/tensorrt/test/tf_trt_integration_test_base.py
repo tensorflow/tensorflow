@@ -280,7 +280,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
         use_calibration=run_params.use_calibration,
-        max_batch_size=min(batch_list))
+        max_batch_size=max(batch_list))
     return conversion_params
 
   def GetTrtRewriterConfig(self,
