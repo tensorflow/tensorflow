@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 #include <string>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 

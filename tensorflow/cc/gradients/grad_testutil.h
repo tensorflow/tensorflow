@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
 
 #include <vector>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CC_OPS_CONST_OP_H_
 
 #include <vector>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/graph/node_builder.h"
