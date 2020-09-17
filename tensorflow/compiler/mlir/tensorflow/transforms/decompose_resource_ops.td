@@ -85,7 +85,7 @@ def DecomposeResourceApplyMomentumOpNonNesterov :
        $var_resource, $accum_resource, $lr, $grad, $momentum,
        BoolAttr:$_, ConstBoolAttrFalse:$use_nesterov
     ),
-    [(TF_AddOp:$accum_new
+    [(TF_AddV2Op:$accum_new
       (TF_MulOp
         (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
         $momentum
@@ -107,7 +107,7 @@ def DecomposeResourceApplyMomentumOpNesterov :
        $var_resource, $accum_resource, $lr, $grad, $momentum,
        BoolAttr:$_, ConstBoolAttrTrue:$use_nesterov
     ),
-    [(TF_AddOp:$accum_new
+    [(TF_AddV2Op:$accum_new
        (TF_MulOp
          (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
          $momentum
@@ -117,7 +117,7 @@ def DecomposeResourceApplyMomentumOpNesterov :
      (TF_AssignVariableOp $accum_resource, $accum_new),
      (TF_AssignSubVariableOp
        $var_resource,
-       (TF_AddOp
+       (TF_AddV2Op
          (TF_MulOp $grad, $lr),
          (TF_MulOp $accum_new, (TF_MulOp $momentum, $lr))
        )
@@ -357,7 +357,7 @@ def DecomposeResourceApplyCenteredRMSProp :
     ),
     [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
      (CreateTFReadVariableOp $src_op, $grad, $ms_resource),
-     (TF_AddOp:$ms_new
+     (TF_AddV2Op:$ms_new
        (TF_MulOp
          (TF_MulOp $grad, $grad),
          (TF_SubOp $one, $rho)
@@ -369,7 +369,7 @@ def DecomposeResourceApplyCenteredRMSProp :
      ),
      (TF_AssignVariableOp $ms_resource, $ms_new),
      // mg = grad * (one - rho) + mg * rho;
-     (TF_AddOp:$mg_new
+     (TF_AddV2Op:$mg_new
        (TF_MulOp
          $grad,
          (TF_SubOp $one, $rho)
@@ -381,7 +381,7 @@ def DecomposeResourceApplyCenteredRMSProp :
      ),
      (TF_AssignVariableOp $mg_resource, $mg_new),
      // mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
-     (TF_AddOp:$mom_new
+     (TF_AddV2Op:$mom_new
       (TF_MulOp $momentum,
        (CreateTFReadVariableOp $src_op, $grad, $mom_resource)),
       (TF_DivOp
@@ -389,7 +389,7 @@ def DecomposeResourceApplyCenteredRMSProp :
          (TF_SqrtOp
            (TF_SubOp
              $ms_new,
-             (TF_AddOp
+             (TF_AddV2Op
                (TF_MulOp
                  $mg_new,
                  $mg_new
@@ -397,6 +397,48 @@ def DecomposeResourceApplyCenteredRMSProp :
                $epsilon
              )
            )
+         )
+      )
+     ),
+     (TF_AssignVariableOp $mom_resource, $mom_new),
+     // var <- var - mom
+     (TF_AssignSubVariableOp $var_resource, $mom_new)
+   ]
+   >;
+
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
+// ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+// mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
+// var <- var - mom
+def DecomposeResourceApplyRMSProp :
+  Pattern<
+    (TF_ResourceApplyRMSPropOp:$src_op
+       $var_resource, $ms_resource, $mom_resource, $lr, $rho, $momentum, $epsilon,
+       $grad, ConstBoolAttrFalse:$use_locking
+    ),
+    [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
+     (CreateTFReadVariableOp $src_op, $grad, $ms_resource),
+     // ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+     (TF_AddV2Op:$ms_new
+       (TF_MulOp
+          (CreateTFReadVariableOp $src_op, $grad, $ms_resource),
+          $rho
+       ),
+       (TF_MulOp
+         (TF_SquareOp $grad),
+         (TF_SubOp $one, $rho)
+       )
+     ),
+     (TF_AssignVariableOp $ms_resource, $ms_new),
+     // mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
+     (TF_AddV2Op:$mom_new
+      (TF_MulOp $momentum,
+       (CreateTFReadVariableOp $src_op, $grad, $mom_resource)),
+      (TF_DivOp
+         (TF_MulOp $lr, $grad),
+         (TF_SqrtOp
+           (TF_AddV2Op $ms_new, $epsilon)
          )
       )
      ),
