@@ -2268,6 +2268,9 @@ tf_cc_test(
     size = "small",
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "notsan",  #b/168811551
+    ],
     deps = [
         ":core",
         ":core_cpu",
