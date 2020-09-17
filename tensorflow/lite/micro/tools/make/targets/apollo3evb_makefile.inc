@@ -26,6 +26,17 @@ ifeq ($(TARGET),$(filter $(TARGET),\
 $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
   endif
 
+  ifeq ($(TARGET),$(filter $(TARGET),\
+    sparkfun_redboard_artemis_atp\
+    sparkfun_artemis_dk\
+    ))
+
+    ALL_TAGS+= sfe
+    ALL_TAGS+= apollo3-pdm
+    ALL_TAGS+= sfe-unary-led
+
+  endif
+
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
     -DAM_PACKAGE_BGA \
