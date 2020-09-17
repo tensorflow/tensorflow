@@ -68,7 +68,8 @@ where applicable. For details about each parameter, please refer to
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
-*   `nnapi_execution_preference`: `str` (default="")
+*   `nnapi_execution_preference`: `str` (default="") \
+	Should be one of: `fast_single_answer`, `sustained_speed`, `low_power`, `undefined`
 *   `nnapi_execution_priority`: `str` (default="") \
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
