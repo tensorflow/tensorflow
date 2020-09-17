@@ -184,7 +184,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   # Whether to perdically check the health of the cluster. If any worker is not
   # reachable, collectives are aborted and the user program should get a
   # tf.errors.UnavailableError. It's required to restart in order to recover.
-  _enable_check_health = False
+  _enable_check_health = True
   # Check health interval in seconds.
   _check_health_interval = 30
   # Timeout in seconds for the first check health. The first check health needs
@@ -387,7 +387,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    # TODO(b/151232436): Enable check health thread by default.
     if self._enable_check_health:
       self._start_check_health_thread()
 
