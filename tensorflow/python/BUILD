@@ -3987,7 +3987,7 @@ cuda_py_test(
         "//tensorflow/python/eager:def_function",
     ],
     shard_count = 2,
-    tags = ["no_pip"]
+    tags = ["no_pip"],
     xla_enable_strict_auto_jit = True,
 )
 
