@@ -4298,8 +4298,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
     # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
     matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen.dtype)
     result = row_vector < matrix
-
-    if dtype is None or result.dtype.base_dtype == dtype.base_dtype:
+    if dtype is None or result.dtype.is_compatible_with(dtype):
       return result
     else:
       return gen_math_ops.cast(result, dtype)
