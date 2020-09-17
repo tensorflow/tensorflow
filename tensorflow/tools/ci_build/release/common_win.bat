@@ -28,7 +28,7 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 
 %PIP_EXE% install setuptools --upgrade
 %PIP_EXE% install future>=0.17.1 --no-deps
-%PIP_EXE% install --ignore-installed --force-reinstall --upgrade tf-estimator-nightly --no-deps
+%PIP_EXE% install --ignore-installed --force-reinstall --upgrade tf-estimator-nightly==2.4.0.dev2020072601 --no-deps
 %PIP_EXE% install tb-nightly --no-deps
 %PIP_EXE% install numpy==1.16.0 --upgrade --no-deps
 %PIP_EXE% install opt_einsum --upgrade
