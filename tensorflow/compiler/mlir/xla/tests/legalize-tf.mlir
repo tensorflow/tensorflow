@@ -1979,19 +1979,10 @@ func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHLO-LABEL: @acos_dynamic
 func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK:  chlo.acos %arg0 : tensor<*xf32>
-// CHLO:   %[[VAL_1:.*]] = "mhlo.compare"({{.*}}) {comparison_direction = "NE"}
-// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
-// CHLO:   %[[VAL_4:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32}
-// CHLO:   %[[VAL_6:.*]] = mhlo.subtract %[[VAL_4]], %[[VAL_5]]
-// CHLO:   %[[VAL_7:.*]] = "mhlo.sqrt"(%[[VAL_6]])
-// CHLO:   %[[VAL_8:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32}
-// CHLO:   %[[VAL_9:.*]] = mhlo.add %[[VAL_8]], %arg0
-// CHLO:   %[[VAL_10:.*]] = mhlo.atan2 %[[VAL_7]], %[[VAL_9]]
-// CHLO:   %[[VAL_3:.*]] = "chlo.constant_like"(%arg0) {value = 2.000000e+00 : f32}
-// CHLO:   %[[VAL_11:.*]] = mhlo.multiply %[[VAL_3]], %[[VAL_10]]
-// CHLO:   %[[VAL_12:.*]] = "chlo.constant_like"(%arg0) {value = 3.14159274 : f32}
-// CHLO:   %[[VAL_13:.*]] = "mhlo.select"(%[[VAL_1]], %[[VAL_11]], %[[VAL_12]])
-// CHLO:       return %[[VAL_13]]
+  // `tf.Acos` is lowered to `chlo.constant_like` operations which can only be
+  // lowered further on ranked tensors.  Unranked CHLO must be transformed to
+  // ranked code before further lowering.
+  // CHLO: "tf.Acos"
   %0 = "tf.Acos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }

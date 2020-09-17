@@ -6022,12 +6022,6 @@ LogicalResult legalizeTF(
   ConversionTarget target(*context);
   if (legalize_chlo) {
     target.addIllegalDialect<chlo::HloClientDialect>();
-
-    // Mark ConstantLikeOp as dynamically legal only when it doesn't have a
-    // static result type so that it gets canonicalized to MHLO constant.
-    target.addDynamicallyLegalOp<chlo::ConstantLikeOp>([](Operation *op) {
-      return !op->getResultTypes().front().cast<ShapedType>().hasStaticShape();
-    });
   } else {
     target.addLegalDialect<chlo::HloClientDialect>();
   }
