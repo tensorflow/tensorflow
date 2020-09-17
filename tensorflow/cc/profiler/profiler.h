@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_PROFILER_PROFILER_H_
 #define TENSORFLOW_CC_PROFILER_PROFILER_H_
 
+#include <string>
+#include <memory>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
