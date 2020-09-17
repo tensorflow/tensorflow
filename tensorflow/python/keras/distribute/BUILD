@@ -381,9 +381,11 @@ py_library(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/eager:context",

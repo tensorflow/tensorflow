@@ -24,6 +24,7 @@ import numpy as np
 import six
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
@@ -51,6 +52,14 @@ all_strategies = [
     strategy_combinations.mirrored_strategy_with_two_gpus,
     strategy_combinations.tpu_strategy,  # steps_per_run=2
     strategy_combinations.tpu_strategy_one_step,
+]
+
+
+# TODO(b/159831559): add to all_strategies once all tests pass.
+multi_worker_mirrored = [
+    strategy_combinations.multi_worker_mirrored_2x1_cpu,
+    strategy_combinations.multi_worker_mirrored_2x1_gpu,
+    strategy_combinations.multi_worker_mirrored_2x2_gpu,
 ]
 
 
@@ -115,6 +124,18 @@ def test_combinations_with_tpu_strategies():
   return (combinations.times(
       combinations.combine(distribution=tpu_strategies),
       graph_mode_test_configuration()))
+
+
+def multi_worker_mirrored_eager():
+  return combinations.times(
+      combinations.combine(distribution=multi_worker_mirrored),
+      eager_mode_test_configuration())
+
+
+def multi_worker_mirrored_eager_and_graph():
+  return combinations.times(
+      combinations.combine(distribution=multi_worker_mirrored),
+      eager_mode_test_configuration() + graph_mode_test_configuration())
 
 
 class MaybeDistributionScope(object):
@@ -263,7 +284,12 @@ def fit_eval_and_predict(initial_weights,
 
   result['weights_1'] = model.get_weights()
 
-  if predict_inputs is not None:
+  # TODO(b/157924053): Now model.predict() doesn't support
+  # MultiWorkerMirroredStrategy. Enable model.predict() after it's supported.
+  if predict_inputs is not None and not isinstance(
+      distribution,
+      (collective_all_reduce_strategy.CollectiveAllReduceStrategy,
+       collective_all_reduce_strategy.CollectiveAllReduceStrategyV1)):
     # Check correctness of the result of predict() invoked
     # multiple times -- as for stateful models, result of
     # predict may differ for each batch.
