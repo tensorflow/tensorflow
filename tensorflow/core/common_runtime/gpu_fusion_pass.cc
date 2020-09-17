@@ -196,14 +196,16 @@ inline bool isOpActivationGrad(const Node* n) {
 // is this node an instance of a batchnorm op for which we support fusion for?
 inline bool isOpBatchNorm(const Node* n) {
   return ((n->type_string() == "FusedBatchNorm") ||
-          (n->type_string() == "FusedBatchNormV2"));
+          (n->type_string() == "FusedBatchNormV2") ||
+          (n->type_string() == "FusedBatchNormV3"));
 }
 
 // is this node an instance of a batchnorm gradient op for which we support
 // fusion for?
 inline bool isOpBatchNormGrad(const Node* n) {
   return ((n->type_string() == "FusedBatchNormGrad") ||
-          (n->type_string() == "FusedBatchNormGradV2"));
+          (n->type_string() == "FusedBatchNormGradV2") ||
+          (n->type_string() == "FusedBatchNormGradV3"));
 }
 
 // is this node an instance of the "Add" op?
@@ -1175,11 +1177,12 @@ bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(
       if (e->IsControlEdge()) {
         d->control_outputs.push_back(e->dst());
       } else if (is_training) {
-        if ((1 <= e->src_output()) && (e->src_output() <= 4)) {
+        if ((1 <= e->src_output()) && (e->src_output() <= 5)) {
           // 1 - batch-norm mean
           // 2 - batch-norm variance
           // 3 - saved mean
           // 4 - saved variance
+          // 5 - unused (in ROCm) reserved space 3
           d->add_data_output(e->src_output(), e->dst(), e->dst_input());
         } else {
           // only other output index should be 0 (which feeds the actv node)

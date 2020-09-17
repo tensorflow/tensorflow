@@ -470,7 +470,9 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
     const int64 channels = GetTensorDim(x_bn, data_format_, 'C');
 
     if (x_bn.shape().num_elements() != 0) {
-      Tensor fusion_input = y_act_backprop;
+      Tensor fusion_input_1 = y_act_backprop;
+      Tensor fusion_input_2 = y_act;
+      Tensor fusion_input_3 = x_bn;
       Tensor fusion_output = *x_bn_backprop;
 
       // if the data format is NHWC, we need to
@@ -479,20 +481,41 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
       // be in NCHW format)
       if (data_format_ == FORMAT_NHWC) {
         // allocate a temporary tensor to store the NCHW input
-        Tensor transformed_input;
         TensorShape nchw_shape_input =
             ShapeFromFormat(FORMAT_NCHW, batch_size, height, width, channels);
+
+        Tensor transformed_input_1;
         OP_REQUIRES_OK(
             ctx, ctx->allocate_temp(DataTypeToEnum<T>::value, nchw_shape_input,
-                                    &transformed_input));
+                                    &transformed_input_1));
+        Tensor transformed_input_2;
+        OP_REQUIRES_OK(
+            ctx, ctx->allocate_temp(DataTypeToEnum<T>::value, nchw_shape_input,
+                                    &transformed_input_2));
+        Tensor transformed_input_3;
+        OP_REQUIRES_OK(
+            ctx, ctx->allocate_temp(DataTypeToEnum<T>::value, nchw_shape_input,
+                                    &transformed_input_3));
 
         // convert the input tensor to NCHW format for the GPU
         functor::NHWCToNCHW<GPUDevice, T, 4>()(
             ctx->eigen_device<GPUDevice>(),
-            const_cast<const Tensor&>(fusion_input).tensor<T, 4>(),
-            transformed_input.tensor<T, 4>());
+            const_cast<const Tensor&>(fusion_input_1).tensor<T, 4>(),
+            transformed_input_1.tensor<T, 4>());
 
-        fusion_input = transformed_input;
+        functor::NHWCToNCHW<GPUDevice, T, 4>()(
+            ctx->eigen_device<GPUDevice>(),
+            const_cast<const Tensor&>(fusion_input_2).tensor<T, 4>(),
+            transformed_input_2.tensor<T, 4>());
+
+        functor::NHWCToNCHW<GPUDevice, T, 4>()(
+            ctx->eigen_device<GPUDevice>(),
+            const_cast<const Tensor&>(fusion_input_3).tensor<T, 4>(),
+            transformed_input_3.tensor<T, 4>());
+
+        fusion_input_1 = transformed_input_1;
+        fusion_input_2 = transformed_input_2;
+        fusion_input_3 = transformed_input_3;
 
         // allocate a temporary tensor to store the NCHW output
         Tensor transformed_output;
@@ -520,14 +543,15 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
           .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
       auto y_act_backprop_data =
-          AsDeviceMemory(fusion_input.template flat<T>().data(),
-                         fusion_input.template flat<T>().size());
+          AsDeviceMemory(fusion_input_1.template flat<T>().data(),
+                         fusion_input_1.template flat<T>().size());
 
-      auto y_act_data = AsDeviceMemory(y_act.template flat<T>().data(),
-                                       y_act.template flat<T>().size());
+      auto y_act_data =
+          AsDeviceMemory(fusion_input_2.template flat<T>().data(),
+                         fusion_input_2.template flat<T>().size());
 
-      auto x_bn_data = AsDeviceMemory(x_bn.template flat<T>().data(),
-                                      x_bn.template flat<T>().size());
+      auto x_bn_data = AsDeviceMemory(fusion_input_3.template flat<T>().data(),
+                                      fusion_input_3.template flat<T>().size());
 
       auto scale_data = AsDeviceMemory(scale.template flat<U>().data(),
                                        scale.template flat<U>().size());
