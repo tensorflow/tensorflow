@@ -1754,17 +1754,16 @@ class _SingleWorkerCallableIterator(object):
     return []
 
 
-def _create_iterators_per_replica(input_contexts,input_workers,
+def _create_iterators_per_replica(input_contexts, input_workers,
                                   dataset_fn):
   """Create a multidevice iterator per workers given a dataset function."""
   iterators = []
   for i, ctx in enumerate(input_contexts):
     devices = input_workers.compute_devices_for_worker(i)
-    with ops.device(devices[0]):
-      dataset = dataset_fn(ctx)
-      # Wrapping dataset here (ex. applying options) might result in moving it to the CPU
-      iterator = _SingleReplicaDatasetIterator(dataset, devices[0])
-      iterators.append(iterator)
+    dataset = dataset_fn(ctx)
+    # Wrapping dataset here (ex. applying options) might result in moving it to the CPU
+    iterator = _SingleReplicaDatasetIterator(dataset, devices[0])
+    iterators.append(iterator)
   return iterators
 
 
