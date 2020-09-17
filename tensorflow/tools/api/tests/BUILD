@@ -28,6 +28,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",
         "no_oss_py38",
         "no_pip",
         "no_rocm",
