@@ -6481,6 +6481,8 @@ tf_py_test(
         # The multiprocessing module behaves differently on
         # windows, so we disable this test on windows.
         "no_windows",
+        # Also disable on mac
+        "no_mac",
     ],
     deps = [
         ":client_testlib",

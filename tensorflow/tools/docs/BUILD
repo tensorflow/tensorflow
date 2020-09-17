@@ -24,6 +24,7 @@ py_test(
     srcs = ["tf_doctest.py"],
     python_version = "PY3",
     tags = [
+        "no_mac",
         "no_oss_py2",
         "no_pip",
         "no_windows",  # numpy prints differently on windows.
