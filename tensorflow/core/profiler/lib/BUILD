@@ -64,6 +64,57 @@ cc_library(
     alwayslink = True,
 )
 
+tf_pybind_cc_library_wrapper(
+    name = "local_profiler_headers",
+    visibility = [
+        "//tensorflow/core/profiler/rpc:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
+    ],
+    deps = [":local_profiler"],
+)
+
+cc_library(
+    name = "local_profiler",
+    hdrs = ["local_profiler.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "@com_google_absl//absl/memory",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+    ] + if_static([
+        ":local_profiler_impl",
+    ]),
+)
+
+cc_library(
+    name = "local_profiler_impl",
+    srcs = ["local_profiler.cc"],
+    hdrs = ["local_profiler.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        ":profiler_lock",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
+        "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:derived_timeline",
+        "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
+    ],
+    alwayslink = True,
+)
+
 tf_cuda_library(
     name = "profiler_backends",
     cuda_deps = [
