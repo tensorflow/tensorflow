@@ -20,10 +20,10 @@ py_library(
         ":base_cluster_resolver_py",
         ":gce_cluster_resolver_py",
         ":kubernetes_cluster_resolver_py",
+        ":sagemaker_cluster_resolver_py",
         ":slurm_cluster_resolver_py",
         ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
-        ":sagemaker_cluster_resolver_py",
         "//tensorflow/python:util",
     ],
 )

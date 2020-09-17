@@ -61,7 +61,7 @@ def _load_tf_config(port):
 
   host_index = hosts.index(current_host)
   # Assign ports
-  hosts = [f"{host}:{port}" for host in hosts]
+  hosts = ["%s:%s"%(host, port) for host in hosts]
 
   tf_config = {_CLUSTER_KEY: {_WORKER_KEY: hosts},
                _TASK_KEY: {_TYPE_KEY: _WORKER_KEY, _INDEX_KEY: host_index}}
@@ -94,7 +94,7 @@ class SageMakerClusterResolver(ClusterResolver):
     """Creates a new SageMakerClusterResolver.
 
     Args:
-      port: (string, optional) Override default port usage of 2223
+      port: (integer, optional) Override default port usage of 2223
       task_type: (String, optional) Overrides the task type.
       task_id: (Integer, optional) Overrides the task index.
       rpc_layer: (String, optional) Overrides the rpc layer TensorFlow uses.
@@ -105,7 +105,7 @@ class SageMakerClusterResolver(ClusterResolver):
     self._task_id = task_id
     self._rpc_layer = rpc_layer
     self._environment = environment
-    self._port = port
+    self._port = str(port)
 
   @property
   def task_type(self):
