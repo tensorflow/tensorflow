@@ -1164,7 +1164,7 @@ cc_library(
 )
 
 # Test support library needed for higher-level (TensorFlow-specific) tests
-cc_library(
+tf_cuda_library(
     name = "testlib",
     testonly = 1,
     srcs = [
@@ -1295,6 +1295,7 @@ filegroup(
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
         "//tensorflow/core/kernels:mobile_srcs",
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
+        "//tensorflow/core/nccl:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
         "//tensorflow/core/util/sparse:mobile_srcs_only_runtime",

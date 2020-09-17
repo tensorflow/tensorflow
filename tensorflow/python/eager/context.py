@@ -747,8 +747,8 @@ class Context(object):
 
     This is intended to be used when a peer failure is detected, which allows
     the user to handle the case instead of hanging. This aborts all on-going
-    collectives. After all subsequent collectives error immediately. The only
-    way to recovery now is to restart the program.
+    collectives. After all subsequent collectives error immediately, and you
+    need to reset_context() to use collectives again.
 
     Args:
       code: a `tf.errors` error code.

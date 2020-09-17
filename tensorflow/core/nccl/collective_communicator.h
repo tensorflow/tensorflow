@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,23 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/collective_nccl_broadcaster.h"
+#ifndef TENSORFLOW_CORE_NCCL_COLECTIVE_COMMUNICATOR_H_
+#define TENSORFLOW_CORE_NCCL_COLECTIVE_COMMUNICATOR_H_
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#include "tensorflow/core/common_runtime/collective_util.h"
-#include "tensorflow/core/nccl/nccl_manager.h"
-#include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/framework/collective.h"
 
 namespace tensorflow {
 
-void NcclBroadcaster::Run(StatusCallback done) {
-  col_ctx_->nccl_communicator->Enqueue(col_ctx_, std::move(done));
-}
-
-REGISTER_COLLECTIVE(NcclBroadcast, NcclBroadcaster);
+// Creates a NcclCommunicator if built with NCCL support, otherwise it returns
+// nullptr.
+std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator();
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // TENSORFLOW_CORE_NCCL_COLECTIVE_COMMUNICATOR_H_

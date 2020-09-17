@@ -388,8 +388,9 @@ class PermuterTest : public ::testing::Test {
       Permuter* permuter = new Permuter;
       core::ScopedUnref unref(permuter);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, &tensor_input_, &tensor_output_);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, &tensor_input_, &tensor_output_);
       TF_CHECK_OK(permuter->InitializeCollectiveContext(col_ctx));
       Notification note;
       // Run the permute.

@@ -200,17 +200,6 @@ tf_cc_test(
     ],
 )
 
-# virtual targets since nested select statements not possible
-tf_kernel_library(
-    name = "virtual_nccl",
-    deps = if_cuda(["@local_config_nccl//:nccl"]),
-)
-
-tf_kernel_library(
-    name = "virtual_rccl",
-    deps = if_rocm(["@local_config_rocm//rocm:rccl"]),
-)
-
 tf_kernel_library(
     name = "collective_ops",
     srcs = if_nccl([
@@ -228,11 +217,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
-        ":virtual_nccl",
-        ":virtual_rccl",
-        "//tensorflow/core/nccl:nccl_lib",
+        "//tensorflow/core/nccl:collective_communicator",
     ]),
 )
 
@@ -255,6 +243,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/nccl:collective_communicator",
     ],
 )
 

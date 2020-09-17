@@ -674,8 +674,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
           new HierarchicalTreeBroadcaster;
       core::ScopedUnref unref(broadcaster);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, input_tensor_ptr, output_tensor_ptr);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, input_tensor_ptr, output_tensor_ptr);
       TF_CHECK_OK(broadcaster->InitializeCollectiveContext(col_ctx));
 
       // Run the broadcast.
