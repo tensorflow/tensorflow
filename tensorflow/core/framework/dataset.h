@@ -81,17 +81,19 @@ class SerializationContext;
 // Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
  public:
-  virtual Status ReadScalar(StringPiece key, int64* val) = 0;
-  virtual Status ReadScalar(StringPiece key, tstring* val) = 0;
-  virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
+  virtual Status ReadScalar(StringPiece key, int64* val) const = 0;
+  virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
+  virtual Status ReadTensor(StringPiece key, Tensor* val) const = 0;
 
-  virtual Status ReadScalar(StringPiece name, StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            tstring* val) = 0;
-  virtual Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) = 0;
+                            int64* val) const = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            tstring* val) const = 0;
+  virtual Status ReadTensor(StringPiece name, StringPiece key,
+                            Tensor* val) const = 0;
 
-  virtual bool Contains(StringPiece key) = 0;
-  virtual bool Contains(StringPiece name, StringPiece key) = 0;
+  virtual bool Contains(StringPiece key) const = 0;
+  virtual bool Contains(StringPiece name, StringPiece key) const = 0;
 
   virtual ~IteratorStateReader() {}
 };
