@@ -537,7 +537,10 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         gathered_values = collective._gather(
             per_replica_value, per_replica_value, axis=axis)
         gathered_values = self.as_list(gathered_values)
-        self.assertAllEqual(devices, [v.device for v in gathered_values])
+        # Skip checking devices in eager. In eager the device attribute doesn't
+        # reflect the actual device of the tensor.
+        if not context.executing_eagerly():
+          self.assertAllEqual(devices, [v.device for v in gathered_values])
         return [ops.convert_to_tensor(v) for v in gathered_values]
 
       group_size = num_processes * (required_gpus or 1)
