@@ -149,7 +149,7 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
   float result_data[1] = {0};
   memcpy(&result_data[0], TF_TensorData(gt), TF_TensorByteSize(gt));
 
-  ASSERT_NEAR(result_data[0], 7.0f, /*tolerance=*/1e-3);
+  ASSERT_NEAR(result_data[0], 7.0f, /*tolerance=*/1e-2);
   TF_DeleteTensor(gt);
 }
 
@@ -229,7 +229,7 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
 
   // Now compare the two implementations:
   for (int j = 0; j < 9; j++) {
-    ASSERT_NEAR(dnumerical[j], danalytical[j], /*tolerance=*/1e-3);
+    ASSERT_NEAR(dnumerical[j], danalytical[j], /*tolerance=*/1e-2);
   }
 
   // Only Unref() first output as 2nd is nullptr grad for labels
