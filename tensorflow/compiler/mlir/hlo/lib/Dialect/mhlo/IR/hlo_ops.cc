@@ -1678,6 +1678,20 @@ LogicalResult SelectOp::inferReturnTypes(
   return success();
 }
 
+LogicalResult SelectOp::inferReturnTypeComponents(
+    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
+    mlir::DictionaryAttr, mlir::RegionRange,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
+  // TODO(b/168772852)
+  return failure();
+}
+
+LogicalResult SelectOp::reifyReturnTypeShapes(
+    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(),
+                                     &reifiedReturnShapes);
+}
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
@@ -2473,9 +2487,22 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
   build(builder, result, new_type, lhs, rhs, comparison_direction);
 }
 
+LogicalResult CompareOp::inferReturnTypeComponents(
+    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
+    mlir::DictionaryAttr, mlir::RegionRange,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
+  // TODO(b/168772852)
+  return failure();
+}
+
+LogicalResult CompareOp::reifyReturnTypeShapes(
+    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(),
+                                     &reifiedReturnShapes);
+}
+
 }  // namespace mhlo
 }  // namespace mlir
-
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
 
