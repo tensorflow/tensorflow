@@ -135,6 +135,27 @@ func @two_clusters_with_two_ops_each() {
   return
 }
 
+// CHECK-LABEL: func @resource_side_effect_cycle
+func @resource_side_effect_cycle(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<!tf.resource<tensor<f32>>>) {
+  // CHECK: "tf.ReadVariableOp"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1:[a-zA-Z_0-9]+]]"
+  // CHECK-NEXT: "tf.Identity"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  // CHECK-NEXT: "tf.AssignVariableOp"
+  // CHECK-NOT:  {_xla_outside_compilation = "[[CLUSTER1]]"
+  "tf_device.cluster"() ( {
+    %read0 = "tf.ReadVariableOp"(%arg0) {_xla_outside_compilation = "0"} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+    %idet0 = "tf.Identity"(%read0) {_xla_outside_compilation = "0"} : (tensor<f32>) -> tensor<f32>
+    "tf.AssignVariableOp"(%arg1, %idet0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+    %read1 = "tf.ReadVariableOp"(%arg1) {_xla_outside_compilation = "0"} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+    %idet1 = "tf.Identity"(%read1) {_xla_outside_compilation = "0"} : (tensor<f32>) -> tensor<f32>
+    %add0 = "tf.AddV2"(%idet0, %idet1) {_xla_outside_compilation = "0"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    "tf.AssignVariableOp"(%arg0, %add0) {_xla_outside_compilation = "0"} : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @two_clusters_with_same_parent
 func @two_clusters_with_same_parent() {
   // CHECK: "tf.opA"
@@ -172,7 +193,7 @@ func @two_clusters_with_same_outside_compiled_parent() {
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opD"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER14:[a-zA-Z_0-9]+]]"
-  // CHECK-NEXT: "tf.opE"
+  // CHECK-NEXT: "tf.Identity"
   // CHECK-NEXT: "tf.opF"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13]]"
   // CHECK-NEXT: "tf.opG"
@@ -182,7 +203,7 @@ func @two_clusters_with_same_outside_compiled_parent() {
     %b = "tf.opB"(%a) : (tensor<i32>) -> tensor<i32>
     %c = "tf.opC"(%b) {_xla_outside_compilation = "0"} : (tensor<i32>) -> tensor<i32>
     %d = "tf.opD"() {_xla_outside_compilation = "0"} : () -> tensor<i32>
-    %e = "tf.opE"(%d) : (tensor<i32>) -> tensor<i32>
+    %e = "tf.Identity"(%d) : (tensor<i32>) -> tensor<i32>
     %f = "tf.opF"(%e) {_xla_outside_compilation = "0"} : (tensor<i32>) -> tensor<i32>
     %g = "tf.opG"(%c, %f) {_xla_outside_compilation = "0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_device.return
@@ -213,7 +234,8 @@ func @outside_compile_with_block() {
   // CHECK-NEXT: "tf.opB"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER15]]"
   // CHECK: "tf.opC"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER15]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER14]]"
+  // CHECK-SAME: _xla_outside_compilation = "{{[a-zA-Z_0-9]+}}"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<i32>
     %b = "tf.opB"(%a) {_xla_outside_compilation = "0"} : (tensor<i32>) -> tensor<i32>
@@ -254,16 +276,16 @@ func @check_ops_with_data_dependency_added_as_host_cluster() {
   // CHECK: "tf.opA"
   // CHECK-NEXT: "tf.opB"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER16:[a-zA-Z_0-9]+]]"
-  // CHECK-NEXT: "tf.opC"
-  // CHECK-NEXT: "tf.opD"
+  // CHECK-NEXT: "tf.Identity"
+  // CHECK-NEXT: "tf.Identity"
   // CHECK-NEXT: "tf.opE"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER16]]"
   // CHECK-NEXT: "tf.opF"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() : () -> tensor<i32>
     %b = "tf.opB"(%a) {_xla_outside_compilation = "0"} : (tensor<i32>) -> tensor<i32>
-    %c = "tf.opC"(%b) : (tensor<i32>) -> tensor<i32>
-    %d = "tf.opD"(%c) : (tensor<i32>) -> tensor<i32>
+    %c = "tf.Identity"(%b) : (tensor<i32>) -> tensor<i32>
+    %d = "tf.Identity"(%c) : (tensor<i32>) -> tensor<i32>
     %e = "tf.opE"(%d, %b, %c) {_xla_outside_compilation = "0"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "tf.opF"(%e) : (tensor<i32>) -> ()
     tf_device.return
