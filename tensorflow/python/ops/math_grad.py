@@ -447,7 +447,7 @@ def _SegmentProdGrad(op, grad):
   non_zero_prod = gen_math_ops.segment_prod(non_zero_data, segment_ids)
   gathered_prod = array_ops.gather(op.outputs[0], segment_ids)
   gathered_non_zero_prod = array_ops.gather(non_zero_prod, segment_ids)
-  prod_divided_by_el = gathered_prod / data  # May contain nan/inf.
+  prod_divided_by_el = gathered_prod / non_zero_data
   # Now fetch the individual results for segments containing 0 and those that
   # don't.
   partial_derivative = array_ops.where_v2(is_zero, gathered_non_zero_prod,
