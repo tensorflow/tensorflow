@@ -2472,7 +2472,6 @@ def matrix_diag(diagonal,
 @tf_export("linalg.diag_part", v1=["linalg.diag_part", "matrix_diag_part"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("matrix_diag_part")
-@dispatch.add_dispatch_support
 def matrix_diag_part(
     input,  # pylint:disable=redefined-builtin
     name="diag_part",
@@ -2614,7 +2613,6 @@ def matrix_diag_part(
     "linalg.tensor_diag_part", v1=["linalg.tensor_diag_part", "diag_part"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("diag_part")
-@dispatch.add_dispatch_support
 def tensor_diag_part(
     input,  # pylint:disable=redefined-builtin
     name=None):
