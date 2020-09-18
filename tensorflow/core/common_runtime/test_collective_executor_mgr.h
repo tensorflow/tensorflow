@@ -102,7 +102,6 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   }
 
   NcclCommunicatorInterface* GetNcclCommunicator() const override {
-    LOG(FATAL) << "Unimplemented";  // Crash OK
     return nullptr;
   }
 

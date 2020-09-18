@@ -218,6 +218,9 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   cem_->GetParamResolver()->StartAbort(s);
   remote_access_->StartAbort(s);
+  if (cem_->GetNcclCommunicator() != nullptr) {
+    cem_->GetNcclCommunicator()->StartAbort(s);
+  }
 }
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
