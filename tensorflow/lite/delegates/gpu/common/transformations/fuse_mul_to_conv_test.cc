@@ -15,11 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_mul_to_conv.h"
 
+#include <any>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 using ::testing::FloatNear;
 using ::testing::Pointwise;
@@ -58,11 +67,11 @@ TEST(MergeConvolutionWithMulTest, Smoke) {
 
   ASSERT_TRUE(graph.AddConsumer(conv_node->id, input->id).ok());
 
-  Value* output;
+  Value* output = nullptr;
   ASSERT_TRUE(AddOutput(&graph, mul_node, &output).ok());
   output->tensor.shape = BHWC(1, 4, 4, 16);
 
-  Value* link1;
+  Value* link1 = nullptr;
   ASSERT_TRUE(ConnectTwoNodes(&graph, conv_node, mul_node, &link1).ok());
   link1->tensor.shape = BHWC(1, 4, 4, 16);
 
@@ -109,11 +118,11 @@ TEST(MergeMulWithConvolutionTest, Smoke) {
 
   ASSERT_TRUE(graph.AddConsumer(mul_node->id, input->id).ok());
 
-  Value* output;
+  Value* output = nullptr;
   ASSERT_TRUE(AddOutput(&graph, conv_node, &output).ok());
   output->tensor.shape = BHWC(1, 4, 4, 16);
 
-  Value* link1;
+  Value* link1 = nullptr;
   ASSERT_TRUE(ConnectTwoNodes(&graph, mul_node, conv_node, &link1).ok());
   link1->tensor.shape = BHWC(1, 4, 4, 16);
 

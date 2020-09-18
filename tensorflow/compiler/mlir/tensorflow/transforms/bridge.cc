@@ -47,7 +47,8 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
-  add_pass(TFDevice::CreateReplicateToIslandPass());
+  pm.addPass(TFDevice::CreateReplicateToIslandPass());
+  pm.addPass(CreateBreakUpIslandsPass());
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
 }
@@ -85,8 +86,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
+    pm.addPass(CreateTPUClusterFormationPass());
     OpPassManager &func_pm = pm.nest<FuncOp>();
-    func_pm.addPass(CreateTPUClusterFormationPass());
     // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
     // because DecomposeResourceOpsPass uses pattern rewriter which hoists
     // changed constants out of tf_device.Launch.
@@ -94,26 +95,32 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
-  pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
-
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
+  pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(CreateTPUClusterCleanupAttributesPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
+  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
+  pm.addPass(CreateTPUExtractOutsideCompilationPass());
+
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUDynamicPaddingMapperPass());
+  pm.addPass(CreateTPUResourceReadForWritePass());
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
+  pm.addNestedPass<FuncOp>(CreateTPUParallelExecuteSinkResourceWritePass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
   pm.addPass(CreateTPUVariableReformattingPass());
 }
 

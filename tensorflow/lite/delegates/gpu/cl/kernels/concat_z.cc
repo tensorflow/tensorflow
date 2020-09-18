@@ -36,53 +36,12 @@ bool IsAllChannelsX4(const std::vector<int>& channels) {
   return true;
 }
 
-}  // namespace
-
-ConcatZ::ConcatZ(const OperationDef& definition,
-                 const std::vector<int>& channels,
-                 const DeviceInfo& device_info)
-    : GPUOperation(definition) {
-  code_ = GetConcatKernelCode(definition, channels);
-  if (device_info.IsPowerVR() &&
-      definition.precision == CalculationsPrecision::F32 &&
-      !IsAllChannelsX4(channels)) {
-    // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
-  }
-  if (device_info.IsAMD() &&
-      definition.precision != CalculationsPrecision::F32 &&
-      definition.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
-      !IsAllChannelsX4(channels)) {
-    // BUG, some AMD gpus crash without it
-    compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
-  }
-}
-
-ConcatZ::ConcatZ(ConcatZ&& kernel) : GPUOperation(std::move(kernel)) {}
-
-ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-std::string ConcatZ::GetConcatKernelCode(const OperationDef& op_def,
-                                         const std::vector<int>& channels) {
+std::string GetConcatKernelCode(const OperationDef& op_def,
+                                const std::vector<int>& channels) {
   std::vector<std::string> tensor_names(op_def.src_tensors.size());
   for (int i = 0; i < op_def.src_tensors.size(); ++i) {
     tensor_names[i] = "src_tensor_" + std::to_string(i);
-    auto src_desc = op_def.src_tensors[i];
-    if (op_def.IsBatchSupported()) {
-      src_desc.SetStateVar("BatchedWidth", "true");
-    }
-    AddSrcTensor(tensor_names[i], src_desc);
   }
-  auto dst_desc = op_def.dst_tensors[0];
-  if (op_def.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddDstTensor("dst_tensor", dst_desc);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -161,17 +120,41 @@ std::string ConcatZ::GetConcatKernelCode(const OperationDef& op_def,
   return c;
 }
 
-int3 ConcatZ::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
-  return int3(grid_x, grid_y, grid_z);
-}
+}  // namespace
 
-ConcatZ CreateConcatZ(const OperationDef& definition,
-                      const std::vector<int>& channels,
-                      const DeviceInfo& device_info) {
-  return ConcatZ(definition, channels, device_info);
+GPUOperation CreateConcatZ(const OperationDef& definition,
+                           const std::vector<int>& channels,
+                           const DeviceInfo& device_info) {
+  GPUOperation op(definition);
+  for (int i = 0; i < definition.src_tensors.size(); ++i) {
+    const std::string name = "src_tensor_" + std::to_string(i);
+    auto src_desc = definition.src_tensors[i];
+    if (definition.IsBatchSupported()) {
+      src_desc.SetStateVar("BatchedWidth", "true");
+    }
+    op.AddSrcTensor(name, src_desc);
+  }
+  auto dst_desc = definition.dst_tensors[0];
+  if (definition.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op.AddDstTensor("dst_tensor", dst_desc);
+  op.code_ = GetConcatKernelCode(definition, channels);
+  if (device_info.IsPowerVR() &&
+      definition.precision == CalculationsPrecision::F32 &&
+      !IsAllChannelsX4(channels)) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
+  if (device_info.IsAMD() &&
+      definition.precision != CalculationsPrecision::F32 &&
+      definition.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
+      !IsAllChannelsX4(channels)) {
+    // BUG, some AMD gpus crash without it
+    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HToY_DToZ;
+  return op;
 }
 
 }  // namespace cl

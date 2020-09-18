@@ -82,6 +82,7 @@ tf_cuda_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/nccl:collective_communicator",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -309,9 +310,7 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:annotated_traceme",
-    "//tensorflow/core/profiler/lib:connected_traceme",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/core/profiler/lib:traceme_encode",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -337,7 +336,7 @@ tf_cuda_library(
         ],
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
-            "//tensorflow/compiler/jit:xla_kernel_creator_util",
+            "//tensorflow/compiler/jit:xla_kernel_creator",
         ],
     }),
 )

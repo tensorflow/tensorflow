@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -82,6 +82,9 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
   for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
     strides[dim] = accumulated_stride;
     accumulated_stride *= shape.dimensions(dim);
+  }
+  if (accumulated_stride == 0) {
+    return llvm::SmallVector<AffineMap, 1>{};
   }
   return llvm::SmallVector<AffineMap, 1>{
       makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};

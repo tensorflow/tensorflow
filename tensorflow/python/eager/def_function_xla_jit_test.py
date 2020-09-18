@@ -76,9 +76,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
-      if not test.is_built_with_rocm():
-        # XLA support is not yet enabled for TF ROCm
-        self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
+      self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
 
   def testBasicInt32(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -88,14 +86,10 @@ class DefFunctionTest(xla_test.XLATestCase):
         return x + a
 
       inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
-      if not test.is_built_with_rocm():
-        # XLA support is not yet enabled for TF ROCm
-        self.assertAllClose([2, 3, 3, 4, 4], fn(inputs, 1))
+      self.assertAllClose([2, 3, 3, 4, 4], fn(inputs, 1))
 
   def testDerivative(self):
     with ops.device('device:{}:0'.format(self.device)):
-      if test.is_built_with_rocm():
-        return
 
       def fn(x, a):
         return 2 * x + a
@@ -135,9 +129,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         return fn(x, a)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      if not test.is_built_with_rocm():
-        # XLA support is not yet enabled for TF ROCm
-        self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
+      self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
 
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
                                  ' wrong status type')
@@ -154,10 +146,9 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       func = def_function.function(fn2, experimental_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      if not test.is_built_with_rocm():
-        with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    'not compilable'):
-          func(inputs)
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'not compilable'):
+        func(inputs)
 
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
                                  ' wrong status type')
@@ -196,9 +187,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         self.assertAllClose(3.0, dy)
 
       run_and_check(func)
-      if not test.is_built_with_rocm():
-        # XLA support is not yet enabled for TF ROCm
-        run_and_check(xla_func)
+      run_and_check(xla_func)
 
   @test_util.disable_mlir_bridge('TODO(b/162521846): MLIR bridge fails'
                                  ' msan, function library not found')
@@ -229,12 +218,15 @@ class DefFunctionTest(xla_test.XLATestCase):
           y = f(x)
         return y, tape.gradient(y, x)
 
+      # Test that XLA context gets correctly propagated.
+      g._get_concrete_function_garbage_collected(2.0)(2.0)
+
       self.assertAllClose(40.0, f(2.0))
       self.assertAllClose([40.0, 28.0], g(2.0))
+      self.assertAllClose(40.0, f.get_concrete_function(2.0)(2.0))
+      self.assertAllClose([40.0, 28.0], g.get_concrete_function(2.0)(2.0))
 
   def testMethodCompilation(self):
-    if test.is_built_with_rocm():
-      return
 
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -251,8 +243,6 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
                                  ' wrong status type')
   def testMethodCompilationUnsupportedFunc(self):
-    if test.is_built_with_rocm():
-      return
 
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -273,8 +263,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.skipTest('b/162799319: Cannot resolve constant on TPU')
 
     with ops.device('device:{}:0'.format(self.device)):
-      if test.is_built_with_rocm():
-        return
 
       @def_function.function(experimental_compile=True)
       def f():
@@ -537,6 +525,82 @@ class DefFunctionTest(xla_test.XLATestCase):
       final_usage = context.context().get_total_memory_usage(
           b.backing_device) if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
+
+  def testGetCompilerIrConstants(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('TPU generates different HLO')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        return array_ops.transpose(a, b)
+
+      a = array_ops.ones([3, 4, 3], dtype=dtypes.float32)
+      b = constant_op.constant([0, 2, 1], dtype=dtypes.int32)
+
+      self.assertIn('{1,2,0}',
+                    f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo'))
+
+  @test_util.disable_mlir_bridge('TODO(b/168732524): MLIR bridge does not '
+                                 ' optimize single-element tuples to scalars')
+  def testGetCompilerIrResourceVars(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      v = variables.Variable([3.1, 3.2])
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        v.assign_add(a * b)
+
+      a = random_ops.random_normal([2])
+      b = random_ops.random_normal([2])
+
+      self.assertIn('input_output_alias={ {}: (2, {}, may-alias) }',
+                    f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo'))
+
+  def testGetCompilerIrNotCompiled(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function
+      def f(x):
+        return x + 1
+
+      a = random_ops.random_normal([10, 10])
+      with self.assertRaisesRegex(ValueError,
+                                  'marked with experimental_compile'):
+        f.experimental_get_compiler_ir(a)()
+
+  def testGetCompilerIrNested(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def fn(x, a):
+        return x + a
+
+      @def_function.function(experimental_compile=False)
+      def fn2(x, a):
+        fn.experimental_get_compiler_ir(x, a)()
+        return fn(x, a)
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      with self.assertRaisesRegex(TypeError, '"Graph" tensor'):
+        fn2(inputs, 1)
+
+  def testGetCompilerIrKwargs(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      v = variables.Variable([0.1, 0.1])
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        return (a + b) * v
+
+      a = constant_op.constant([1.1, 1.1])
+      b = constant_op.constant([2.2, 2.2])
+
+      self.assertIn('multiply',
+                    f.experimental_get_compiler_ir(b=a, a=b)(stage='hlo'))
 
 
 if __name__ == '__main__':

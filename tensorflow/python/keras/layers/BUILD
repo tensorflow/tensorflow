@@ -18,6 +18,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 # A separate build for layers without serialization to avoid circular deps
 # with feature column.
 py_library(
@@ -39,6 +45,7 @@ py_library(
         ":kernelized",
         ":local",
         ":merge",
+        ":multi_head_attention",
         ":noise",
         ":normalization",
         ":normalization_v2",
@@ -194,6 +201,22 @@ py_library(
 py_library(
     name = "einsum_dense",
     srcs = ["einsum_dense.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:activations",
+        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras:constraints",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:regularizers",
+    ],
+)
+
+py_library(
+    name = "multi_head_attention",
+    srcs = ["multi_head_attention.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:special_math_ops",
@@ -590,6 +613,18 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "multi_head_attention_test",
+    srcs = ["multi_head_attention_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":multi_head_attention",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "embeddings_test",
     size = "medium",
@@ -784,7 +819,9 @@ cuda_py_test(
     srcs = ["lstm_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_cuda11"],
+    tags = [
+        "no_oss",
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
@@ -800,7 +837,10 @@ cuda_py_test(
     srcs = ["gru_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_cuda11"],
+    tags = [
+        "no_cuda11",
+        "no_oss",
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",

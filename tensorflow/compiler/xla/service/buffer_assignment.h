@@ -635,10 +635,6 @@ class BufferAssigner {
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
-  // Promotes operations (DUS, scatter) to be done in place: If an operation can
-  // be done in place, merge its buffer with its operand buffer.
-  Status MergeInplaceOpBuffers(BufferAssignment* assignment);
-
   // Assigns a single hlo buffer to an HLO allocation.
   Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
@@ -661,9 +657,9 @@ class BufferAssigner {
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
-  void AssignBuffersFromHeapSimulator(const HeapSimulator::Result& result,
-                                      BufferAssignment* assignment,
-                                      LogicalBuffer::Color color);
+  void AssignBuffersFromHeapSimulator(
+      const HeapSimulator::Result<HloValue>& result,
+      BufferAssignment* assignment, LogicalBuffer::Color color);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.

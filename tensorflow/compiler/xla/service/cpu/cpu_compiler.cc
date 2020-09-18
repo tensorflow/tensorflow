@@ -42,7 +42,12 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/VectorOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -54,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
+#include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
@@ -77,13 +83,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
-#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -119,6 +125,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+
+namespace {
+
+// We need to explicitly load all the dialects we will involved in emitting the
+// IR. This is only needed because of how MLIR is bolted into XLA and does not
+// make use of the MLIR infrastructure (like using a proper pass pipeline).
+// Hopefully this will all go away at some point in favor of a better
+// integration.
+void LoadMLIRDialects(mlir::MLIRContext& context) {
+  context.loadDialect<mlir::linalg::LinalgDialect, mlir::scf::SCFDialect,
+                      mlir::vector::VectorDialect, mlir::StandardOpsDialect,
+                      mlir::AffineDialect>();
+}
+
+}  // namespace
 
 namespace xla {
 namespace cpu {
@@ -163,8 +184,6 @@ CpuCompiler::CpuCompiler() {
   // Initialize LLVM's MC layer for the native target.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
-
-  mlir::registerAllDialects();
 }
 
 namespace {
@@ -260,6 +279,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
+  pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
@@ -288,8 +308,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*expansion_type=*/LogisticExpansionType::kExp);
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicPadder>();
-  pipeline.AddPass<ScatterExpander>();
-  pipeline.AddPass<HloGetDimensionSizeRewriter>();
+  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =
@@ -303,6 +322,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<AlgebraicSimplifier>(options);
     pass.AddPass<SortSimplifier>();
     pass.AddPass<HloDCE>();
+    pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -620,10 +640,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
-  auto llvm_module = absl::make_unique<llvm::Module>(
-      "__compute_module",
-      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
-          ->getLLVMContext());
+  LoadMLIRDialects(mlir_context);
+  llvm::LLVMContext llvm_context;
+  auto llvm_module =
+      absl::make_unique<llvm::Module>("__compute_module", llvm_context);
 
   auto jit = absl::make_unique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
@@ -832,10 +852,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
-  llvm::Module llvm_module(
-      "__compute_module",
-      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
-          ->getLLVMContext());
+  LoadMLIRDialects(mlir_context);
+  llvm::LLVMContext llvm_context;
+  llvm::Module llvm_module("__compute_module", llvm_context);
   llvm_module.setDataLayout(target_machine->createDataLayout());
   llvm_module.setTargetTriple(triple.getTriple());
   if (pic_level != llvm::PICLevel::NotPIC) {

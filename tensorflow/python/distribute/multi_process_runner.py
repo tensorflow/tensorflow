@@ -187,11 +187,12 @@ class MultiProcessRunner(object):
                        'one chief. Current `cluster_spec` has {} chiefs.'
                        .format(len(cluster_spec['chief'])))
     if not multi_process_lib.initialized():
-      raise RuntimeError('`multi_process_runner` is not initialized. '
-                         'Please call `multi_process_runner.test_main()` '
-                         'within `if __name__ == \'__main__\':` block '
-                         'in your python module to properly initialize '
-                         '`multi_process_runner`.')
+      raise MultiProcessRunnerNotInitializedError(
+          '`multi_process_runner` is not initialized. '
+          'Please call `multi_process_runner.test_main()` '
+          'within `if __name__ == \'__main__\':` block '
+          'in your python module to properly initialize '
+          '`multi_process_runner`.')
     if not callable(proc_func):
       raise ValueError('proc_func is not a callable')
 
@@ -479,6 +480,19 @@ class MultiProcessRunner(object):
       p = self._processes[(task_type, task_id)]
     return p.exitcode if p else None
 
+  def process_exists(self, task_type, task_id):
+    """Returns whether the subprocess still exists given the task type and id.
+
+    Args:
+      task_type: The task type.
+      task_id: The task id.
+
+    Returns:
+      Boolean; whether the subprocess still exists. If the subprocess has
+      exited, this returns False.
+    """
+    return self.get_process_exit_code(task_type, task_id) is None
+
   def _process_watchdog(self):
     """Simulates a cluster management system.
 
@@ -528,6 +542,8 @@ class MultiProcessRunner(object):
     for process_status in process_statuses.values():
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
+        process_status.exc_info[1].mpr_result = self._get_mpr_result(
+            process_statuses)
         six.reraise(*process_status.exc_info)
 
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
@@ -546,8 +562,10 @@ class MultiProcessRunner(object):
     race is removed.
 
     Args:
-      timeout: if set and not all processes report status within roughly
-        `timeout` seconds, a `SubprocessTimeoutError` exception will be raised.
+      timeout: optional integer or `None`. If provided as an integer, and not
+      all processes report status within roughly `timeout` seconds, a
+      `SubprocessTimeoutError` exception will be raised. If `None`, `join` never
+      times out.
 
     Returns:
       A MultiProcessRunnerResult object, which has two attributes,
@@ -570,8 +588,13 @@ class MultiProcessRunner(object):
         is not `None`, it is expected that some subprocesses may be
         force-killed when `max_run_time` is up, and this is raised in those
         cases.
-      Exception: if there is an Exception propagated from any subprocess.
+      Exception: if there is an Exception propagated from any subprocess. When
+        this is raised, a `MultiProcessRunnerResult` object can be retrieved by
+        `UnexpectedSubprocessExitError`'s mpr_result attribute, which has the
+        same structure as above 'Returns' section describes.
     """
+    if timeout and not isinstance(timeout, int):
+      raise ValueError('`timeout` must be an integer or `None`.')
     with self._process_lock:
       if self._joined:
         raise ValueError("MultiProcessRunner can't be joined twice.")
@@ -594,8 +617,12 @@ class MultiProcessRunner(object):
         self._watchdog_thread.join()
       process_statuses = self._get_process_statuses()
       self._reraise_if_subprocess_error(process_statuses)
-      raise SubprocessTimeoutError('one or more subprocesses timed out.',
-                                   self._get_mpr_result(process_statuses))
+      raise SubprocessTimeoutError(
+          'One or more subprocesses timed out, where timeout was set to {}s. '
+          'Please change the `timeout` argument for '
+          '`MultiProcessRunner.join()` or `multi_process_runner.run()` '
+          'if it should be adjusted.'.format(timeout),
+          self._get_mpr_result(process_statuses))
 
     for (task_type, task_id), p in self._processes.items():
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
@@ -1031,6 +1058,16 @@ class UnexpectedSubprocessExitError(RuntimeError):
   def __init__(self, msg, mpr_result):
     super(UnexpectedSubprocessExitError, self).__init__(msg)
     self.mpr_result = mpr_result
+
+
+class MultiProcessRunnerNotInitializedError(RuntimeError):
+  """An error indicating `MultiProcessRunner` is used without initialization.
+
+  When this is raised, user is supposed to call
+  `multi_process_runner.test_main()` within `if __name__ == '__main__':` block
+  to properly initialize `multi_process_runner`.
+  """
+  pass
 
 
 def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):

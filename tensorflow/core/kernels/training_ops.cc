@@ -23,19 +23,15 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/util.h"
 
-#ifdef TENSORFLOW_USE_SYCL
-#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
-using SYCLDevice = Eigen::SyclDevice;
 using Index = Eigen::Index;
 
 namespace {
@@ -57,15 +53,6 @@ struct ApplyGradientDescent<CPUDevice, T> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct ApplyGradientDescentSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var, T lr,
-                  typename TTypes<T>::ConstFlat grad) {
-    var.device(d) -= grad * lr;
-  }
-};
-#endif
 
 template <typename T>
 struct ApplyAdadelta<CPUDevice, T> {
@@ -496,21 +483,6 @@ struct ApplyAdamNonCuda {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct ApplyAdamSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
-                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
-                  T beta1_power, T beta2_power, T lr, T beta1, T beta2,
-                  T epsilon, typename TTypes<T>::ConstFlat grad) {
-    const T alpha =
-        lr * Eigen::numext::sqrt(T(1) - beta2_power) / (T(1) - beta1_power);
-    m.device(d) += (grad - m) * (T(1) - beta1);
-    v.device(d) += (grad.square() - v) * (T(1) - beta2);
-    var.device(d) -= (m * alpha) / (v.sqrt() + epsilon);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
@@ -666,53 +638,6 @@ class ApplyGradientDescentOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const bool sparse = false;
-    auto locks = MaybeLockVariableInputMutexesInOrder<SYCLDevice, T>(
-        ctx, use_exclusive_lock_, sparse, {0});
-    Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, sparse, &var));
-
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_dev.shape()),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_dev.shape().DebugString()));
-    const Tensor& delta = ctx->input(2);
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(delta.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                delta.shape().DebugString()));
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    T alpha = T(0);
-    auto src_ptr = GetBase(&alpha_dev);
-    device.memcpyDeviceToHost(&alpha, static_cast<const T*>(src_ptr), size);
-
-    functor::ApplyGradientDescentSYCL<T>()(device, var.flat<T>(), alpha,
-                                           delta.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -757,12 +682,6 @@ REGISTER_KERNELS(GPU, complex128);
 #endif
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-TF_CALL_float(REGISTER_SYCL_KERNELS);
-TF_CALL_double(REGISTER_SYCL_KERNELS);
-#undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -3523,123 +3442,6 @@ class ApplyAdamOp : public OpKernel {
   bool use_nesterov_;
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const bool sparse = false;
-    auto locks = MaybeLockVariableInputMutexesInOrder<SYCLDevice, T>(
-        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
-
-    Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, sparse, &var));
-    Tensor m;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 1, use_exclusive_lock_, sparse, &m));
-    Tensor v;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 2, use_exclusive_lock_, sparse, &v));
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    OP_REQUIRES(
-        ctx, m.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(1)));
-    OP_REQUIRES(
-        ctx, v.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(2)));
-
-    const Tensor& beta1_power_dev = ctx->input(3);
-    const Tensor& beta2_power_dev = ctx->input(4);
-    const Tensor& lr_dev = ctx->input(5);
-    const Tensor& beta1_dev = ctx->input(6);
-    const Tensor& beta2_dev = ctx->input(7);
-    const Tensor& epsilon_dev = ctx->input(8);
-
-    T beta1_power = 0;
-    T beta2_power = 0;
-    T lr = 0;
-    T beta1 = 0;
-    T beta2 = 0;
-    T epsilon = 0;
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    auto src_ptr = GetBase(&beta1_power_dev);
-    device.memcpyDeviceToHost(&beta1_power, static_cast<const T*>(src_ptr),
-                              size);
-
-    src_ptr = GetBase(&beta2_power_dev);
-    device.memcpyDeviceToHost(&beta2_power, static_cast<const T*>(src_ptr),
-                              size);
-
-    src_ptr = GetBase(&lr_dev);
-    device.memcpyDeviceToHost(&lr, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&beta1_dev);
-    device.memcpyDeviceToHost(&beta1, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&beta2_dev);
-    device.memcpyDeviceToHost(&beta2, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&epsilon_dev);
-    device.memcpyDeviceToHost(&epsilon, static_cast<const T*>(src_ptr), size);
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_dev.shape()),
-                errors::InvalidArgument("beta1_power is not a scalar: ",
-                                        beta1_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_power_dev.shape()),
-                errors::InvalidArgument("beta2_power is not a scalar: ",
-                                        beta2_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_dev.shape()),
-                errors::InvalidArgument("lr is not a scalar : ",
-                                        lr_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_dev.shape()),
-                errors::InvalidArgument("beta1 is not a scalar: ",
-                                        beta1_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_dev.shape()),
-                errors::InvalidArgument("beta2 is not a scalar: ",
-                                        beta2_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_dev.shape()),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_dev.shape().DebugString()));
-
-    const Tensor& grad = ctx->input(9);
-
-    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
-                errors::InvalidArgument("var and m do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        m.shape().DebugString()));
-    OP_REQUIRES(ctx, var.shape().IsSameSize(v.shape()),
-                errors::InvalidArgument("var and v do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        v.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and grad do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                grad.shape().DebugString()));
-
-    functor::ApplyAdamSYCL<T>()(device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-                                beta1_power, beta2_power, lr, beta1, beta2,
-                                epsilon, grad.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -3657,12 +3459,6 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-
-TF_CALL_float(REGISTER_SYCL_KERNELS);
-TF_CALL_double(REGISTER_SYCL_KERNELS);
-#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.

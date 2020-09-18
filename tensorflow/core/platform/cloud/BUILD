@@ -20,7 +20,7 @@ package_group(
     packages = [
         "//learning/brain/tfrc/...",
         "//tensorflow/...",
-        "//third_party/gstpufs/...",
+        "//third_party/gsmemcachedfs/...",
     ],
 )
 
@@ -391,8 +391,8 @@ tf_cc_test(
     size = "small",
     srcs = ["oauth_client_test.cc"],
     data = [
-        "testdata/service_account_credentials.json",
-        "testdata/service_account_public_key.txt",
+        "//tensorflow/core/platform/cloud/testdata:service_account_credentials",
+        "//tensorflow/core/platform/cloud/testdata:service_account_public_key",
     ],
     deps = [
         ":http_request_fake",
@@ -414,8 +414,8 @@ tf_cc_test(
     size = "small",
     srcs = ["google_auth_provider_test.cc"],
     data = [
-        "testdata/application_default_credentials.json",
-        "testdata/service_account_credentials.json",
+        "//tensorflow/core/platform/cloud/testdata:application_default_credentials",
+        "//tensorflow/core/platform/cloud/testdata:service_account_credentials",
     ],
     deps = [
         ":google_auth_provider",

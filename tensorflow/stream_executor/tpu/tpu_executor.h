@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/stream_executor/tpu/tpu_stream.h"
 
 namespace tensorflow {
 
@@ -96,10 +97,11 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   void DequeueOutfeed(int32 outfeed_queue_index, absl::Span<uint8> bytes,
                       StatusCallback done);
 
-  Status EnqueueInfeed(int32 infeed_queue_index,
-                       absl::Span<const uint8> bytes);
+  Status EnqueueInfeed(int32 infeed_queue_index, absl::Span<const uint8> bytes);
 
   absl::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
+
+  tpu::TpuCoreLocationExternal GetCoreLocationExternal() const override;
 
   Status GetStatus(Stream* stream) override;
 
@@ -175,10 +177,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  stream_executor::SharedMemoryConfig GetDeviceSharedMemoryConfig() override {
-    LOG(FATAL) << "not yet implemented";
-  }
-
   void* GetSubBuffer(DeviceMemoryBase* parent, uint64 offset,
                      uint64 size) override {
     LOG(FATAL) << "not yet implemented";
@@ -197,10 +195,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
     LOG(FATAL) << "not yet implemented";
   }
-  Status SetDeviceSharedMemoryConfig(
-      stream_executor::SharedMemoryConfig config) override {
-    LOG(FATAL) << "not yet implemented";
-  }
+
   void* HostMemoryAllocate(uint64 size) override {
     LOG(FATAL) << "not yet implemented";
   }
@@ -230,6 +225,11 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   TpuPlatform::StreamMap& stream_map() {
     return *(tpu_platform().stream_map());
+  }
+
+  SE_Stream* get_stream(StreamInterface* ptr) {
+    tensorflow::mutex_lock m(tpu_platform().mutex());
+    return stream_map()[ptr];
   }
 
   TimerMap timer_map_;

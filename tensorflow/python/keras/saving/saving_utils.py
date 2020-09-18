@@ -173,7 +173,7 @@ def model_metadata(model, include_optimizer=True, require_config=True):
           'Prefer using a Keras optimizer instead '
           '(see keras.io/optimizers).')
     elif model._compile_was_called:  # pylint: disable=protected-access
-      training_config = model._get_compile_args()  # pylint: disable=protected-access
+      training_config = model._get_compile_args(user_metrics=False)  # pylint: disable=protected-access
       training_config.pop('optimizer', None)  # Handled separately.
       metadata['training_config'] = _serialize_nested_config(training_config)
       if isinstance(model.optimizer, optimizer_v2.RestoredOptimizer):

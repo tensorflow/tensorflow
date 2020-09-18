@@ -97,6 +97,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleTranspose(HloInstruction* hlo) override;
 
+  Status HandleDynamicReshape(HloInstruction* hlo) override;
+
   Status HandleReshape(HloInstruction* hlo) override;
 
   Status HandleSort(HloInstruction* hlo) override;
@@ -621,6 +623,18 @@ Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
 }
 
+Status DynamicDimensionInferenceVisitor::HandleDynamicReshape(
+    HloInstruction* hlo) {
+  HloDynamicReshapeInstruction* dynamic_reshape =
+      Cast<HloDynamicReshapeInstruction>(hlo);
+  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+    if (hlo->shape().is_dynamic_dimension(i)) {
+      parent_->SetDynamicSize(hlo, {}, i, dynamic_reshape->dim_sizes(i));
+    }
+  }
+  return Status::OK();
+}
+
 Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo,
@@ -805,7 +819,8 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
         }
 
         if (input_dim_size > output_dim_size) {
-          TF_RET_CHECK(input_dim_size % output_dim_size == 0);
+          TF_RET_CHECK(input_dim_size % output_dim_size == 0)
+              << reshape->ToString();
           const int64 divisor = input_dim_size / output_dim_size;
           HloInstruction* divisor_hlo =
               hlo->parent()->AddInstruction(HloInstruction::CreateConstant(

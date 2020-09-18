@@ -25,7 +25,8 @@ namespace tensorflow {
 namespace data {
 
 // Returns the location of the journal file within the journal directory.
-std::string DataServiceJournalFile(StringPiece journal_dir);
+std::string DataServiceJournalFile(const std::string& journal_dir,
+                                   int64 sequence_number);
 
 // Interface for writing to a journal.
 class JournalWriter {
@@ -33,25 +34,39 @@ class JournalWriter {
   virtual ~JournalWriter() = default;
   // Writes and syncs an update to the journal.
   virtual Status Write(const Update& update) = 0;
+  // Initializes the writer if it is not yet initialized.
+  virtual Status EnsureInitialized() = 0;
 };
 
 // FileJournalWriter is not thread-safe, requiring external synchronization when
 // used by multiple threads.
+//
+// FileJournalWriter writes journal files to a configured journal directory. The
+// directory is laid out in the following format:
+//
+// journal_dir/
+//   journal_0
+//   journal_1
+//   ...
+//
+// When the writer is created, it lists the directory to find the next available
+// journal file name. For example, if the journal directory contains
+// "journal_0", "journal_1", and "journal_2", the writer will write to
+// "journal_3". The writer will flush updates as they are written, so that they
+// can be stored durably in case of machine failure.
 class FileJournalWriter : public JournalWriter {
  public:
   // Creates a journal writer to write to the given journal directory.
   // If there is already journal data there, the journal writer will append to
   // the existing journal.
-  explicit FileJournalWriter(Env* env, StringPiece journal_dir);
+  explicit FileJournalWriter(Env* env, const std::string& journal_dir);
   FileJournalWriter(const FileJournalWriter&) = delete;
   FileJournalWriter& operator=(const FileJournalWriter&) = delete;
 
   Status Write(const Update& update) override;
+  Status EnsureInitialized() override;
 
  private:
-  // Initializes the writer if it is not yet initialized.
-  Status EnsureInitialized();
-
   Env* env_;
   const std::string journal_dir_;
   std::unique_ptr<WritableFile> file_;
@@ -62,27 +77,34 @@ class FileJournalWriter : public JournalWriter {
 class JournalReader {
  public:
   virtual ~JournalReader() = default;
-  // Reads the next update from the journal. Sets `*end_of_journal=true` if
+  // Reads the next update from the journal. Sets `end_of_journal=true` if
   // there are no more updates left in the journal.
-  virtual Status Read(Update* update, bool* end_of_journal) = 0;
+  virtual Status Read(Update& update, bool& end_of_journal) = 0;
 };
 
 // JournalReader is not thread-safe, requiring external synchronization when
 // used by multiple threads.
+//
+// The journal reader reads through all journal files in the configured journal
+// directory, in order of their sequence numbers. See FileJournalWriter above.
 class FileJournalReader : public JournalReader {
  public:
   explicit FileJournalReader(Env* env, StringPiece journal_dir);
   FileJournalReader(const FileJournalReader&) = delete;
   FileJournalReader& operator=(const FileJournalReader&) = delete;
 
-  Status Read(Update* update, bool* end_of_journal) override;
+  Status Read(Update& update, bool& end_of_journal) override;
 
  private:
   // Initializes the reader if it is not yet initialized.
   Status EnsureInitialized();
+  // Updates the `FileJournalReader` to read from a new file.
+  Status UpdateFile(const std::string& filename);
 
   Env* env_;
   const std::string journal_dir_;
+  // Sequence number of current journal file.
+  int64 sequence_number_ = 0;
   // Current offset into `file_`.
   uint64 offset_ = 0;
   std::unique_ptr<RandomAccessFile> file_;

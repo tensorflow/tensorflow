@@ -174,7 +174,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   metadata.ParseFromString(std::string(metadata_str.getValue()));
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while
   // operands.
@@ -264,7 +264,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
     tf_device::ReplicateOp replicate, ArrayRef<Value> new_inputs,
     const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
         devices) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   assert(new_inputs.size() == num_replicas);
 
   // As model parallelism is not yet supported, we assume that all ops are
@@ -423,7 +423,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 // Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
                        MLIRContext* context) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   if (num_replicas == 1) return;
   tf_device::LaunchOp execute_launch;
   for (auto execute_launch_op :
@@ -452,8 +452,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
     return;
 
-  FuncOp body = while_op.body_func();
-  FuncOp cond = while_op.cond_func();
+  FuncOp body = while_op.body_function();
+  FuncOp cond = while_op.cond_function();
 
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =
@@ -537,9 +537,10 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   // Build a constant default key to specify that the unformatting should
   // transform the variables to the original format.
   builder.setInsertionPointAfter(while_op);
-  tensorflow::Tensor default_key_tensor(tensorflow::DT_STRING, {2});
+  tensorflow::Tensor default_key_tensor(tensorflow::DT_STRING, {3});
   default_key_tensor.vec<tensorflow::tstring>()(0) = kDefaultShardingValue;
   default_key_tensor.vec<tensorflow::tstring>()(1) = kDefaultShardingValue;
+  default_key_tensor.vec<tensorflow::tstring>()(2) = kDefaultShardingValue;
   auto default_state_key = builder.create<TF::ConstOp>(
       while_op.getLoc(),
       tensorflow::ConvertTensor(default_key_tensor, &builder).ValueOrDie());

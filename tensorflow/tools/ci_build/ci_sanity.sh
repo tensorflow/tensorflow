@@ -109,11 +109,13 @@ do_pylint() {
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/engine/base_layer.py.*\[E1102.*not-callable "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
 "^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
-"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "
+"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "\
+"^tensorflow/\.py.*\[C0326.*bad-whitespace.*No space allowed around keyword argument assignment "
 
   echo "ERROR_ALLOWLIST=\"${ERROR_ALLOWLIST}\""
 
@@ -124,6 +126,22 @@ do_pylint() {
   fi
 
   PYLINT_BIN="python3 -m pylint"
+
+  echo ""
+  echo "check whether pylint is available or not."
+  echo ""
+  ${PYLINT_BIN} --version
+  if [[ $? -eq 0 ]]
+  then
+    echo ""
+    echo "pylint available, proceeding with pylint sanity check."
+    echo ""
+  else
+    echo ""
+    echo "pylint not available." >&2
+    echo ""
+    return 1
+  fi
 
   if [[ "$1" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
@@ -198,7 +216,7 @@ do_pylint() {
     IS_ALLOWLISTED=0
     for WL_REGEX in ${ERROR_ALLOWLIST}; do
       if echo ${LINE} | grep -q "${WL_REGEX}"; then
-        echo "Found a allowlisted error:"
+        echo "Found an allowlisted error:"
         echo "  ${LINE}"
         IS_ALLOWLISTED=1
       fi

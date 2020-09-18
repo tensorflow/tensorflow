@@ -382,8 +382,8 @@ REGISTER_OP("AddV2")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
-        "complex64, complex128}")
+        "T: {bfloat16, half, float, double, uint8, int8, int16, uint32, int32, "
+        "int64, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
     .SetIsCommutative();
@@ -1026,7 +1026,7 @@ REGISTER_OP("Min")
     .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
-    .Attr("T: numbertype")
+    .Attr("T: {realnumbertype, quantizedtype}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 
@@ -1035,7 +1035,7 @@ REGISTER_OP("Max")
     .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
-    .Attr("T: numbertype")
+    .Attr("T: {realnumbertype, quantizedtype}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 

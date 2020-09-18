@@ -16,24 +16,38 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_KERNEL_UTIL_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_KERNEL_UTIL_H_
 
+#include <cstdint>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace micro {
 
-// Returns the TfLiteEvalTensor struct for a given input index in a node.
-const TfLiteEvalTensor* GetEvalInput(const TfLiteContext* context,
-                                     const TfLiteNode* node, int index);
-
 // Returns a mutable tensor for a given input index. is_variable must be checked
 // during prepare when the full TfLiteTensor is available.
-TfLiteEvalTensor* GetMutableEvalInput(const TfLiteContext* context,
-                                      const TfLiteNode* node, int index);
+inline TfLiteEvalTensor* GetMutableEvalInput(const TfLiteContext* context,
+                                             const TfLiteNode* node,
+                                             int index) {
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(node != nullptr);
+  return context->GetEvalTensor(context, node->inputs->data[index]);
+}
+
+// Returns the TfLiteEvalTensor struct for a given input index in a node.
+inline const TfLiteEvalTensor* GetEvalInput(const TfLiteContext* context,
+                                            const TfLiteNode* node, int index) {
+  return GetMutableEvalInput(context, node, index);
+}
 
 // Returns the TfLiteEvalTensor struct for a given output index in a node.
-TfLiteEvalTensor* GetEvalOutput(const TfLiteContext* context,
-                                const TfLiteNode* node, int index);
+inline TfLiteEvalTensor* GetEvalOutput(const TfLiteContext* context,
+                                       const TfLiteNode* node, int index) {
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(node != nullptr);
+  return context->GetEvalTensor(context, node->outputs->data[index]);
+}
 
 // Returns data for a TfLiteEvalTensor struct.
 template <typename T>

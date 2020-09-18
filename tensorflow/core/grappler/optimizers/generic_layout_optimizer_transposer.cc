@@ -241,7 +241,7 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
   node.mutable_attr()->insert({"dtype", attr_data_type});
 
   AttrValue attr_tensor;
-  Tensor tensor(DT_INT32, TensorShape({4}));
+  Tensor tensor(DT_INT32, TensorShape({(long long)permutation.size()}));
   for (int i = 0, end = permutation.size(); i < end; i++) {
     tensor.flat<int>()(i) = permutation[i];
   }
@@ -749,6 +749,86 @@ Status Conv2DBackpropInputTransposer::TransposeNode(
       UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
+Status Conv3DTransposer::TransposeNode(TransposeContext* context,
+                                       utils::MutableNodeView* node) {
+  DCHECK(IsConv3D(*node->node()));
+  // Update the format from 4D to 5D layout.
+  std::string src_format = context->src_format;
+  std::string dst_format = context->dst_format;
+  std::string src_format_3d = src_format == "NHWC" ? "NDHWC" : "NCDHW";
+  std::string dst_format_3d = dst_format == "NHWC" ? "NDHWC" : "NCDHW";
+  context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
+                                      dst_format_3d);
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 5)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
+  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  // Change back the format from 5D to 4D layout.
+  context->AssignDeviceAndDataFormats(context->target_device, src_format,
+                                      dst_format);
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
+Status Conv3DBackpropFilterTransposer::TransposeNode(
+    TransposeContext* context, utils::MutableNodeView* node) {
+  DCHECK(IsConv3DBackpropFilterV2(*node->node()));
+  // Update the format from 4D to 5D layout.
+  std::string src_format = context->src_format;
+  std::string dst_format = context->dst_format;
+  std::string src_format_3d = src_format == "NHWC" ? "NDHWC" : "NCDHW";
+  std::string dst_format_3d = dst_format == "NHWC" ? "NDHWC" : "NCDHW";
+  context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
+                                      dst_format_3d);
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 5)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  TF_RETURN_IF_ERROR(
+      UpdateFaninEdgesWithOp(context, {0, 2}, node, kOpTranspose));
+  // No need to update output shape, as it is always of shape
+  // [filter_height, filter_width, in_channels, out_channels], regardless of
+  // whether NCHW or NHWC is used.
+  // Change back the format from 5D to 4D layout.
+  context->AssignDeviceAndDataFormats(context->target_device, src_format,
+                                      dst_format);
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
+Status Conv3DBackpropInputTransposer::TransposeNode(
+    TransposeContext* context, utils::MutableNodeView* node) {
+  DCHECK(IsConv3DBackpropInputV2(*node->node()));
+  // Update the format from 4D to 5D layout.
+  std::string src_format = context->src_format;
+  std::string dst_format = context->dst_format;
+  std::string src_format_3d = src_format == "NHWC" ? "NDHWC" : "NCDHW";
+  std::string dst_format_3d = dst_format == "NHWC" ? "NDHWC" : "NCDHW";
+  context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
+                                      dst_format_3d);
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 5)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  TF_RETURN_IF_ERROR(
+      UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
+  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  // Change back the format from 5D to 4D layout.
+  context->AssignDeviceAndDataFormats(context->target_device, src_format,
+                                      dst_format);
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -1684,7 +1764,9 @@ bool IsLayoutSensitiveOp(const NodeDef& node) {
          IsDepthwiseConv2dNativeBackpropInput(node) ||
          IsFusedBatchNormEx(node) || IsFusedBatchNormGrad(node) ||
          IsMaxPoolV2(node) || IsMaxPoolGrad(node) || IsMaxPoolGradV2(node) ||
-         IsMaxPoolGradGradV1(node) || IsMaxPoolGradGradV2(node);
+         IsMaxPoolGradGradV1(node) || IsMaxPoolGradGradV2(node) ||
+         IsConv3D(node) || IsConv3DBackpropInputV2(node) ||
+         IsConv3DBackpropFilterV2(node);
 }
 
 bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
@@ -1723,6 +1805,7 @@ bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
                                             "IsFinite",
                                             "IsInf",
                                             "IsNan",
+                                            "LeakyRelu",
                                             "Lgamma",
                                             "Log",
                                             "LogicalNot",
@@ -1771,10 +1854,11 @@ bool IsTernaryOp(const NodeDef& node) { return IsBetainc(node); }
 
 bool IsUnaryGrad(const NodeDef& node) {
   bool is_unary_grad =
-      IsEluGrad(node) || IsInvGrad(node) || IsReciprocalGrad(node) ||
-      IsRelu6Grad(node) || IsReluGrad(node) || IsRsqrtGrad(node) ||
-      IsSeluGrad(node) || IsSigmoidGrad(node) || IsSoftplusGrad(node) ||
-      IsSoftsignGrad(node) || IsSqrtGrad(node) || IsTanhGrad(node);
+      IsEluGrad(node) || IsInvGrad(node) || IsLeakyReluGrad(node) ||
+      IsReciprocalGrad(node) || IsRelu6Grad(node) || IsReluGrad(node) ||
+      IsRsqrtGrad(node) || IsSeluGrad(node) || IsSigmoidGrad(node) ||
+      IsSoftplusGrad(node) || IsSoftsignGrad(node) || IsSqrtGrad(node) ||
+      IsTanhGrad(node);
   return is_unary_grad;
 }
 

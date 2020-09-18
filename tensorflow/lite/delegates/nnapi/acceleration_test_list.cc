@@ -309,6 +309,8 @@ QuantizedLstmTest/BasicQuantizedLstmTest/29
 
 # quantize_test
 QuantizeOpTest/UINT8,29
+QuantizeOpTest/UInt8UInt8.+,29
+QuantizeOpTest/Int8Int8.+,30
 QuantizeOpTest/INT8,30
 
 # rank
@@ -345,6 +347,8 @@ ResizeBilinearOpTest/ResizeBilinearOpTest/.+/0,29
 // align_corners & half_pixel_centers are not implemented in NNAPI before API 30
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*/0,30
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*/0,30
+// 16-bit tests are not supported
+-ResizeNearestNeighborOpTest.+Int16/.+
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
 
@@ -360,6 +364,7 @@ SelectOpTest/.+,29
 -SliceOpTest/SliceOpTest/SliceString/.+
 -SliceOpTest/SliceOpTest/SliceInt64/.+
 -SliceOpTest/SliceOpTest/SliceBool/.+
+-SliceOpTest/SliceOpTest/SliceInt16/.+
 # Only constant tensors
 SliceOpTest/SliceOpTest/.+/0,29
 
@@ -409,6 +414,7 @@ TopKV2OpTest/TopKV2OpTest/.+/0,29
 -TransposeTest/5DDividedIntoTwo2Ds.*
 -TransposeTest/Complex5DTest.*
 -TransposeTest/.+DynamicTensor
+-TransposeTest/TestRefOps4DInt16
 TransposeTest/.+
 
 # transpose_conv_test

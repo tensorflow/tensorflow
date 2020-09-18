@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -32,10 +34,18 @@ std::string GetVectorReduceCode() {
 })";
 }
 
-std::string GetReduceCode(size_t work_group_size_x, size_t work_group_size_y) {
+std::string GetReduceCode() {
   // If it is supported, use the built-in work_group_reduce_add function.
-  // Otherwise, implement a reduction using __local memory. Note this only works
-  // with power-of-two work group sizes.
+  // Otherwise, implement a reduction using __local memory.
+
+  // In the reduction step add upper half of the still-to-be-summed vector to
+  // the lower half, while taking care of odd sizes and rounding. E.g.:
+  // Number of items still to be summed before: 5
+  // Local memory before: [a, b, c, d, e];
+  // Local memory after: [a+d, b+e, c, d, e];
+  // Threads doing work: id < 2 = floor(5/2)
+  // Offset to the added items: 3 = ceil(5/2)
+  // Number of items still to be summed after: 3 = ceil(5/2)
   return R"(
 #if (__OPENCL_C_VERSION__ >= 200) && (__OPENCL_C_VERSION__ < 300) && \
   !defined(__opencl_c_work_group_collective_functions)
@@ -43,40 +53,65 @@ std::string GetReduceCode(size_t work_group_size_x, size_t work_group_size_y) {
 #endif
 
 #ifdef __opencl_c_work_group_collective_functions
-#define local_reduce(input, tmp) work_group_reduce_add(input)
+#define local_reduce(item, tmp) work_group_reduce_add(item)
 #else  // !defined(__opencl_c_work_group_collective_functions)
-static inline float local_reduce(float input, __local float tmp[)" +
-         std::to_string(work_group_size_y) + "][" +
-         std::to_string(work_group_size_x) + R"(]) {
-  const size_t local_id_x = get_local_id(0);
-  const size_t local_id_y = get_local_id(1);
-  tmp[local_id_y][local_id_x] = input;
-  mem_fence(CLK_LOCAL_MEM_FENCE);
-  size_t reduction_size = get_local_size(0) / 2;
-  while (reduction_size > 0) {
-    if (local_id_x < reduction_size) {
-      tmp[local_id_y][local_id_x] += tmp[local_id_y][local_id_x + reduction_size];
+static inline float local_reduce(float item, __local float* tmp) {
+  const int local_id = get_local_id(0);
+  tmp[local_id] = item;
+  barrier(CLK_LOCAL_MEM_FENCE);
+  // The number of items still need to be summed
+  int reduction_size = get_local_size(0);
+  while (reduction_size > 1) {
+    const int active_thread_limit = reduction_size / 2;
+    const int offset = (reduction_size + 1) / 2;
+    if (local_id < active_thread_limit) {
+      item += tmp[local_id + offset];
+      tmp[local_id] = item;
     }
-    mem_fence(CLK_LOCAL_MEM_FENCE);
-    reduction_size /=  2;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    reduction_size = offset;
   }
-  return tmp[local_id_y][0];
+  return tmp[0];
 }
 #endif  // defined(__opencl_c_work_group_collective_functions)
 )";
 }
+
+std::string GetFilterCode() {
+  return R"(
+static inline float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
+  return select(x, (float4)(0.0f), slice * 4 + (int4)(0, 1, 2, 3) >= num_channels);
+}
+)";
+}
 }  // namespace
 
-MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition)
+MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
+                                                 const DeviceInfo& device_info,
+                                                 const int tensor_slices)
     : GPUOperation(definition) {
   // The kernel code does not inherently need a fixed size, but in order to not
   // hardcode the __local array's size for the reductions, we would need to pass
   // that size to the kernel at runtime, and that is currently not supported.
-  // For now, fix workgroup size to 128 threads.
-  work_group_size_.x = 128;
-  work_group_size_.y = 1;
-  work_group_size_.z = 1;
+  // For now, fix workgroup size to the biggest supported by the device, but not
+  // larger than the number of tensor slices.
+  int desired_work_group_size =
+      std::min(tensor_slices, device_info.max_work_group_size_x);
+  if (device_info.IsMali() && desired_work_group_size > 64) {
+    // Don't use more than 64 work items per work group on ARM Mali. They
+    // implement local memory using the global memory, larger workgroups have
+    // severe performance penalty.
+    desired_work_group_size = 64;
+  }
+  work_group_size_.x = desired_work_group_size;
+  work_group_size_.y = 1;  // Required
+  work_group_size_.z = 1;  // Required
   code_ = GetNormalizationCode();
+  if (device_info.cl_version >= OpenCLVersion::CL_3_0) {
+    compiler_options_.push_back(CompilerOptions::CL_3_0);
+  } else if (device_info.cl_version >= OpenCLVersion::CL_2_0) {
+    compiler_options_.push_back(CompilerOptions::CL_2_0);
+  }
 }
 
 std::string MeanStdDevNormalization::GetNormalizationCode() {
@@ -85,27 +120,22 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
 
   std::string c = GetCommonDefines(definition_.precision);
   c += GetVectorReduceCode();
-  c += GetReduceCode(work_group_size_.x, work_group_size_.y);
-  c += R"(__attribute__((reqd_work_group_size(128, 1, 1)))
-__kernel void main_function(
-$0) {
+  c += GetReduceCode();
+  c += GetFilterCode();
+  c += "__attribute__((reqd_work_group_size(" +
+       std::to_string(work_group_size_.x) + ", 1, 1)))\n";
+  c += R"(__kernel void main_function($0) {
 #ifndef __opencl_c_work_group_collective_functions
   __local float tmp[)" +
-       std::to_string(work_group_size_.y) + "][" +
        std::to_string(work_group_size_.x) + R"(];
 #endif
-  size_t B = get_global_id(1);
-  if (get_global_id(2) > 0) { return; }
-  if (B >= args.src_tensor.Batch()) { return; }
+  const int B = get_global_id(1);
   // Calculate the total sum of the input tensor.
   // First, get a local sum of input[local_id_x + N*local_size_x] for all N.
   float4 private_sum4 = (float4)(0.0f);
   for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    // Filter out reads beyond the end of the tensor.
-    const int4 is_after_end_of_tensor = (int4)(0, 1, 2, 3) >= (args.src_tensor.Channels() - S * 4);
-    const float4 filtered_t = select(t, (float4)(0.0f), is_after_end_of_tensor);
-    private_sum4 += filtered_t;
+    private_sum4 += filter_outside_tensor(t, args.src_tensor.Channels(), S);
   }
   // Reduce the vector to a single float and do a workgroup reduce.
   const float private_sum = reduce_vector(private_sum4);
@@ -116,21 +146,18 @@ $0) {
   float4 private_sum_diff_sq4 = (float4)(0.0f);
   for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    const float4 diff = t - mean;
-    // Filter out reads beyond the end of the tensor.
-    const int4 is_after_end_of_tensor = (int4)(0, 1, 2, 3) >= (args.src_tensor.Channels() - S * 4);
-    const float4 filtered_diff = select(diff, (float4)(0.0f), is_after_end_of_tensor);
+    const float4 diff = filter_outside_tensor(t - mean, args.src_tensor.Channels(), S);
     // sum_diff_sq += diff²
-    private_sum_diff_sq4 = mad(filtered_diff, filtered_diff, private_sum_diff_sq4);
+    private_sum_diff_sq4 = mad(diff, diff, private_sum_diff_sq4);
   }
   // Reduce
   const float private_sum_diff_sq = reduce_vector(private_sum_diff_sq4);
   const float sum_diff_sq = local_reduce(private_sum_diff_sq, tmp);
   // Calculate 1/stddev (with the 'regulazing constant' as in tensor_utils.cc)
   const float variance = sum_diff_sq / args.src_tensor.Channels();
-  const float stddev_inv =  rsqrt(variance + 1.0e-8f);
+  const float stddev_inv = native_rsqrt(variance + 1.0e-8f);
   // Calculate (t-mean)/stddev for each element
-  for (int S = 0; S < args.src_tensor.Slices(); ++S) {
+  for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
     FLT4 result = TO_FLT4((t - mean) * stddev_inv);
     args.dst_tensor.Write(result, 0, 0, S, B);
@@ -149,8 +176,9 @@ int3 MeanStdDevNormalization::GetGridSize() const {
 }
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition) {
-  return MeanStdDevNormalization(definition);
+    const OperationDef& definition, const DeviceInfo& device_info,
+    const int tensor_slices) {
+  return MeanStdDevNormalization(definition, device_info, tensor_slices);
 }
 
 }  // namespace cl

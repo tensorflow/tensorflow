@@ -10,6 +10,14 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = [
+        "//tensorflow/python/keras/google/private_tf_api_test:__pkg__",
+    ],
+)
+
 py_library(
     name = "keras",
     srcs = [
@@ -87,6 +95,8 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
+        "//tensorflow/python/keras/utils:tf_contextlib",
+        "//tensorflow/python/keras/utils:tf_inspect",
     ],
 )
 
@@ -307,6 +317,7 @@ py_library(
     deps = [
         ":backend",
         ":models",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
@@ -522,7 +533,7 @@ tf_py_test(
     size = "medium",
     srcs = ["callbacks_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 6,
     tags = [
         "no_oss",
         "notsan",

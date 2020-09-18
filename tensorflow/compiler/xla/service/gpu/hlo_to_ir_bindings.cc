@@ -83,6 +83,8 @@ void HloToIrBindings::EmitBasePointersForHlos(
           if (non_io_hlo->opcode() == HloOpcode::kConstant) {
             llvm::Value* global_for_constant = module_->getGlobalVariable(
                 llvm_ir::ConstantHloToGlobalName(*non_io_hlo));
+            CHECK(global_for_constant)
+                << llvm_ir::ConstantHloToGlobalName(*non_io_hlo);
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
             llvm::Type* pointee_type =
@@ -117,11 +119,11 @@ static bool HasMeaningfulName(llvm::Value* value) {
   return false;
 }
 
-llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
-                                              ShapeIndexView shape_index,
-                                              llvm::Value* ir_value) {
-  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
-      ShapeUtil::GetSubshape(hlo.shape(), shape_index), module_);
+llvm::Value* CastToTypedValue(const Shape& shape, llvm::Value* ir_value,
+                              llvm::IRBuilder<>* b) {
+  llvm::Type* pointee_type =
+      llvm_ir::ShapeToIrType(shape, b->GetInsertBlock()->getModule());
+
   llvm::Type* dest_type = pointee_type->getPointerTo();
 
   llvm::Value* typed_ir_value;
@@ -129,9 +131,17 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
         llvm::cast<llvm::GlobalVariable>(ir_value), dest_type);
   } else {
-    typed_ir_value = b_->CreatePointerBitCastOrAddrSpaceCast(
+    typed_ir_value = b->CreatePointerBitCastOrAddrSpaceCast(
         ir_value, pointee_type->getPointerTo());
   }
+  return typed_ir_value;
+}
+
+llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
+                                              ShapeIndexView shape_index,
+                                              llvm::Value* ir_value) {
+  auto typed_ir_value = CastToTypedValue(
+      ShapeUtil::GetSubshape(hlo.shape(), shape_index), ir_value, b_);
   if (!HasMeaningfulName(ir_value)) {
     ir_value->setName(llvm_ir::IrName(&hlo, "raw"));
   }

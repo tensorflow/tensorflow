@@ -212,6 +212,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":timespan",
+        ":trace_utils",
         ":xplane_builder",
         ":xplane_visitor",
         "//tensorflow/core:platform_base",
@@ -322,8 +323,10 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -430,6 +433,41 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:tfstreamz_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "step_intersection",
+    srcs = ["step_intersection.cc"],
+    hdrs = ["step_intersection.h"],
+    deps = [
+        ":timespan",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "step_intersection_test",
+    srcs = ["step_intersection_test.cc"],
+    deps = [
+        ":step_intersection",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "file_system_utils",
+    hdrs = ["file_system_utils.h"],
+    deps = [
+        "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",
     ],
 )

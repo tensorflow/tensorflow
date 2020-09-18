@@ -45,9 +45,8 @@ namespace tensorflow {
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
-              int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
+              int64 step_id, int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -173,10 +172,11 @@ class RingGathererTest : public ::testing::Test {
     }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
-                           kStepId, fail_after);
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
+                           fail_after);
+    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
+                                           dev_mgr_.get(),
+                                           gpu_ring_order_.get(), work_queue_);
     col_params_.name = "test_collective";
     static const int kGroupKey = 5;
     col_params_.group.group_key = kGroupKey;
@@ -480,8 +480,9 @@ class RingGathererTest : public ::testing::Test {
       RingGatherer* gatherer = new RingGatherer;
       core::ScopedUnref unref(gatherer);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, &input_tensor_, output_tensor_ptr);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, &input_tensor_, output_tensor_ptr);
       TF_CHECK_OK(gatherer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-gather.

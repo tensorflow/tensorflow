@@ -48,22 +48,26 @@ template <typename T>
 struct is_complex_t : absl::disjunction<std::is_same<T, complex64>,
                                         std::is_same<T, complex128>> {};
 
+namespace detail {
+template <typename T>
+using unsigned_promoted_type_t =
+    std::make_unsigned_t<decltype(std::declval<T>() + std::declval<T>())>;
+}
+
 // ToArithmeticSafeType(T t):
-//  - converts `t` to the bitwise-equivalent `unsigned T` if T is a signed
+//  - converts `t` to an unsigned integer at least as wide as `int` if T is an
 //    integer, and
 //  - otherwise returns `t` unchanged.
 //
 // It's UB in C++ to under/overflow a signed integer, so we wrap all arithmetic
 // in this type to force 2's complement behavior.
 template <typename T,
-          typename std::enable_if<std::is_integral<T>::value &&
-                                  std::is_signed<T>::value>::type* = nullptr>
-typename std::make_unsigned<T>::type ToArithmeticSafeType(T t) {
-  return static_cast<typename std::make_unsigned<T>::type>(t);
+          typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
+detail::unsigned_promoted_type_t<T> ToArithmeticSafeType(T t) {
+  return static_cast<detail::unsigned_promoted_type_t<T>>(t);
 }
 template <typename T,
-          typename std::enable_if<!std::is_integral<T>::value ||
-                                  !std::is_signed<T>::value>::type* = nullptr>
+          typename std::enable_if<!std::is_integral<T>::value>::type* = nullptr>
 T ToArithmeticSafeType(T t) {
   return std::move(t);
 }
@@ -1153,7 +1157,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       const int64 feature_group_index =
           out_index[output_z_dim] / output_feature_group_size;
 
-      const int64 batch_group_index = out_index[output_z_dim];
+      const int64 depthwise_multiplier =
+          batch_group_count > 1 ? output_z_size / input_batch_size : 1;
+      const int64 batch_group_index =
+          out_index[output_z_dim] / depthwise_multiplier;
 
       ElementwiseT result_val = static_cast<ElementwiseT>(0);
       DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size(),
@@ -1214,7 +1221,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               feature_group_index * input_feature_group_size + rhs_iz;
 
           int64 lhs_linear_index = lhs_linear_spatial_index;
-
           lhs_linear_index += out_index[output_batch_dim] *
                               lhs_dim_multipliers[input_batch_dim];
 
@@ -1229,7 +1235,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               lhs_dim_multipliers[input_batch_dim];
 
           lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
-
           int64 rhs_linear_index = rhs_linear_spatial_index;
 
           rhs_linear_index += out_index[output_z_dim] *

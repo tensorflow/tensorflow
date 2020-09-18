@@ -1,4 +1,4 @@
-# MLIR-HLO
+# MLIR-HLO: A Standalone "HLO" MLIR-based Compiler
 
 The code here exists in two places:
 
@@ -22,9 +22,42 @@ upstream.
 
 ## QuickStart: building and testing
 
-TODO
+These instructions work on Linux, you may have to adjust for your plaform.
+
+To build the code in this repository, you need a clone of the LLVM/MLIR git
+repository:
+
+    $ git clone https://github.com/llvm/llvm-project.git
+
+
+You need to make sure you have the right commit checked out in the LLVM
+repository (you need to do this every time you pull from this repo):
+
+    $ (cd llvm-project && git checkout $(cat build_tools/llvm_version.txt))
+
+We provide a script to configure and build LLVM/MLIR:
+
+    $ build_tools/build_mlir.sh ${PWD}/llvm-project/ ${PWD}/llvm-build
+
+Again this is something to do every time you pull from this repository and the
+LLVM revision changes.
+
+Finally you can build and test this repository:
+
+    $ mkdir build && cd build
+    $ cmake .. -GNinja \
+       -DLLVM_ENABLE_LLD=ON \
+       -DCMAKE_BUILD_TYPE=Release \
+       -DLLVM_ENABLE_ASSERTIONS=On \
+       -DMLIR_DIR=${PWD}/../llvm-build/lib/cmake/mlir
+    $ ninja check-mlir-hlo
+
 
 ## Overview
+
+MLIR-HLO aims to provide an end-to-end compiler for CPU and GPU, as well as
+building reusable blocks for other accelerators. This is heavily inspired by the
+success of XLA.
 
 [XLA](https://www.tensorflow.org/xla/) (Accelerated Linear Algebra) is a
 domain-specific compiler framework and execution environment for linear algebra,

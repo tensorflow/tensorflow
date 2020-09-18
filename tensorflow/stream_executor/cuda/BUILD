@@ -131,6 +131,18 @@ cc_library(
 )
 
 tf_cuda_cc_test(
+    name = "cuda_driver_test",
+    srcs = ["cuda_driver_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "memcpy_test",
     srcs = ["memcpy_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -251,7 +263,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:tf32_utils",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:host_or_device_scalar",
@@ -352,13 +364,14 @@ cc_library(
         ":cuda_timer",
         ":cudnn_version",
         ":cudnn_lib",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:tf32_utils",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",

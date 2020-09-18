@@ -21,8 +21,12 @@ with the
 [TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite), you
 can download our starter question and answer model.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/bert_qa/mobilebert_qa_vocab.zip">Download
+<a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/mobilebert/1/metadata/1?lite-format=tflite">Download
 starter model and vocab</a>
+
+For more information about medatada and associated fields (e.g. `vocab.txt`) see
+<a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
+the metadata from models</a>.
 
 ## How it works
 
@@ -64,7 +68,7 @@ Performance benchmark numbers are generated with the tool
   </thead>
   <tr>
     <td rowspan = 3>
-      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/bert_qa/mobilebert_qa_vocab.zip">Mobile Bert</a>
+      <a href="https://tfhub.dev/tensorflow/lite-model/mobilebert/1/metadata/1?lite-format=tflite">Mobile Bert</a>
     </td>
     <td rowspan = 3>
       100.5 Mb

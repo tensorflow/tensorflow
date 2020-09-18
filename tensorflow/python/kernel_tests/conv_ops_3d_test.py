@@ -48,6 +48,10 @@ def GetTestConfigs():
   return test_configs
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests Conv3d, which in some cases is implemented with a matmul. With "
+    "TensorFloat-32, tests fail in some of those cases (and as of August 13 "
+    "2020, only those cases)")
 class Conv3DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
@@ -189,9 +193,9 @@ class Conv3DTest(test.TestCase):
                 e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-6)
 
   def _CreateNumpyTensor(self, sizes):
-    return np.asarray([f * 1.0
-                       for f in range(1,
-                                      np.prod(sizes) + 1)]).reshape(sizes)
+    return np.asarray([f * 1.0 for f in range(1,
+                                              np.prod(sizes) + 1)],
+                      dtype=np.float32).reshape(sizes)
 
   @test_util.run_in_graph_and_eager_modes
   def testConv3DExpandedBatch(self):

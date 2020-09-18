@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -40,6 +41,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
@@ -520,6 +522,11 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
               x_tf = reverse_f(x_np, [0]).eval()
               np_answer = x_np[::-1, :, :]
               self.assertAllEqual(x_tf, np_answer)
+
+  def testReverseInvalidShape(self):
+    x = np.ndarray(shape=[0, 1, 1])
+    v = array_ops.reverse_v2(x, axis=[1])
+    self.assertAllEqual(self.evaluate(v), v)
 
 
 class MeshgridTest(test_util.TensorFlowTestCase):
@@ -1142,7 +1149,7 @@ class StridedSliceAssignChecker(object):
       self.test.assertAllEqual(val_copy, valnp)
 
 
-class SliceAssignTest(test_util.TensorFlowTestCase):
+class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidSlice(self):
@@ -1227,8 +1234,9 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
+  @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
-  def testTensorStridedSliceAssignWithInputForward(self):
+  def testTensorStridedSliceUpdateWithInputForward(self):
     """Tests tensor_strided_slice_update with input-forwarding taking effect."""
     @def_function.function
     def assign(x):
@@ -1236,8 +1244,9 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
       return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
     self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
 
+  @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
-  def testTensorStridedSliceAssignNoInputForward(self):
+  def testTensorStridedSliceUpdateNoInputForward(self):
     """Tests tensor_strided_slice_update with no input-forwarding."""
     x = constant_op.constant([0.2, 0.3])
     y = x + 1
@@ -1246,6 +1255,36 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
     z = gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0.4])
     ans = y + z
     self.assertAllClose([1.6, 2.6], self.evaluate(ans))
+
+  @test_util.disable_xla("b/123559667")
+  def testTensorStridedSliceUpdateGradSimple(self):
+    original = constant_op.constant([0.2, 0.3])
+    updates = constant_op.constant([0.4])
+    with backprop.GradientTape() as tape:
+      tape.watch([original, updates])
+      updated = gen_array_ops.tensor_strided_slice_update(
+          original, [0], [1], [1], updates)
+    d1, d2 = tape.gradient(updated, [original, updates],
+                           output_gradients=constant_op.constant([2.0, 3.0]))
+    self.assertAllClose([0.0, 3.0], d1)
+    self.assertAllClose([2.0], d2)
+
+  @parameterized.named_parameters(
+      ("_%s" % i, *args) for i, args in enumerate([  # pylint:disable=g-complex-comprehension
+          ([2, 5], [0, 1], [1, 0], [1, 2], [2], 0, 2, 0, 0, 1),
+          ([4], [5], [3], [1], [3], 1, 0, 0, 0, 0),
+          ([2, 2, 3, 2], [0, 0, 1], [1, 0, 2], [1, 0, 1], [2, 3], 0, 0, 2, 0, 5)
+      ]))
+  @test_util.disable_xla("b/123559667")
+  def testTensorStridedSliceUpdateGrad(
+      self, shape, begin, end, strides, updates_shape, *args):
+    with self.cached_session():
+      def f(a, b):
+        return gen_array_ops.tensor_strided_slice_update(
+            a, begin, end, strides, b, *args)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [array_ops.zeros(shape), array_ops.ones(updates_shape)], delta=1.0)
+      self.assertAllClose(theoretical, numerical)
 
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
@@ -1363,6 +1402,34 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       check_dtypes(dtypes.int32, dtypes.int64)
       check_dtypes(dtypes.int64, dtypes.int32)
       check_dtypes(dtypes.int64, dtypes.int64)
+
+  def testOutputDtype(self):
+
+    def check_output_dtype(output_dtype):
+      res = self.evaluate(
+          array_ops.sequence_mask(
+              constant_op.constant([1, 3, 2], dtype=dtypes.int32),
+              constant_op.constant(5, dtype=dtypes.int32),
+              dtype=output_dtype))
+      self.assertAllEqual(
+          res,
+          self.evaluate(
+              math_ops.cast([[True, False, False, False, False],
+                             [True, True, True, False, False],
+                             [True, True, False, False, False]], output_dtype)))
+
+    check_output_dtype(dtypes.bool)
+    check_output_dtype("bool")
+    check_output_dtype(np.bool)
+    check_output_dtype(dtypes.int32)
+    check_output_dtype("int32")
+    check_output_dtype(np.int32)
+    check_output_dtype(dtypes.float32)
+    check_output_dtype("float32")
+    check_output_dtype(np.float32)
+    check_output_dtype(dtypes.int64)
+    check_output_dtype("float64")
+    check_output_dtype(np.float64)
 
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):

@@ -36,7 +36,7 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let cppNamespace = "tf_device";
+  let cppNamespace = "::mlir::tf_device";
 }
 
 //===----------------------------------------------------------------------===//
@@ -104,8 +104,7 @@ The `tf_device.return` operation terminates and returns values from a
     }]>
    ];
 
-  let parser = [{ return Parse$cppClass(&parser, &result); }];
-  let printer = [{ return Print(*this, &p); }];
+  let assemblyFormat = "attr-dict ($results^ `:` type($results))?";
 }
 
 def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {

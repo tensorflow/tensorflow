@@ -29,7 +29,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status GPUOperationFromNode(const CreationContext& creation_context,
+absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
                                   const OperationDef& op_def, ModelHints hints,
                                   const std::vector<Value*>& inputs,
                                   const std::vector<Value*>& outputs,

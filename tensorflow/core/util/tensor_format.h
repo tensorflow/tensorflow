@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -97,11 +98,11 @@ enum FilterTensorFormat {
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
-bool FormatFromString(const std::string& format_str, TensorFormat* format);
+bool FormatFromString(absl::string_view format_str, TensorFormat* format);
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
-bool FilterFormatFromString(const std::string& format_str,
+bool FilterFormatFromString(absl::string_view format_str,
                             FilterTensorFormat* format);
 
 // Convert a tensor format into string.

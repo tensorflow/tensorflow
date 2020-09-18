@@ -29,7 +29,7 @@ def TFFramework_Dialect : Dialect {
     This dialect contains operations and types for that correspond to
     TensorFlow C++ Framework.
   }];
-  let cppNamespace = "kernel_gen::tf_framework";
+  let cppNamespace = "::mlir::kernel_gen::tf_framework";
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
@@ -45,7 +45,7 @@ def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
 // Base class for TF Framework dialect ops.
 class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TFFramework_Dialect, mnemonic, traits> {
-  let verifier = "return Verify(*this);";
+  let verifier = "return Verify<$cppClass>(*this);";
 }
 
 //===----------------------------------------------------------------------===//
@@ -109,6 +109,17 @@ def TFFramework_DeallocRawOp : TFFramework_Op<"dealloc_raw",
   let arguments = (ins TFFramework_OpKernelContextType:$ctx,
                    Arg<AnyMemRef, "", [MemFree]>:$memref);
   let assemblyFormat = "`(` $ctx `,` $memref `)` attr-dict `:` type($memref)";
+}
+
+//===----------------------------------------------------------------------===//
+// NullContextOp
+//===----------------------------------------------------------------------===//
+def TFFramework_NullContextOp : TFFramework_Op<"null_context",
+    [NoSideEffect]> {
+  let summary = "Creates a fake TF context that will be lowered to nullptr";
+  let description = [{Needed for testing}];
+  let results = (outs TFFramework_OpKernelContextType:$result);
+  let assemblyFormat = "`(` `)` attr-dict `:` type($result)";
 }
 
 #endif // TF_FRAMEWORK_OPS

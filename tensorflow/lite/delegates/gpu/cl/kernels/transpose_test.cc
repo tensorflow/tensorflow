@@ -48,7 +48,7 @@ TEST_F(OpenCLOperationTest, Transpose) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Transpose operation = CreateTranspose(op_def, attr);
+      GPUOperation operation = CreateTranspose(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 3, 2), &dst_tensor));
       EXPECT_THAT(

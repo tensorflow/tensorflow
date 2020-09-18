@@ -486,6 +486,10 @@ Status HloCostAnalysis::HandleReshape(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleDynamicReshape(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleBatchNormTraining(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
   return Status::OK();

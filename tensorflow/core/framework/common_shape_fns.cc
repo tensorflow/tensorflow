@@ -1477,7 +1477,8 @@ Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
-Status MaxPoolShape(shape_inference::InferenceContext* c) {
+Status MaxPoolShapeImpl(shape_inference::InferenceContext* c,
+                        bool supports_explicit_padding) {
   string data_format_str;
   TensorFormat data_format;
   Status s = c->GetAttr("data_format", &data_format_str);
@@ -1530,14 +1531,39 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
+  std::vector<int64> explicit_paddings;
+  if (supports_explicit_padding) {
+    Status status = c->GetAttr("explicit_paddings", &explicit_paddings);
+    // Use the default value, which is an empty list, if the attribute is not
+    // found. Otherwise return the error to the caller.
+    if (!status.ok() && !errors::IsNotFound(status)) {
+      return status;
+    }
+    TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
+                                         /*num_dims=*/4, data_format));
+  } else {
+    DCHECK(padding != Padding::EXPLICIT);
+  }
+
   ShapeHandle output_shape;
   DimensionHandle output_rows, output_cols, output_depth;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, kernel_rows, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_depth_dim, kernel_depth, stride_depth, padding, &output_depth));
+  int64 pad_rows_before = -1, pad_rows_after = -1;
+  int64 pad_cols_before = -1, pad_cols_after = -1;
+  if (padding == Padding::EXPLICIT) {
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'H',
+                             &pad_rows_before, &pad_rows_after);
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'W',
+                             &pad_cols_before, &pad_cols_after);
+  }
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_rows_dim, kernel_rows, /*dilation_rate=*/1, stride_rows, padding,
+      pad_rows_before, pad_rows_after, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_cols_dim, kernel_cols, /*dilation_rate=*/1, stride_cols, padding,
+      pad_cols_before, pad_cols_after, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_depth_dim, kernel_depth, /*dilation_rate=*/1, stride_depth, padding,
+      /*pad_before*/ 0, /*pad_after*/ 0, &output_depth));
 
   TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
                                          {output_rows, output_cols},
@@ -1545,6 +1571,14 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
 
   c->set_output(0, output_shape);
   return Status::OK();
+}
+
+Status MaxPoolShape(shape_inference::InferenceContext* c) {
+  return MaxPoolShapeImpl(c, /*supports_explicit_padding=*/false);
+}
+
+Status MaxPoolShapeWithExplicitPadding(shape_inference::InferenceContext* c) {
+  return MaxPoolShapeImpl(c, /*supports_explicit_padding=*/true);
 }
 
 Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs) {
@@ -2257,66 +2291,57 @@ Status GatherNdShape(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ScatterNdUpdateShape(InferenceContext* c) {
-  ShapeHandle input_shape = c->input(0);
-  if (c->input_handle_shapes_and_types(0) != nullptr) {
-    // This is called for tf.scatter_nd_update; input is a Variable handle.
-    const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));
-    if (shape_and_type.size() == 1) {
-      input_shape = shape_and_type[0].shape;
-    }
-  }
-  ShapeHandle indices_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
-  ShapeHandle updates_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &updates_shape));
-
+Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle updates_shape,
+                            ShapeHandle input_shape) {
   if (c->Value(c->NumElements(input_shape)) == 0 &&
       (c->Value(c->NumElements(indices_shape)) > 0 ||
        c->Value(c->NumElements(updates_shape)) > 0)) {
     return errors::InvalidArgument(
-        "Indices and updates specified for empty output shape");
+        "Indices and updates specified for empty input");
   }
 
   if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
-    const int64 num_outer_dims = c->Rank(indices_shape) - 1;
-    const DimensionHandle index_size = c->Dim(indices_shape, -1);
+    const int64 outer_dims = c->Rank(indices_shape) - 1;
+    const DimensionHandle ixdim = c->Dim(indices_shape, -1);
 
     // We can only do more validation if the last dimension of indices
     // is a known value.
-    if (c->ValueKnown(index_size)) {
-      const int64 ix = c->Value(index_size);
+    if (c->ValueKnown(ixdim)) {
+      int64 ix = c->Value(ixdim);
       ShapeHandle unused;
       ShapeHandle prefix_indices;
       TF_RETURN_IF_ERROR(
-          c->Subshape(indices_shape, 0, num_outer_dims, &prefix_indices));
+          c->Subshape(indices_shape, 0, outer_dims, &prefix_indices));
       ShapeHandle prefix_updates;
       TF_RETURN_IF_ERROR(
-          c->Subshape(updates_shape, 0, num_outer_dims, &prefix_updates));
+          c->Subshape(updates_shape, 0, outer_dims, &prefix_updates));
 
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", num_outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", num_outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
+            "Dimensions [0,", outer_dims,
+            ") of indices[shape=", c->DebugString(indices_shape),
+            "] = ", c->DebugString(prefix_indices),
+            " must match dimensions [0,", outer_dims,
+            ") of updates[shape=", c->DebugString(updates_shape),
+            "] = ", c->DebugString(prefix_updates), ": ", s.error_message());
       }
 
-      ShapeHandle input_suffix;
-      TF_RETURN_IF_ERROR(c->Subshape(input_shape, ix, &input_suffix));
+      ShapeHandle suffix_output;
+      TF_RETURN_IF_ERROR(c->Subshape(input_shape, ix, &suffix_output));
       ShapeHandle suffix_updates;
       TF_RETURN_IF_ERROR(
-          c->Subshape(updates_shape, num_outer_dims, &suffix_updates));
-      s = c->Merge(input_suffix, suffix_updates, &unused);
+          c->Subshape(updates_shape, outer_dims, &suffix_updates));
+      s = c->Merge(suffix_output, suffix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The inner ", c->Rank(input_shape) - ix,
-            " dimensions of input.shape=", c->DebugString(input_shape),
-            " must match the inner ", c->Rank(updates_shape) - num_outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
+            "Dimensions [", ix, ",", c->Rank(input_shape),
+            ") of input[shape=", c->DebugString(input_shape),
+            "] = ", c->DebugString(suffix_output), " must match dimensions [",
+            outer_dims, ",", c->Rank(updates_shape),
+            ") of updates[shape=", c->DebugString(updates_shape),
+            "] = ", c->DebugString(suffix_updates), ": ", s.error_message());
       }
     }
   }

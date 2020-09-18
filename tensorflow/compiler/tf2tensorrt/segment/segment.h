@@ -19,6 +19,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -38,6 +39,9 @@ struct SegmentOptions {
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
   bool use_implicit_batch = true;
+  // The maximum batch size used to build the engines in the graph, when
+  // use_implicit_batch is true.
+  absl::optional<int> maximum_batch_size = absl::nullopt;
   // When use_implicit_batch is false or when we are building dynamic engines,
   // we allow dynamic non-batch dimensions.
   bool allow_dynamic_non_batch_dim = false;

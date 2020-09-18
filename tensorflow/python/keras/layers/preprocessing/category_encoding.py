@@ -269,7 +269,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def call(self, inputs, count_weights=None):
     if isinstance(inputs, (list, np.ndarray)):
-      inputs = ops.convert_to_tensor_v2(inputs)
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
     if inputs.shape.rank == 1:
       inputs = array_ops.expand_dims(inputs, 1)
 

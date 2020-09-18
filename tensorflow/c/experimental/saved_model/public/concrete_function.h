@@ -40,7 +40,14 @@ TF_CAPI_EXPORT extern TF_FunctionMetadata* TF_ConcreteFunctionGetMetadata(
 // The caller is responsible for deleting the returned TFE_Op. If op
 // construction fails, `status` will be non-OK and the returned pointer will be
 // null.
-TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionGetCallOp(
+// TODO(bmzhao): Remove this function in a subsequent change; Design + implement
+// a Function Execution interface for ConcreteFunction that accepts a tagged
+// union of types (tensorflow::Value). This effectively requires moving much of
+// the implementation of function.py/def_function.py to C++, and exposing a
+// high-level API here. A strawman for what this interface could look like:
+// TF_Value* TF_ExecuteFunction(TFE_Context*, TF_ConcreteFunction*, TF_Value*
+// inputs, int num_inputs, TF_Status* status);
+TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionMakeCallOp(
     TF_ConcreteFunction* func, TFE_TensorHandle** inputs, int num_inputs,
     TF_Status* status);
 

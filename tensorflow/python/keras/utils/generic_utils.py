@@ -29,11 +29,10 @@ import types as python_types
 
 import numpy as np
 import six
-
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
@@ -526,6 +525,8 @@ class Progbar(object):
     self._start = time.time()
     self._last_update = 0
 
+    self._time_after_first_step = None
+
   def update(self, current, values=None, finalize=None):
     """Updates the progress bar.
 
@@ -597,10 +598,7 @@ class Progbar(object):
       self._total_width = len(bar)
       sys.stdout.write(bar)
 
-      if current:
-        time_per_unit = (now - self._start) / current
-      else:
-        time_per_unit = 0
+      time_per_unit = self._estimate_step_duration(current, now)
 
       if self.target is None or finalize:
         if time_per_unit >= 1 or time_per_unit == 0:
@@ -663,6 +661,37 @@ class Progbar(object):
 
   def add(self, n, values=None):
     self.update(self._seen_so_far + n, values)
+
+  def _estimate_step_duration(self, current, now):
+    """Estimate the duration of a single step.
+
+    Given the step number `current` and the corresponding time `now`
+    this function returns an estimate for how long a single step
+    takes. If this is called before one step has been completed
+    (i.e. `current == 0`) then zero is given as an estimate. The duration
+    estimate ignores the duration of the (assumed to be non-representative)
+    first step for estimates when more steps are available (i.e. `current>1`).
+    Arguments:
+      current: Index of current step.
+      now: The current time.
+    Returns: Estimate of the duration of a single step.
+    """
+    if current:
+      # there are a few special scenarios here:
+      # 1) somebody is calling the progress bar without ever supplying step 1
+      # 2) somebody is calling the progress bar and supplies step one mulitple
+      #    times, e.g. as part of a finalizing call
+      # in these cases, we just fall back to the simple calculation
+      if self._time_after_first_step is not None and current > 1:
+        time_per_unit = (now - self._time_after_first_step) / (current - 1)
+      else:
+        time_per_unit = (now - self._start) / current
+
+      if current == 1:
+        self._time_after_first_step = now
+      return time_per_unit
+    else:
+      return 0
 
 
 def make_batches(size, batch_size):

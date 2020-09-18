@@ -47,9 +47,6 @@ class ImmediateExecutionOperation : public AbstractOperation {
   virtual Status InputLength(const char* input_name, int* length) = 0;
   virtual Status OutputLength(const char* output_name, int* length) = 0;
 
-  // Experimental
-  virtual Status SetUseXla(bool enable) = 0;
-
   // Set stack trace to be used for potential async error reporting.
   virtual void SetStackTrace(AbstractStackTrace stack_trace) = 0;
 

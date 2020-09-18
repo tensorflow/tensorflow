@@ -56,6 +56,7 @@ from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.saving.saved_model import metric_serialization
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -72,7 +73,6 @@ from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -644,7 +644,7 @@ class MeanMetricWrapper(Mean):
 
 @keras_export('keras.metrics.Accuracy')
 class Accuracy(MeanMetricWrapper):
-  """Calculates how often predictions equals labels.
+  """Calculates how often predictions equal labels.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -686,7 +686,7 @@ class Accuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.BinaryAccuracy')
 class BinaryAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches binary labels.
+  """Calculates how often predictions match binary labels.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -963,7 +963,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     else:
       result = self.accumulator
-    return ops.convert_to_tensor_v2(result)
+    return ops.convert_to_tensor_v2_with_dispatch(result)
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
@@ -2824,7 +2824,7 @@ class MeanIoU(Metric):
     sum_over_col = math_ops.cast(
         math_ops.reduce_sum(self.total_cm, axis=1), dtype=self._dtype)
     true_positives = math_ops.cast(
-        array_ops.diag_part(self.total_cm), dtype=self._dtype)
+        array_ops.tensor_diag_part(self.total_cm), dtype=self._dtype)
 
     # sum_over_row + sum_over_col =
     #     2 * true_positives + false_positives + false_negatives.
@@ -3239,7 +3239,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
   Returns:
     Binary accuracy values. shape = `[batch_size, d0, .. dN-1]`
   """
-  y_pred = ops.convert_to_tensor_v2(y_pred)
+  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   threshold = math_ops.cast(threshold, y_pred.dtype)
   y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
   return K.mean(math_ops.equal(y_true, y_pred), axis=-1)
@@ -3297,8 +3297,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
   Returns:
     Sparse categorical accuracy values.
   """
-  y_pred = ops.convert_to_tensor_v2(y_pred)
-  y_true = ops.convert_to_tensor_v2(y_true)
+  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_true = ops.convert_to_tensor_v2_with_dispatch(y_true)
   y_pred_rank = y_pred.shape.ndims
   y_true_rank = y_true.shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
@@ -3364,8 +3364,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   Returns:
     Sparse top K categorical accuracy value.
   """
-  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2_with_dispatch(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2_with_dispatch(y_true).shape.ndims
   # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None):
     if y_pred_rank > 2:
@@ -3402,6 +3402,7 @@ mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 cosine_similarity = cosine_proximity
+log_cosh = logcosh
 
 
 def clone_metric(metric):

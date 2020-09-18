@@ -36,7 +36,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
 // Expected to be removed once tstring migration is done.
 ABSL_MUST_USE_RESULT
 Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
-                       Safe_TF_TensorPtr* ret, bool convert_string);
+                       Safe_TF_TensorPtr* ret);
 
 // Creates a tensor in 'ret' from the input Ndarray.
 // TODO(kkb): This is an old conversion function that does not support TFRT.

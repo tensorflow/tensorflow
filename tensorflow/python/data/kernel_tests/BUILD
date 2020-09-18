@@ -94,6 +94,7 @@ tf_py_test(
     name = "data_service_ops_test",
     size = "medium",
     srcs = ["data_service_ops_test.py"],
+    shard_count = 10,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",

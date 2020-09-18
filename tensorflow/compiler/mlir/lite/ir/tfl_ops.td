@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -38,7 +39,7 @@ def TFL_Dialect : Dialect {
       represented using zero-dimensional tensors);
   }];
 
-  let cppNamespace = "TFL";
+  let cppNamespace = "::mlir::TFL";
 }
 
 //===----------------------------------------------------------------------===//
@@ -107,7 +108,11 @@ def OpaqueBytesAttr : ElementsAttrBase<
           ".getElementType().isInteger(8)">,
   ]>,
   "opaque bytes attribute"
- >;
+ > {
+  let storageType = [{ OpaqueElementsAttr }];
+  let returnType = [{ OpaqueElementsAttr }];
+  let convertFromStorage = "$_self";
+}
 
 //===----------------------------------------------------------------------===//
 // Derived shape attribute class.
@@ -2442,8 +2447,7 @@ def TFL_ReluOp: TFL_Op<"relu", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu operator";
 
   let description = [{
@@ -2471,8 +2475,7 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu6 operator";
 
   let description = [{
@@ -2500,8 +2503,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu1 operator";
 
   let description = [{
@@ -3024,7 +3026,8 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
 def TFL_UnpackOp : TFL_Op<"unpack", [
     NoSideEffect,
     SameOperandsAndResultElementType,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Unpacks a tensor along a dimension into multiple tensors";
 
   let description = [{
@@ -3047,15 +3050,13 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
   let arguments = (ins
     TFL_TensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$input,
 
-    I32Attr:$num,
+    Confined<I32Attr, [IntNonNegative]>:$num,
     I32Attr:$axis
   );
 
   let results = (outs
     TFL_VariadicTensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
   );
-
-  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }

@@ -51,9 +51,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#ifdef TENSORFLOW_EAGER_USE_XLA
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#endif  // TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -629,21 +626,30 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
                     "targets will fail.";
     }
   } else {
-    // The master's context_view_id will be incremented by one
-    // the UpdateRemoteMaster call later. We want all new workers and
-    // existing workers to also have the updated context_view_id, so
-    // we must set their context_view_id to the existing master's
-    // context_view_id + 1.
-    sg.Update(CreateRemoteContexts(
-        ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
-        server_def, remote_eager_workers.get(), context->Executor().Async(),
-        context->LazyCopyFunctionRemoteInputs(), base_request));
+    if (sg.ok()) {
+      // Create remote contexts on the newly added workers only if the master
+      // has collected all device information from them (i.e., the
+      // GetAllRemoteDevices call returns succussfully). Note that in rare cases
+      // GetAllRemoteDevices can still fail even with RPCs configured to wait
+      // until the remote workers to become alive. If the master creates remote
+      // contexts on the workers whose devices are still not collected, those
+      // workers will be treated as existing workers subsequently, so the master
+      // will never get devices from them even with retrying UpdateServerDef.
+      sg.Update(CreateRemoteContexts(
+          ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
+          server_def, remote_eager_workers.get(), context->Executor().Async(),
+          context->LazyCopyFunctionRemoteInputs(), base_request));
+    }
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
         for (const string& w : existing_workers) {
           VLOG(1) << "Updating cluster with existing worker " << w;
         }
       }
+      // The master's context_view_id will be incremented by one in the
+      // UpdateRemoteMaster call later. We want existing workers to also have
+      // the updated context_view_id, so we must set their context_view_id to
+      // the master's current context_view_id + 1.
       sg.Update(UpdateRemoteContexts(ctx, existing_workers, added_workers,
                                      removed_workers, context_id,
                                      context_view_id + 1, server_def,
@@ -724,7 +730,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
 #ifdef PLATFORM_GOOGLE
-    return tensorflow::wrap(new tfrt::ContextInterface(opts->async));
+    return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
@@ -745,7 +751,6 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
-      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
       opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
       /*device_mgr_owned*/ true, r,
       tensorflow::GetDefaultCustomKernelCreator()));
@@ -851,20 +856,9 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 #else   // !defined(IS_MOBILE_PLATFORM)
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  tensorflow::GrpcServer* grpc_server =
-      static_cast<tensorflow::GrpcServer*>(context->GetServer());
-
-  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
-  status->status = grpc_server->master_env()->worker_cache->GetEagerClientCache(
-      &remote_eager_workers);
-  if (!status->status.ok()) {
-    LOG(ERROR) << "Failed to get client cache for remote workers.";
-    return false;
-  }
-
   // TODO(yuefengz): support partially specified `worker_name`.
   tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
-  status->status = remote_eager_workers->GetClient(worker_name, &eager_client);
+  status->status = context->GetClient(worker_name, &eager_client);
   if (!status->status.ok()) {
     return false;
   }
@@ -1149,24 +1143,21 @@ void TFE_DeleteOp(TFE_Op* op) {
   tensorflow::unwrap(op)->Release();
 }
 
+const char* TFE_OpGetName(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::unwrap(op)->Name().c_str();
+}
+
+TFE_Context* TFE_OpGetContext(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::wrap(
+      &(OperationFromInterface(tensorflow::unwrap(op))->EagerContext()));
+}
+
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   status->status = tensorflow::unwrap(op)->SetDeviceName(device_name);
 }
 
-const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
+const char* TFE_OpGetDevice(const TFE_Op* op, TF_Status* status) {
   return tensorflow::unwrap(op)->DeviceName().c_str();
-}
-
-void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
-#ifdef TENSORFLOW_EAGER_USE_XLA
-  tensorflow::Status s = tensorflow::unwrap(op)->SetUseXla(enable);
-  if (!s.ok()) {
-    LOG(ERROR) << "Could not enable XLA compilation for op: " << s;
-  }
-#else
-  LOG(WARNING) << "This call is a no-op, as the TensorFlow library is not "
-                  "built with XLA support.";
-#endif  // TENSORFLOW_EAGER_USE_XLA
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
@@ -1179,6 +1170,15 @@ void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
       {reinterpret_cast<tensorflow::AbstractTensorHandle**>(
            tensorflow::unwrap(inputs)),
        static_cast<size_t>(num_inputs)});
+}
+
+extern int TFE_OpGetFlatInputCount(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::unwrap(op)->GetInputs().size();
+}
+
+extern TFE_TensorHandle* TFE_OpGetFlatInput(const TFE_Op* op, int index,
+                                            TF_Status* status) {
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetInputs()[index]);
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
@@ -1486,7 +1486,7 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
   tensorflow::unwrap(ctx)->EndStep();
 }
 
-const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
+const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op) {
   return tensorflow::wrap(
       &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
 }
@@ -1551,8 +1551,67 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       TFE_OpSetAttrFunction(op, attr_name, func_op);
       TFE_DeleteOp(func_op);
     } break;
-    case tensorflow::AttrValue::kList:
-      TF_FALLTHROUGH_INTENDED;
+    case tensorflow::AttrValue::kList: {
+      // String
+      if (const int s_size = default_value.list().s_size()) {
+        absl::InlinedVector<const void*, 4> values_vector;
+        absl::InlinedVector<size_t, 4> lengths_vector;
+        for (int i = 0; i < s_size; ++i) {
+          const string& v = default_value.list().s(i);
+          values_vector.push_back(v.data());
+          lengths_vector.push_back(v.size());
+        }
+        TFE_OpSetAttrStringList(op, attr_name, values_vector.data(),
+                                lengths_vector.data(), s_size);
+      }
+
+      // Int
+      if (const int i_size = default_value.list().i_size()) {
+        absl::InlinedVector<int64_t, 4> i_vector;
+        for (int i = 0; i < i_size; ++i) {
+          i_vector.push_back(default_value.list().i(i));
+        }
+        TFE_OpSetAttrIntList(op, attr_name, i_vector.data(), i_size);
+      }
+      // Float
+      if (const int f_size = default_value.list().f_size()) {
+        absl::InlinedVector<float, 4> f_vector;
+        for (int i = 0; i < f_size; ++i) {
+          f_vector.push_back(default_value.list().f(i));
+        }
+        TFE_OpSetAttrFloatList(op, attr_name, f_vector.data(), f_size);
+      }
+      // Bool
+      if (const int b_size = default_value.list().b_size()) {
+        absl::InlinedVector<unsigned char, 4> b_vector;
+        for (int i = 0; i < b_size; i++) {
+          b_vector.push_back(default_value.list().b(i));
+        }
+        TFE_OpSetAttrBoolList(op, attr_name, b_vector.data(), b_size);
+      }
+      // Type
+      if (const int type_size = default_value.list().type_size()) {
+        absl::InlinedVector<unsigned int, 4> type_vector;
+        for (int i = 0; i < type_size; ++i) {
+          type_vector.push_back(default_value.list().type(i));
+        }
+        TFE_OpSetAttrTypeList(
+            op, attr_name,
+            reinterpret_cast<const TF_DataType*>(type_vector.data()),
+            type_size);
+      }
+
+      // Rest are not supported.
+      if (default_value.list().shape_size() > 0 ||
+          default_value.list().func_size() > 0 ||
+          default_value.list().tensor_size() > 0) {
+        TF_SetStatus(
+            status, TF_UNIMPLEMENTED,
+            tensorflow::strings::StrCat("Unable to get setfor default value: ",
+                                        default_value.DebugString())
+                .data());
+      }
+    } break;
     case tensorflow::AttrValue::kTensor:
       TF_FALLTHROUGH_INTENDED;
     case tensorflow::AttrValue::kPlaceholder:
@@ -1612,19 +1671,12 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::Status Execute(tensorflow::EagerOperation* op,
+  tensorflow::Status Execute(const tensorflow::EagerOperation* op,
                              tensorflow::TensorHandle** retvals,
                              int* num_retvals) override {
-    std::vector<TFE_TensorHandle*> inputs;
-    inputs.reserve(op->Inputs().size());
-    for (int i = 0; i < op->Inputs().size(); ++i) {
-      op->Inputs()[i]->Ref();
-      inputs.push_back(tensorflow::wrap(op->Inputs()[i]));
-    }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
-    device_.execute(context_, inputs.size(), inputs.data(), op->Name().c_str(),
-                    wrap(&op->Attrs()), num_retvals, outputs.data(), &status,
+    device_.execute(tensorflow::wrap(op), num_retvals, outputs.data(), &status,
                     info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
@@ -1633,10 +1685,6 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
         retvals[i]->Ref();
         TFE_DeleteTensorHandle(outputs[i]);
       }
-    }
-
-    for (auto inp : inputs) {
-      TFE_DeleteTensorHandle(inp);
     }
     return status.status;
   }

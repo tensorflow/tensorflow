@@ -223,7 +223,7 @@ class MultiDeviceIterator(object):
       dataset: The input dataset to be iterated over.
       devices: The list of devices to fetch data to.
       max_buffer_size: Maximum size of the host side per device buffer to keep.
-      prefetch_buffer_size: if > 1, then we setup a buffer on each device to
+      prefetch_buffer_size: if > 0, then we setup a buffer on each device to
         prefetch into.
       source_device: The host device to place the `dataset` on.  In order to
         prevent deadlocks, if the prefetch_buffer_size is greater than the
@@ -335,8 +335,7 @@ class MultiDeviceIterator(object):
     result = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        result.append(
-            iterator_ops.get_next_as_optional(self._device_iterators[i]))
+        result.append(self._device_iterators[i].get_next_as_optional())
     return result
 
   @property
@@ -482,7 +481,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       dataset: The input dataset to be iterated over.
       devices: The list of devices to fetch data to.
       max_buffer_size: Maximum size of the host side per device buffer to keep.
-      prefetch_buffer_size: if > 1, then we setup a buffer on each device to
+      prefetch_buffer_size: if > 0, then we setup a buffer on each device to
         prefetch into.
       source_device: The host device to place the `dataset` on.  In order to
         prevent deadlocks, if the prefetch_buffer_size is greater than the
@@ -602,8 +601,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
     result = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        result.append(
-            iterator_ops.get_next_as_optional(self._device_iterators[i]))
+        result.append(self._device_iterators[i].get_next_as_optional())
     return result
 
   @property

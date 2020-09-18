@@ -577,8 +577,14 @@ class FtrlParameters(_OptimizationParameters):
                clip_weight_min=None,
                clip_weight_max=None,
                weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+               multiply_weight_decay_factor_by_learning_rate=None,
+               multiply_linear_by_learning_rate=False,
+               beta=0,
+               allow_zero_accumulator=False):
     """Optimization parameters for Ftrl.
+
+    Implements FTRL as described in the following [paper](
+    https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/41159.pdf)
 
     Args:
       learning_rate: a floating point value. The learning rate.
@@ -602,6 +608,14 @@ class FtrlParameters(_OptimizationParameters):
         weights are not decayed.
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
+      multiply_linear_by_learning_rate: When true, multiplies the usages of the
+        linear slot in the weight update by the learning rate. This is useful
+        when ramping up learning rate from 0 (which would normally produce
+        NaNs).
+      beta: The beta parameter for FTRL.
+      allow_zero_accumulator: Changes the implementation of the square root to
+        allow for the case of initial_accumulator_value being zero. This will
+        cause a slight performance drop.
     """
     super(FtrlParameters,
           self).__init__(learning_rate, use_gradient_accumulation,
@@ -628,6 +642,9 @@ class FtrlParameters(_OptimizationParameters):
     self.initial_linear_value = 0.0
     self.l1_regularization_strength = l1_regularization_strength
     self.l2_regularization_strength = l2_regularization_strength
+    self.multiply_linear_by_learning_rate = multiply_linear_by_learning_rate
+    self.beta = beta
+    self.allow_zero_accumulator = allow_zero_accumulator
 
 
 class ProximalYogiParameters(_OptimizationParameters):
@@ -1896,6 +1913,12 @@ class _FtrlHandler(_OptimizerHandler):
         self._optimization_parameters.l1_regularization_strength)
     table_descriptor.optimization_parameters.ftrl.l2 = (
         self._optimization_parameters.l2_regularization_strength)
+    table_descriptor.optimization_parameters.ftrl.multiply_linear_by_lr = (
+        self._optimization_parameters.multiply_linear_by_learning_rate)
+    table_descriptor.optimization_parameters.ftrl.beta = (
+        self._optimization_parameters.beta)
+    table_descriptor.optimization_parameters.ftrl.allow_zero_accumulator = (
+        self._optimization_parameters.allow_zero_accumulator)
 
   def get_default_slot_variable_names(self, table):
     # These match the default slot variable names created by
@@ -2211,7 +2234,7 @@ def _create_device_fn(hosts):
     if part_match:
       idx = int(part_match.group(1))
     else:
-      idx = int(dummy_match.group(1))
+      idx = int(dummy_match.group(1))  # pytype: disable=attribute-error
 
     device = hosts[idx]
     logging.debug('assigning {} to {}.', op, device)

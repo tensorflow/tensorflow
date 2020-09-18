@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -43,6 +44,11 @@ struct OpData {
   int input_quantized_index;
   // Index to buffer for optimizations if applicable.
   int buffer_idx;
+
+  // Cached tensor zero point values for quantized operations.
+  int32_t input_zero_point;
+  int32_t filter_zero_point;
+  int32_t output_zero_point;
 };
 
 constexpr int kInputTensor = 0;
@@ -69,6 +75,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, activation, output, &data->output_activation_min,
         &data->output_activation_max));
+    data->input_zero_point = input->params.zero_point;
+    data->filter_zero_point = filter->params.zero_point;
+    data->output_zero_point = output->params.zero_point;
   }
   return status;
 }
@@ -125,25 +134,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
-                               const OpData& data, const TfLiteTensor* input,
-                               const TfLiteTensor* filter,
-                               const TfLiteTensor* bias, TfLiteTensor* output) {
+                               const OpData& data,
+                               const TfLiteEvalTensor* input,
+                               const TfLiteEvalTensor* filter,
+                               const TfLiteEvalTensor* bias,
+                               TfLiteEvalTensor* output) {
   // The 'if' condition can be removed when null handling of bias is added to
   // arm_fully_connected_s8
-  if (nullptr != GetTensorData<int32_t>(bias)) {
-    RuntimeShape output_shape = GetTensorShape(output);
+  if (nullptr != tflite::micro::GetTensorData<int32_t>(bias)) {
+    RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
     TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
     const int batches = output_shape.Dims(0);
     const int output_depth = output_shape.Dims(1);
-    const RuntimeShape filter_shape = GetTensorShape(filter);
+    const RuntimeShape filter_shape = tflite::micro::GetTensorShape(filter);
     const int filter_dim_count = filter_shape.DimensionsCount();
     const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
-    const RuntimeShape input_shape = GetTensorShape(input);
+    const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
 
     cmsis_nn_fc_params fc_params;
-    fc_params.input_offset = -input->params.zero_point;
-    fc_params.filter_offset = -filter->params.zero_point;
-    fc_params.output_offset = output->params.zero_point;
+    fc_params.input_offset = -data.input_zero_point;
+    fc_params.output_offset = data.output_zero_point;
+    fc_params.filter_offset = -data.filter_zero_point;
     fc_params.activation.min = data.output_activation_min;
     fc_params.activation.max = data.output_activation_max;
 
@@ -186,17 +197,18 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
 
     TF_LITE_ENSURE_EQ(
         context,
-        arm_fully_connected_s8(&ctx, &fc_params, &quant_params, &input_dims,
-                               GetTensorData<int8_t>(input), &filter_dims,
-                               GetTensorData<int8_t>(filter), &bias_dims,
-                               GetTensorData<int32_t>(bias), &output_dims,
-                               GetTensorData<int8_t>(output)),
+        arm_fully_connected_s8(
+            &ctx, &fc_params, &quant_params, &input_dims,
+            tflite::micro::GetTensorData<int8_t>(input), &filter_dims,
+            tflite::micro::GetTensorData<int8_t>(filter), &bias_dims,
+            tflite::micro::GetTensorData<int32_t>(bias), &output_dims,
+            tflite::micro::GetTensorData<int8_t>(output)),
         ARM_MATH_SUCCESS);
   } else {
     tflite::FullyConnectedParams op_params;
-    op_params.input_offset = -input->params.zero_point;
-    op_params.weights_offset = -filter->params.zero_point;
-    op_params.output_offset = output->params.zero_point;
+    op_params.input_offset = -data.input_zero_point;
+    op_params.weights_offset = -data.filter_zero_point;
+    op_params.output_offset = data.output_zero_point;
     op_params.output_multiplier = data.output_multiplier;
     // TODO(b/138810107): Figure out whether output shift should be inverted
     op_params.output_shift = -data.output_shift;
@@ -204,21 +216,26 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
     op_params.quantized_activation_max = data.output_activation_max;
 
     reference_integer_ops::FullyConnected(
-        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-        GetTensorShape(filter), GetTensorData<int8_t>(filter),
-        GetTensorShape(bias), GetTensorData<int32_t>(bias),
-        GetTensorShape(output), GetTensorData<int8_t>(output));
+        op_params, tflite::micro::GetTensorShape(input),
+        tflite::micro::GetTensorData<int8_t>(input),
+        tflite::micro::GetTensorShape(filter),
+        tflite::micro::GetTensorData<int8_t>(filter),
+        tflite::micro::GetTensorShape(bias),
+        tflite::micro::GetTensorData<int32_t>(bias),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<int8_t>(output));
   }
   return kTfLiteOk;
 }
 
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                           const OpData& data, const TfLiteTensor* input,
-                           const TfLiteTensor* filter, const TfLiteTensor* bias,
-                           TfLiteTensor* output) {
-  const int32_t input_offset = -input->params.zero_point;
-  const int32_t filter_offset = -filter->params.zero_point;
-  const int32_t output_offset = output->params.zero_point;
+                           const OpData& data, const TfLiteEvalTensor* input,
+                           const TfLiteEvalTensor* filter,
+                           const TfLiteEvalTensor* bias,
+                           TfLiteEvalTensor* output) {
+  const int32_t input_offset = -data.input_zero_point;
+  const int32_t filter_offset = -data.filter_zero_point;
+  const int32_t output_offset = data.output_zero_point;
 
   tflite::FullyConnectedParams op_params;
   op_params.input_offset = input_offset;
@@ -230,12 +247,16 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data.output_activation_min;
   op_params.quantized_activation_max = data.output_activation_max;
 
-#define TF_LITE_FULLY_CONNECTED(output_data_type)                      \
-  reference_ops::FullyConnected(                                       \
-      op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
-      GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
-      GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
-      GetTensorShape(output), GetTensorData<output_data_type>(output))
+#define TF_LITE_FULLY_CONNECTED(output_data_type)      \
+  reference_ops::FullyConnected(                       \
+      op_params, tflite::micro::GetTensorShape(input), \
+      tflite::micro::GetTensorData<uint8_t>(input),    \
+      tflite::micro::GetTensorShape(filter),           \
+      tflite::micro::GetTensorData<uint8_t>(filter),   \
+      tflite::micro::GetTensorShape(bias),             \
+      tflite::micro::GetTensorData<int32_t>(bias),     \
+      tflite::micro::GetTensorShape(output),           \
+      tflite::micro::GetTensorData<output_data_type>(output))
   switch (output->type) {
     case kTfLiteUInt8:
       TF_LITE_FULLY_CONNECTED(uint8_t);
@@ -254,8 +275,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                        TfLiteFusedActivation activation,
-                       const TfLiteTensor* input, const TfLiteTensor* filter,
-                       const TfLiteTensor* bias, TfLiteTensor* output) {
+                       const TfLiteEvalTensor* input,
+                       const TfLiteEvalTensor* filter,
+                       const TfLiteEvalTensor* bias, TfLiteEvalTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(activation, &output_activation_min,
                            &output_activation_max);
@@ -263,10 +285,14 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
   tflite::reference_ops::FullyConnected(
-      op_params, GetTensorShape(input), GetTensorData<float>(input),
-      GetTensorShape(filter), GetTensorData<float>(filter),
-      GetTensorShape(bias), GetTensorData<float>(bias), GetTensorShape(output),
-      GetTensorData<float>(output));
+      op_params, tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<float>(input),
+      tflite::micro::GetTensorShape(filter),
+      tflite::micro::GetTensorData<float>(filter),
+      tflite::micro::GetTensorShape(bias),
+      tflite::micro::GetTensorData<float>(bias),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<float>(output));
   return kTfLiteOk;
 }
 
@@ -275,10 +301,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* filter =
+      tflite::micro::GetEvalInput(context, node, kWeightsTensor);
+  const TfLiteEvalTensor* bias =
+      tflite::micro::GetEvalInput(context, node, kBiasTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));

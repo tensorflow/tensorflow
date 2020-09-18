@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
@@ -30,26 +31,24 @@ cc_library(
     srcs = [
         "micro_allocator.cc",
         "micro_interpreter.cc",
-        "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
     ],
     hdrs = [
         "micro_allocator.h",
         "micro_interpreter.h",
-        "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
     ],
     copts = micro_copts(),
     deps = [
         ":memory_helpers",
         ":micro_compatibility",
+        ":micro_profiler",
         ":op_resolvers",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/micro:micro_profiler",
         "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
@@ -151,7 +150,6 @@ cc_library(
         "micro_string.h",
     ],
     copts = micro_copts(),
-    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
@@ -378,4 +376,11 @@ tflite_micro_cc_test(
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/micro/testing:test_conv_model",
     ],
+)
+
+bzl_library(
+    name = "build_def_bzl",
+    srcs = ["build_def.bzl"],
+    visibility = [":micro"],
+    deps = ["//tensorflow:tensorflow_bzl"],
 )

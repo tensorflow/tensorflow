@@ -4,6 +4,11 @@
 TENSORFLOW_API_INIT_FILES = [
     # BEGIN GENERATED FILES
     "__init__.py",
+    "__internal__/__init__.py",
+    "__internal__/decorator/__init__.py",
+    "__internal__/test/__init__.py",
+    "__internal__/test/combinations/__init__.py",
+    "__internal__/tracking/__init__.py",
     "__operators__/__init__.py",
     "audio/__init__.py",
     "autograph/__init__.py",
@@ -97,6 +102,7 @@ KERAS_API_INIT_FILES = [
     "keras/applications/inception_v3/__init__.py",
     "keras/applications/mobilenet/__init__.py",
     "keras/applications/mobilenet_v2/__init__.py",
+    "keras/applications/mobilenet_v3/__init__.py",
     "keras/applications/nasnet/__init__.py",
     "keras/applications/resnet/__init__.py",
     "keras/applications/resnet_v2/__init__.py",

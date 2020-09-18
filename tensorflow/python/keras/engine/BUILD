@@ -16,6 +16,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "engine",
     srcs = [
@@ -27,10 +33,10 @@ py_library(
         "saving.py",
         "sequential.py",
         "training.py",
-        "training_arrays.py",
-        "training_distributed.py",
-        "training_eager.py",
-        "training_generator.py",
+        "training_arrays_v1.py",
+        "training_distributed_v1.py",
+        "training_eager_v1.py",
+        "training_generator_v1.py",
         "training_utils.py",
         "training_v1.py",
     ],
@@ -96,6 +102,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/utils:tf_inspect",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )

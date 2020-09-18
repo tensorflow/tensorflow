@@ -62,10 +62,8 @@ class Conv2dOpBuilder : public OpBuilder {
   std::vector<float> transposed_weights_;
   std::vector<int> stride_shape_;
   std::vector<int> weight_shape_;
-  OpBuilder* weights_data_node_ = nullptr;
   OpBuilder* weights_min_node_ = nullptr;
   OpBuilder* weights_max_node_ = nullptr;
-  OpBuilder* bias_data_node_ = nullptr;
   OpBuilder* bias_min_node_ = nullptr;
   OpBuilder* bias_max_node_ = nullptr;
 

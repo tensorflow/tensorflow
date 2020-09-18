@@ -163,6 +163,24 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
 std::vector<int64> DevicesForSharding(
     const HloSharding& sharding, const std::vector<int64>& available_devices);
 
+// Returns a sharding that replicates data across devices along the given
+// dimensions in the original sharding.
+HloSharding PartiallyReplicateTiledShardingOnDims(
+    const HloSharding& sharding, const std::vector<int64>& dims_to_replicate);
+
+// Returns a sharding the removes given tile dimensions.
+//
+// Precondition: if not tile maximal, the size of each tile dimension must be 1.
+HloSharding RemoveShapeDimensions(const HloSharding& sharding,
+                                  const std::vector<int64>& dims_to_remove);
+
+// Similar to TransposeSharding(), but allows removing/adding non-partitioned
+// dimensions. In src_to_tgt and tgt_to_src, -1 represents a non-existing
+// dimension.
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 

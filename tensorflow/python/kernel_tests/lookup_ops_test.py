@@ -45,6 +45,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
@@ -212,6 +213,25 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, -1], out_values)
     self.assertAllEqual(sp_indices, out_indices)
     self.assertAllEqual(sp_shape, out_shape)
+
+  def testStaticHashTableWithRaggedTensorInput(self):
+    default_val = constant_op.constant(-1, dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+    self.initialize_table(table)
+
+    row_splits = [0, 2, 3]
+    input_tensor = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant(["brain", "salad", "tank"]),
+        constant_op.constant(row_splits, dtypes.int64))
+    output = table.lookup(input_tensor)
+
+    out = self.evaluate(output)
+
+    self.assertAllEqual([0, 1, -1], out.values)
+    self.assertAllEqual(row_splits, out.row_splits)
 
   def testSignatureMismatch(self):
     default_val = -1
@@ -1081,6 +1101,28 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
+  def testRaggedTensor(self):
+    vocab_file = self._createVocabFile("feat_to_id_7.txt")
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant(["brain", "salad", "brain", "surgery", "tarkus"],
+                             dtypes.string),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
+        vocab_file, vocab_size=3), 1)
+    self.initialize_table(table)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt32SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -1107,6 +1149,29 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
+  def testInt32RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int32),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = self.getVocabularyTable()(
+        lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
+                                             dtypes.int64, dtypes.int64),
+        1,
+        lookup_key_dtype=dtypes.int32)
+    self.initialize_table(table)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt64SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -1129,6 +1194,26 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual(input_indices, sp_ids_ind)
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
+
+  def testInt64RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = self.getVocabularyTable()(lookup_ops.KeyValueTensorInitializer(
+        (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), 1)
+    self.initialize_table(table)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
 
   def testStaticVocabularyTableNoInnerTable(self):
     table = self.getVocabularyTable()(None, num_oov_buckets=1)
@@ -2682,6 +2767,29 @@ class IdTableWithHashBucketsTest(test.TestCase):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
+  def testRaggedTensor(self):
+    vocab_file = self._createVocabFile("feat_to_id_7.txt")
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant(["brain", "salad", "brain", "surgery", "tarkus"],
+                             dtypes.string),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
+            -1), 1)
+    self.evaluate(table.initializer)
+
+    ragged_ids = table.lookup(ragged_features)
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt32SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -2709,6 +2817,30 @@ class IdTableWithHashBucketsTest(test.TestCase):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
+  def testInt32RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int32),
+        constant_op.constant(input_row_splits, dtypes.int32))
+
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.KeyValueTensorInitializer(
+                (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
+        1,
+        key_dtype=dtypes.int32)
+    self.evaluate(table.initializer)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt64SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -2735,6 +2867,30 @@ class IdTableWithHashBucketsTest(test.TestCase):
     self.assertAllEqual(input_indices, sp_ids_ind)
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
+
+  def testInt64RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.KeyValueTensorInitializer(
+                (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
+        1,
+        key_dtype=dtypes.int64)
+    self.evaluate(table.initializer)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
 
   def testIdTableWithHashBucketsWithInvalidHashers(self):
     vocab_file = self._createVocabFile("feat_to_id_4.txt")

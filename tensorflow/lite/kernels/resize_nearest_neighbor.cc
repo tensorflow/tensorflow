@@ -121,10 +121,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
         GetTensorShape(size), GetTensorData<int32>(size),
         GetTensorShape(output), GetTensorData<int8_t>(output));
+  } else if (output->type == kTfLiteInt16) {
+    reference_ops::ResizeNearestNeighbor(
+        op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+        GetTensorShape(size), GetTensorData<int32>(size),
+        GetTensorShape(output), GetTensorData<int16_t>(output));
   } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Output type is %s, requires float, uint8 or int8.",
-                       TfLiteTypeGetName(output->type));
+    TF_LITE_KERNEL_LOG(
+        context, "Output type is %s, requires float, uint8, int8 or int16.",
+        TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 

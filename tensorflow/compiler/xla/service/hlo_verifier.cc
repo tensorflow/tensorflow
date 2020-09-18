@@ -703,6 +703,20 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   return Status::OK();
 }
 
+Status ShapeVerifier::HandleDynamicReshape(HloInstruction* dynamic_reshape) {
+  // Check for mixed precision.
+  const Shape& operand_shape = dynamic_reshape->operand(0)->shape();
+  TF_RET_CHECK(SameElementType(dynamic_reshape->shape(), operand_shape));
+  TF_RET_CHECK(ShapeUtil::ElementsIn(dynamic_reshape->shape()) ==
+               ShapeUtil::ElementsIn(operand_shape));
+  TF_RET_CHECK(dynamic_reshape->shape().rank() + 1 ==
+               dynamic_reshape->operand_count());
+  for (int64 i = 1; i < dynamic_reshape->operand_count(); ++i) {
+    TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
+  }
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   // Check for mixed precision.
   const Shape& operand_shape = reshape->operand(0)->shape();
@@ -1023,7 +1037,7 @@ namespace {
 // inputs.
 Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
-    // White list the following opcodes for mixed-precision check, because
+    // Allow-list the following opcodes for mixed-precision check, because
     // they involve data pass through or grouping via tuples, where the
     // precisions of buffers can be different.
     case HloOpcode::kCall:

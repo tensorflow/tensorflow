@@ -521,6 +521,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               RandomDistributionToString(instruction->random_distribution())));
       }
     }
+    case HloOpcode::kRngBitGenerator: {
+      auto rng_op = Cast<HloRngBitGeneratorInstruction>(instruction);
+      auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
+          loc, result_type,
+          func_builder->getI32IntegerAttr(rng_op->algorithm()), operands[0]);
+      return op.getOperation();
+    }
     case HloOpcode::kWhile: {
       auto op = func_builder->create<mlir::mhlo::WhileOp>(
           loc, operands[0].getType(), operands[0]);

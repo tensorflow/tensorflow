@@ -15,6 +15,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "utils",
     srcs = [
@@ -192,6 +198,24 @@ py_library(
 )
 
 py_library(
+    name = "tf_contextlib",
+    srcs = ["tf_contextlib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "tf_inspect",
+    srcs = ["tf_inspect.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "vis_utils",
     srcs = [
         "vis_utils.py",
@@ -298,6 +322,19 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "layer_utils_test",
+    size = "small",
+    srcs = ["layer_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layer_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/training/tracking",
+        "//third_party/py/numpy",
     ],
 )
 

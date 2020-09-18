@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "clean_dep",
     "if_android",
     "if_ios",
     "if_mobile",
@@ -46,12 +47,12 @@ def generate_flex_kernel_header(
         ["$(location %s)" % f for f in models],
     )
     list_ops_output = include_path + "/list_flex_ops"
-    list_ops_tool = "//tensorflow/lite/tools:list_flex_ops_main"
+    list_ops_tool = clean_dep("//tensorflow/lite/tools:list_flex_ops_main")
     if additional_deps:
         tf_cc_binary(
             name = "%s_list_flex_ops_main" % name,
             deps = [
-                "//tensorflow/lite/tools:list_flex_ops_main_lib",
+                clean_dep("//tensorflow/lite/tools:list_flex_ops_main_lib"),
             ] + additional_deps,
         )
         list_ops_tool = ":%s_list_flex_ops_main" % name
@@ -66,12 +67,12 @@ def generate_flex_kernel_header(
     )
 
     # Generate the kernel registration header file from list of flex ops.
-    tool = "//tensorflow/python/tools:print_selective_registration_header"
+    tool = clean_dep("//tensorflow/python/tools:print_selective_registration_header")
     native.genrule(
         name = "%s_kernel_registration" % name,
         srcs = [list_ops_output],
         outs = [header],
-        tools = [tool],
+        exec_tools = [tool],
         message = "Processing %s..." % list_ops_output,
         cmd = ("$(location " + tool + ")" +
                " --default_ops=\"\"" +
@@ -95,7 +96,7 @@ def tflite_flex_cc_library(
       additional_deps: Dependencies for additional TF ops.
       visibility: visibility of the generated rules.
     """
-    portable_tensorflow_lib = "//tensorflow/core:portable_tensorflow_lib"
+    portable_tensorflow_lib = clean_dep("//tensorflow/core:portable_tensorflow_lib")
     if models:
         CUSTOM_KERNEL_HEADER = generate_flex_kernel_header(
             name = "%s_tf_op_headers" % name,
@@ -108,9 +109,9 @@ def tflite_flex_cc_library(
         native.cc_library(
             name = "%s_tensorflow_lib" % name,
             srcs = if_mobile([
-                "//tensorflow/core:portable_op_registrations_and_gradients",
-                "//tensorflow/core/kernels:android_core_ops",
-                "//tensorflow/core/kernels:android_extended_ops",
+                clean_dep("//tensorflow/core:portable_op_registrations_and_gradients"),
+                clean_dep("//tensorflow/core/kernels:android_core_ops"),
+                clean_dep("//tensorflow/core/kernels:android_extended_ops"),
             ]) + [CUSTOM_KERNEL_HEADER.header],
             copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
             defines = [
@@ -126,7 +127,7 @@ def tflite_flex_cc_library(
                 CUSTOM_KERNEL_HEADER.include_path,
             ],
             textual_hdrs = [
-                "//tensorflow/core/kernels:android_all_ops_textual_hdrs",
+                clean_dep("//tensorflow/core/kernels:android_all_ops_textual_hdrs"),
             ],
             visibility = visibility,
             deps = [
@@ -135,10 +136,11 @@ def tflite_flex_cc_library(
                 "//third_party/eigen3",
                 "@com_google_absl//absl/types:optional",
                 "@gemmlowp",
-                "//tensorflow/core:protos_all_cc",
                 "@icu//:common",
-                "//tensorflow/core:portable_tensorflow_lib_lite",
-                "//tensorflow/core/platform:strong_hash",
+                clean_dep("//tensorflow/core:protos_all_cc"),
+                clean_dep("//tensorflow/core:portable_tensorflow_lib_lite"),
+                clean_dep("//tensorflow/core/platform:strong_hash"),
+                clean_dep("//tensorflow/lite/delegates/flex:portable_images_lib"),
             ],
             alwayslink = 1,
         )
@@ -148,23 +150,23 @@ def tflite_flex_cc_library(
     native.cc_library(
         name = name,
         hdrs = [
-            "//tensorflow/lite/delegates/flex:delegate.h",
+            clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
         visibility = visibility,
         deps = [
-            "//tensorflow/lite/delegates/flex:delegate_data",
-            "//tensorflow/lite/delegates/flex:delegate_only_runtime",
-            "//tensorflow/lite/delegates/utils:simple_delegate",
+            clean_dep("//tensorflow/lite/delegates/flex:delegate_data"),
+            clean_dep("//tensorflow/lite/delegates/flex:delegate_only_runtime"),
+            clean_dep("//tensorflow/lite/delegates/utils:simple_delegate"),
         ] + select({
-            "//tensorflow:android": [
+            clean_dep("//tensorflow:android"): [
                 portable_tensorflow_lib,
             ],
-            "//tensorflow:ios": [
+            clean_dep("//tensorflow:ios"): [
                 portable_tensorflow_lib,
             ],
             "//conditions:default": [
-                "//tensorflow/core:tensorflow",
-                "//tensorflow/lite/c:common",
+                clean_dep("//tensorflow/core:tensorflow"),
+                clean_dep("//tensorflow/lite/c:common"),
             ],
         }) + additional_deps,
         alwayslink = 1,
@@ -202,21 +204,21 @@ def tflite_flex_jni_library(
     native.cc_library(
         name = "%s_flex_native" % name,
         srcs = [
-            "//tensorflow/lite/testing:init_tensorflow.h",
-            "//tensorflow/lite/testing:init_tensorflow.cc",
-            "//tensorflow/lite/delegates/flex/java/src/main/native:flex_delegate_jni.cc",
+            clean_dep("//tensorflow/lite/testing:init_tensorflow.h"),
+            clean_dep("//tensorflow/lite/testing:init_tensorflow.cc"),
+            clean_dep("//tensorflow/lite/delegates/flex/java/src/main/native:flex_delegate_jni.cc"),
         ],
         copts = tflite_copts(),
         visibility = visibility,
         deps = [
             ":%s_flex_delegate" % name,
-            "//tensorflow/lite/java/jni",
-            "//tensorflow/lite/delegates/utils:simple_delegate",
+            clean_dep("//tensorflow/lite/java/jni"),
+            clean_dep("//tensorflow/lite/delegates/utils:simple_delegate"),
         ] + select({
-            "//tensorflow:android": [],
-            "//tensorflow:ios": [],
+            clean_dep("//tensorflow:android"): [],
+            clean_dep("//tensorflow:ios"): [],
             "//conditions:default": [
-                "//tensorflow/core:lib",
+                clean_dep("//tensorflow/core:lib"),
             ],
         }),
         alwayslink = 1,
@@ -264,14 +266,14 @@ def tflite_flex_android_library(
 
     android_library(
         name = name,
-        srcs = ["//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate"],
-        manifest = "//tensorflow/lite/java:AndroidManifest.xml",
-        proguard_specs = ["//tensorflow/lite/java:proguard.flags"],
+        srcs = [clean_dep("//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate")],
+        manifest = clean_dep("//tensorflow/lite/java:AndroidManifest.xml"),
+        proguard_specs = [clean_dep("//tensorflow/lite/java:proguard.flags")],
         custom_package = custom_package,
         deps = [
             ":%s_native" % name,
-            "//tensorflow/lite/java:tensorflowlite_java",
-            "@org_checkerframework_qual",
+            clean_dep("//tensorflow/lite/java:tensorflowlite_java"),
+            clean_dep("@org_checkerframework_qual"),
         ],
         visibility = visibility,
     )

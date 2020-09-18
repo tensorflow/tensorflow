@@ -17,12 +17,17 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -30,6 +35,7 @@ namespace TFDevice {
 namespace {
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -40,6 +46,36 @@ struct MarkOpsForOutsideCompilation
                          OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
+
+// Adds any canonicalization patterns to list of supported `patterns`.
+// TODO(b/161726307): Move or import the relevant patterns to LowerTF pass and
+// remove this.
+void AddCanonicalizationPatterns(MLIRContext* context,
+                                 OwningRewritePatternList* patterns) {
+  for (auto* op : context->getRegisteredOperations())
+    op->getCanonicalizationPatterns(*patterns, context);
+}
+
+// TODO(b/159128666): Check the control flow legalization passes instead once
+// added.
+void AddSupportedControlFlowOps(MLIRContext* context,
+                                llvm::DenseSet<OperationName>* supported_ops) {
+  supported_ops->insert(
+      OperationName(TF::IfRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::WhileRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::YieldOp::getOperationName(), context));
+}
+
+// These embedding ops are rewritten when running TPUCompileOp.
+void AddRewrittenEmbeddingOps(MLIRContext* context,
+                              llvm::DenseSet<OperationName>* supported_ops) {
+  supported_ops->insert(OperationName(
+      TF::RecvTPUEmbeddingActivationsOp::getOperationName(), context));
+  supported_ops->insert(OperationName(
+      TF::SendTPUEmbeddingGradientsOp::getOperationName(), context));
+}
 
 bool HasStringOperand(Operation& op) {
   for (auto operand : op.getOperands()) {
@@ -55,29 +91,143 @@ bool HasStringResult(Operation& op) {
   return false;
 }
 
-// Checks if the op is supported inside of a device cluster.
-bool IsSupportedOp(Operation& op) {
-  if (HasStringOperand(op) || HasStringResult(op)) {
-    return false;
-  }
-  return true;
+bool MatchesPattern(Operation& op,
+                    const llvm::DenseSet<OperationName>& supported_ops) {
+  return (supported_ops.contains(op.getName()));
 }
 
-LogicalResult MarkUncompilableOps(Block* block) {
-  for (Operation& op : *block) {
-    if (!IsSupportedOp(op)) {
-      op.setAttr(kXlaOutsideCompilationAttr,
-                 StringAttr::get("auto", op.getContext()));
-    }
+// Checks if the op is supported inside of a device cluster.  Ops not
+// in `tf_dialect` are considered supported.
+bool IsSupportedOp(Operation& op,
+                   const llvm::DenseSet<OperationName>& supported_ops,
+                   const Dialect* tf_dialect) {
+  if (op.getDialect() != tf_dialect)
+    return true;
+  else
+    return !HasStringOperand(op) && !HasStringResult(op) &&
+           (MatchesPattern(op, supported_ops) ||
+            mhlo::IsOpAllowedTf2XlaFallback(&op));
+}
+
+// Checks all regions of `op` for captured string operands.
+bool HasCapturedStringOperand(Operation* op) {
+  bool string_operand = false;
+  for (auto& region : op->getRegions()) {
+    mlir::visitUsedValuesDefinedAbove(
+        region, region, [&](mlir::OpOperand* operand) {
+          if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
+            string_operand = true;
+        });
+    if (string_operand) return string_operand;
   }
+  return string_operand;
+}
+
+// Marks uncompilable ops that are in `tf_dialect` for outside compilation.
+LogicalResult MarkUncompilableOps(
+    const Dialect* tf_dialect, Block* block,
+    llvm::DenseSet<OperationName>& supported_ops) {
+  // Automatically marked ops for outside compilation have
+  // `_xla_outside_compilation` attribute value of "auto" plus
+  // an increasing counter.  Manually marked ops for outside compilation only
+  // have an increasing counteri for the attribute value.  Therefore there is no
+  // collision in
+  // `_xla_outside_compilation` attribute between automatically and manually
+  // marking ops.
+  int outside_compiled_cluster_counter = 0;
+  block->walk([&](Operation* op) {
+    if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
+      op->setAttr(
+          kXlaOutsideCompilationAttr,
+          StringAttr::get(
+              llvm::formatv("auto{0}", outside_compiled_cluster_counter).str(),
+              op->getContext()));
+      outside_compiled_cluster_counter++;
+    }
+    if (llvm::isa<TF::IfRegionOp, TF::WhileRegionOp>(op)) {
+      if (HasCapturedStringOperand(op)) {
+        op->setAttr(
+            kXlaOutsideCompilationAttr,
+            StringAttr::get(
+                llvm::formatv("auto{0}", outside_compiled_cluster_counter)
+                    .str(),
+                op->getContext()));
+        outside_compiled_cluster_counter++;
+      }
+    }
+  });
   return success();
+}
+
+// Unmarks outside compilation for any op that has parents already
+// marked for outside compilation since the child will be extracted
+// anyways.
+void UnmarkChildren(Block* block) {
+  block->walk([&](Operation* op) {
+    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) return;
+    Operation* iter_op = op;
+    bool remove_attr = false;
+    while (auto* parent_op = iter_op->getParentOp()) {
+      if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+        remove_attr = true;
+        break;
+      }
+      iter_op = parent_op;
+    }
+    if (remove_attr) op->removeAttr(kXlaOutsideCompilationAttr);
+  });
 }
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
+  if (!tf_dialect) {
+    getOperation().emitError() << "'tf' dialect is not registered";
+    return signalPassFailure();
+  }
+  OwningRewritePatternList patterns;
+  mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
+  TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
+  AddCanonicalizationPatterns(module.getContext(), &patterns);
+
+  // `supported_ops` contains the name of all of the ops that can potentially be
+  // lowered into HLO on the device. This doesn't always mean that the op can
+  // be lowered in the future passes but if the op is not in this set, it can't
+  // be lowered in a subsequent pass.
+  llvm::DenseSet<OperationName> supported_ops;
+  for (auto& pattern : patterns) {
+    Optional<OperationName> root_kind = pattern->getRootKind();
+    if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
+  }
+  AddSupportedControlFlowOps(module.getContext(), &supported_ops);
+  AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
+
+  auto result = module.walk([&](tf_device::ClusterOp cluster) {
+    // Only if `allow_soft_placement` attribute is true should we mark ops
+    // for outside compilation.
+    auto soft_placement_attr =
+        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
+      return WalkResult::advance();
+    }
+    if (failed(
+            MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
+      return WalkResult::interrupt();
+
+    return WalkResult::advance();
+  });
+
+  if (result.wasInterrupted()) return signalPassFailure();
 
   module.walk([&](tf_device::ClusterOp cluster) {
-    MarkUncompilableOps(&cluster.GetBody());
+    // Only if `allow_soft_placement` attribute is true should we unmark ops
+    // for outside compilation.
+    auto soft_placement_attr =
+        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
+      return;
+    }
+    UnmarkChildren(&cluster.GetBody());
   });
 }
 

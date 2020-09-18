@@ -714,7 +714,7 @@ struct ConvertTensorListStack
     RankedTensorType shape_type =
         RankedTensorType::get({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
-    SmallVector<int64_t, 8> output_shape = {op.num_elements().getSExtValue()};
+    SmallVector<int64_t, 8> output_shape(/*Size=*/1, op.num_elements());
     for (const auto &dim : dense_elem_attr.getIntValues())
       output_shape.push_back(dim.getSExtValue());
     RankedTensorType result_type =
@@ -749,7 +749,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
 LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
-  for (FuncOp func : {op.cond_func(), op.body_func()}) {
+  for (FuncOp func : {op.cond_function(), op.body_function()}) {
     if (!func) continue;
 
     FunctionType func_type = func.getType();

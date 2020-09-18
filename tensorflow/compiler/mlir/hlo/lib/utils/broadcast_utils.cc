@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/StandardTypes.h"
 
@@ -46,9 +47,9 @@ bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
                     broadcast_dims.getIntValues().begin());
 }
 
-Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
-                                                        Value rhs,
-                                                        OpBuilder& builder) {
+Value ComputeBinaryElementwiseBroadcastingResultExtents(
+    Location loc, Value lhs, Value rhs, OpBuilder& builder,
+    bool unsafe_as_extent_tensor) {
   auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
   auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
   if (!lhs_type || !rhs_type) {
@@ -57,15 +58,22 @@ Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
     return nullptr;
   }
 
-  int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
   Value lhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, lhs);
   Value rhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, rhs);
-  Value result_shape_v = builder.createOrFold<shape::BroadcastOp>(
-      loc, shape::ShapeType::get(builder.getContext()), lhs_shape_v,
-      rhs_shape_v, nullptr /* error */);
-  return builder.createOrFold<shape::ToExtentTensorOp>(
-      loc, RankedTensorType::get({result_rank}, builder.getIndexType()),
-      result_shape_v);
+
+  if (unsafe_as_extent_tensor) {
+    int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
+    Value result_shape_v = builder.createOrFold<shape::BroadcastOp>(
+        loc, shape::getExtentTensorType(builder.getContext()), lhs_shape_v,
+        rhs_shape_v, nullptr /* error */);
+    return builder.createOrFold<TensorCastOp>(
+        loc, RankedTensorType::get({result_rank}, builder.getIndexType()),
+        result_shape_v);
+  }
+
+  return builder.createOrFold<shape::BroadcastOp>(
+      loc, builder.getType<shape::ShapeType>(), lhs_shape_v, rhs_shape_v,
+      nullptr /* error */);
 }
 
 }  // namespace hlo

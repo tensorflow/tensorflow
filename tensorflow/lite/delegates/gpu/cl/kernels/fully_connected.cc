@@ -35,6 +35,8 @@ FullyConnected::FullyConnected(const OperationDef& definition,
     } else {
       work_group_size_ = int3(32, 4, 1);
     }
+  } else if (device_info.IsIntel()) {
+    work_group_size_ = int3(8, 4, 1);
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
@@ -65,43 +67,51 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
+      c += "#define accumulate(a, b, c) c = mad(a, b, c)\n";
       c += "#define FLT16 float16\n";
       break;
     case CalculationsPrecision::F32_F16:
+      c += "#define accumulate(a, b, c) c += convert_float4(a * b)\n";
+      c += "#define FLT16 half16\n";
+      break;
     case CalculationsPrecision::F16:
+      c += "#define accumulate(a, b, c) c = mad(a, b, c)\n";
       c += "#define FLT16 half16\n";
       break;
   }
 
-  const std::string wg_x = std::to_string(work_group_size.x);
-  const std::string wg_y = std::to_string(work_group_size.y);
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int gid = get_global_id(0);\n";
-  c += "  bool inside = gid < args.dst_tensor.Slices();\n";
-  c += "  gid = min(gid, args.dst_tensor.Slices() - 1);\n";
-  c += "  int2 tid = (int2)(get_local_id(0), get_local_id(1));\n";
-  c += "  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);\n";
-  c += "  for (uint c = tid.y; c < args.src_tensor.Slices(); c += " + wg_y +
-       ") {\n";
-  c += "    FLT4 v = args.src_tensor.Read(0, 0, c);\n";
-  c += "    FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);\n";
-  c += "    s.x += dot(v, w.s0123);\n";
-  c += "    s.y += dot(v, w.s4567);\n";
-  c += "    s.z += dot(v, w.s89ab);\n";
-  c += "    s.w += dot(v, w.scdef);\n";
-  c += "  }\n";
-  c += "  __local ACCUM_FLT4 temp[" + wg_x + "][" + wg_y + "];\n";
-  c += "  temp[tid.x][tid.y] = s;\n";
-  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  c += "  if (tid.y == 0 && inside) {\n";
+  c += "#define WG_X " + std::to_string(work_group_size.x) + "\n";
+  c += "#define WG_Y " + std::to_string(work_group_size.y) + "\n";
+
+  c += R"(__kernel void main_function($0) {
+  int gid = get_global_id(0);
+  int2 tid = (int2)(get_local_id(0), get_local_id(1));
+  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);
+  if (gid < args.dst_tensor.Slices()) {
+    for (int c = tid.y; c < args.src_tensor.Slices(); c += WG_Y) {
+      FLT4 v = args.src_tensor.Read(0, 0, c);
+      FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);
+      accumulate(v.s0, w.s0123, s);
+      accumulate(v.s1, w.s4567, s);
+      accumulate(v.s2, w.s89ab, s);
+      accumulate(v.s3, w.scdef, s);
+    }
+  }
+  __local ACCUM_FLT4 temp[WG_X][WG_Y];
+  temp[tid.x][tid.y] = s;
+  barrier(CLK_LOCAL_MEM_FENCE);
+  if (gid >= args.dst_tensor.Slices()) {
+    return;
+  }
+  if (tid.y == 0) {
+)";
   for (int i = 1; i < work_group_size.y; ++i) {
     c += "    s += temp[tid.x][" + std::to_string(i) + "];\n";
   }
-  c += "    FLT4 r0 = TO_FLT4(s) + args.biases.Read(gid);\n";
-  c += "    args.dst_tensor.Write(r0, 0, 0, gid);\n";
-  c += "  }\n";
-  c += "}\n";
+  c += R"(    FLT4 r0 = TO_FLT4(s) + args.biases.Read(gid);
+    args.dst_tensor.Write(r0, 0, 0, gid);
+  }
+})";
 
   return c;
 }
@@ -110,26 +120,20 @@ int3 FullyConnected::GetGridSize() const {
   return int3(dst_[0]->Slices(), 1, 1);
 }
 
-absl::Status CreateFullyConnected(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const FullyConnectedAttributes& attr,
-                                  FullyConnected* result) {
-  *result = FullyConnected(definition, creation_context.device->GetInfo());
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+FullyConnected CreateFullyConnected(const DeviceInfo& device_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr) {
+  FullyConnected result(definition, device_info);
+  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-
-  return absl::OkStatus();
+  return result;
 }
 
 }  // namespace cl

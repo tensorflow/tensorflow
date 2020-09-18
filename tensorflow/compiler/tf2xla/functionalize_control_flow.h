@@ -30,6 +30,13 @@ namespace tensorflow {
 //
 // If `node_filter` is defined, then only loops and conditions for whose
 // nodes `node_filter` returns true are functionalized.
+
+// If `include_functions` is true, then loops and conditions inside of functions
+// that are associated with nodes in `graph` (e.g., a function called from a
+// node in `graph`) are also functionalized, otherwise they are not.
+// This also handles transitive cases, e.g., a function body will be
+// functionalized when it is called in another function that is called by some
+// node in `graph` (and so on). The node filter also applies here.
 //
 // Precondition:
 // For any node in a loop or condition for which `node_filter` returns true,
@@ -43,11 +50,13 @@ namespace tensorflow {
 // satisfies the above conditions.
 Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library,
-                                const NodeFilter& node_filter = {});
+                                const NodeFilter& node_filter = {},
+                                bool include_functions = false);
 
 Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
                                            FunctionLibraryDefinition* library,
-                                           const NodeFilter& node_filter = {});
+                                           const NodeFilter& node_filter = {},
+                                           bool include_functions = false);
 
 // This pass looks at the graph, and turns V1 control flow structure
 // (Switch/Merge/etc.) into V2 control flow structure (If/While).

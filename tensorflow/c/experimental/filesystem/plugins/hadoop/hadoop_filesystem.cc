@@ -37,11 +37,17 @@ static void plugin_memory_free(void* ptr) { free(ptr); }
 void ParseHadoopPath(const std::string& fname, std::string* scheme,
                      std::string* namenode, std::string* path) {
   size_t scheme_end = fname.find("://") + 2;
-  *scheme = fname.substr(0, scheme_end + 1);
+  // We don't want `://` in scheme.
+  *scheme = fname.substr(0, scheme_end - 2);
   size_t nn_end = fname.find("/", scheme_end + 1);
-  if (nn_end == std::string::npos) return;
+  if (nn_end == std::string::npos) {
+    *namenode = fname.substr(scheme_end + 1);
+    *path = "";
+    return;
+  }
   *namenode = fname.substr(scheme_end + 1, nn_end - scheme_end - 1);
-  *path = fname.substr(nn_end + 1);
+  // We keep `/` in path.
+  *path = fname.substr(nn_end);
 }
 
 void SplitArchiveNameAndPath(std::string* path, std::string* nn,
@@ -54,7 +60,7 @@ void SplitArchiveNameAndPath(std::string* path, std::string* nn,
   }
   // Case of hadoop archive. Namenode is the path to the archive.
   std::ostringstream namenodestream;
-  namenodestream << "har://" << nn
+  namenodestream << "har://" << *nn
                  << path->substr(0, index_end_archive_name + 4);
   *nn = namenodestream.str();
   path->erase(0, index_end_archive_name + 4);
@@ -247,8 +253,8 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
 
   char* dst = buffer;
   bool eof_retried = false;
-  int64_t r = 0;
-  while (TF_GetCode(status) == TF_OK && !eof_retried) {
+  int64_t read = 0;
+  while (TF_GetCode(status) == TF_OK && n > 0) {
     // We lock inside the loop rather than outside so we don't block other
     // concurrent readers.
     absl::MutexLock l(&hdfs_file->mu);
@@ -257,12 +263,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
     // of int32. -2 offset can avoid JVM OutOfMemoryError.
     size_t read_n =
         (std::min)(n, static_cast<size_t>(std::numeric_limits<int>::max() - 2));
-    r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset), dst,
-                           static_cast<tSize>(read_n));
+    int64_t r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset),
+                                   dst, static_cast<tSize>(read_n));
     if (r > 0) {
       dst += r;
       n -= r;
       offset += r;
+      read += r;
     } else if (!eof_retried && r == 0) {
       // Always reopen the file upon reaching EOF to see if there's more data.
       // If writers are streaming contents while others are concurrently
@@ -274,11 +281,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
-      handle = libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
-      if (handle == nullptr) {
+      hdfs_file->handle =
+          libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
+      if (hdfs_file->handle == nullptr) {
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
+      handle = hdfs_file->handle;
       eof_retried = true;
     } else if (eof_retried && r == 0) {
       TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
@@ -288,7 +297,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
       TF_SetStatusFromIOError(status, errno, path);
     }
   }
-  return r;
+  return read;
 }
 
 }  // namespace tf_random_access_file
@@ -308,7 +317,7 @@ typedef struct HDFSFile {
         handle(handle) {}
 } HDFSFile;
 
-static void Cleanup(TF_WritableFile* file) {
+void Cleanup(TF_WritableFile* file) {
   auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
   hdfs_file->libhdfs->hdfsCloseFile(hdfs_file->fs, hdfs_file->handle);
   hdfs_file->fs = nullptr;
@@ -433,6 +442,23 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   std::string scheme, namenode, hdfs_path;
   ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
 
+  auto handle = libhdfs->hdfsOpenFile(fs, hdfs_path.c_str(), O_WRONLY, 0, 0, 0);
+  if (handle == nullptr) return TF_SetStatusFromIOError(status, errno, path);
+
+  file->plugin_file =
+      new tf_writable_file::HDFSFile(hdfs_path, fs, libhdfs, handle);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
   auto handle = libhdfs->hdfsOpenFile(fs, hdfs_path.c_str(),
                                       O_WRONLY | O_APPEND, 0, 0, 0);
   if (handle == nullptr) return TF_SetStatusFromIOError(status, errno, path);
@@ -440,6 +466,202 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   file->plugin_file =
       new tf_writable_file::HDFSFile(hdfs_path, fs, libhdfs, handle);
   TF_SetStatus(status, TF_OK, "");
+}
+
+void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                     const char* path,
+                                     TF_ReadOnlyMemoryRegion* region,
+                                     TF_Status* status) {
+  // hadoopReadZero() technically supports this call with the following
+  // caveats:
+  // - It only works up to 2 GB. We'd have to Stat() the file to ensure that
+  //   it fits.
+  // - If not on the local filesystem, the entire file will be read, making
+  //   it inefficient for callers that assume typical mmap() behavior.
+  TF_SetStatus(status, TF_UNIMPLEMENTED,
+               "HDFS does not support ReadOnlyMemoryRegion");
+}
+
+void PathExists(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  if (libhdfs->hdfsExists(fs, hdfs_path.c_str()) == 0)
+    TF_SetStatus(status, TF_OK, "");
+  else
+    TF_SetStatus(status, TF_NOT_FOUND,
+                 (std::string(path) + " not found").c_str());
+}
+
+void Stat(const TF_Filesystem* filesystem, const char* path,
+          TF_FileStatistics* stats, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  auto info = libhdfs->hdfsGetPathInfo(fs, hdfs_path.c_str());
+  if (info == nullptr) return TF_SetStatusFromIOError(status, errno, path);
+
+  stats->length = static_cast<int64_t>(info->mSize);
+  stats->mtime_nsec = static_cast<int64_t>(info->mLastMod) * 1e9;
+  stats->is_directory = info->mKind == kObjectKindDirectory;
+  libhdfs->hdfsFreeFileInfo(info, 1);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
+                    TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  auto info = libhdfs->hdfsGetPathInfo(fs, hdfs_path.c_str());
+  if (info == nullptr) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return -1;
+  }
+
+  TF_SetStatus(status, TF_OK, "");
+  auto size = static_cast<int64_t>(info->mSize);
+  libhdfs->hdfsFreeFileInfo(info, 1);
+  return size;
+}
+
+void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  if (libhdfs->hdfsDelete(fs, hdfs_path.c_str(), /*recursive=*/0) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+void CreateDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  if (libhdfs->hdfsCreateDirectory(fs, hdfs_path.c_str()) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  // Count the number of entries in the directory, and only delete if it's
+  // non-empty. This is consistent with the interface, but note that there's
+  // a race condition where a file may be added after this check, in which
+  // case the directory will still be deleted.
+  int entries = 0;
+  auto info = libhdfs->hdfsListDirectory(fs, hdfs_path.c_str(), &entries);
+  if (info != nullptr) libhdfs->hdfsFreeFileInfo(info, entries);
+
+  // Due to HDFS bug HDFS-8407, we can't distinguish between an error and empty
+  // folder, especially for Kerberos enable setup, EAGAIN is quite common when
+  // the call is actually successful. Check again by Stat.
+  if (info == nullptr && errno != 0) {
+    TF_FileStatistics stat;
+    Stat(filesystem, path, &stat, status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+
+  if (entries > 0)
+    return TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                        "Cannot delete a non-empty directory.");
+
+  if (libhdfs->hdfsDelete(fs, hdfs_path.c_str(), /*recursive=*/1) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+void RenameFile(const TF_Filesystem* filesystem, const char* src,
+                const char* dst, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path_src, hdfs_path_dst;
+  ParseHadoopPath(src, &scheme, &namenode, &hdfs_path_src);
+  ParseHadoopPath(dst, &scheme, &namenode, &hdfs_path_dst);
+
+  if (libhdfs->hdfsExists(fs, hdfs_path_dst.c_str()) == 0 &&
+      libhdfs->hdfsDelete(fs, hdfs_path_dst.c_str(), /*recursive=*/0) != 0)
+    return TF_SetStatusFromIOError(status, errno, dst);
+
+  if (libhdfs->hdfsRename(fs, hdfs_path_src.c_str(), hdfs_path_dst.c_str()) !=
+      0)
+    TF_SetStatusFromIOError(status, errno, src);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+int GetChildren(const TF_Filesystem* filesystem, const char* path,
+                char*** entries, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  // hdfsListDirectory returns nullptr if the directory is empty. Do a separate
+  // check to verify the directory exists first.
+  TF_FileStatistics stat;
+  Stat(filesystem, path, &stat, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  int num_entries = 0;
+  auto info = libhdfs->hdfsListDirectory(fs, hdfs_path.c_str(), &num_entries);
+  if (info == nullptr) {
+    if (stat.is_directory) {
+      // Assume it's an empty directory.
+      TF_SetStatus(status, TF_OK, "");
+      return 0;
+    }
+    TF_SetStatusFromIOError(status, errno, path);
+    return -1;
+  }
+  *entries = static_cast<char**>(
+      plugin_memory_allocate(num_entries * sizeof((*entries)[0])));
+  auto BaseName = [](const std::string& name) {
+    return name.substr(name.find_last_of('/') + 1);
+  };
+  for (int i = 0; i < num_entries; i++) {
+    (*entries)[i] = strdup(BaseName(info[i].mName).c_str());
+  }
+  libhdfs->hdfsFreeFileInfo(info, num_entries);
+  TF_SetStatus(status, TF_OK, "");
+  return num_entries;
 }
 
 // TODO(vnvo2409): Implement later

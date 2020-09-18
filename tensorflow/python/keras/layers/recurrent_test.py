@@ -33,7 +33,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
@@ -722,7 +721,7 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM,
                  rnn_v2.GRU, rnn_v2.LSTM],
           unroll=[True, False]))
@@ -743,7 +742,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.train_on_batch(x_np, y_np)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           cell=[keras.layers.SimpleRNNCell, keras.layers.GRUCell,
                 keras.layers.LSTMCell],
           unroll=[True, False]))
@@ -1487,6 +1486,27 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertAllClose(predict_1, predict_6)
     self.assertAllClose(predict_6, predict_7)
 
+  def test_stateful_rnn_with_customized_get_initial_state(self):
+
+    class TestCell(keras.layers.AbstractRNNCell):
+
+      state_size = 1
+      output_size = 2
+
+      def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        return np.ones((batch_size, 1), dtype=dtype)
+
+      def call(self, inputs, states):
+        return inputs, states
+
+    layer = keras.layers.RNN(TestCell(), stateful=True, return_state=True)
+    inputs = keras.Input(shape=(10, 2), batch_size=4)
+    model = keras.Model(inputs, layer(inputs))
+    x = np.ones((4, 10, 2), dtype=np.float32)
+    output, state = model.predict(x)
+    self.assertAllClose(output, np.ones((4, 2)))
+    self.assertAllClose(state, np.ones((4, 1)))
+
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
     self.assertEqual(simple_rnn._batch_input_shape, (None, 10, 8))
@@ -1530,7 +1550,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.predict(np.ones((batch, timesteps, input_dim)))
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(layer=[
+      *testing_utils.generate_combinations_with_testcase_name(layer=[
           rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM, rnn_v2.GRU, rnn_v2.LSTM
       ]))
   def test_rnn_with_ragged_input(self, layer):

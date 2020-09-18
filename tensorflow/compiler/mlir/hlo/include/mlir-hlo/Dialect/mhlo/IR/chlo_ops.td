@@ -37,7 +37,7 @@ include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLOClient_Dialect : Dialect {
   let name = "chlo";
-  let cppNamespace = "chlo";
+  let cppNamespace = "::mlir::chlo";
   let summary = [{
     Client HLO Ops
   }];
@@ -344,14 +344,16 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 //===----------------------------------------------------------------------===//
 
 class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-    Type TensorType>: HLOClient_Op<mnemonic,
-      !listconcat(traits, [InferFusibilityOpInterface])> {
+    Type TensorType> : HLOClient_Op<mnemonic, !listconcat(traits, [
+    InferFusibilityOpInterface, NoSideEffect, SameOperandsAndResultType])> {
   let arguments = (ins TensorType:$operand);
-  let results = (outs TensorType);
+  let results = (outs TensorType:$result);
+
+  let assemblyFormat = "$operand attr-dict `:` type($operand)";
 }
 
-def HLOClient_AcosOp: HLOClient_UnaryElementwiseOp<"acos",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
+    HLO_FpOrComplexTensor> {
   let summary = "Acos operator";
 
   let description = [{
@@ -362,6 +364,37 @@ def HLOClient_AcosOp: HLOClient_UnaryElementwiseOp<"acos",
              = pi                                  if x == -1
     $$
   }];
+}
+
+def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Tan operation";
+
+  let description = [{
+    Returns `Tan(operand)` element-wise.
+
+    $$
+    \tan(x) = \sin(x) / \cos(x)
+    $$
+  }];
+}
+
+def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
+    [NoSideEffect, SameOperandsAndResultShape,
+     InferTypeOpInterface,
+     DeclareOpInterfaceMethods<InferShapedTypeOpInterface>,
+     NativeOpTrait<"InferTensorType">]> {
+  let summary = "Constant like operator";
+
+  let description = [{
+    Returns a splat constant of the same shape as the operand.
+  }];
+
+  // TODO(jpienaar): value's type could be tightened.
+  let arguments = (ins AnyAttr:$value, HLO_Tensor:$operand);
+  let results = (outs HLO_Tensor);
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//

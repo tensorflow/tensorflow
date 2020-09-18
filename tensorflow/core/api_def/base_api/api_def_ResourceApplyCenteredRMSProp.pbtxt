@@ -37,6 +37,12 @@ Decay rate. Must be a scalar.
 END
   }
   in_arg {
+    name: "momentum"
+    description: <<END
+Momentum Scale. Must be a scalar.
+END
+  }
+  in_arg {
     name: "epsilon"
     description: <<END
 Ridge term. Must be a scalar.

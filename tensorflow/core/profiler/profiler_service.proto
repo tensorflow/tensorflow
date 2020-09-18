@@ -48,8 +48,7 @@ message ProfileRequest {
   ProfileOptions opts = 4;
 
   // The place where we will dump profile data. We will normally use
-  // MODEL_DIR as the repository root. The data will be saved under
-  // MODEL_DIR/plugins/profile/.
+  // MODEL_DIR/plugins/profile/ as the repository root.
   string repository_root = 5;
 
   // The user provided profile session identifier.

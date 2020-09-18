@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -75,8 +76,8 @@ class CompilabilityCheckUtilTest : public ::testing::Test {
     op_filter_.allow_inaccurate_ops = false;
     op_filter_.allow_slow_ops = false;
 
-    checker_ = absl::make_unique<RecursiveCompilabilityChecker>(&op_filter_,
-                                                                &device_type_);
+    checker_ = absl::make_unique<RecursiveCompilabilityChecker>(op_filter_,
+                                                                device_type_);
   }
 
   FunctionLibraryRuntime* GetFunctionLibraryRuntime() {
@@ -352,6 +353,111 @@ TEST_F(CompilabilityCheckUtilTest, CheckFunctionalIfNode) {
   EXPECT_EQ(kUncompilableFunctionNodeTwoName, uncompilable_node_two.name);
   EXPECT_TRUE(absl::StrContains(uncompilable_node_one.uncompilable_reason,
                                 "unsupported op"));
+}
+
+TEST_F(CompilabilityCheckUtilTest, TestCanNotTriggerXlaCompilation) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDefLibrary library;
+
+  FunctionDef identity_func = FunctionDefHelper::Create(
+      "IdentityFunc",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"res:float"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"t0"}, "Identity", {"x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def*/ {{"res", "t0:output"}});
+
+  *library.add_function() = identity_func;
+
+  Output in = ops::Placeholder(root, DT_FLOAT);
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("IdentityFunc");
+  ops::PartitionedCall call(root.WithOpName("call"), {in}, {DT_FLOAT},
+                            b_name_attr);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(library));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+  EXPECT_FALSE(CanTriggerXlaCompilation(graph_def));
+}
+
+TEST_F(CompilabilityCheckUtilTest, TestXlaOpsCanTriggerXlaCompilation) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDefLibrary library;
+
+  FunctionDef sort_func = FunctionDefHelper::Create(
+      "SortFunc",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"res:float"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"t0"}, "XlaSort", {"x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def*/ {{"res", "t0:output"}});
+
+  *library.add_function() = sort_func;
+
+  Output in = ops::Placeholder(root, DT_FLOAT);
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("SortFunc");
+  ops::PartitionedCall call(root.WithOpName("call"), {in}, {DT_FLOAT},
+                            b_name_attr);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(library));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+  EXPECT_TRUE(CanTriggerXlaCompilation(graph_def));
+}
+
+TEST_F(CompilabilityCheckUtilTest, TestCanTriggerXlaCompilation) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDefLibrary library;
+
+  AttrValue true_attribute;
+  true_attribute.set_b(true);
+
+  FunctionDef identity_func = FunctionDefHelper::Create(
+      "IdentityFunc",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"res:float"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"t0"}, "Identity", {"x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def*/ {{"res", "t0:output"}});
+
+  (*identity_func.mutable_attr())[kXlaMustCompileAttr] = true_attribute;
+
+  FunctionDef call_identity = FunctionDefHelper::Create(
+      "CallIdentity",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"z:float"}, /*attr_def=*/{},
+      /*node_def=*/
+      {{{"func_call"},
+        "PartitionedCall",
+        {"x"},
+        {{"Tin", DataTypeSlice({DT_FLOAT})},
+         {"Tout", DataTypeSlice({DT_FLOAT})},
+         {"f",
+          FunctionDefHelper::FunctionRef("IdentityRef", {{"T", DT_FLOAT}})},
+         {kXlaMustCompileAttr, true}}}},
+      /*ret_def=*/{{"z", "func_call:output:0"}});
+
+  *library.add_function() = identity_func;
+  *library.add_function() = call_identity;
+
+  Output in = ops::Placeholder(root, DT_FLOAT);
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("CallIdentity");
+  ops::PartitionedCall call(root.WithOpName("call"), {in}, {DT_FLOAT},
+                            b_name_attr);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(library));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+  EXPECT_TRUE(CanTriggerXlaCompilation(graph_def));
 }
 
 }  // namespace

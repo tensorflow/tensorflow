@@ -2536,9 +2536,9 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
-                                                       params.output_multiplier,
-                                                       params.output_shift);
+        MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                      params.output_multiplier,
+                                      params.output_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -8130,6 +8130,166 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
   BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
                           input2_data, output_shape, output_data,
                           MinimumElementwise, MinimumScalarBroadcast);
+}
+
+template <typename T>
+void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
+                bool exclusive, bool reverse, T* output_data) {
+  Eigen::array<Eigen::DenseIndex, 3> dims = {1, 1, 1};
+
+  for (int i = 0; i < axis; ++i) {
+    dims[0] *= shape.Dims(i);
+  }
+  dims[1] = shape.Dims(axis);
+  for (int i = axis + 1; i < shape.DimensionsCount(); ++i) {
+    dims[2] *= shape.Dims(i);
+  }
+
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<const T, 3, Eigen::RowMajor, Eigen::DenseIndex>,
+      Eigen::Aligned>
+      ConstTensor;
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<T, 3, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>
+      Tensor;
+  ConstTensor input(input_data, dims);
+  Tensor output(output_data, dims);
+
+  if (reverse) {
+    Eigen::array<bool, 3> reverse_idx = {false, true, false};
+    output =
+        input.reverse(reverse_idx).cumsum(1, exclusive).reverse(reverse_idx);
+  } else {
+    output = input.cumsum(1, exclusive);
+  }
+}
+
+template <typename T>
+void CumSum(const T* input_data, const RuntimeShape& shape, int axis,
+            bool exclusive, bool reverse, T* output_data) {
+  const int dim = shape.DimensionsCount();
+  TFLITE_DCHECK_GE(dim, 1);
+  CumsumImpl<T>(input_data, shape, axis, exclusive, reverse, output_data);
+}
+
+inline void PReluScalarBroadcast(int size, const ArithmeticParams& params,
+                                 float alpha, const float* input_data,
+                                 float* output_data) {
+  ruy::profiler::ScopeLabel label("PreluScalarBroadcast/float");
+  int i = 0;
+
+#ifdef USE_NEON
+  const float32x4_t zero_dup = vdupq_n_f32(0.0f);
+  const float32x4_t alpha_dup = vdupq_n_f32(alpha);
+  for (; i <= size - 16; i += 16) {
+    const float32x4_t input1 = vld1q_f32(input_data + i);
+    const float32x4_t input2 = vld1q_f32(input_data + i + 4);
+    const float32x4_t input3 = vld1q_f32(input_data + i + 8);
+    const float32x4_t input4 = vld1q_f32(input_data + i + 12);
+
+    const float32x4_t temp1 = vmulq_f32(input1, alpha_dup);
+    const float32x4_t temp2 = vmulq_f32(input2, alpha_dup);
+    const float32x4_t temp3 = vmulq_f32(input3, alpha_dup);
+    const float32x4_t temp4 = vmulq_f32(input4, alpha_dup);
+
+    const uint32x4_t mask1 = vcgeq_f32(input1, zero_dup);
+    const uint32x4_t mask2 = vcgeq_f32(input2, zero_dup);
+    const uint32x4_t mask3 = vcgeq_f32(input3, zero_dup);
+    const uint32x4_t mask4 = vcgeq_f32(input4, zero_dup);
+
+    const float32x4_t result1 = vbslq_f32(mask1, input1, temp1);
+    vst1q_f32(output_data + i, result1);
+    const float32x4_t result2 = vbslq_f32(mask2, input2, temp2);
+    vst1q_f32(output_data + i + 4, result2);
+    const float32x4_t result3 = vbslq_f32(mask3, input3, temp3);
+    vst1q_f32(output_data + i + 8, result3);
+    const float32x4_t result4 = vbslq_f32(mask4, input4, temp4);
+    vst1q_f32(output_data + i + 12, result4);
+  }
+
+  for (; i <= size - 4; i += 4) {
+    const float32x4_t input = vld1q_f32(input_data + i);
+    const float32x4_t temp = vmulq_f32(input, alpha_dup);
+    const uint32x4_t mask = vcgeq_f32(input, zero_dup);
+    const float32x4_t result = vbslq_f32(mask, input, temp);
+    vst1q_f32(output_data + i, result);
+  }
+#endif  // USE_NEON
+  for (; i < size; ++i) {
+    const float input = input_data[i];
+    output_data[i] = input >= 0.f ? input : input * alpha;
+  }
+}
+
+inline void PReluElementWise(int flat_size, const ArithmeticParams& params,
+                             const float* alpha_data, const float* input_data,
+                             float* output_data) {
+  ruy::profiler::ScopeLabel label("PreluElementWise/float");
+
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t zero_dup = vdupq_n_f32(0.0f);
+  for (; i <= flat_size - 16; i += 16) {
+    const float32x4_t input1 = vld1q_f32(input_data + i);
+    const float32x4_t alpha1 = vld1q_f32(alpha_data + i);
+    const float32x4_t input2 = vld1q_f32(input_data + i + 4);
+    const float32x4_t alpha2 = vld1q_f32(alpha_data + i + 4);
+    const float32x4_t input3 = vld1q_f32(input_data + i + 8);
+    const float32x4_t alpha3 = vld1q_f32(alpha_data + i + 8);
+    const float32x4_t input4 = vld1q_f32(input_data + i + 12);
+    const float32x4_t alpha4 = vld1q_f32(alpha_data + i + 12);
+
+    const float32x4_t temp1 = vmulq_f32(input1, alpha1);
+    const float32x4_t temp2 = vmulq_f32(input2, alpha2);
+    const float32x4_t temp3 = vmulq_f32(input3, alpha3);
+    const float32x4_t temp4 = vmulq_f32(input4, alpha4);
+
+    const uint32x4_t mask1 = vcgeq_f32(input1, zero_dup);
+    const uint32x4_t mask2 = vcgeq_f32(input2, zero_dup);
+    const uint32x4_t mask3 = vcgeq_f32(input3, zero_dup);
+    const uint32x4_t mask4 = vcgeq_f32(input4, zero_dup);
+
+    const float32x4_t result1 = vbslq_f32(mask1, input1, temp1);
+    vst1q_f32(output_data + i, result1);
+    const float32x4_t result2 = vbslq_f32(mask2, input2, temp2);
+    vst1q_f32(output_data + i + 4, result2);
+    const float32x4_t result3 = vbslq_f32(mask3, input3, temp3);
+    vst1q_f32(output_data + i + 8, result3);
+    const float32x4_t result4 = vbslq_f32(mask4, input4, temp4);
+    vst1q_f32(output_data + i + 12, result4);
+  }
+
+  for (; i <= flat_size - 4; i += 4) {
+    const float32x4_t input = vld1q_f32(input_data + i);
+    const float32x4_t alpha = vld1q_f32(alpha_data + i);
+
+    const float32x4_t temp = vmulq_f32(input, alpha);
+    const uint32x4_t mask = vcgeq_f32(input, zero_dup);
+    const float32x4_t result = vbslq_f32(mask, input, temp);
+    vst1q_f32(output_data + i, result);
+  }
+#endif  // USE_NEON
+  for (; i < flat_size; ++i) {
+    const float input = input_data[i];
+    const float alpha = alpha_data[i];
+    output_data[i] = input >= 0.f ? input : input * alpha;
+  }
+}
+
+inline void BroadcastPReluDispatch(
+    const ArithmeticParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& alpha_shape,
+    const float* alpha_data, const RuntimeShape& output_shape,
+    float* output_data, float (*func)(float, float)) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
+        input_shape, input_data, alpha_shape, alpha_data, output_shape,
+        output_data, func);
+  }
+
+  BinaryBroadcastFiveFold(params, input_shape, input_data, alpha_shape,
+                          alpha_data, output_shape, output_data,
+                          PReluElementWise, PReluScalarBroadcast);
 }
 
 }  // namespace optimized_ops

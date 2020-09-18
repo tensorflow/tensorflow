@@ -25,8 +25,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers.preprocessing import hashing
@@ -311,7 +311,7 @@ class HashingTest(keras_parameterized.TestCase):
     self.assertEqual(output_spec.shape.dims, input_shape.dims)
     self.assertEqual(output_spec.dtype, dtypes.int64)
 
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_config_with_custom_name(self):
     layer = hashing.Hashing(num_bins=2, name='hashing')
     config = layer.get_config()

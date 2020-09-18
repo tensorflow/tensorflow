@@ -29,7 +29,6 @@ import six
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -987,17 +986,17 @@ class TrainingTest(keras_parameterized.TestCase):
       # Test with eager execution and iterator
       model.fit(dataset, epochs=1, steps_per_epoch=2)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_losses_in_defun(self):
-    with context.eager_mode():
-      layer = layers_module.Dense(1, kernel_regularizer='l1')
-      layer(array_ops.ones([1, 10]))
+    layer = layers_module.Dense(1, kernel_regularizer='l1')
+    layer(array_ops.ones([1, 10]))
 
-      @function.defun
-      def get_losses():
-        return layer.losses
+    @def_function.function
+    def get_losses():
+      return layer.losses
 
-      self.assertAllEqual(
-          self.evaluate(layer.losses), self.evaluate(get_losses()))
+    self.assertAllEqual(
+        self.evaluate(layer.losses), self.evaluate(get_losses()))
 
   @keras_parameterized.run_all_keras_modes
   def test_logging(self):
@@ -1118,70 +1117,70 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllEqual([[6], [8], [10], [12]],
                         model.predict(dataset_two, steps=2))
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_training_on_sparse_categorical_crossentropy_loss_with_softmax(self):
-    with context.eager_mode():
-      np.random.seed(1337)
-      train_x = np.ones((100, 4))
-      train_y = np.random.randint(0, 1, size=(100, 1))
+    np.random.seed(1337)
+    train_x = np.ones((100, 4))
+    train_y = np.random.randint(0, 1, size=(100, 1))
 
-      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
-                                                               input_dim=4)
-      reference_model.compile(loss='sparse_categorical_crossentropy',
-                              optimizer=RMSPropOptimizer(learning_rate=0.001),
-                              run_eagerly=True)
-      fixed_weights = reference_model.get_weights()
-      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+    reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                             input_dim=4)
+    reference_model.compile(loss='sparse_categorical_crossentropy',
+                            optimizer=RMSPropOptimizer(learning_rate=0.001),
+                            run_eagerly=True)
+    fixed_weights = reference_model.get_weights()
+    reference_model_loss = reference_model.train_on_batch(train_x, train_y)
 
-      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
-      test_model.compile(loss='sparse_categorical_crossentropy',
-                         optimizer=RMSPropOptimizer(learning_rate=0.001),
-                         run_eagerly=False)
-      test_model.set_weights(fixed_weights)
-      test_model_loss = test_model.train_on_batch(train_x, train_y)
-      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+    test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+    test_model.compile(loss='sparse_categorical_crossentropy',
+                       optimizer=RMSPropOptimizer(learning_rate=0.001),
+                       run_eagerly=False)
+    test_model.set_weights(fixed_weights)
+    test_model_loss = test_model.train_on_batch(train_x, train_y)
+    self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_training_on_categorical_crossentropy_loss_with_softmax(self):
-    with context.eager_mode():
-      np.random.seed(1337)
-      train_x = np.ones((100, 4))
-      train_y = np_utils.to_categorical(
-          np.random.randint(0, 1, size=(100, 1)), 2)
+    np.random.seed(1337)
+    train_x = np.ones((100, 4))
+    train_y = np_utils.to_categorical(
+        np.random.randint(0, 1, size=(100, 1)), 2)
 
-      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
-                                                               input_dim=4)
-      reference_model.compile(loss='categorical_crossentropy',
-                              optimizer=RMSPropOptimizer(learning_rate=0.001),
-                              run_eagerly=True)
-      fixed_weights = reference_model.get_weights()
-      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+    reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                             input_dim=4)
+    reference_model.compile(loss='categorical_crossentropy',
+                            optimizer=RMSPropOptimizer(learning_rate=0.001),
+                            run_eagerly=True)
+    fixed_weights = reference_model.get_weights()
+    reference_model_loss = reference_model.train_on_batch(train_x, train_y)
 
-      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
-      test_model.compile(loss='categorical_crossentropy',
-                         optimizer=RMSPropOptimizer(learning_rate=0.001),
-                         run_eagerly=False)
-      test_model.set_weights(fixed_weights)
-      test_model_loss = test_model.train_on_batch(train_x, train_y)
-      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+    test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+    test_model.compile(loss='categorical_crossentropy',
+                       optimizer=RMSPropOptimizer(learning_rate=0.001),
+                       run_eagerly=False)
+    test_model.set_weights(fixed_weights)
+    test_model_loss = test_model.train_on_batch(train_x, train_y)
+    self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_training_on_binary_crossentropy_loss(self):
-    with context.eager_mode():
-      train_x = np.ones((100, 4), dtype=np.float32)
-      train_y = np.ones((100, 1), dtype=np.float32)
-      reference_model = testing_utils.get_small_sequential_mlp(16, 1,
-                                                               input_dim=4)
-      reference_model.compile(loss='binary_crossentropy',
-                              optimizer=RMSPropOptimizer(learning_rate=0.001),
-                              run_eagerly=True)
-      fixed_weights = reference_model.get_weights()
-      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+    train_x = np.ones((100, 4), dtype=np.float32)
+    train_y = np.ones((100, 1), dtype=np.float32)
+    reference_model = testing_utils.get_small_sequential_mlp(16, 1,
+                                                             input_dim=4)
+    reference_model.compile(loss='binary_crossentropy',
+                            optimizer=RMSPropOptimizer(learning_rate=0.001),
+                            run_eagerly=True)
+    fixed_weights = reference_model.get_weights()
+    reference_model_loss = reference_model.train_on_batch(train_x, train_y)
 
-      test_model = testing_utils.get_small_sequential_mlp(16, 1, input_dim=4)
-      test_model.compile(loss='binary_crossentropy',
-                         optimizer=RMSPropOptimizer(learning_rate=0.001),
-                         run_eagerly=False)
-      test_model.set_weights(fixed_weights)
-      test_model_loss = test_model.train_on_batch(train_x, train_y)
-      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+    test_model = testing_utils.get_small_sequential_mlp(16, 1, input_dim=4)
+    test_model.compile(loss='binary_crossentropy',
+                       optimizer=RMSPropOptimizer(learning_rate=0.001),
+                       run_eagerly=False)
+    test_model.set_weights(fixed_weights)
+    test_model_loss = test_model.train_on_batch(train_x, train_y)
+    self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -1617,6 +1616,64 @@ class TrainingTest(keras_parameterized.TestCase):
     model.fit(x, batch_size=batch_size)
     model.evaluate(x, batch_size=batch_size)
     model.predict(x, batch_size=batch_size)
+
+  @keras_parameterized.run_all_keras_modes(
+      always_skip_v1=True)
+  @parameterized.named_parameters(
+      ('custom_metrics', False, True),
+      ('compiled_metrics', True, False),
+      ('both_compiled_and_custom_metrics', True, True))
+  def test_evaluate_with_custom_test_step(
+      self, use_compiled_metrics, use_custom_metrics):
+
+    class MyModel(training_module.Model):
+
+      def test_step(self, data):
+        x, y = data
+        pred = self(x)
+        metrics = {}
+        if use_compiled_metrics:
+          self.compiled_metrics.update_state(y, pred)
+          self.compiled_loss(y, pred)
+          for metric in self.metrics:
+            metrics[metric.name] = metric.result()
+        if use_custom_metrics:
+          custom_metrics = {
+              'mean': math_ops.reduce_mean(pred),
+              'sum': math_ops.reduce_sum(pred)
+          }
+          metrics.update(custom_metrics)
+        return metrics
+
+    inputs = layers_module.Input((2,))
+    outputs = layers_module.Dense(3)(inputs)
+    model = MyModel(inputs, outputs)
+    if use_compiled_metrics:
+      model.compile('adam', 'mse', metrics=['mae', 'mape'],
+                    run_eagerly=testing_utils.should_run_eagerly())
+    else:
+      model.compile('adam', 'mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+    x = np.random.random((4, 2))
+    y = np.random.random((4, 3))
+    results_list = model.evaluate(x, y)
+    results_dict = model.evaluate(x, y, return_dict=True)
+    self.assertLen(results_list, len(results_dict))
+    if use_compiled_metrics and use_custom_metrics:
+      self.assertLen(results_list, 5)
+      self.assertEqual(results_list,
+                       [results_dict['loss'],
+                        results_dict['mae'], results_dict['mape'],
+                        results_dict['mean'], results_dict['sum']])
+    if use_compiled_metrics and not use_custom_metrics:
+      self.assertLen(results_list, 3)
+      self.assertEqual(results_list,
+                       [results_dict['loss'],
+                        results_dict['mae'], results_dict['mape']])
+    if not use_compiled_metrics and use_custom_metrics:
+      self.assertLen(results_list, 2)
+      self.assertEqual(results_list,
+                       [results_dict['mean'], results_dict['sum']])
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):

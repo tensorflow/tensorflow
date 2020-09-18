@@ -26,12 +26,15 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -39,6 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -70,6 +75,58 @@ void SetProtoIdAndName(T* entry, const string& base_name, char separator,
                        int64 id) {
   entry->set_id(id);
   entry->set_name(GetFullName(base_name, separator, id));
+}
+
+ShapeProto ConvertShapeProtoToPred(const ShapeProto& shape_proto) {
+  return ShapeUtil::ChangeElementType(Shape(shape_proto), PRED).ToProto();
+}
+
+void SetInstructionAsConstant(HloInstructionProto* instr, int64 id,
+                              const Shape& shape, bool pred) {
+  Literal literal = LiteralUtil::CreateR0(pred);
+  Literal literal_broadcast = literal.Broadcast(shape, {}).ValueOrDie();
+  *instr->mutable_shape() = shape.ToProto();
+  *instr->mutable_literal() = literal_broadcast.ToProto();
+  *instr->mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+}
+
+// Converts a HloComputation into ReducerOr with predicate types.
+HloComputationProto CreateReduceOr(int64 reducer_id,
+                                   HloComputationProto* original_reducer) {
+  HloComputationProto reducer;
+  SetProtoIdAndName(&reducer, StrCat("reduce_or"), kNameSeparator, reducer_id);
+  std::vector<int64> operands_id;
+  for (auto& inst : original_reducer->instructions()) {
+    // Copy params.
+    if (StringToHloOpcode(inst.opcode()).ValueOrDie() ==
+        HloOpcode::kParameter) {
+      HloInstructionProto* new_param = reducer.add_instructions();
+      *new_param = inst;
+      *new_param->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+      operands_id.push_back(inst.id());
+    }
+    if (inst.id() == original_reducer->root_id()) {
+      HloInstructionProto* new_root = reducer.add_instructions();
+      *new_root = inst;
+      *new_root->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+      *new_root->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+      new_root->clear_operand_ids();
+      for (int64 operand_id : operands_id) {
+        new_root->add_operand_ids(operand_id);
+      }
+      reducer.set_root_id(inst.id());
+    }
+  }
+  return reducer;
+}
+
+bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
+  HloOpcode opcode = StringToHloOpcode(instr_proto->opcode()).ValueOrDie();
+  if (opcode == HloOpcode::kCustomCall &&
+      instr_proto->custom_call_target() == "SetBound") {
+    return true;
+  }
+  return false;
 }
 }  // namespace
 
@@ -247,7 +304,6 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       // GetDimensionSize is always considered constant in XLA -- If a dynamic
       // dimension is presented, -1 is returned.
       break;
-
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
@@ -260,6 +316,11 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       // cannot be constant.  We cannot set is_functional=false in other similar
       // cases since we're already relying on IsConstant to return true.
     case HloOpcode::kCustomCall:
+      if (instr.custom_call_target() == "SetBound") {
+        // Set bound is considered constant -- the bound is used as the value.
+        break;
+      }
+      TF_FALLTHROUGH_INTENDED;
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
@@ -446,7 +507,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
                              alias.param_index.ToString().c_str());
     }
     TF_RETURN_IF_ERROR(config.SetUpAlias(alias.output_index, alias.param_number,
-                                         alias.param_index));
+                                         alias.param_index, alias.kind));
   }
   *module->mutable_input_output_alias() = config.ToProto();
   return Status::OK();
@@ -529,7 +590,8 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
 
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64> broadcast_dimensions,
-                           absl::optional<ComparisonDirection> direction) {
+                           absl::optional<ComparisonDirection> direction,
+                           absl::optional<Comparison::Type> type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -587,7 +649,11 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
         return InvalidArgument(
             "kCompare expects a ComparisonDirection, but none provided.");
       }
-      return Compare(shape, updated_lhs, updated_rhs, *direction);
+      if (type == absl::nullopt) {
+        return Compare(shape, updated_lhs, updated_rhs, *direction);
+      } else {
+        return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
+      }
     }
 
     if (direction.has_value()) {
@@ -610,8 +676,16 @@ XlaOp XlaBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                     ComparisonDirection direction) {
+  return Compare(shape, lhs, rhs, direction,
+                 Comparison::DefaultComparisonType(shape.element_type()));
+}
+
+StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                    ComparisonDirection direction,
+                                    Comparison::Type type) {
   HloInstructionProto instr;
   instr.set_comparison_direction(ComparisonDirectionToString(direction));
+  instr.set_comparison_type(ComparisonTypeToString(type));
   *instr.mutable_shape() = shape.ToProto();
   return AddInstruction(std::move(instr), HloOpcode::kCompare, {lhs, rhs});
 }
@@ -1022,6 +1096,36 @@ XlaOp XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilder::DynamicReshape(XlaOp operand,
+                                 absl::Span<const XlaOp> dim_sizes,
+                                 absl::Span<const int64> new_size_bounds,
+                                 const std::vector<bool>& dims_are_dynamic) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    std::vector<const Shape*> dim_size_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& dim_size_shapes,
+                        GetOperandShapes(dim_sizes));
+
+    absl::c_transform(dim_size_shapes, std::back_inserter(dim_size_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferDynamicReshapeShape(
+                            *operand_shape, dim_size_shape_ptrs,
+                            new_size_bounds, dims_are_dynamic));
+    TF_RETURN_IF_ERROR(first_error_);
+    std::vector<XlaOp> operands;
+    operands.reserve(1 + dim_sizes.size());
+    operands.push_back(operand);
+    for (const XlaOp& dim_size : dim_sizes) {
+      operands.push_back(dim_size);
+    }
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicReshape,
+                          operands);
+  });
+}
+
 XlaOp XlaBuilder::Collapse(XlaOp operand, absl::Span<const int64> dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (dimensions.size() <= 1) {
@@ -1362,6 +1466,25 @@ StatusOr<XlaOp> XlaBuilder::FftInternal(
   }
 
   return AddInstruction(std::move(instr), HloOpcode::kFft, {operand});
+}
+
+StatusOr<XlaOp> XlaBuilder::TriangularSolveInternal(
+    const Shape& shape, XlaOp a, XlaOp b, TriangularSolveOptions options) {
+  HloInstructionProto instr;
+  *instr.mutable_triangular_solve_options() = std::move(options);
+  *instr.mutable_shape() = shape.ToProto();
+
+  return AddInstruction(std::move(instr), HloOpcode::kTriangularSolve, {a, b});
+}
+
+StatusOr<XlaOp> XlaBuilder::CholeskyInternal(const Shape& shape, XlaOp a,
+                                             bool lower) {
+  HloInstructionProto instr;
+  xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
+  options.set_lower(lower);
+  *instr.mutable_shape() = shape.ToProto();
+
+  return AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
@@ -1874,7 +1997,6 @@ XlaOp XlaBuilder::RngUniform(XlaOp a, XlaOp b, const Shape& shape) {
 XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
                                   XlaOp initial_state, const Shape& shape) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
     Shape output_shape = shape;
@@ -1893,12 +2015,20 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
         return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
                                PrimitiveType_Name(output_shape.element_type()));
     }
-    *instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({state_shape, output_shape}).ToProto();
-    instr.set_rng_algorithm(algorithm);
-    return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
-                          {initial_state});
+    return RngBitGeneratorInternal(
+        ShapeUtil::MakeTupleShape({state_shape, output_shape}), algorithm,
+        initial_state);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::RngBitGeneratorInternal(
+    const Shape& full_result_shape, RandomAlgorithm algorithm,
+    XlaOp initial_state) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = full_result_shape.ToProto();
+  instr.set_rng_algorithm(algorithm);
+  return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
+                        {initial_state});
 }
 
 XlaOp XlaBuilder::While(const XlaComputation& condition,
@@ -2466,6 +2596,7 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
         }
         *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
       }
+      instr.set_constrain_layout(true);
     }
     *instr.mutable_shape() = shape.ToProto();
 
@@ -2842,6 +2973,249 @@ StatusOr<bool> XlaBuilder::IsConstant(XlaOp operand) const {
   return is_constant;
 }
 
+StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
+                      LookUpInstruction(root_op));
+
+  HloComputationProto entry;
+  SetProtoIdAndName(&entry, StrCat(name_, "_dynamic_inference"), kNameSeparator,
+                    GetNextId());
+  ProgramShapeProto* program_shape = entry.mutable_program_shape();
+  *program_shape->mutable_result() =
+      ShapeUtil::ChangeElementType(Shape(root->shape()), PRED).ToProto();
+
+  std::vector<HloComputationProto> called_computatons;
+  // Process instruction and copy it into the new graph. The new node in the new
+  // graph with have id set to `id`.
+  auto process_instruction = [&](const HloInstructionProto* instr_proto,
+                                 bool need_rewrite, int64 id,
+                                 absl::Span<int64 const> operand_ids) {
+    // Rewrite the instruction with following rules:
+    // - Unary ops: Convert into bitcast (identity) with type Pred.
+    // - Binary ops: Convert into binary or.
+    // - Select: Convert into binary or with its two data operands.
+    // - Concat / Tuple/ GTE / Bitcast: Copy.
+    // - Param: Convert to constant True.
+    // - GetDimensionSize: Convert to constant True if dimension is dynamic,
+    // contant False if dimension is static.
+    // - Reduce: Convert to reduce or.
+    // - Constant: Convert to constant False.
+    // - Other ops: Not supported.
+    // Create the instruction for the new handle.
+    TF_ASSIGN_OR_RETURN(HloOpcode opcode,
+                        StringToHloOpcode(instr_proto->opcode()));
+    auto* new_instr = entry.add_instructions();
+    *new_instr = *instr_proto;
+    new_instr->set_id(id);
+    new_instr->mutable_operand_ids()->Clear();
+    for (auto operand_id : operand_ids) {
+      new_instr->mutable_operand_ids()->Add(operand_id);
+    }
+
+    if (!need_rewrite) {
+      *new_instr->mutable_name() =
+          GetFullName(instr_proto->opcode(), kNameSeparator, id);
+      return Status::OK();
+    }
+    *new_instr->mutable_shape() = ConvertShapeProtoToPred(instr_proto->shape());
+    Shape new_shape(new_instr->shape());
+    switch (opcode) {
+      case HloOpcode::kAbs:
+      case HloOpcode::kRoundNearestAfz:
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCeil:
+      case HloOpcode::kCollectivePermuteDone:
+      case HloOpcode::kCos:
+      case HloOpcode::kClz:
+      case HloOpcode::kExp:
+      case HloOpcode::kExpm1:
+      case HloOpcode::kFloor:
+      case HloOpcode::kImag:
+      case HloOpcode::kIsFinite:
+      case HloOpcode::kLog:
+      case HloOpcode::kLog1p:
+      case HloOpcode::kNot:
+      case HloOpcode::kNegate:
+      case HloOpcode::kPopulationCount:
+      case HloOpcode::kReal:
+      case HloOpcode::kRsqrt:
+      case HloOpcode::kLogistic:
+      case HloOpcode::kSign:
+      case HloOpcode::kSin:
+      case HloOpcode::kConvert:
+      case HloOpcode::kSqrt:
+      case HloOpcode::kCbrt:
+      case HloOpcode::kTanh:
+        CHECK_EQ(instr_proto->operand_ids_size(), 1);
+        *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kBitcast);
+        break;
+      case HloOpcode::kAdd:
+      case HloOpcode::kAtan2:
+      case HloOpcode::kDivide:
+      case HloOpcode::kComplex:
+      case HloOpcode::kMaximum:
+      case HloOpcode::kMinimum:
+      case HloOpcode::kMultiply:
+      case HloOpcode::kPower:
+      case HloOpcode::kRemainder:
+      case HloOpcode::kSubtract:
+      case HloOpcode::kCompare:
+      case HloOpcode::kAnd:
+      case HloOpcode::kOr:
+      case HloOpcode::kXor:
+      case HloOpcode::kShiftLeft:
+      case HloOpcode::kShiftRightArithmetic:
+      case HloOpcode::kShiftRightLogical:
+        CHECK_EQ(instr_proto->operand_ids_size(), 2);
+        *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+        break;
+      case HloOpcode::kSelect:
+        break;
+      case HloOpcode::kGather:
+        break;
+      case HloOpcode::kReduce: {
+        int64 reducer_id = new_instr->called_computation_ids(0);
+        called_computatons.push_back(
+            CreateReduceOr(reducer_id, &embedded_[reducer_id]));
+        break;
+      }
+      case HloOpcode::kTuple:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kGetTupleElement:
+      case HloOpcode::kSlice:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kReshape:
+        break;
+      case HloOpcode::kGetDimensionSize: {
+        int64 dimension = instr_proto->dimensions(0);
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
+
+        SetInstructionAsConstant(
+            new_instr, id, new_shape,
+            operand_proto->shape().is_dynamic_dimension(dimension));
+        break;
+      }
+      case HloOpcode::kConstant:
+        SetInstructionAsConstant(new_instr, id, new_shape, false);
+        break;
+      case HloOpcode::kCustomCall:
+        if (instr_proto->custom_call_target() == "SetBound") {
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+          break;
+        } else {
+          return InvalidArgument(
+              "Dynamic inferencing on custom call %s is not supported",
+              instr_proto->DebugString());
+        }
+      case HloOpcode::kParameter:
+        SetInstructionAsConstant(new_instr, id, new_shape, true);
+        break;
+      default:
+        return InvalidArgument("Dynamic inferencing %s is not supported",
+                               instr_proto->DebugString());
+    }
+    *new_instr->mutable_name() =
+        GetFullName(instr_proto->opcode(), kNameSeparator, id);
+    return Status::OK();
+  };
+
+  struct WorkItem {
+    explicit WorkItem(int64 handle, bool need_rewrite)
+        : handle(handle), need_rewrite(need_rewrite), visited(false) {}
+    int64 handle;
+    // If need_rewrite is true, the instruction will be copied and rewrite into
+    // a pred instruction indicating if each value is dynamic. If need_rewrite
+    // is false, simply copy the instruction to the output graph.
+    // E.g.,
+    // For select(P, A, B), we need to rewrite A and B into predicates, but
+    // don't need to rewrite P.
+    bool need_rewrite;
+    // Used in dfs to remember the ids of processed operands of this item.
+    std::vector<int64> processed_operands;
+    // Whether this node been visited before or not.
+    bool visited;
+  };
+  // Only copy each pair of {handle, need_rewrite} once. Value is the id in the
+  // new graph.
+  absl::flat_hash_map<std::pair<int64, bool>, int64> seen;
+  // Monotonically increasing id to assign to new instructions.
+  int64 global_id = 0;
+  // The result id of the last rewritten item -- return value of last stack
+  // item.
+  int64 stacktop_id = -1;
+  std::vector<WorkItem> worklist;
+  worklist.push_back(WorkItem(root->id(), true));
+  while (!worklist.empty()) {
+    WorkItem& item = worklist.back();
+    auto item_key = std::make_pair(item.handle, item.need_rewrite);
+    auto iter = seen.find(item_key);
+    // Already processed this item. Return previous results.
+    if (iter != seen.end()) {
+      stacktop_id = iter->second;
+      worklist.pop_back();
+      continue;
+    }
+
+    int64 next_operand = item.processed_operands.size();
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
+                        LookUpInstructionByHandle(item.handle));
+    VLOG(3) << "Processing" << instr_proto->name();
+    if (!item.visited) {
+      item.visited = true;
+    } else {
+      // Record previous processed operand.
+      item.processed_operands.push_back(stacktop_id);
+      next_operand++;
+    }
+    TF_ASSIGN_OR_RETURN(HloOpcode opcode,
+                        StringToHloOpcode(instr_proto->opcode()));
+    if (next_operand >= instr_proto->operand_ids_size() ||
+        opcode == HloOpcode::kGetDimensionSize ||
+        InstrIsSetBound(instr_proto)) {
+      // No more operands to process, process self.
+      int64 new_id = ++global_id;
+      VLOG(3) << "new_id: " << new_id << "instr: " << instr_proto->name();
+      TF_RETURN_IF_ERROR(process_instruction(instr_proto, item.need_rewrite,
+                                             new_id, item.processed_operands));
+      stacktop_id = new_id;
+      seen[item_key] = stacktop_id;
+      worklist.pop_back();
+      continue;
+    }
+
+    WorkItem next_item(instr_proto->operand_ids(next_operand), true);
+    if (opcode == HloOpcode::kSelect && next_operand == 0) {
+      next_item.need_rewrite = false;
+    }
+    if (opcode == HloOpcode::kGather && next_operand == 1) {
+      next_item.need_rewrite = false;
+    }
+    // Push next operand into worklist.
+    worklist.push_back(next_item);
+  }
+  TF_RET_CHECK(stacktop_id != -1);
+  entry.set_root_id(stacktop_id);
+  absl::c_sort(*entry.mutable_instructions(),
+               [](const HloInstructionProto& p1,
+                  const HloInstructionProto& p2) { return p1.id() < p2.id(); });
+  XlaComputation computation(entry.id());
+  HloModuleProto* module = computation.mutable_proto();
+  module->set_name(entry.name());
+  module->set_id(entry.id());
+  module->set_entry_computation_name(entry.name());
+  module->set_entry_computation_id(entry.id());
+  *module->mutable_host_program_shape() = *program_shape;
+  for (auto& called_comp : called_computatons) {
+    *module->add_computations() = called_comp;
+  }
+  *module->add_computations() = std::move(entry);
+  XLA_VLOG_LINES(3, module->DebugString());
+  return std::move(computation);
+}
+
 StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     XlaOp root_op, bool dynamic_dimension_is_minus_one) {
   TF_ASSIGN_OR_RETURN(bool is_constant, IsConstant(root_op));
@@ -2886,26 +3260,33 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
                         LookUpInstructionByHandle(handle));
 
     if (instr_proto->opcode() ==
-        HloOpcodeString(HloOpcode::kGetDimensionSize)) {
-      // At this point, BuildConstantSubGraph should never encounter a
-      // GetDimensionSize with a dynamic dimension. IsConstant check would have
-      // failed at the beginning of this function.
-      //
-      // Replace GetDimensionSize with a Constant representing the static bound
-      // of the shape.
-      int64 dimension = instr_proto->dimensions(0);
-      int64 operand_handle = instr_proto->operand_ids(0);
-      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
-                          LookUpInstructionByHandle(operand_handle));
+            HloOpcodeString(HloOpcode::kGetDimensionSize) ||
+        InstrIsSetBound(instr_proto)) {
+      int32 constant_value = -1;
+      if (instr_proto->opcode() ==
+          HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+        // At this point, BuildConstantSubGraph should never encounter a
+        // GetDimensionSize with a dynamic dimension. IsConstant check would
+        // have failed at the beginning of this function.
+        //
+        // Replace GetDimensionSize with a Constant representing the static
+        // bound of the shape.
+        int64 dimension = instr_proto->dimensions(0);
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
 
-      int32 constant_dimension_size = -1;
-      if (!(operand_proto->shape().is_dynamic_dimension(dimension) &&
-            dynamic_dimension_is_minus_one)) {
-        constant_dimension_size =
-            static_cast<int32>(operand_proto->shape().dimensions(dimension));
+        if (!(operand_proto->shape().is_dynamic_dimension(dimension) &&
+              dynamic_dimension_is_minus_one)) {
+          constant_value =
+              static_cast<int32>(operand_proto->shape().dimensions(dimension));
+        }
+      } else {
+        TF_RET_CHECK(
+            absl::SimpleAtoi(instr_proto->backend_config(), &constant_value));
       }
 
-      Literal literal = LiteralUtil::CreateR0(constant_dimension_size);
+      Literal literal = LiteralUtil::CreateR0(constant_value);
 
       HloInstructionProto const_instr;
       *const_instr.mutable_shape() = literal.shape().ToProto();
@@ -2935,6 +3316,9 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
                         LookUpInstructionByHandle(id));
 
     if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      continue;
+    }
+    if (InstrIsSetBound(instr_src)) {
       continue;
     }
     auto* instr = entry.add_instructions();
@@ -3215,6 +3599,13 @@ XlaOp Reshape(const Shape& shape, XlaOp operand) {
   return operand.builder()->Reshape(shape, operand);
 }
 
+XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                     absl::Span<const int64> new_size_bounds,
+                     const std::vector<bool>& dims_are_dynamic) {
+  return operand.builder()->DynamicReshape(operand, dim_sizes, new_size_bounds,
+                                           dims_are_dynamic);
+}
+
 XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                    absl::Span<const int64> new_sizes,
                                    int64 inferred_dimension) {
@@ -3274,9 +3665,23 @@ XlaOp Eq(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq);
 }
 
+XlaOp EqTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq,
+                 compare_type);
+}
+
 XlaOp Ne(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe);
+}
+
+XlaOp NeTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe,
+                 compare_type);
 }
 
 XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
@@ -3284,9 +3689,23 @@ XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe);
 }
 
+XlaOp GeTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe,
+                 compare_type);
+}
+
 XlaOp Gt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt);
+}
+
+XlaOp GtTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt,
+                 compare_type);
 }
 
 XlaOp Le(const XlaOp lhs, const XlaOp rhs,
@@ -3294,9 +3713,21 @@ XlaOp Le(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe);
 }
 
+XlaOp LeTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe,
+                 compare_type);
+}
 XlaOp Lt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt);
+}
+
+XlaOp LtTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt,
+                 Comparison::Type::kFloatTotalOrder);
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
@@ -3304,6 +3735,13 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
               ComparisonDirection direction) {
   return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
                                  broadcast_dimensions, direction);
+}
+
+XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction, Comparison::Type compare_type) {
+  return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
+                                 broadcast_dimensions, direction, compare_type);
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {
@@ -3386,36 +3824,26 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                       TriangularSolveOptions::Transpose transpose_a) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* a_shape, builder->GetShapePtr(a));
     TF_ASSIGN_OR_RETURN(const Shape* b_shape, builder->GetShapePtr(b));
-    xla::TriangularSolveOptions& options =
-        *instr.mutable_triangular_solve_options();
+    xla::TriangularSolveOptions options;
     options.set_left_side(left_side);
     options.set_lower(lower);
     options.set_unit_diagonal(unit_diagonal);
     options.set_transpose_a(transpose_a);
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferTriangularSolveShape(
                                          *a_shape, *b_shape, options));
-    *instr.mutable_shape() = shape.ToProto();
-
-    return builder->AddInstruction(std::move(instr),
-                                   HloOpcode::kTriangularSolve, {a, b});
+    return builder->TriangularSolveInternal(shape, a, b, std::move(options));
   });
 }
 
 XlaOp Cholesky(XlaOp a, bool lower) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* a_shape, builder->GetShapePtr(a));
-    xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
-    options.set_lower(lower);
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferCholeskyShape(*a_shape));
-    *instr.mutable_shape() = shape.ToProto();
-
-    return builder->AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
+    return builder->CholeskyInternal(shape, a, lower);
   });
 }
 

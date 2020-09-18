@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows", "if_tpu")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -369,6 +369,7 @@ def tf_proto_library_cc(
         cc_api_version = 2,
         js_codegen = "jspb",
         create_service = False,
+        create_java_proto = False,
         make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
@@ -377,7 +378,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
-    _ignore = create_service
+    _ignore = (create_service, create_java_proto)
 
     use_grpc_plugin = None
     if cc_grpc_version:
@@ -503,14 +504,16 @@ def tf_proto_library(
         j2objc_api_version = 1,
         js_codegen = "jspb",
         create_service = False,
+        create_java_proto = False,
         make_default_target_header_only = False,
-        exports = []):
+        exports = [],
+        tags = []):
     """Make a proto library, possibly depending on other proto libraries."""
 
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports, create_service)
+    _ignore = (js_codegen, exports, create_service, create_java_proto)
 
     native.proto_library(
         name = name,
@@ -518,6 +521,7 @@ def tf_proto_library(
         deps = protodeps + well_known_proto_libs(),
         visibility = visibility,
         testonly = testonly,
+        tags = tags,
     )
 
     tf_proto_library_cc(
@@ -798,3 +802,6 @@ def if_llvm_system_z_available(then, otherwise = []):
         "//tensorflow:linux_s390x": then,
         "//conditions:default": otherwise,
     })
+
+def tf_tpu_dependencies():
+    return if_tpu(["//tensorflow/core/tpu/kernels"])

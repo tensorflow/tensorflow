@@ -42,6 +42,15 @@ func @binary_ops_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32
   return %4 : tensor<4xi32>
 }
 
+// CHECK-LABEL: func @unary_ops_float
+func @unary_ops_float(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NEXT: %0 = ceilf %arg0 : tensor<4xf32>
+  %0 = "mhlo.ceil"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+
+  // CHECK-NEXT:   return %0 : tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
 // CHECK-LABEL: func @compare_int(%arg0: tensor<4xi32>) -> (tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>) {
 func @compare_int(%arg0: tensor<4xi32>) -> (tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>) {
   // CHECK-NEXT: %0 = cmpi "eq", %arg0, %arg0 : tensor<4xi32>

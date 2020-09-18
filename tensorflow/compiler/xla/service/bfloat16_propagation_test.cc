@@ -1156,4 +1156,30 @@ ENTRY entry {
   EXPECT_FALSE(PropagatePrecision(module.get()));
 }
 
+TEST_F(BFloat16PropagationTest, DynamicUpdateSlice) {
+  // This test is crafted so that the DUS has an f32 input (due to parameter)
+  // and bf16 output (due to dot). But we should enforce DUS operand 0 and
+  // output to get the same precision since it's an in-place operation.
+  const string module_str = R"(
+HloModule Module
+
+ENTRY main {
+  param = f32[128,128] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  dynamic-update-slice = f32[128,128] dynamic-update-slice(param, broadcast.6, constant.3, constant.3)
+  ROOT dot = f32[128,128] dot(dynamic-update-slice, dynamic-update-slice), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+
+  HloInstruction* dus = module->entry_computation()->GetInstructionWithName(
+      "dynamic-update-slice");
+  EXPECT_FALSE(OutputsBF16(dus));
+}
+
 }  // namespace xla

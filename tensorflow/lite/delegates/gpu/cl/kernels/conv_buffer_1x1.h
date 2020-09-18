@@ -47,7 +47,10 @@ class ConvBuffer1x1 : public GPUOperation {
   ConvBuffer1x1(const ConvBuffer1x1&) = delete;
   ConvBuffer1x1& operator=(const ConvBuffer1x1&) = delete;
 
-  absl::Status Tune(const TuningParameters& params) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
   int3 GetGridSize() const override;
 
   ConvWeightsDescription GetConvWeightsDescription() const {
@@ -65,45 +68,38 @@ class ConvBuffer1x1 : public GPUOperation {
     // some cases we need separate weights for H dimension and convolution
     // kernel requires very small modifications to support it.
     bool different_weights_for_height = false;
-
-    int3 work_group_size = int3(2, 4, 1);
   };
 
  private:
   ConvBuffer1x1(const OperationDef& definition, const ConvParams& conv_params);
-  friend absl::Status CreateConvBuffer1x1(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const Convolution2DAttributes& attr, ConvBuffer1x1* result,
-      const BHWC* shape);
-  friend absl::Status CreateConvBuffer1x1(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const FullyConnectedAttributes& attr, ConvBuffer1x1* result,
-      const BHWC* shape);
-  friend absl::Status CreateConvBuffer1x1Wino4x4To6x6(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const Convolution2DAttributes& attr, ConvBuffer1x1* result,
-      const BHWC* shape);
-  friend absl::Status CreateConvBuffer1x1DynamicWeights(
-      const CreationContext& creation_context, const OperationDef& definition,
+  friend ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+                                           const OperationDef& definition,
+                                           const Convolution2DAttributes& attr,
+                                           const BHWC* shape);
+  friend ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+                                           const OperationDef& definition,
+                                           const FullyConnectedAttributes& attr,
+                                           const BHWC* shape);
+  friend ConvBuffer1x1 CreateConvBuffer1x1Wino4x4To6x6(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const Convolution2DAttributes& attr, const BHWC* shape);
+  friend ConvBuffer1x1 CreateConvBuffer1x1DynamicWeights(
+      const DeviceInfo& device_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC& weights_shape,
-      ConvBuffer1x1* result, const BHWC* dst_shape);
+      const BHWC* dst_shape);
 
   template <DataType T>
-  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
-                          const tflite::gpu::Tensor<Linear, T>& biases,
-                          CLContext* context);
+  void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                  const tflite::gpu::Tensor<Linear, T>& biases);
   template <DataType T>
-  absl::Status UploadDataForWinograd4x4To6x6(
-      const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
-      CLContext* context);
+  void UploadDataForWinograd4x4To6x6(
+      const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType T>
-  absl::Status UploadBiases(const tflite::gpu::Tensor<Linear, T>& biases,
-                            CLContext* context);
+  void UploadBiases(const tflite::gpu::Tensor<Linear, T>& biases);
 
   std::string GenerateConvBuffer1x1(
       const OperationDef& op_def, const ConvBuffer1x1::ConvParams& conv_params,
@@ -113,32 +109,26 @@ class ConvBuffer1x1 : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvBuffer1x1::UploadData(
-    const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
-  RETURN_IF_ERROR(UploadWeights(weights, context));
-  RETURN_IF_ERROR(UploadBiases(biases, context));
-  return absl::OkStatus();
+void ConvBuffer1x1::UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                               const tflite::gpu::Tensor<Linear, T>& biases) {
+  UploadWeights(weights);
+  UploadBiases(biases);
 }
 
 template <DataType T>
-absl::Status ConvBuffer1x1::UploadDataForWinograd4x4To6x6(
-    const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
-    CLContext* context) {
+void ConvBuffer1x1::UploadDataForWinograd4x4To6x6(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   tflite::gpu::Tensor<OHWI, T> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
-  RETURN_IF_ERROR(UploadWeights(wino_weights, context));
+  UploadWeights(wino_weights);
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
   bias.shape = Linear(weights.shape.o);
   bias.data.resize(weights.shape.o, 0.0f);
-  RETURN_IF_ERROR(UploadBiases(bias, context));
-
-  return absl::OkStatus();
+  UploadBiases(bias);
 }
 
 template <DataType T>
-absl::Status ConvBuffer1x1::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void ConvBuffer1x1::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
 
@@ -149,51 +139,36 @@ absl::Status ConvBuffer1x1::UploadWeights(
   const int elements_count =
       weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
 
-  Buffer weights_buffer;
-  if (f32_weights) {
-    std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
-  } else {
-    std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
-  }
-
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 16;
   desc.memory_type = MemoryType::GLOBAL;
+  desc.size = float4_size * elements_count;
+  desc.data.resize(desc.size);
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
-  return absl::OkStatus();
+  if (f32_weights) {
+    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                     absl::MakeSpan(ptr, elements_count));
+  } else {
+    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                     absl::MakeSpan(ptr, elements_count));
+  }
+
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 template <DataType T>
-absl::Status ConvBuffer1x1::UploadBiases(
-    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
+void ConvBuffer1x1::UploadBiases(const tflite::gpu::Tensor<Linear, T>& biases) {
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::BUFFER;
   desc.element_type = definition_.GetDataType();
-
-  tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias = biases;
-  int channels = AlignByN(biases.shape.v, 4 * conv_params_.block_size.z);
-  bias.shape = Linear(channels);
-  bias.data.resize(channels, 0.0f);
-  LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(desc, bias, context, &lt));
-  args_.AddObject("biases", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)),
-                  absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  int depth = AlignByN(biases.shape.v, 4 * conv_params_.block_size.z) / 4;
+  desc.UploadLinearData(biases, depth);
+  args_.AddObject("biases",
+                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 }
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,
@@ -203,27 +178,24 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
                               const BHWC& weights_shape,
                               const Convolution2DAttributes& attr);
 
-absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                                 const OperationDef& definition,
-                                 const Convolution2DAttributes& attr,
-                                 ConvBuffer1x1* result,
-                                 const BHWC* shape = nullptr);
+ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+                                  const OperationDef& definition,
+                                  const Convolution2DAttributes& attr,
+                                  const BHWC* shape = nullptr);
 
-absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                                 const OperationDef& definition,
-                                 const FullyConnectedAttributes& attr,
-                                 ConvBuffer1x1* result,
-                                 const BHWC* shape = nullptr);
+ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  const BHWC* shape = nullptr);
 
-absl::Status CreateConvBuffer1x1DynamicWeights(
-    const CreationContext& creation_context, const OperationDef& definition,
+ConvBuffer1x1 CreateConvBuffer1x1DynamicWeights(
+    const DeviceInfo& device_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    ConvBuffer1x1* result, const BHWC* dst_shape = nullptr);
+    const BHWC* dst_shape = nullptr);
 
-absl::Status CreateConvBuffer1x1Wino4x4To6x6(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, ConvBuffer1x1* result,
-    const BHWC* shape = nullptr);
+ConvBuffer1x1 CreateConvBuffer1x1Wino4x4To6x6(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC* shape = nullptr);
 
 }  // namespace cl
 }  // namespace gpu

@@ -32,6 +32,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util as ds_test_util
 from tensorflow.python.distribute import tpu_strategy
@@ -80,15 +81,23 @@ def _make_mirrored_val(init_val=5.0):
   return values_lib.Mirrored(v)
 
 
-def _make_mirrored():
+def _make_mirrored(distribution=None):
   v = []
-  devices = ["/device:GPU:0", "/device:CPU:0"]
+  if distribution:
+    devices = distribution.extended.worker_devices
+  else:
+    devices = ["/device:GPU:0", "/device:CPU:0"]
   for d, n, init in zip(devices, ["v", "v/replica"], [1., 2.]):
     with ops.device(d):
-      v.append(variable_scope.get_variable(
-          name=n, initializer=init, use_resource=True))
-  mirrored = values_lib.MirroredVariable(
-      None, v, variable_scope.VariableAggregation.SUM)
+      v.append(
+          variable_scope.get_variable(
+              name=n, initializer=init, use_resource=True))
+
+  if (distribution is not None) and isinstance(distribution, _TPU_STRATEGIES):
+    var_cls = tpu_values.TPUMirroredVariable
+  else:
+    var_cls = values_lib.MirroredVariable
+  mirrored = var_cls(distribution, v, variable_scope.VariableAggregation.SUM)
   return mirrored
 
 
@@ -408,7 +417,7 @@ class DistributedDelegateTest(test.TestCase):
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.tpu_strategy,
             strategy_combinations.tpu_strategy_packed_var,
-            strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu
@@ -422,7 +431,8 @@ class DistributedDelegateTest(test.TestCase):
             variables_lib.VariableAggregation.SUM,
             variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
         ],
-        mode=["graph", "eager"]))
+        mode=["graph", "eager"],
+        use_var_policy=[True, False]))
 class DistributedVariableTest(test.TestCase, parameterized.TestCase):
 
   def testExtendsVariable(self, distribution, synchronization, aggregation):
@@ -532,6 +542,42 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
 
     # In replica context.
     distribution.run(assert_is_tensor_like, args=(v,))
+
+  def testDeepCopy(self, distribution, synchronization,
+                   aggregation):
+    if not context.executing_eagerly():
+      self.skipTest("deepcopy only supported in eager mode")
+
+    with distribution.scope():
+      v = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+      in_dist_copy = copy.deepcopy(v)
+
+    out_dist_copy = copy.deepcopy(v)
+
+    def assert_is_deep_copy(v1, v2):
+      self.assertIsInstance(v2, type(v1))
+      self.assertEqual(v1.aggregation, v2.aggregation)
+      self.assertEqual(v1.distribute_strategy, v2.distribute_strategy)
+      if isinstance(v1, ps_values.AggregatingVariable):
+        self.assertIsInstance(v2.get(), type(v1.get()))
+        self.assertNotEqual(id(v1.get()), id(v2.get()))
+      else:
+        if v1._policy:
+          self.assertNotEqual(id(v1._policy), id(v2._policy))  # pylint: disable=protected-access
+        else:
+          self.assertEqual(id(v1._policy), id(v2._policy))  # pylint: disable=protected-access
+        self.assertEqual(len(v1.values), len(v2.values))
+        for (v1v, v2v) in zip(v1.values, v2.values):
+          self.assertEqual(v1v.device, v2v.device)
+          self.assertNotEqual(id(v1v), id(v2v))
+          self.assertAllEqual(self.evaluate(v1.values),
+                              self.evaluate(v2.values))
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    if not isinstance(distribution.extended, tpu_strategy.TPUExtended):
+      distribution.run(assert_is_deep_copy, args=(v, in_dist_copy))
+      distribution.run(assert_is_deep_copy, args=(v, out_dist_copy))
 
   def testAssignSignature(self, distribution, synchronization, aggregation):
     # This test verifies assign*() can be called in the same way as normal
@@ -866,6 +912,9 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(v.dtype, mirrored.dtype)
     self.assertEqual(v.shape, mirrored.shape)
 
+
+class MirroredVariableSaveRestoreTest(test.TestCase, parameterized.TestCase):
+
   def _assign_mirrored(self, v, new):
     for var, n in zip(v.values, new):
       self.evaluate(var.assign(n))
@@ -880,37 +929,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     save_path, _ = self._save_return_saver(sess, var)
     return save_path
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveAndRestoreMirroredOneGraph(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      # Graph mode can work without GPU because the Placer "moves" the
-      # variable to a CPU. In other words, if there is no GPU available, but
-      # user requested to create a variable on GPU, Placer will ignore the
-      # user request and assign the VarHandleOp to CPU. This requires
-      # soft_placement, which is on by default.
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
-    with self.cached_session(config=self.config) as sess:
-      mirrored = _make_mirrored()
-      v = mirrored.values
-
-      # Overwrite the initial values.
-      self._assign_mirrored(mirrored, [3., 4.])
-
-      # Saves the current value of v[0], 3.
-      save_path, saver = self._save_return_saver(sess, mirrored)
-
-      # Change the values between save and restore.
-      self._assign_mirrored(mirrored, [5., 6.])
-
-      # Restores the saved value of 3. to both variables.
-      saver.restore(sess, save_path)
-      self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
-
-  def _save_mirrored(self):
+  def _save_mirrored(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
-      mirrored = _make_mirrored()
+      mirrored = _make_mirrored(distribution)
 
       # Overwrite the initial values.
       self._assign_mirrored(mirrored, [3., 4.])
@@ -952,10 +974,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(3., self.evaluate(var))
 
-  def _restore_mirrored(self, save_path):
+  def _restore_mirrored(self, save_path, distribution):
     """Restore to variables with mirroring in a fresh graph."""
     with self.session(graph=ops.Graph()) as sess:
-      mirrored = _make_mirrored()
+      mirrored = _make_mirrored(distribution)
       v = mirrored.values
 
       # Overwrite the initial values.
@@ -966,8 +988,27 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveMirroredRestoreMirrored(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveAndRestoreMirroredOneGraph(self, distribution):
+    with self.cached_session() as sess:
+      mirrored = _make_mirrored(distribution)
+      v = mirrored  .values
+
+      # Overwrite the initial values.
+      self._assign_mirrored(mirrored, [3., 4.])
+
+      # Saves the current value of v[0], 3.
+      save_path, saver = self._save_return_saver(sess, mirrored)
+
+      # Change the values between save and restore.
+      self._assign_mirrored(mirrored, [5., 6.])
+
+      # Restores the saved value of 3. to both variables.
+      saver.restore(sess, save_path)
+      self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
+
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveMirroredRestoreMirrored(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -976,11 +1017,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_mirrored()
-    self._restore_mirrored(save_path)
+    save_path = self._save_mirrored(distribution)
+    self._restore_mirrored(save_path, distribution)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveMirroredRestoreNormal(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveMirroredRestoreNormal(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -989,11 +1030,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_mirrored()
+    save_path = self._save_mirrored(distribution)
     self._restore_normal(save_path)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveNormalRestoreMirrored(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveNormalRestoreMirrored(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -1003,7 +1044,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_normal()
-    self._restore_mirrored(save_path)
+    self._restore_mirrored(save_path, distribution)
 
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)

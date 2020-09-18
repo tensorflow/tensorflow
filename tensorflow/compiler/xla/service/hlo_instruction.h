@@ -592,10 +592,17 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64> fft_length);
 
+  // Creates a copy-start op, indicating whether this is a cross-program
+  // prefetch or not.
+  static std::unique_ptr<HloInstruction> CreateCopyStart(
+      const Shape& shape, HloInstruction* operand,
+      bool is_cross_program_prefetch = false);
+
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      Comparison::Direction direction);
+      Comparison::Direction direction,
+      absl::optional<Comparison::Type> type = absl::nullopt);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -878,6 +885,14 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       int64 inferred_dimension = -1);
 
+  // Creates a dynamic reshape instruction. Similar to reshape but dynamic
+  // dimensions sizes are provided as additional variadic arguments.
+  //
+  // Precondition: dim_sizes.size() == shape.rank()
+  static std::unique_ptr<HloInstruction> CreateDynamicReshape(
+      const Shape& shape, HloInstruction* data_operand,
+      absl::Span<HloInstruction* const> dim_sizes);
+
   // Creates a transpose instruction which permutes the operand dimensions.
   static std::unique_ptr<HloInstruction> CreateTranspose(
       const Shape& shape, HloInstruction* operand,
@@ -1107,41 +1122,23 @@ class HloInstruction {
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
-    // An instruction is always identical to itself.
-    if (this == &other) {
-      return true;
-    }
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/false);
+  }
 
-    // Identical instruction must have the same opcode, shape, and identical
-    // operands.
-    if (opcode() != other.opcode()) {
-      return false;
-    }
-    if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
-                           : ShapeUtil::Compatible(shape(), other.shape()))) {
-      return false;
-    }
-    if (operands().size() != other.operands().size()) {
-      return false;
-    }
-
-    // Two AllReduces are Identical if they have the same channel_id.
-    // Their operands don't have to be Identical.
-    if (!IsCrossModuleAllReduce()) {
-      // Use an explicit loop rather than ContainerEquals, because copying
-      // around std::functions may be too expensive in some cases.
-      for (size_t i = 0; i < operands().size(); ++i) {
-        if (!eq_operands(operand(i), other.operand(i))) {
-          return false;
-        }
-      }
-    }
-
-    if (backend_config_ != other.backend_config_) {
-      return false;
-    }
-
-    return IdenticalSlowPath(other, eq_computations);
+  // Same as Identical() but ignores channel ID value mismatches, as long as
+  // both have channel IDs or neither has a channel ID.
+  bool IdenticalIgnoringChannelIdValues(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands = std::equal_to<const HloInstruction*>(),
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/true);
   }
 
   // Generates a hash value of an HLO instruction. Hash considers
@@ -1772,6 +1769,9 @@ class HloInstruction {
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
 
+  // Returns the mutable shape for the Outfeed instruction.
+  Shape* mutable_outfeed_shape();
+
   // Delegates to HloCollectiveInstruction::replica_groups.
   const std::vector<ReplicaGroup>& replica_groups() const;
 
@@ -1855,6 +1855,9 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
+  bool is_cross_program_prefetch() const;
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;
@@ -1943,6 +1946,14 @@ class HloInstruction {
 
  private:
   friend class HloComputation;
+
+  bool IdenticalInternal(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations,
+      bool layout_sensitive, bool ignore_channel_id_values) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(

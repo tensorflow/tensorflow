@@ -54,6 +54,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -70,6 +71,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
@@ -131,7 +133,7 @@ def _get_object_count_by_type():
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
-    if x.device_type == "GPU" or x.device_type == "SYCL":
+    if x.device_type == "GPU":
       return compat.as_str(x.name)
   return ""
 
@@ -335,13 +337,13 @@ def NHWCToNCHW(input_tensor):
   """Converts the input from the NHWC format to NCHW.
 
   Args:
-    input_tensor: a 4- or 5-D tensor, or an array representing shape
+    input_tensor: a 3-, 4-, or 5-D tensor, or an array representing shape
 
   Returns:
     converted tensor or shape array
   """
   # tensor dim -> new axis order
-  new_axes = {4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
+  new_axes = {3: [0, 2, 1], 4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
   if isinstance(input_tensor, ops.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
@@ -1561,6 +1563,10 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Returns:
     True if a GPU device of the requested kind is available.
   """
+
+  # This was needed earlier when we had support for SYCL in TensorFlow.
+  del cuda_only
+
   try:
     for local_device in device_lib.list_local_devices():
       if local_device.device_type == "GPU":
@@ -1568,8 +1574,6 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
         cc = gpu_info.compute_capability or (0, 0)
         if not min_cuda_compute_capability or cc >= min_cuda_compute_capability:
           return True
-      if local_device.device_type == "SYCL" and not cuda_only:
-        return True
     return False
   except errors_impl.NotFoundError as e:
     if not all(x in str(e) for x in ["CUDA", "not find"]):
@@ -1908,6 +1912,75 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
   return xla_allow_fallback_impl
 
 
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test with TensorFloat-32 disabled.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32, many tests use assertAllClose or similar methods.
+  TensorFloat-32 matmuls typically will cause such methods to fail with the
+  default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+      the test requires TensorFloat-32 to be disabled.
+
+  Returns:
+    Decorator which runs a test with TensorFloat-32 disabled.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_enabled()
+      try:
+        config.enable_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.enable_tensor_float_32_execution(allowed)
+
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class with TensorFloat-32 disabled."""
+  return for_all_test_methods(run_without_tensor_float_32, description)
+
+
+def matmul_without_tf32(a, b, *args, **kwargs):
+  """Run matmul but cast float32 inputs to float64 if TensorFloat-32 is enabled.
+
+  This effectively runs matmul without TensorFloat-32. It should only be used in
+  tests when verifying some other op or functions works correctly, e.g. to test
+  `tf.linalg.sqrtm` by matrix multiplying the output of the op by itself. In
+  such cases, the matmul itself is not being tested so it's OK to run it with
+  higher precision.
+
+  If a matmul itself is being tested, or some other op which uses matmul, use
+  `run_without_tensor_float_32` instead.
+
+  Args:
+    a: First input to tf.linalg.matmul
+    b: Second input to tf.linalg.matmul
+    args: Other positional arguments to tf.linalg.matmul
+    **kwargs: Other keyword arguments to tf.linalg.matmul
+
+  Returns:
+    A tensor with the same type as `a`.
+  """
+  if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
+    a = math_ops.cast(a, "float64")
+    b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  else:
+    return math_ops.matmul(a, b, *args, **kwargs)
+
+
 class EagerSessionWarner(object):
 
   def __getattr__(self, attr):
@@ -2078,7 +2151,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
-    elif isinstance(expected_message_maybe_ascii, str):
+    elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,
@@ -3295,8 +3368,8 @@ def _fake_gradient_tape_context_manager():
       def watch(self, x):
         pass
 
-      def gradient(self, y, x):
-        result = gradients_impl.gradients(y, x)
+      def gradient(self, y, x, grad_ys=None):
+        result = gradients_impl.gradients(y, x, grad_ys)
 
         # Unlike `tape.gradient()`, `tf.gradients()` returns a list for a single
         # element. So unpack if needed to match `tape.gradient()` behavior.
@@ -3331,3 +3404,41 @@ class AbstractGradientTape:
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     self._tape_impl.__exit__(exc_type, exc_val, exc_tb)
+
+
+@contextlib.contextmanager
+def run_functions_eagerly(run_eagerly):
+  """Runs functions eagerly if `run_eagerly` is true.
+
+  WARNING: Setting `run_eagerly` to True in tests running in V1 graph mode
+  *WILL NOT* make the tf.function to run eagerly because eager is disabled by
+  default in V1. Instead, tf.function will run as a traced graph function.
+
+  Ensures that the state (for running functions eagerly) is back to the initial
+  `def_function.RUN_FUNCTIONS_EAGERLY` state.
+
+  Args:
+    run_eagerly: Boolean determining whether to run the function eagerly or not.
+
+  Raises:
+    ValueError if `run_eagerly` is not a boolean.
+
+  Yields:
+    Nothing.
+  """
+  if not isinstance(run_eagerly, bool):
+    raise ValueError(
+        "Expected bool for `run_eagerly` but got {}".format(run_eagerly))
+
+  is_eager = context.executing_eagerly()
+  if not is_eager and run_eagerly:
+    logging.warning(
+        "Running tf.function eagerly in V1 graph mode is not supported. "
+        "tf.function will be run as a traced graph function.")
+
+  initial_state = def_function.functions_run_eagerly()
+  def_function.run_functions_eagerly(run_eagerly)
+  try:
+    yield
+  finally:
+    def_function.run_functions_eagerly(initial_state)

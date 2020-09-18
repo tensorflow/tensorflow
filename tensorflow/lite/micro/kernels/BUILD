@@ -54,6 +54,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "round.cc",
         "split.cc",
+        "split_v.cc",
         "strided_slice.cc",
         "sub.cc",
         "tanh.cc",
@@ -520,6 +521,7 @@ cc_library(
     hdrs = ["kernel_util.h"],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
     ],
 )

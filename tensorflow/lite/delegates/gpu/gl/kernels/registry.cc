@@ -18,10 +18,10 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -103,6 +103,7 @@ class Registry : public NodeShader {
     insert_elementwise_op(Type::EXP);
     insert_elementwise_op(Type::HARD_SWISH);
     insert_elementwise_op(Type::LOG);
+    insert_elementwise_op(Type::NEG);
     insert_elementwise_op(Type::MAXIMUM);
     insert_elementwise_op(Type::MINIMUM);
     insert_elementwise_op(Type::POW);
@@ -139,7 +140,7 @@ class Registry : public NodeShader {
   }
 
  private:
-  std::unordered_map<std::string, std::vector<std::unique_ptr<NodeShader>>>
+  absl::flat_hash_map<std::string, std::vector<std::unique_ptr<NodeShader>>>
       shaders_;
 };
 

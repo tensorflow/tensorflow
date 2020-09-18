@@ -34,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -169,10 +170,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   @test_util.run_in_graph_and_eager_modes
   def testVariableShape(self):
     v = resource_variable_ops.ResourceVariable([1., 1.])
+    vshape = resource_variable_ops.variable_shape(v.handle)
     self.assertAllEqual(
-        tensor_util.constant_value(
-            resource_variable_ops.variable_shape(v.handle)),
+        tensor_util.constant_value(vshape),
         [2])
+    if not context.executing_eagerly():
+      self.assertEqual("Const", vshape.op.type)
 
   @test_util.run_deprecated_v1
   def testDifferentAssignGraph(self):
@@ -1006,7 +1009,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         var = variable_scope.get_variable("x", shape=[1, 1],
                                           dtype=dtypes.float32)
         with self.assertRaisesRegex(ValueError,
-                                    "Shapes.*and.*are incompatible"):
+                                    "shape.*and.*are incompatible"):
           assign = var.assign(np.zeros(shape=[2, 2]))
           self.evaluate(assign)
 
@@ -1566,6 +1569,29 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           var.handle, indices, dtype=dtype)
     self.assertAllEqual(expected, result)
 
+  @test_util.run_v2_only
+  def testUninitializedVariableMemoryUsage(self):
+    if test_util.is_gpu_available():
+      # TODO(allenl): Investigate possible GPU-specific memory leaks
+      self.skipTest("Disabled when a GPU is available")
+    # TODO(kkb): Python memory checker complains continuous `weakref`
+    # allocations, investigate.
+    if memory_checker.CppMemoryChecker is None:
+      self.skipTest("Requires the C++ memory checker")
+
+    def _create_and_delete_variable():
+      resource_variable_ops.UninitializedVariable(
+          shape=[100, 100],
+          dtype=dtypes.float32)
+
+    _create_and_delete_variable()
+    checker = memory_checker.CppMemoryChecker(
+        "ResourceVariableOps.testUninitializedVariableMemoryUsage")
+    for _ in range(2):
+      _create_and_delete_variable()
+      checker.record_snapshot()
+    checker.report()
+    checker.assert_no_leak_if_all_possibly_except_one()
 
 if __name__ == "__main__":
   test.main()

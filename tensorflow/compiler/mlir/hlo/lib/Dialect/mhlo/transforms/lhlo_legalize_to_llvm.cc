@@ -45,7 +45,7 @@ struct StaticMemRefCastOpConverter
       return failure();
     // Create descriptor.
     auto desc = MemRefDescriptor::undef(rewriter, loc, llvmTargetDescriptorTy);
-    Type llvmTargetElementTy = desc.getElementType();
+    Type llvmTargetElementTy = desc.getElementPtrType();
     // Set allocated ptr.
     Value allocated = sourceMemRef.allocatedPtr(rewriter, loc);
     allocated =
@@ -96,7 +96,7 @@ struct DynamicMemRefCastOpConverter
       return failure();
     // Create descriptor.
     auto desc = MemRefDescriptor::undef(rewriter, loc, llvmTargetDescriptorTy);
-    Type llvmTargetElementTy = desc.getElementType();
+    Type llvmTargetElementTy = desc.getElementPtrType();
     // Set allocated ptr.
     Value allocated = sourceMemRef.allocatedPtr(rewriter, loc);
     allocated =
@@ -217,8 +217,7 @@ struct ReshapeMemRefCastOpConverter
     SmallVector<Value, 1> sizes;
     UnrankedMemRefDescriptor::computeSizes(rewriter, loc, typeConverter,
                                            {target_desc}, sizes);
-    auto void_ptr_type =
-        LLVM::LLVMType::getInt8PtrTy(typeConverter.getDialect());
+    auto void_ptr_type = LLVM::LLVMType::getInt8PtrTy(rewriter.getContext());
     Value ranked_desc_mem = rewriter.create<LLVM::AllocaOp>(
         loc, void_ptr_type, sizes.front(), llvm::None);
     target_desc.setMemRefDescPtr(rewriter, loc, ranked_desc_mem);
@@ -282,7 +281,7 @@ struct ReshapeMemRefCastOpConverter
     auto index_arg = cond_block->addArgument(typeConverter.getIndexType());
     auto stride_arg = cond_block->addArgument(typeConverter.getIndexType());
     auto pred = rewriter.create<LLVM::ICmpOp>(
-        loc, LLVM::LLVMType::getInt1Ty(typeConverter.getDialect()),
+        loc, LLVM::LLVMType::getInt1Ty(rewriter.getContext()),
         LLVM::ICmpPredicate::sge, index_arg, zero_index);
 
     Block *body_block =

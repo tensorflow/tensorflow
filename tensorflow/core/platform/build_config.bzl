@@ -43,6 +43,7 @@ load(
     _tf_py_clif_cc = "tf_py_clif_cc",
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
     _tf_resource_deps = "tf_resource_deps",
+    _tf_tpu_dependencies = "tf_tpu_dependencies",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
 )
 
@@ -88,3 +89,4 @@ tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
+tf_tpu_dependencies = _tf_tpu_dependencies

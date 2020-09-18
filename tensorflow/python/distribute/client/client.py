@@ -26,13 +26,14 @@ import contextlib
 import enum
 import functools
 import os
+import re
 import sys
 import threading
 import weakref
 from absl import logging
 from six.moves import queue
 
-from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import metric_utils
@@ -41,15 +42,11 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import function as tf_function
-from tensorflow.python.eager import remote
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 # Maximum time for failed worker to come back is 1 hour
@@ -199,17 +196,21 @@ class FunctionRetryableError(Exception):
   pass
 
 
-def _maybe_get_error_and_rebuild_remote_values(worker, structure):
+def _maybe_rebuild_remote_values(worker, structure):
   """Attempts to return errors from `RemoteValue`s. Rebuilds them if needed."""
   errors_in_structure = []
 
   def _get_error(val):
     if isinstance(val, RemoteValue):
       if val._status is _RemoteValueStatus.ABORTED:  # pylint: disable=protected-access
-        with worker.failure_handler.wait_on_failure(
-            on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
-            worker_device_name=worker.device_name):
-          val._rebuild_on(worker)  # pylint: disable=protected-access
+        try:
+          with worker.failure_handler.wait_on_failure(
+              on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
+              worker_device_name=worker.device_name):
+            val._rebuild_on(worker)  # pylint: disable=protected-access
+        except Exception as e:  # pylint: disable=broad-except
+          val._set_error(e)  # pylint: disable=protected-access
+
       error = val._get_error()  # pylint: disable=protected-access
       if error:
         errors_in_structure.append(error)
@@ -260,6 +261,18 @@ def _select_worker_slice(worker_id, structured):
   return nest.map_structure(_get, structured)
 
 
+def _disallow_remote_value_as_input(structured):
+  """Raises if any element of `structured` is a RemoteValue."""
+
+  def _raise_if_remote_value(x):
+    if isinstance(x, RemoteValue):
+      raise ValueError("RemoteValue cannot be used as an input to scheduled "
+                       "function. Please file a feature request if you need "
+                       "this feature.")
+
+  nest.map_structure(_raise_if_remote_value, structured)
+
+
 class Closure(object):
   """Hold a function to be scheduled and its arguments."""
 
@@ -269,6 +282,9 @@ class Closure(object):
                        "callable object.")
     self._args = args or ()
     self._kwargs = kwargs or {}
+
+    _disallow_remote_value_as_input(self._args)
+    _disallow_remote_value_as_input(self._kwargs)
 
     if isinstance(function, def_function.Function):
       replica_args = _select_worker_slice(0, self._args)
@@ -293,8 +309,7 @@ class Closure(object):
       self._output_remote_values = nest.map_structure(
           lambda x: RemoteValue(self, x), concrete_function.structured_outputs)
     elif isinstance(function, tf_function.ConcreteFunction):
-      self._function = cancellation_mgr.get_cancelable_function(
-          concrete_function)
+      self._function = cancellation_mgr.get_cancelable_function(function)
       self._output_remote_values = nest.map_structure(
           lambda x: RemoteValue(self, x), function.structured_outputs)
     else:
@@ -332,8 +347,8 @@ class Closure(object):
     replica_kwargs = _select_worker_slice(worker.worker_index, self._kwargs)
 
     e = (
-        _maybe_get_error_and_rebuild_remote_values(worker, replica_args) or
-        _maybe_get_error_and_rebuild_remote_values(worker, replica_kwargs))
+        _maybe_rebuild_remote_values(worker, replica_args) or
+        _maybe_rebuild_remote_values(worker, replica_kwargs))
     if e:
       if not isinstance(e, InputError):
         e = InputError(e)
@@ -358,7 +373,7 @@ class _CoordinatedClosureQueue(object):
   This class is thread-safe.
   """
 
-  def __init__(self, cancellation_mgr):
+  def __init__(self):
     # `self._inflight_closure_count` only tracks the number of inflight closures
     # that are "in generation". Once an error occurs, error generation is
     # incremented and all subsequent arriving closures (from inflight) are
@@ -384,11 +399,11 @@ class _CoordinatedClosureQueue(object):
     self._no_inflight_closure_condition = threading.Condition(self._queue_lock)
 
     # Use to cancel in-flight closures.
-    self._cancellation_mgr = cancellation_mgr
+    self._cancellation_mgr = cancellation.CancellationManager()
 
     if _CLOSURE_QUEUE_MAX_SIZE <= 0:
       logging.warning(
-          "In ParameterServerClient, creating an infinite closure queue can "
+          "In a `Client`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
     self._error = None
@@ -421,6 +436,14 @@ class _CoordinatedClosureQueue(object):
         closure._set_output_remote_values_cancelled()  # pylint: disable=protected-access
       except queue.Empty:
         break
+    # The cancellation manager cannot be reused once cancelled. After all
+    # closures (queued or inflight) are cleaned up, recreate the cancellation
+    # manager with clean state.
+    # Note on thread-safety: this is triggered when one of theses client APIs
+    # are called: `schedule`, `wait`, and `done`. At the same time, no new
+    # closures can be constructed (which reads the _cancellation_mgr to get
+    # cancellable functions).
+    self._cancellation_mgr = cancellation.CancellationManager()
 
   def _raise_if_error(self):
     """Raises the error if one exists.
@@ -431,6 +454,8 @@ class _CoordinatedClosureQueue(object):
     This method expects self._queue_lock to be held prior to entry.
     """
     if self._error:
+      logging.error("Start cancelling closures due to error %r: %s",
+                    self._error, self._error)
       self._cancel_all_closures()
       try:
         raise self._error  # pylint: disable=raising-bad-type
@@ -537,8 +562,9 @@ class _CoordinatedClosureQueue(object):
 class WorkerPreemptionHandler(object):
   """Handles worker preemptions."""
 
-  def __init__(self, server_def):
+  def __init__(self, server_def, cluster):
     self._server_def = server_def
+    self._cluster = cluster
     self._cluster_update_lock = threading.Lock()
     self._cluster_due_for_update = threading.Event()
     self._worker_up_cond = threading.Condition(self._cluster_update_lock)
@@ -572,6 +598,13 @@ class WorkerPreemptionHandler(object):
     try:
       yield
     except errors.OpError as e:
+      # If the error is due to temporary connectivity issues between worker and
+      # ps, put back closure, ignore error and do not mark worker as failure.
+      if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
+        if on_failure_fn:
+          on_failure_fn()
+        return
+
       self._validate_preemption_failure(e)
       logging.error("Worker %s failed with error: %s", worker_device_name, e)
       if on_failure_fn:
@@ -669,9 +702,11 @@ class Worker(object):
           closure._fetch_output_remote_values()  # pylint: disable=protected-access
         self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(
-          "/job:worker/task:%d encountered the following error when processing "
-          "closure: %r:%s", self.worker_index, e, e)
+      # Avoid logging the derived cancellation error
+      if not isinstance(e, errors.CancelledError):
+        logging.error(
+            "/job:worker/task:%d encountered the following error when "
+            "processing closure: %r:%s", self.worker_index, e, e)
       nest.map_structure(
           lambda x: x._set_error(e),  # pylint: disable=protected-access
           closure._output_remote_values)  # pylint: disable=protected-access
@@ -700,7 +735,10 @@ class Worker(object):
     # status, and executing closures happen on the same thread. This allows us
     # to have simpler logic of concurrency.
     closure = Closure(
-        function, self._cluster._cancellation_mgr, args=args, kwargs=kwargs)  # pylint: disable=protected-access
+        function,
+        self._cluster._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
+        args=args,
+        kwargs=kwargs)
     resource_remote_value = closure._output_remote_values  # pylint: disable=protected-access
     self._register_resource(resource_remote_value)
 
@@ -738,42 +776,53 @@ class Cluster(object):
     workers: a list of `Worker` objects in the cluster.
   """
 
-  def __init__(self, cluster_resolver, client_name="chief"):
-    """Initializes the cluster instance and connect to the remote cluster."""
-    if client_name in ["worker", "ps"]:
-      raise ValueError("Client name should not be 'worker' or 'ps'.")
-    cluster_spec = cluster_resolver.cluster_spec()
+  def __init__(self, strategy):
+    """Initializes the cluster instance."""
 
-    self._num_workers = len(cluster_spec.as_dict().get("worker", ()))
-    self._num_ps = len(cluster_spec.as_dict().get("ps", ()))
-    device_filters = server_lib.ClusterDeviceFilters()
-    # For any worker, only the devices on PS and chief nodes are visible
-    for i in range(self._num_workers):
-      device_filters.set_device_filters(
-          "worker", i, ["/job:ps", "/job:%s" % client_name])
-    # Similarly for any ps, only the devices on workers and chief are visible
-    for i in range(self._num_ps):
-      device_filters.set_device_filters(
-          "ps", i, ["/job:worker", "/job:%s" % client_name])
+    self._num_workers = strategy._num_workers
+    self._num_ps = strategy._num_ps
 
-    context.context().mirroring_policy = context.MIRRORING_ALL
-    # Allow at most one outstanding RPC for each worker at a certain time. This
-    # is to simplify worker failure handling in the runtime
-    os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"
-    remote.connect_to_cluster(cluster_spec,
-                              job_name=client_name,
-                              protocol=cluster_resolver.rpc_layer,
-                              cluster_device_filters=device_filters)
+    # Ignore PS failures reported by workers due to transient connection errors.
+    # Transient connectivity issues between workers and PS are relayed by the
+    # workers to the client, leading the client to believe that there are PS
+    # failures. The difference between transient vs. permanent PS failure is the
+    # number of reports from the workers. When this env var is set to a positive
+    # integer K, the client ignores up to K reports of a failed PS task. I.e.,
+    # only when there are more than K trials of executing closures fail due to
+    # errors from the same PS instance do we consider the PS instance encounters
+    # a failure.
+    # TODO(b/164279603): Remove this workaround when the underlying connectivity
+    # issue in gRPC server is resolved.
+    self._transient_ps_failures_threshold = int(os.environ.get(
+        "TF_CLIENT_IGNORE_TRANSIENT_PS_FAILURES", 3))
+    self._potential_ps_failures_lock = threading.Lock()
+    self._potential_ps_failures_count = [0] * self._num_ps
 
-    self._cancellation_mgr = cancellation.CancellationManager()
-    self._closure_queue = _CoordinatedClosureQueue(self._cancellation_mgr)
-    self.failure_handler = WorkerPreemptionHandler(context.get_server_def())
+    self._closure_queue = _CoordinatedClosureQueue()
+    self.failure_handler = WorkerPreemptionHandler(context.get_server_def(),
+                                                   self)
     worker_device_strings = [
         "/job:worker/replica:0/task:%d" % i for i in range(self._num_workers)
     ]
     self.workers = [
         Worker(i, w, self) for i, w in enumerate(worker_device_strings)
     ]
+
+  def _record_and_ignore_transient_ps_failure(self, e):
+    """Records potential PS failures and return if failure should be ignored."""
+    if self._transient_ps_failures_threshold <= 0 or not _is_ps_failure(e):
+      return False
+
+    ps_tasks = _extract_failed_ps_instances(str(e))
+    with self._potential_ps_failures_lock:
+      for t in ps_tasks:
+        self._potential_ps_failures_count[t] += 1
+        # The number of UnavailableError encountered on this PS task exceeds the
+        # maximum number of ignored error
+        if (self._potential_ps_failures_count[t] >=
+            self._transient_ps_failures_threshold):
+          return False
+    return True
 
   def schedule(self, function, args, kwargs):
     """Schedules `function` to be dispatched to a worker for execution.
@@ -788,7 +837,10 @@ class Cluster(object):
       A structure of `RemoteValue` object.
     """
     closure = Closure(
-        function, self._cancellation_mgr, args=args, kwargs=kwargs)
+        function,
+        self._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
+        args=args,
+        kwargs=kwargs)
     self._closure_queue.put(closure)
     return closure._output_remote_values  # pylint: disable=protected-access
 
@@ -810,14 +862,10 @@ class Client(object):
   """An object to schedule and orchestrate remote function execution.
 
   A `Client` object represents a program used to create dataset, schedule
-  functions to be executed, and fetch the results of the functions. Operations
-  that will involve other tasks in the cluster, such as variable creation,
-  reading variables etc., should be performed within `client.context()`.
+  functions to be executed, and fetch the results of the functions.
 
   Currently, `Client` is not supported to be used in a standalone manner.
-  It should be used in conjunction with `ParameterServerStrategyV2`. The
-  recommended way of using the combination is through a `ParameterServerClient`
-  object. Please see `ParameterServerClient` for more information.
+  It should be used in conjunction with `ParameterServerStrategyV2`.
 
   This is currently under development, and the API as well as implementation
   is subject to changes.
@@ -841,38 +889,11 @@ class Client(object):
       raise ValueError("Only `ParameterServerStrategyV2` is supported in "
                        "`Client` currently.")
     self._strategy = strategy
-    self.cluster = Cluster(strategy._cluster_resolver)
+    self.cluster = Cluster(strategy)
 
-  @contextlib.contextmanager
-  def context(self):
-    """Context manager under which client distribution is in effect.
-
-    All distribution related methods using this `Client`, including those that
-    create and update variables, should be used within this context. This
-    context manager handles cluster fault tolerance in remote function
-    execution.
-
-    The context manager calls `join` automatically when exiting successfully.
-
-    Entering `Client.context` also enters the underlying strategy's scope, and
-    this means that `tf.distribute.get_strategy()` will return the strategy
-    object being used.
-
-    Yields:
-      Nothing.
-    """
-    with self._strategy.scope(), self._handle_parameter_server_failure():
-      yield
-    self.join()
-
-  @contextlib.contextmanager
-  def experimental_variable_partitioning_scope(self):
-    with self._strategy.experimental_variable_partitioning_scope():
-      yield
-
-  (experimental_variable_partitioning_scope.__doc__) = (
-      parameter_server_strategy_v2.ParameterServerStrategyV2
-      .experimental_variable_partitioning_scope.__doc__)
+  @property
+  def strategy(self):
+    return self._strategy
 
   def schedule(self, fn, args=None, kwargs=None):
     """Schedules `fn` to be dispatched to a worker for execution asynchronously.
@@ -911,7 +932,8 @@ class Client(object):
     of values, each of which represents a component specific to a worker; in
     this case, the argument will be substituted with the corresponding component
     on the target worker. Arguments that are not `PerWorkerValues` will be
-    passed into `fn` as-is.
+    passed into `fn` as-is. Currently, `RemoteValue` is not supported to be
+    input `args` or `kwargs`.
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
@@ -927,13 +949,10 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    # TODO(b/160702436): Invoke `strategy.run` for user's function so it enters
-    # a `ReplicaContext` in a logically correct way.
-    with distribute_lib.ReplicaContext(
-        self._strategy,
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
-      with self._translate_parameter_server_failure():
-        return self.cluster.schedule(fn, args=args, kwargs=kwargs)
+    # Slot variables are usually created during function tracing time; thus
+    # `schedule` needs to be called within the `strategy.scope()`.
+    with self.strategy.scope(), _translate_parameter_server_failure():
+      return self.cluster.schedule(fn, args=args, kwargs=kwargs)
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -954,9 +973,7 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    # TODO(b/159486639): Update the docs once we can cancel the functions being
-    # executed on workers, that when `join` returns, the system is stabilized.
-    with self._translate_parameter_server_failure():
+    with _translate_parameter_server_failure():
       self.cluster.join()
 
   def done(self):
@@ -1055,31 +1072,32 @@ class Client(object):
       return (result,)
     return result
 
-  # pylint: disable=missing-function-docstring
-  @contextlib.contextmanager
-  def _translate_parameter_server_failure(self):
-    try:
-      yield
-    except Exception as e:  # pylint: disable=broad-except
-      if _is_ps_failure(e):
-        logging.exception("Encountered parameter server failures!")
-        raise ParameterServerFailureError(e)
-      else:
-        raise
 
-  # pylint: disable=missing-function-docstring
-  @contextlib.contextmanager
-  def _handle_parameter_server_failure(self):
-    try:
-      with self._translate_parameter_server_failure():
-        yield
-    except ParameterServerFailureError as e:  # pylint: disable=broad-except
-      restart_exit_code = os.environ.get(
-          "TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE", None)
-      if restart_exit_code is not None:
-        sys.exit(int(restart_exit_code))
-      else:
-        raise
+# pylint: disable=missing-function-docstring
+@contextlib.contextmanager
+def _translate_parameter_server_failure():
+  try:
+    yield
+  except Exception as e:  # pylint: disable=broad-except
+    if _is_ps_failure(e):
+      raise ParameterServerFailureError(e)
+    else:
+      raise
+
+
+# pylint: disable=missing-function-docstring
+@contextlib.contextmanager
+def handle_parameter_server_failure():
+  try:
+    with _translate_parameter_server_failure():
+      yield
+  except ParameterServerFailureError as e:  # pylint: disable=broad-except
+    restart_exit_code = os.environ.get("TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE",
+                                       None)
+    if restart_exit_code is not None:
+      sys.exit(int(restart_exit_code))
+    else:
+      raise
 
 
 class _PerWorkerDistributedDataset(object):
@@ -1102,9 +1120,7 @@ class _PerWorkerDistributedDataset(object):
     elif not isinstance(dataset_fn, tf_function.ConcreteFunction):
       with variable_scope.variable_creator_scope(disallow_variable_creation):
         dataset_fn = def_function.function(dataset_fn).get_concrete_function()
-    self._dataset_fn = (
-        client.cluster._cancellation_mgr.get_cancelable_function(  # pylint: disable=protected-access
-            dataset_fn))
+    self._dataset_fn = dataset_fn
     self._input_workers = input_workers
     self._client = client
     self._element_spec = None
@@ -1127,15 +1143,12 @@ class _PerWorkerDistributedDataset(object):
     per_worker_iterator = self._client._create_per_worker_resources(
         _create_per_worker_iterator)
 
-    # Create an iterator, so the consumer function of this iterator can start
-    # tracing using this iterator without needing to wait for the completion of
-    # the iterater creation. Note: the iterator shouldn't use memory until it is
-    # consumed.
-    # TODO(b/154675763): get rid of this workaround once we can make input_fn a
-    # tf.function.
-    iterator = _create_per_worker_iterator()
+    # Setting type_spec of each RemoteValue so that functions taking these
+    # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._set_type_spec(iterator._type_spec)
+      iterator_remote_value._set_type_spec(
+          iterator_ops.IteratorSpec(
+              self._dataset_fn.structured_outputs.element_spec))
     return _PerWorkerDistributedIterator(per_worker_iterator._values)
 
   @property
@@ -1155,6 +1168,12 @@ class _PerWorkerDistributedIterator(PerWorkerValues):
     """Returns the next input from the iterator for all replicas."""
     raise NotImplementedError("Iterating over an `AsyncDistributedIterator` "
                               "is not supported right now.")
+
+
+def _extract_failed_ps_instances(err_msg):
+  """Return a set of potentially failing ps instances from error message."""
+  tasks = re.findall("/job:ps/replica:0/task:[0-9]+", err_msg)
+  return set(int(t.split(":")[-1]) for t in tasks)
 
 
 def _is_ps_failure(error):

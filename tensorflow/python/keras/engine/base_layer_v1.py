@@ -22,6 +22,7 @@ import collections
 import functools
 import itertools
 import threading
+import warnings
 
 import numpy as np
 import six
@@ -51,6 +52,7 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
@@ -66,10 +68,8 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import doc_controls
 
 
@@ -153,7 +153,7 @@ class Layer(base_layer.Layer):
   @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
-    base_layer.keras_api_gauge.get_cell('layer v1').set(True)
+    base_layer.keras_api_gauge.get_cell('layer').set(True)
     base_layer.keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
@@ -161,7 +161,7 @@ class Layer(base_layer.Layer):
     # to non-input layers.
     allowed_kwargs = {
         'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
-        'weights', 'activity_regularizer', 'autocast'
+        'weights', 'activity_regularizer', 'autocast', 'implementation'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -690,10 +690,10 @@ class Layer(base_layer.Layer):
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
+        # Don't call `ops.convert_to_tensor` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2(x)
+          return ops.convert_to_tensor_v2_with_dispatch(x)
         return x
       inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
@@ -1053,7 +1053,8 @@ class Layer(base_layer.Layer):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -1068,7 +1069,8 @@ class Layer(base_layer.Layer):
       if loss is None:
         continue
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
@@ -1229,7 +1231,7 @@ class Layer(base_layer.Layer):
       elif hasattr(x, 'op'):
         update = x.op
       else:
-        update = ops.convert_to_tensor_v2(x)
+        update = ops.convert_to_tensor_v2_with_dispatch(x)
 
       reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, [update])
       update._unconditional_update = update not in reachable
@@ -1692,8 +1694,6 @@ class Layer(base_layer.Layer):
   # Methods & attributes below are public aliases of other methods.            #
   ##############################################################################
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.__call__` method instead.')
   @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
     """Deprecated, do NOT use!
@@ -1708,13 +1708,17 @@ class Layer(base_layer.Layer):
     Returns:
       Output tensor(s).
     """
+    warnings.warn('`layer.apply` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.__call__` method instead.')
     return self.__call__(inputs, *args, **kwargs)
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.add_weight` method instead.')
   @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
     """Deprecated, do NOT use! Alias for `add_weight`."""
+    warnings.warn('`layer.add_variable` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.add_weight` method instead.')
     return self.add_weight(*args, **kwargs)
 
   @property
@@ -1781,11 +1785,6 @@ class Layer(base_layer.Layer):
                        'use a different Strategy, e.g. a MirroredStrategy.' %
                        (strategy.__class__.__name__, self._dtype_policy.name))
 
-    # This has no impact on the layer behavior, and is only used for printing
-    # warnings.
-    self._dtype_defaulted_to_floatx = (not dtype and
-                                       policy.policy_defaults_to_floatx())
-
     # Performance optimization: cache the compute dtype as a Dtype object or
     # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
     if self._dtype_policy.compute_dtype:
@@ -1829,8 +1828,6 @@ class Layer(base_layer.Layer):
                       ragged_tensor.RaggedTensor)
         if (isinstance(x, cast_types) and x.dtype.is_floating and
             x.dtype.base_dtype.name != compute_dtype):
-          if self._dtype_defaulted_to_floatx:
-            self._warn_about_input_casting(x.dtype.base_dtype)
           return math_ops.cast(x, compute_dtype)
         elif isinstance(x, tensor_spec.TensorSpec) and x.dtype.is_floating:
           # Inputs may be TensorSpecs when this function is called from
@@ -1841,31 +1838,6 @@ class Layer(base_layer.Layer):
       return nest.map_structure(f, inputs)
     else:
       return inputs
-
-  def _warn_about_input_casting(self, input_dtype):
-    # self._already_warned_about_input_casting is only retrieved or set in this
-    # function.
-    already_warned = getattr(self, '_already_warned_about_input_casting', False)
-    if not already_warned:
-      tf_logging.warn(
-          "Layer {self.name} is casting an input tensor from dtype "
-          "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
-          "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          'because its dtype defaults to floatx.\n\n'
-          ""
-          "If you intended to run this layer in {layer_dtype}, you can safely "
-          "ignore this warning. If in doubt, this warning is likely only an "
-          "issue if you are porting a TensorFlow 1.X model to TensorFlow 2.\n\n"
-          ""
-          "To change all layers to have dtype {input_dtype} by default, call "
-          "`tf.keras.backend.set_floatx('{input_dtype}')`. To change just this "
-          "layer, pass dtype='{input_dtype}' to the layer constructor. If you "
-          "are the author of this layer, you can disable autocasting by "
-          "passing autocast=False to the base Layer constructor.\n".format(
-              self=self,
-              input_dtype=input_dtype.name,
-              layer_dtype=self._compute_dtype))
-      self._already_warned_about_input_casting = True
 
   # _dtype used to be an attribute set in the constructor. We still expose it
   # because some clients still use it.
@@ -2342,14 +2314,14 @@ class Layer(base_layer.Layer):
                               self._call_accepts_kwargs)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_full_argspec(self):
     # Argspec inspection is expensive and the call spec is used often, so it
     # makes sense to cache the result.
     return tf_inspect.getfullargspec(self.call)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_args(self):
     all_args = self._call_full_argspec.args
     # Scrub `self` that appears if a decorator was applied.
@@ -2358,7 +2330,7 @@ class Layer(base_layer.Layer):
     return all_args
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_arg_positions(self):
     call_fn_arg_positions = dict()
     for pos, arg in enumerate(self._call_fn_args):
@@ -2366,24 +2338,25 @@ class Layer(base_layer.Layer):
     return call_fn_arg_positions
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_accepts_kwargs(self):
     return self._call_full_argspec.varkw is not None
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _should_compute_mask(self):
     return ('mask' in self._call_fn_args or
             getattr(self, 'compute_mask', None) is not None)
 
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
-    output, seen_weights = [], object_identity.ObjectIdentitySet()
+    output, seen_ids = [], set()
     for w in weights:
-      if w not in seen_weights:
+      if id(w) not in seen_ids:
         output.append(w)
         # Track the Variable's identity to avoid __eq__ issues.
-        seen_weights.add(w)
+        seen_ids.add(id(w))
+
     return output
 
   # SavedModel properties. Please see keras/saving/saved_model for details.

@@ -70,6 +70,11 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
   BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
   switch (op_code) {
+    case BuiltinOperator_ABS:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_ADD:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
@@ -866,12 +871,17 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 1;
       break;
     case BuiltinOperator_RESIZE_BILINEAR:
-    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       property.quantizable_int16 = false;
+      break;
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
       break;
     case BuiltinOperator_SHAPE:
       property.inputs = {{0, {}}};

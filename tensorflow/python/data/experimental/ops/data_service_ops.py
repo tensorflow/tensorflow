@@ -435,10 +435,11 @@ def register_dataset(service, dataset):
   If the dataset is already registered with the tf.data service,
   `register_dataset` returns the already-registered dataset's id.
 
-  >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker = tf.data.experimental.service.WorkerServer(
-  ...     port=0, dispatcher_address=dispatcher_address)
+  ...     tf.data.experimental.service.WorkerConfig(
+  ...         dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset_id = tf.data.experimental.service.register_dataset(
   ...     dispatcher.target, dataset)
@@ -466,9 +467,9 @@ def register_dataset(service, dataset):
 
   # Compress the dataset elements to reduce the amount of data that needs to
   # be sent over the network.
-  # TODO(b/157105111): Make this an autotuned parallel map when we have a way
-  # to limit memory usage.
-  dataset = dataset.map(lambda *x: compression_ops.compress(x))
+  dataset = dataset.map(
+      lambda *x: compression_ops.compress(x),
+      num_parallel_calls=dataset_ops.AUTOTUNE)
   # Prefetch one compressed element to reduce latency when requesting data
   # from tf.data workers.
   # TODO(b/157105111): Set this to autotune when we have a way to limit
@@ -518,10 +519,11 @@ def from_dataset_id(processing_mode,
   See the documentation for `tf.data.experimental.service.distribute` for more
   detail about how `from_dataset_id` works.
 
-  >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker = tf.data.experimental.service.WorkerServer(
-  ...     port=0, dispatcher_address=dispatcher_address)
+  ...     tf.data.experimental.service.WorkerConfig(
+  ...         dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset_id = tf.data.experimental.service.register_dataset(
   ...     dispatcher.target, dataset)

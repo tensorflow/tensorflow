@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import collections
 import enum
+import typing
+from typing import Any
 
 from absl import logging
 import numpy as np
@@ -604,6 +606,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
+    if not self._outer_context:
+      return val
+
     if val.name in self._values:
       # Use the real value if it comes from outer context.
       result = self._external_values.get(val.name)
@@ -825,7 +830,7 @@ class XLAOptions(
       requested.
   """
 
-  def __new__(cls, use_spmd_for_xla_partitioning=False):
+  def __new__(cls, use_spmd_for_xla_partitioning=True):
     return super(XLAOptions, cls).__new__(cls, use_spmd_for_xla_partitioning)
 
 
@@ -1419,9 +1424,12 @@ def split_compile_and_replicate(computation,
 
     # tensor_tracer imports tpu.py. Local import to tensor_tracer to avoid
     # import-cycle
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.tpu import tensor_tracer
-    # pylint: enable=g-import-not-at-top
+    if typing.TYPE_CHECKING:
+      tensor_tracer = Any
+    else:
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.python.tpu import tensor_tracer
+      # pylint: enable=g-import-not-at-top
     if tensor_tracer.TensorTracer.is_enabled():
       tt = tensor_tracer.TensorTracer()
       output_tensors = tt.trace_tpu(ops.get_default_graph(),

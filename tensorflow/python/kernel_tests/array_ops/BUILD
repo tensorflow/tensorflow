@@ -60,3 +60,21 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+cuda_py_test(
+    name = "scatter_nd_ops_test",
+    size = "medium",
+    srcs = ["scatter_nd_ops_test.py"],
+    tags = ["noasan"],  # http://b/32635055
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)

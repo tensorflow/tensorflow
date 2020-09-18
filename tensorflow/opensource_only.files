@@ -163,8 +163,6 @@ tensorflow/third_party/repo.bzl
 tensorflow/third_party/six.BUILD
 tensorflow/third_party/snappy.BUILD
 tensorflow/third_party/sqlite.BUILD
-tensorflow/third_party/swig.BUILD
-tensorflow/third_party/sycl/crosstool/BUILD
 tensorflow/third_party/systemlibs/BUILD
 tensorflow/third_party/systemlibs/BUILD.tpl
 tensorflow/third_party/systemlibs/absl_py.BUILD
@@ -194,7 +192,6 @@ tensorflow/third_party/systemlibs/re2.BUILD
 tensorflow/third_party/systemlibs/six.BUILD
 tensorflow/third_party/systemlibs/snappy.BUILD
 tensorflow/third_party/systemlibs/sqlite.BUILD
-tensorflow/third_party/systemlibs/swig.BUILD
 tensorflow/third_party/systemlibs/syslibs_configure.bzl
 tensorflow/third_party/systemlibs/termcolor.BUILD
 tensorflow/third_party/systemlibs/zlib.BUILD
@@ -245,6 +242,8 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1/cc_toolchain_config.bzl
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/dummy_toolchain.bzl
@@ -265,6 +264,7 @@ tensorflow/third_party/toolchains/remote_config/BUILD
 tensorflow/third_party/toolchains/remote_config/configs.bzl
 tensorflow/third_party/toolchains/remote_config/containers.bzl
 tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
+tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/tools/build_info/BUILD
@@ -273,12 +273,6 @@ tensorflow/tools/ci_build/release/common.sh
 tensorflow/tools/ci_build/release/common_win.bat
 tensorflow/tools/ci_build/release/macos/cpu_libtensorflow/build.sh
 tensorflow/tools/ci_build/release/macos/cpu_libtensorflow/release.sh
-tensorflow/tools/ci_build/release/macos/cpu_py2_full/nightly_release.sh
-tensorflow/tools/ci_build/release/macos/cpu_py2_full/nonpip.sh
-tensorflow/tools/ci_build/release/macos/cpu_py2_full/nonpip_v1.sh
-tensorflow/tools/ci_build/release/macos/cpu_py2_full/pip.sh
-tensorflow/tools/ci_build/release/macos/cpu_py2_full/pip_v1.sh
-tensorflow/tools/ci_build/release/macos/cpu_py2_xla/build.sh
 tensorflow/tools/ci_build/release/macos/cpu_py35_full/nightly_release.sh
 tensorflow/tools/ci_build/release/macos/cpu_py35_full/nonpip.sh
 tensorflow/tools/ci_build/release/macos/cpu_py35_full/nonpip_v1.sh
@@ -299,11 +293,6 @@ tensorflow/tools/ci_build/release/macos/cpu_py37_full/release.sh
 tensorflow/tools/ci_build/release/macos/cpu_py38_full/nightly_release.sh
 tensorflow/tools/ci_build/release/macos/cpu_py38_full/nonpip.sh
 tensorflow/tools/ci_build/release/macos/cpu_py38_full/pip.sh
-tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/nightly_release.sh
-tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/nonpip.sh
-tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/nonpip_v1.sh
-tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/pip.sh
-tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/pip_v1.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py35_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py35_full/nonpip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py35_full/nonpip_v1.sh
@@ -325,11 +314,6 @@ tensorflow/tools/ci_build/release/ubuntu_16/cpu_py38_full/pip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/nightly.sh
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_pip_on_cpu/build.sh
-tensorflow/tools/ci_build/release/ubuntu_16/gpu_py2_full/nightly_release.sh
-tensorflow/tools/ci_build/release/ubuntu_16/gpu_py2_full/nonpip.sh
-tensorflow/tools/ci_build/release/ubuntu_16/gpu_py2_full/nonpip_v1.sh
-tensorflow/tools/ci_build/release/ubuntu_16/gpu_py2_full/pip.sh
-tensorflow/tools/ci_build/release/ubuntu_16/gpu_py2_full/pip_v1.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py35_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py35_full/nonpip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py35_full/nonpip_v1.sh

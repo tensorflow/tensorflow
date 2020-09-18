@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -61,16 +62,15 @@ class DatasetHashUtilsTest : public ::testing::Test {
   }
 };
 
-string full_name(string key) {
-  return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
-}
+string full_name(string key) { return FullName("Iterator:", key); }
 
 TEST(DatasetUtilsTest, MatchesAnyVersion) {
-  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDataset"));
-  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2"));
-  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3"));
-  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "BatchV2Dataset"));
-  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "PaddedBatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDatasetV2"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDatasetV3"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchDatasetXV3"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchV2Dataset"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "PaddedBatchDataset"));
 }
 
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
@@ -270,6 +270,26 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
       s.error_message());
+}
+
+TEST(DatasetUtilsTest, StripDevicePlacement) {
+  FunctionDefLibrary flib;
+  *flib.add_function() = FunctionDefHelper::Create(
+      /*function_name=*/"0",
+      /*in_def=*/{"arg: int64"},
+      /*out_def=*/{"ret: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {{{"node"},
+        "Identity",
+        {"arg"},
+        {{"T", DT_INT64}},
+        /*dep=*/{},
+        /*device=*/"device:CPU:0"}},
+      /*ret_def=*/{{"ret", "arg"}});
+  EXPECT_EQ(flib.function(0).node_def(0).device(), "device:CPU:0");
+  StripDevicePlacement(&flib);
+  EXPECT_EQ(flib.function(0).node_def(0).device(), "");
 }
 
 TEST(DatasetUtilsTest, RunnerWithMaxParallelism) {
@@ -1138,18 +1158,15 @@ class SelectOptimizationsHashTest : public ::testing::TestWithParam<uint64> {};
 TEST_P(SelectOptimizationsHashTest, DatasetUtils) {
   const uint64 hash_result = GetParam();
   string job_name = "job";
-  const string opt_ins_raw = "";
-  const string opt_outs_raw = "";
   auto hash_func = [hash_result](const string& str) { return hash_result; };
   absl::flat_hash_map<string, uint64> live_experiments = {
       {"exp1", 0},  {"exp2", 20}, {"exp3", 33}, {"exp4", 45},
       {"exp5", 67}, {"exp6", 88}, {"exp7", 100}};
   std::vector<tstring> optimizations_enabled, optimizations_disabled,
       optimizations_default;
-  std::vector<tstring> optimizations =
-      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
-                          optimizations_enabled, optimizations_disabled,
-                          optimizations_default, hash_func);
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
 
   int tested_times = 0;
   switch (hash_result) {
@@ -1182,48 +1199,60 @@ class SelectOptimizationsOptTest
     : public ::testing::TestWithParam<std::tuple<string, string>> {};
 
 TEST_P(SelectOptimizationsOptTest, DatasetUtils) {
+  const string opt_ins = std::get<0>(GetParam());
+  const string opt_outs = std::get<1>(GetParam());
+  if (!opt_ins.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_IN", opt_ins.c_str(), 1);
+  }
+  if (!opt_outs.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_OUT", opt_outs.c_str(), 1);
+  }
   string job_name = "job";
-  const string opt_ins_raw = std::get<0>(GetParam());
-  const string opt_outs_raw = std::get<1>(GetParam());
   auto hash_func = [](const string& str) { return 50; };
   absl::flat_hash_map<string, uint64> live_experiments = {
       {"exp1", 0}, {"exp2", 25}, {"exp3", 50}, {"exp4", 75}, {"exp5", 100}};
   std::vector<tstring> optimizations_enabled, optimizations_disabled,
       optimizations_default;
-  std::vector<tstring> optimizations =
-      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
-                          optimizations_enabled, optimizations_disabled,
-                          optimizations_default, hash_func);
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
 
   int tested_times = 0;
-  if (opt_outs_raw == "all") {
+  if (opt_outs == "all") {
     EXPECT_THAT(optimizations, UnorderedElementsAre());
     tested_times++;
-  } else if (opt_outs_raw.empty()) {
-    if (opt_ins_raw == "all") {
+  } else if (opt_outs.empty()) {
+    if (opt_ins == "all") {
       EXPECT_THAT(optimizations,
                   UnorderedElementsAre("exp1", "exp2", "exp3", "exp4", "exp5"));
       tested_times++;
-    } else if (opt_ins_raw.empty()) {
+    } else if (opt_ins.empty()) {
       EXPECT_THAT(optimizations, UnorderedElementsAre("exp4", "exp5"));
       tested_times++;
-    } else if (opt_ins_raw == "exp2,exp4") {
+    } else if (opt_ins == "exp2,exp4") {
       EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4", "exp5"));
       tested_times++;
     }
-  } else if (opt_outs_raw == "exp1,exp5") {
-    if (opt_ins_raw == "all") {
+  } else if (opt_outs == "exp1,exp5") {
+    if (opt_ins == "all") {
       EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4"));
       tested_times++;
-    } else if (opt_ins_raw.empty()) {
+    } else if (opt_ins.empty()) {
       EXPECT_THAT(optimizations, UnorderedElementsAre("exp4"));
       tested_times++;
-    } else if (opt_ins_raw == "exp2,exp4") {
+    } else if (opt_ins == "exp2,exp4") {
       EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4"));
       tested_times++;
     }
   }
   EXPECT_EQ(tested_times, 1);
+
+  if (!opt_ins.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
+  }
+  if (!opt_outs.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1235,10 +1264,16 @@ class SelectOptimizationsConflictTest
     : public ::testing::TestWithParam<std::tuple<string, string, uint64>> {};
 
 TEST_P(SelectOptimizationsConflictTest, DatasetUtils) {
-  string job_name = "job";
-  const string opt_ins_raw = std::get<0>(GetParam());
-  const string opt_outs_raw = std::get<1>(GetParam());
+  const string opt_ins = std::get<0>(GetParam());
+  const string opt_outs = std::get<1>(GetParam());
   const uint64 hash_result = std::get<2>(GetParam());
+  if (!opt_ins.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_IN", opt_ins.c_str(), 1);
+  }
+  if (!opt_outs.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_OUT", opt_outs.c_str(), 1);
+  }
+  string job_name = "job";
   auto hash_func = [hash_result](const string& str) { return hash_result; };
   absl::flat_hash_map<string, uint64> live_experiments = {
       {"exp1", 20}, {"exp2", 30}, {"exp3", 40},
@@ -1246,27 +1281,93 @@ TEST_P(SelectOptimizationsConflictTest, DatasetUtils) {
   std::vector<tstring> optimizations_enabled = {"exp1", "exp4"},
                        optimizations_disabled = {"exp2", "exp5"},
                        optimizations_default = {"exp3", "exp6"};
-  std::vector<tstring> optimizations =
-      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
-                          optimizations_enabled, optimizations_disabled,
-                          optimizations_default, hash_func);
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
 
   int tested_times = 0;
-  if (opt_outs_raw.empty()) {
+  if (opt_outs.empty()) {
     EXPECT_THAT(optimizations,
                 UnorderedElementsAre("exp1", "exp3", "exp4", "exp6"));
     tested_times++;
-  } else if (opt_outs_raw == "exp1,exp3") {
+  } else if (opt_outs == "exp1,exp3") {
     EXPECT_THAT(optimizations, UnorderedElementsAre("exp1", "exp4", "exp6"));
     tested_times++;
   }
   EXPECT_EQ(tested_times, 1);
+
+  if (!opt_ins.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
+  }
+  if (!opt_outs.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsConflictTest,
                          ::testing::Combine(::testing::Values("", "exp2"),
                                             ::testing::Values("", "exp1,exp3"),
                                             ::testing::Values(10, 50, 90)));
+
+class SelectOptimizationsJobTest
+    : public ::testing::TestWithParam<std::tuple<string, string, string>> {};
+
+TEST_P(SelectOptimizationsJobTest, DatasetUtils) {
+  const string job_name = std::get<0>(GetParam());
+  const string opt_ins = std::get<1>(GetParam());
+  const string opt_outs = std::get<2>(GetParam());
+  if (!opt_ins.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_IN", opt_ins.c_str(), 1);
+  }
+  if (!opt_outs.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_OUT", opt_outs.c_str(), 1);
+  }
+  std::vector<tstring> optimizations_enabled = {"exp4"}, optimizations_disabled,
+                       optimizations_default = {"exp2"};
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0}, {"exp2", 100}, {"exp3", 100}};
+  auto hash_func = [](const string& str) { return Hash64(str); };
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
+
+  int tested_times = 0;
+  if (job_name.empty()) {
+    EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4"));
+    tested_times++;
+  } else if (opt_ins.empty()) {
+    if (opt_outs.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4"));
+      tested_times++;
+    } else if (opt_outs == "exp2,exp3") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4"));
+      tested_times++;
+    }
+  } else if (opt_ins == "exp1") {
+    if (opt_outs.empty()) {
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp1", "exp2", "exp3", "exp4"));
+      tested_times++;
+    } else if (opt_outs == "exp2,exp3") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp1", "exp4"));
+      tested_times++;
+    }
+  }
+  EXPECT_EQ(tested_times, 1);
+
+  if (!opt_ins.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
+  }
+  if (!opt_outs.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsJobTest,
+                         ::testing::Combine(::testing::Values("", "job"),
+                                            ::testing::Values("", "exp1"),
+                                            ::testing::Values("",
+                                                              "exp2,exp3")));
 
 }  // namespace
 }  // namespace data

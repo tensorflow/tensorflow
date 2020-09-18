@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <chrono>  // NOLINT
 
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 
@@ -36,6 +37,7 @@ xla::Status DistributedRuntimeClient::Connect(
   ctx.set_deadline(absl::ToChronoTime(absl::Now() + rpc_timeout_));
   ConnectRequest request;
   request.set_protocol_version(kDistributedRuntimeProtocolVersion);
+  request.set_timeout_milliseconds(absl::ToInt64Milliseconds(rpc_timeout_));
   *request.mutable_local_topology() = local_topology;
   VLOG(10) << "Connect: " << request.DebugString();
   ConnectResponse response;

@@ -27,7 +27,7 @@ include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
   let name = "mhlo";
-  let cppNamespace = "mhlo";
+  let cppNamespace = "::mlir::mhlo";
 }
 
 class HLO_Op<string mnemonic, list<OpTrait> traits> :
@@ -67,8 +67,7 @@ def HLO_ConstOp : HLO_Op<"constant",
     "OpBuilder &builder, OperationState &result, Attribute value"
   >];
 
-  let printer = [{ return Print(*this, &p); }];
-  let parser = [{ return ParseConstOp(&parser, &result); }];
+  let assemblyFormat = "attr-dict $value";
 
   let hasFolder = 1;
 
@@ -225,11 +224,14 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
 
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
-    BASE_HLO_NotOp;
+    BASE_HLO_NotOp {
+}
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
-    BASE_HLO_NegOp;
+    BASE_HLO_NegOp {
+  let hasFolder = 1;
+}
 
 def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
@@ -263,7 +265,9 @@ def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
 
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
-    BASE_HLO_SqrtOp;
+    BASE_HLO_SqrtOp {
+  let hasFolder = 1;
+}
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     [NoSideEffect, SameOperandsAndResultType],
@@ -380,6 +384,8 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
     HLO_PredOrIntTensor:$lhs,
     HLO_PredOrIntTensor:$rhs
   );
+
+  let hasFolder = 1;
 }
 
 def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and">, BASE_HLO_AndOp;
@@ -492,9 +498,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
 def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
       BASE_HLO_ReplicaIdOp {
-  // TODO(prakalps): The output should unsigned 32-bit integer but mlir does
-  // not differentiate between signed and unsigned int.
-  let results = (outs I32Tensor);
+  let results = (outs TensorOf<[UI32]>);
 }
 
 //===----------------------------------------------------------------------===//
@@ -671,11 +675,13 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
                   "OpBuilder &builder, OperationState &results, "
                   "ValueRange values">];
 
+  let hasCanonicalizer = 1;
 }
 
-def HLO_CompareOp: HLO_Op<"compare",
-      [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]>,
-      BASE_HLO_CompareOp {
+def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
+    SameOperandsAndResultShape,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>]>, BASE_HLO_CompareOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -1067,6 +1073,8 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasCanonicalizer = 1;
 }
 
 def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
@@ -1079,6 +1087,8 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
   // XLA semantics is available. This limitation is because of the current XLA
   // implementation.
   let results = (outs I32Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1143,7 +1153,10 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
 }
 
 // TODO(jpienaar): Add broadcastable trait.
-def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]>, BASE_HLO_SelectOp {
+def HLO_SelectOp: HLO_Op<"select", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>, DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    ]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,
     HLO_Tensor:$on_true,
@@ -1151,6 +1164,8 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, DeclareOpInterfaceMethods<Infe
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
@@ -1329,8 +1344,9 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 }
 
 //===----------------------------------------------------------------------===//
-// MHLO RngUniform Operator.
+// MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
+
 def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
@@ -1352,6 +1368,19 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
 
   let results = (outs HLO_FpTensor);
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>, BASE_HLO_RngBitGeneratorOp {
+  let arguments = (ins
+    // TODO(jpienaar): This could be an enum instead.
+    I32Attr:$rng_algorithm,
+    HLO_IntOrFpTensor:$initial_state
+  );
+
+  let results = (outs HLO_TensorOrTuple:$result);
+
+  // TODO(jpienaar): This should not be needed.
   let hasCustomHLOConverter = 1;
 }
 

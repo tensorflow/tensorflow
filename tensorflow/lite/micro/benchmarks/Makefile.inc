@@ -1,7 +1,3 @@
-$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-$(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
-
-
 KEYWORD_BENCHMARK_SRCS := \
 tensorflow/lite/micro/benchmarks/keyword_benchmark.cc \
 tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.cc

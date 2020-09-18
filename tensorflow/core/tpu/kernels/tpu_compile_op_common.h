@@ -99,15 +99,6 @@ class TpuCompileOpKernelCommon {
       const std::vector<TensorShape>& arg_shapes,
       TpuProgramGroupInterface* tpu_program_group) = 0;
 
-  // Computes shapes for each argument. Uses both the static shape from the
-  // metadata, and the dynamic shapes where the static shape is not
-  // defined. There must be one dynamic_shape for each argument with a
-  // partially defined shape, in index order.
-  static Status ComputeArgumentShapes(
-      const tpu::TPUCompileMetadataProto& metadata,
-      const std::vector<TensorShape>& dynamic_shapes,
-      std::vector<TensorShape>* arg_shapes);
-
   // Performs shape inference on `computation`, filling shape_info with operator
   // shapes. The shapes of the _Arg nodes are taken from `arg_shapes`.
   static Status RunShapeInferenceOnComputation(

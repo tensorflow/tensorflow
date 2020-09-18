@@ -23,6 +23,7 @@ limitations under the License.
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
+#include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
@@ -186,6 +187,13 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_pair(qr.q, qr.r);
       },
       py::arg("operand"), py::arg("full_matrices"));
+  ops.def(
+      "LU",
+      [](XlaOp a) -> StatusOr<std::tuple<XlaOp, XlaOp, XlaOp>> {
+        LuDecompositionResult lu = LuDecomposition(a);
+        return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
+      },
+      py::arg("operand"));
   ops.def(
       "Eigh",
       [](XlaOp a, bool lower, int64 max_iter,

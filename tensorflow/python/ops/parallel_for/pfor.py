@@ -46,6 +46,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
@@ -2275,7 +2276,11 @@ def _convert_gather(pfor_input):
         # it must be picking up all the rows of param.
         return wrap(param, True)
 
-    if batch_dims > 0:
+    if batch_dims != 0:
+      # Convert `batch_dims` to its positive equivalent if necessary.
+      batch_dims_pos = batch_dims
+      if batch_dims < 0:
+        batch_dims_pos += array_ops.rank(indices)
       # In order to maintain
       #   indices.shape[:batch_dims] == params.shape[:batch_dims]
       # with stacked indices, we move the first dimension of `indices` to the
@@ -2283,8 +2288,9 @@ def _convert_gather(pfor_input):
       # inserted into the shape of `output` at the `axis` dimension, which is
       # then transposed to the front (below).
       order = array_ops.concat([
-          (list(range(1, batch_dims + 1)) + [0]),
-          math_ops.range(batch_dims + 1, array_ops.rank(indices))], axis=0)
+          math_ops.range(1, batch_dims_pos + 1),
+          [0],
+          math_ops.range(batch_dims_pos + 1, array_ops.rank(indices))], axis=0)
       indices = array_ops.transpose(indices, order)
 
     output = array_ops.gather(
@@ -2310,7 +2316,7 @@ def _convert_gather(pfor_input):
     output = array_ops.gather(
         param, indices,
         axis=array_ops.where(axis >= 0, axis + 1, axis),
-        batch_dims=batch_dims + 1)
+        batch_dims=(batch_dims + 1 if batch_dims >= 0 else batch_dims))
     return wrap(output, True)
 
 
@@ -3658,6 +3664,46 @@ def _convert_tensor_array_set_item(pfor_input):
       item = _stack(item, pfor_input.pfor.loop_len_vector).t
     handle = list_ops.tensor_list_set_item(handle, index, item)
     return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListConcatV2")
+def _convert_tensor_list_concat_v2(pfor_input):
+  input_handle = pfor_input.stacked_input(0)
+  element_shape = pfor_input.unstacked_input(1)
+  leading_dims = pfor_input.unstacked_input(2)
+  element_dtype = pfor_input.get_attr("element_dtype")
+
+  handle = _untile_variant(input_handle)
+  length = list_ops.tensor_list_length(handle)
+  # Note that element_shape attribute can have incomplete shapes. This doesn't
+  # seem to work well when creating another list and then doing a concat on it.
+  # Hence we try to find the dynamic shape here.
+  element_shape = control_flow_ops.cond(
+      length > 0, lambda: array_ops.shape(
+          list_ops.tensor_list_get_item(handle, 0, element_dtype, None)),
+      lambda: constant_op.constant([0, 0], dtype=dtypes.int32))
+  # The code below creates a copy of the list with each elements' first two
+  # dimensions transposed.
+  new_element_shape = array_ops.concat(
+      [element_shape[1:2], element_shape[0:1], element_shape[2:]], axis=0)
+
+  # Create a new TensorList with elements transposed.
+  def _transpose_elem(i, h):
+    elem = list_ops.tensor_list_get_item(handle, i, element_dtype, None)
+    elem = _transpose_first_two_dims(elem)
+    return i + 1, list_ops.tensor_list_set_item(h, i, elem)
+
+  new_handle = list_ops.tensor_list_reserve(new_element_shape, length,
+                                            element_dtype)
+  new_handle = control_flow_ops.while_loop(lambda i, _: i < length,
+                                           _transpose_elem, [0, new_handle])[1]
+  output, lengths = gen_list_ops.tensor_list_concat_v2(
+      input_handle=new_handle,
+      element_dtype=element_dtype,
+      element_shape=new_element_shape,
+      leading_dims=leading_dims)
+  output = _transpose_first_two_dims(output)
+  return wrap(output, True), wrap(lengths, False)
 
 
 @RegisterPFor("TensorListStack")

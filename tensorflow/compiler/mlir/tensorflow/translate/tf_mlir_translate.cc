@@ -219,22 +219,18 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
         if (auto attr = inst.getAttrOfType<mlir::ElementsAttr>(attr_id)) {
           mlir::Attribute rand_val;
           mlir::Type element_type = attr.getType().getElementType();
+          if (element_type.isa<mlir::IntegerType>()) {
+            rand_val = mlir::IntegerAttr::get(element_type, std::rand());
+          } else if (element_type.isF16() || element_type.isF32() ||
+                     element_type.isF64()) {
+            rand_val = mlir::FloatAttr::get(element_type,
+                                            std::rand() * 1.0 / RAND_MAX);
 
-          switch (element_type.getKind()) {
-            case mlir::StandardTypes::Integer:
-              rand_val = mlir::IntegerAttr::get(element_type, std::rand());
-              break;
-            case mlir::StandardTypes::F16:
-            case mlir::StandardTypes::F32:
-            case mlir::StandardTypes::F64:
-              rand_val = mlir::FloatAttr::get(element_type,
-                                              std::rand() * 1.0 / RAND_MAX);
-              break;
-            default:
-              inst.emitWarning()
-                  << "Skipping splat conversion for "
-                  << "an unsupported attribute type " << element_type;
-              continue;
+          } else {
+            inst.emitWarning()
+                << "Skipping splat conversion for "
+                << "an unsupported attribute type " << element_type;
+            continue;
           }
           auto new_attr =
               mlir::DenseElementsAttr::get(attr.getType(), rand_val);

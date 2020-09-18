@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -73,7 +75,7 @@ class CollectiveOpKernel : public AsyncOpKernel {
                 << " group " << col_params_.group.group_key << " instance "
                 << col_params_.instance.instance_key;
         col_exec->CompleteParamsAsync(
-            c->device()->name(), &col_params_, c->cancellation_manager(),
+            c->device()->attributes(), &col_params_, c->cancellation_manager(),
             [this, c, done](const Status& s) {
               if (s.ok()) {
                 col_params_.instance.impl_details.dependencies = dependencies_;
@@ -538,7 +540,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
               << " group " << col_params->group.group_key << " instance "
               << col_params->instance.instance_key;
       col_exec->CompleteParamsAsync(
-          c->device()->name(), col_params.get(), c->cancellation_manager(),
+          c->device()->attributes(), col_params.get(),
+          c->cancellation_manager(),
           [c, done = std::move(done), col_params, col_exec](const Status& s) {
             if (s.ok()) {
               auto actual_done = [c, group_key = col_params->group.group_key,
@@ -579,6 +582,136 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV2").Device(DEVICE_CPU),
                         CollectiveReduceV2OpKernel);
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV2").Device(DEVICE_GPU),
                         CollectiveReduceV2OpKernel);
+
+class CollectiveGatherV2OpKernel : public AsyncOpKernel {
+ public:
+  explicit CollectiveGatherV2OpKernel(OpKernelConstruction* c)
+      : AsyncOpKernel(c), device_type_(DEVICE_DEFAULT) {
+    OP_REQUIRES_OK(c, c->GetAttr("T", &data_type_));
+    OP_REQUIRES_OK(c, c->GetAttr("communication_hint", &communication_hint_));
+    OP_REQUIRES_OK(c, c->GetAttr("timeout_seconds", &timeout_seconds_));
+    name_ = strings::StrCat(c->def().name(), ": GatherV2");
+    device_type_ = c->device_type();
+    VLOG(2) << "CollectiveGatherV2 " << this << " name " << name_
+            << " communication_hint " << communication_hint_;
+  }
+
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            name_),
+        done);
+    const Tensor& input = c->input(0);
+    const Tensor& group_size = c->input(1);
+    const Tensor& group_key = c->input(2);
+    const Tensor& instance_key = c->input(3);
+    OP_REQUIRES_ASYNC(c, group_size.dims() == 0,
+                      errors::InvalidArgument(
+                          "Unexpected dimensions on input group_size, got ",
+                          group_size.shape().DebugString()),
+                      done);
+    OP_REQUIRES_ASYNC(c, group_key.dims() == 0,
+                      errors::InvalidArgument(
+                          "Unexpected dimensions on input group_key, got ",
+                          group_key.shape().DebugString()),
+                      done);
+    OP_REQUIRES_ASYNC(c, instance_key.dims() == 0,
+                      errors::InvalidArgument(
+                          "Unexpected dimensions on input instance_key, got ",
+                          instance_key.shape().DebugString()),
+                      done);
+
+    auto col_params = new CollectiveParams();
+    col_params->name = name_;
+    col_params->group.device_type = device_type_;
+    col_params->group.group_size = group_size.unaligned_flat<int32>()(0);
+    OP_REQUIRES(
+        c, col_params->group.group_size > 0,
+        errors::InvalidArgument("group_size must be positive integer but got ",
+                                col_params->group.group_size));
+    col_params->group.group_key = group_key.unaligned_flat<int32>()(0);
+    col_params->instance.type = GATHER_COLLECTIVE;
+    col_params->instance.instance_key = instance_key.unaligned_flat<int32>()(0);
+    col_params->instance.data_type = data_type_;
+    col_params->instance.impl_details.communication_hint = communication_hint_;
+    col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
+    VLOG(1) << "CollectiveGatherV2 group_size " << col_params->group.group_size
+            << " group_key " << col_params->group.group_key << " instance_key "
+            << col_params->instance.instance_key;
+
+    auto output_shape = input.shape();
+    output_shape.set_dim(
+        0, output_shape.dim_size(0) * col_params->group.group_size);
+    col_params->instance.shape = output_shape;
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK_ASYNC(
+        c, c->allocate_output(0, col_params->instance.shape, &output), done);
+
+    auto done_with_cleanup = [col_params, done = std::move(done)]() {
+      delete col_params;
+      done();
+    };
+
+    // Resolve the collective params.
+    // Schedule the `CompleteParamsAsync` call on a work queue that can handle
+    // blocking work because it's not guaranteed that this call cannot block.
+    c->collective_executor()->RunClosure([c,
+                                          done = std::move(done_with_cleanup),
+                                          col_params, col_exec]() {
+      VLOG(1) << "CollectiveGatherV2 CompleteParams for collective "
+              << col_params->name << " device " << c->device()->name()
+              << " group " << col_params->group.group_key << " instance "
+              << col_params->instance.instance_key;
+      col_exec->CompleteParamsAsync(
+          c->device()->attributes(), col_params, c->cancellation_manager(),
+          [c, done = std::move(done), col_params, col_exec](const Status& s) {
+            if (s.ok()) {
+              auto actual_done = [c, group_key = col_params->group.group_key,
+                                  instance_key =
+                                      col_params->instance.instance_key,
+                                  done = std::move(done)](const Status& s) {
+                VLOG(1) << "CollectiveGatherV2 ExecuteAsync done for "
+                           "collective "
+                        << c->op_kernel().name() << " device "
+                        << c->device()->name() << " group " << group_key
+                        << " instance " << instance_key << " status " << s;
+                OP_REQUIRES_OK_ASYNC(c, s, done);
+                done();
+              };
+              VLOG(1) << "CollectiveGatherV2 ExecuteAsync start for "
+                         "collective "
+                      << col_params->name << " device " << c->device()->name()
+                      << " group " << col_params->group.group_key
+                      << " instance " << col_params->instance.instance_key;
+              col_exec->ExecuteAsync(
+                  c, *col_params,
+                  CollectiveKey(c, col_params->group.group_key,
+                                col_params->instance.instance_key),
+                  actual_done);
+            } else {
+              c->SetStatus(s);
+              done();
+            }
+          });
+    });
+  }
+
+ private:
+  DataType data_type_;
+  string communication_hint_;
+  float timeout_seconds_;
+  DeviceType device_type_;
+  string name_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("CollectiveGatherV2").Device(DEVICE_CPU),
+                        CollectiveGatherV2OpKernel);
+REGISTER_KERNEL_BUILDER(Name("CollectiveGatherV2").Device(DEVICE_GPU),
+                        CollectiveGatherV2OpKernel);
 
 }  // namespace
 }  // namespace tensorflow

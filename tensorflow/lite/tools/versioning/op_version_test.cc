@@ -217,6 +217,12 @@ TEST(OpVersionTest, VersioningSpaceToDepthTest) {
 TEST(OpVersionTest, VersioningSliceTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_SLICE,
       .input_types = std::vector<TensorType>{TensorType_STRING},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
@@ -588,6 +594,12 @@ TEST(OpVersionTest, VersioningTileOperatorTest) {
 TEST(OpVersionTest, VersioningTransposeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE,
       .input_types = std::vector<TensorType>{TensorType_BOOL},
   };
   fake_op_sig.options.single_input_op.num_dims = 5;
@@ -709,5 +721,31 @@ TEST(OpVersionTest, VersioningResizeNearestNeighborTest) {
 
   fake_op_sig.options.resize.align_corners = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  // int16 input is version 4.
+  fake_op_sig = {
+      .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+}
+TEST(OpVersionTest, VersioningAbsTest) {
+  // Default.
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_ABS,
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // int8 input is version 2.
+  fake_op_sig = {
+      .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 }  // namespace tflite

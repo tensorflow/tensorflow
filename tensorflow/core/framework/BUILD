@@ -31,7 +31,7 @@ package(
 )
 
 # Export all header files for which we do not yet provide a dedicated build
-# rule. This avoids breading all the rules in tensorflow/core/BUILD.
+# rule. This avoids breaking all the rules in tensorflow/core/BUILD.
 exports_files(
     srcs = [
         "allocator_registry.h",
@@ -68,6 +68,7 @@ exports_files(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.h",
         "run_handler_util.h",
         "session_state.h",
@@ -214,6 +215,7 @@ filegroup(
         "shared_ptr_variant.h",
         "stats_aggregator.h",
         "tensor.h",
+        "tensor_key.h",
         "tensor_reference.h",
         "tensor_shape.h",
         "tensor_slice.h",
@@ -293,6 +295,7 @@ filegroup(
         "resource_handle.h",
         "tensor.cc",
         "tensor.h",
+        "tensor_key.h",
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
@@ -383,6 +386,7 @@ filegroup(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.cc",
         "run_handler.h",
         "run_handler_util.cc",
@@ -600,6 +604,7 @@ cc_library(
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
@@ -612,7 +617,6 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
@@ -1042,6 +1046,7 @@ tf_cc_tests(
         "rendezvous_test.cc",
         "resource_mgr_test.cc",
         "resource_op_kernel_test.cc",
+        "selective_registration_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
         "tensor_shape_test.cc",
@@ -1095,9 +1100,9 @@ tf_cc_tests(
     ],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "op_gen_lib.h",
         "rendezvous.h",
     ],
@@ -1501,5 +1506,8 @@ tf_proto_library(
         ":types_proto",
         ":variable_proto",
         ":versions_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )

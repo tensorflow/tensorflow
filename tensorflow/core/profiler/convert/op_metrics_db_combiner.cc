@@ -25,11 +25,20 @@ namespace {
 
 using OperationType = OpMetrics::MemoryAccessed::OperationType;
 
-// Copies OpMetrics symbol data from src to dst.
-void CopyOpMetricsSymbolData(const OpMetrics& src, OpMetrics* dst) {
+void CombinePrecisionStats(const PrecisionStats& src, PrecisionStats* dst) {
+  dst->set_compute_16bit_ps(src.compute_16bit_ps() + dst->compute_16bit_ps());
+  dst->set_compute_32bit_ps(src.compute_32bit_ps() + dst->compute_32bit_ps());
+}
+
+}  // namespace
+
+void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst) {
   DCHECK(dst != nullptr);
   DCHECK_EQ(src.hlo_module_id(), dst->hlo_module_id());
   DCHECK_EQ(src.name(), dst->name());
+  if (dst->long_name().empty()) {
+    dst->set_long_name(src.long_name());
+  }
   if (dst->category().empty()) {
     dst->set_category(src.category());
   }
@@ -46,13 +55,6 @@ void CopyOpMetricsSymbolData(const OpMetrics& src, OpMetrics* dst) {
     *dst->mutable_children() = src.children();
   }
 }
-
-void CombinePrecisionStats(const PrecisionStats& src, PrecisionStats* dst) {
-  dst->set_compute_16bit_ps(src.compute_16bit_ps() + dst->compute_16bit_ps());
-  dst->set_compute_32bit_ps(src.compute_32bit_ps() + dst->compute_32bit_ps());
-}
-
-}  // namespace
 
 void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   DCHECK(dst != nullptr);
@@ -115,7 +117,7 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
   for (const auto& src_metrics : src.metrics_db()) {
     auto* dst_metrics = LookupOrInsertNewOpMetrics(src_metrics.hlo_module_id(),
                                                    src_metrics.name());
-    CopyOpMetricsSymbolData(src_metrics, dst_metrics);
+    CopyOpMetricsMetadata(src_metrics, dst_metrics);
     CombineOpMetrics(src_metrics, dst_metrics);
   }
 }

@@ -43,14 +43,20 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   return xla_shaped_buffer;
 }
 
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem) {
+SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem,
+                               bool aliased) {
   SE_MaybeOwningDeviceMemory se_mem;
   se_mem.owned = mem.HasOwnership();
   se_mem.memory = ApiConverter::ToC(mem.AsDeviceMemoryBase());
   if (mem.HasOwnership()) {
-    auto owned = mem.Release().value();
-    se_mem.device_ordinal = owned.device_ordinal();
-    se_mem.allocator = ApiConverter::ToC(owned.allocator());
+    const stream_executor::OwningDeviceMemory* owned =
+        mem.AsOwningDeviceMemory();
+    se_mem.device_ordinal = owned->device_ordinal();
+    se_mem.allocator = ApiConverter::ToC(owned->allocator());
+    if (!aliased) {
+      // Underlying buffer is owned by se_mem now.
+      mem.Release()->Release();
+    }
   } else {
     se_mem.allocator =
         ToC(static_cast<stream_executor::DeviceMemoryAllocator*>(nullptr));
@@ -209,7 +215,7 @@ void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer) {
 }
 
 void Free(XLA_Shape* shape) { delete[] shape->bytes; }
-void Free(XLA_ShapeIndex*) {}
+void Free(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
 void Free(SE_DeviceMemoryBase*) {}
 
 void Free(XLA_Literal* c_literal) {

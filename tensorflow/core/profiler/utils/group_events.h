@@ -49,6 +49,15 @@ struct ContextInfo {
   uint64 id;
 };
 
+struct GroupMetadata {
+  std::string name;
+  std::string model_id;  // inference only.
+  std::vector<int64> parents;
+  std::vector<int64> children;
+};
+
+using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
+
 // A wrapper for XEvent with parent and children pointers. Through these
 // pointers, a tree of EventNode is formed.
 class EventNode {
@@ -58,13 +67,13 @@ class EventNode {
 
   EventNode(const EventNode& event_node);
 
-  EventNode* GetParent() const { return parent_; }
+  const std::vector<EventNode*>& GetParents() const { return parents_; }
 
   const std::vector<EventNode*>& GetChildren() const { return children_; }
 
   void AddChild(EventNode* child) {
     children_.push_back(child);
-    child->parent_ = this;
+    child->parents_.push_back(this);
   }
 
   absl::optional<int64> GetGroupId() const { return group_id_; }
@@ -72,7 +81,7 @@ class EventNode {
   std::string GetGroupName() const;
 
   // Sets group_id for this node and its descendants.
-  void PropagateGroupId(int64 group_id);
+  void PropagateGroupId(int64 group_id, GroupMetadataMap* group_metadata_map);
 
   const XPlaneVisitor& GetPlaneVisitor() const { return *plane_; }
 
@@ -82,6 +91,10 @@ class EventNode {
 
   void AddStepName(absl::string_view step_name);
 
+  // Add a helper stat, "selected_group_ids", with group_ids of the groups
+  // connected to this event's group.
+  void AddSelectedGroupIds(const GroupMetadataMap& group_metadata_map);
+
   void SetIsEager(bool is_eager);
 
   // Returns true if this event is part of eagerly executed op.
@@ -89,8 +102,8 @@ class EventNode {
 
   bool IsNestedIn(EventNode* parent);
 
-  // Returns the closest parent of the given event type.
-  EventNode* FindParent(int64 event_type) const;
+  // Returns the closest parent (including itself) of the given event type.
+  const EventNode* FindParent(int64 event_type) const;
 
   absl::optional<ContextInfo> GetProducerContext() const {
     return producer_context_;
@@ -113,7 +126,7 @@ class EventNode {
   XEventVisitor visitor_;
   XLine* raw_line_;
   XEvent* raw_event_;
-  EventNode* parent_ = nullptr;
+  std::vector<EventNode*> parents_;
   std::vector<EventNode*> children_;
   absl::optional<int64> group_id_;
   absl::optional<ContextInfo> producer_context_;
@@ -126,17 +139,10 @@ using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
 
-struct GroupMetadata {
-  std::string name;
-  std::string model_id;  // inference only.
-};
-
-using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
-
 using EventList = std::vector<EventNode*>;
 
 struct ContextGroup {
-  EventNode* producer = nullptr;
+  std::vector<EventNode*> producers;
   std::vector<EventNode*> consumers;
 };
 

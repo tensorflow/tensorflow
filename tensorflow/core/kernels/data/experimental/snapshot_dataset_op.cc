@@ -63,6 +63,15 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kCompression;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderFunc;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kShardFunc;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kReaderFuncTarguments;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kShardFuncTarguments;
+/* static */ constexpr const int SnapshotDatasetV2Op::kFileFormatVersion;
+
 // ==== Snapshot Implementation ====
 
 /* The current snapshot on-disk layout is as follows:
@@ -112,6 +121,8 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
   string DebugString() const override;
 
   int64 Cardinality() const override;
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
 
   Status CheckExternalState() const override;
 
@@ -236,11 +247,12 @@ class SnapshotDatasetV2Op::Dataset::Iterator::Writer
   void SignalEOF(bool mark_closed) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
+  mutex writer_status_mu_;
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
   absl::flat_hash_map<int64, std::unique_ptr<snapshot_util::AsyncWriter>>
       writers_ TF_GUARDED_BY(mu_);
-  Status writer_status_ TF_GUARDED_BY(mu_);
+  Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
   bool writers_closed_ TF_GUARDED_BY(mu_);
 
   uint64 run_id_ TF_GUARDED_BY(mu_);
@@ -315,6 +327,12 @@ string SnapshotDatasetV2Op::Dataset::DebugString() const {
 
 int64 SnapshotDatasetV2Op::Dataset::Cardinality() const {
   return input_->Cardinality();
+}
+
+Status SnapshotDatasetV2Op::Dataset::InputDatasets(
+    std::vector<const DatasetBase*>* inputs) const {
+  inputs->push_back(input_);
+  return Status::OK();
 }
 
 Status SnapshotDatasetV2Op::Dataset::CheckExternalState() const {
@@ -664,9 +682,12 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
     }
 
     // Writers have either encountered an error or are closed.
-    if (!writer_status_.ok() || writers_closed_) {
-      *end_of_sequence = true;
-      return writer_status_;
+    {
+      mutex_lock wsl(writer_status_mu_);
+      if (!writer_status_.ok() || writers_closed_) {
+        *end_of_sequence = true;
+        return writer_status_;
+      }
     }
 
     TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -674,7 +695,10 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
     // Finalize metadata file when we are at the end of the iterator.
     if (*end_of_sequence) {
       SignalEOF(/*mark_closed=*/true);
-      TF_RETURN_IF_ERROR(writer_status_);
+      {
+        mutex_lock wsl(writer_status_mu_);
+        TF_RETURN_IF_ERROR(writer_status_);
+      }
       return WriteMetadataFile(ctx->env(), /*finalized=*/true);
     }
 
@@ -690,7 +714,8 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
           current_checkpoint_id_, dataset()->compression_, kFileFormatVersion,
           dataset()->output_dtypes(), [this](Status s) {
             if (!s.ok()) {
-              mutex_lock l(mu_);
+              LOG(ERROR) << "AsyncWriter in snapshot writer failed: " << s;
+              mutex_lock l(writer_status_mu_);
               writer_status_ = s;
             }
           });
@@ -1017,6 +1042,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -1122,9 +1153,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       // Initialize at first and at that point we don't know which iterator
       // (Reader / Writer / Passthrough) we need to restore as this info is part
       // of the checkpoint.
-      Status Initialize(IteratorContext* ctx) override {
-        return Status::OK();
-      }
+      Status Initialize(IteratorContext* ctx) override { return Status::OK(); }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,

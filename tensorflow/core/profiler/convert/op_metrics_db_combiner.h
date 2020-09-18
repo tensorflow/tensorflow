@@ -23,7 +23,10 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// Combines the src OpMetrics into the dst OpMetrics.
+// Copies OpMetrics metadata (e.g., category, provenance) from src to dst.
+void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst);
+
+// Combines OpMetrics data (e.g., occurrences, time) from src into dst.
 void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst);
 
 // Combines the memory access breakdown.

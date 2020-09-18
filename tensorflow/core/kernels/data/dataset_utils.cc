@@ -52,6 +52,7 @@ constexpr std::array<const char*, 3> kOpsWithSeed = {
 
 constexpr char kSeedInputName[] = "seed";
 constexpr char kSeed2InputName[] = "seed2";
+constexpr char kSeedGeneratorInputName[] = "seed_generator";
 constexpr char kComponent[] = "component";
 constexpr char kNumElements[] = "num_elements";
 constexpr char kNumComponents[] = "num_components";
@@ -60,7 +61,9 @@ template <std::size_t SIZE>
 bool IsNodeOfType(const NodeDef& node,
                   const std::array<const char*, SIZE>& op_types) {
   for (const auto& type : op_types) {
-    if (node.op() == type) return true;
+    if (MatchesAnyVersion(type, node.op())) {
+      return true;
+    }
   }
   return false;
 }
@@ -111,7 +114,8 @@ Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
       if (reg->op_def.input_arg_size() > i) {
         const std::string input_arg_name = reg->op_def.input_arg(i).name();
         if (input_arg_name == kSeedInputName ||
-            input_arg_name == kSeed2InputName) {
+            input_arg_name == kSeed2InputName ||
+            input_arg_name == kSeedGeneratorInputName) {
           VLOG(2) << "Ignoring arg: " << input_arg_name
                   << " from node: " << node.name();
           *result = true;
@@ -614,34 +618,35 @@ VariantTensorDataReader::VariantTensorDataReader(
   }
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
+Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) const {
   return ReadScalarInternal(key, val);
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, tstring* val) {
+Status VariantTensorDataReader::ReadScalar(StringPiece key,
+                                           tstring* val) const {
   return ReadScalarInternal(key, val);
 }
 
-Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
+Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) const {
   return ReadTensorInternal(key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           int64* val) {
+                                           int64* val) const {
   return ReadScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           tstring* val) {
+                                           tstring* val) const {
   return ReadScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensor(StringPiece name, StringPiece key,
-                                           Tensor* val) {
+                                           Tensor* val) const {
   return ReadTensorInternal(name, key, val);
 }
 
-bool VariantTensorDataReader::Contains(StringPiece key) {
+bool VariantTensorDataReader::Contains(StringPiece key) const {
   string name;
   if (!GetIteratorName(key, &name).ok()) {
     return false;
@@ -649,20 +654,26 @@ bool VariantTensorDataReader::Contains(StringPiece key) {
   return Contains(name, key);
 }
 
-bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) {
+bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) const {
   string name(n);
-  return map_[name].find(string(key)) != map_[name].end();
+  auto it = map_.find(name);
+  if (it == map_.end()) {
+    return false;
+  }
+  const auto& bucket = it->second;
+  return bucket.find(string(key)) != bucket.end();
 }
 
 template <typename T>
-Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
+Status VariantTensorDataReader::ReadScalarInternal(StringPiece key,
+                                                   T* val) const {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return ReadScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
-                                                   Tensor* val) {
+                                                   Tensor* val) const {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return ReadTensorInternal(name, key, val);
@@ -670,23 +681,36 @@ Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
 
 template <typename T>
 Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
-                                                   StringPiece key, T* val) {
+                                                   StringPiece key,
+                                                   T* val) const {
   string name(n);
-  if (map_[name].find(string(key)) == map_[name].end()) {
+  auto it = map_.find(name);
+  if (it == map_.end()) {
+    return errors::NotFound(name);
+  }
+  const auto& bucket = it->second;
+  auto key_it = bucket.find(string(key));
+  if (key_it == bucket.end()) {
     return errors::NotFound(key);
   }
-  *val = data_[name]->tensors(map_[name][string(key)]).scalar<T>()();
+  *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
   return Status::OK();
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(StringPiece n,
                                                    StringPiece key,
-                                                   Tensor* val) {
+                                                   Tensor* val) const {
   string name(n);
-  if (map_[name].find(string(key)) == map_[name].end()) {
+  auto it = map_.find(name);
+  if (it == map_.end()) {
+    return errors::NotFound(name);
+  }
+  const auto& bucket = it->second;
+  auto key_it = bucket.find(string(key));
+  if (key_it == bucket.end()) {
     return errors::NotFound(key);
   }
-  *val = data_[name]->tensors(map_[name][string(key)]);
+  *val = data_.at(name)->tensors(key_it->second);
   return Status::OK();
 }
 
@@ -899,20 +923,53 @@ std::string DeterminismPolicy::String() const {
   }
 }
 
-bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match) {
-  // Matches all versions of an op by appending an optional version suffix
-  auto expected_re = strings::StrCat(RE2::QuoteMeta(op_prefix), "(V\\d+)?");
-  return RE2::FullMatch(op_to_match, expected_re);
+bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
+  if (!absl::StartsWith(op_to_match, op_prefix)) {
+    return false;
+  }
+  if (op_to_match.length() == op_prefix.length()) {
+    return true;
+  }
+  size_t index = op_to_match.length() - 1;
+  while (isdigit(op_to_match[index])) {
+    index--;
+  }
+  return (op_to_match[index] == 'V') && (op_prefix.length() == index);
 }
 
 std::vector<tstring> SelectOptimizations(
-    const string& job_name, const string& opt_ins_raw,
-    const string& opt_outs_raw,
+    const string& job_name,
     const absl::flat_hash_map<string, uint64>& live_experiments,
     const std::vector<tstring>& optimizations_enabled,
     const std::vector<tstring>& optimizations_disabled,
     const std::vector<tstring>& optimizations_default,
     std::function<uint64(const string&)> hash_func) {
+  std::vector<tstring> optimizations;
+  if (job_name.empty()) {
+    // If `job_name` is empty, apply the enabled and default optimizations
+    // directly.
+    optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
+                         optimizations_enabled.end());
+    optimizations.insert(optimizations.end(), optimizations_default.begin(),
+                         optimizations_default.end());
+    return optimizations;
+  }
+
+  // If `job_name` is non-empty, we determine which optimizations to apply to
+  // this job based on the enable/disable settings from tf.data.Options, the
+  // opt in/out settings from environment variables, and rollout condition from
+  // `live_experiments`.
+  const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
+  const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  string opt_ins_raw;
+  if (opt_ins_raw_cs != nullptr) {
+    opt_ins_raw = string(opt_ins_raw_cs);
+  }
+  string opt_outs_raw;
+  if (opt_outs_raw_cs != nullptr) {
+    opt_outs_raw = string(opt_outs_raw_cs);
+  }
+
   // Creates a set of optimizations.
   absl::flat_hash_set<tstring> optimizations_set;
 
@@ -1018,21 +1075,19 @@ std::vector<tstring> SelectOptimizations(
     }
   }
 
-  // Log the experiments that will be applied.
-  if (VLOG_IS_ON(1)) {
-    for (auto& pair : live_experiments) {
-      string experiment = pair.first;
-      if (std::find(optimizations_set.begin(), optimizations_set.end(),
-                    experiment) != optimizations_set.end()) {
-        VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
-      }
-    }
-  }
-
-  std::vector<tstring> optimizations;
   optimizations.insert(optimizations.end(), optimizations_set.begin(),
                        optimizations_set.end());
   return optimizations;
+}
+
+void StripDevicePlacement(FunctionDefLibrary* library) {
+  for (auto& function : (*library->mutable_function())) {
+    for (auto& node : (*function.mutable_node_def())) {
+      if (!node.device().empty()) {
+        *node.mutable_device() = "";
+      }
+    }
+  }
 }
 
 }  // namespace data

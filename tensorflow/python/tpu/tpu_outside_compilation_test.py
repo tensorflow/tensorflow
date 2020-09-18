@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
@@ -30,6 +32,7 @@ from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -38,8 +41,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
+from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
 
@@ -70,32 +73,25 @@ def computation_with_string_ops(x):
   return string_ops.string_to_number(output)
 
 
+def _events_from_logdir(test_case, logdir):
+  """Reads summary events from log directory."""
+  test_case.assertTrue(gfile.Exists(logdir))
+  files = gfile.ListDirectory(logdir)
+  test_case.assertLen(files, 1)
+  records = list(tf_record.tf_record_iterator(os.path.join(logdir, files[0])))
+  result = []
+  for r in records:
+    event = event_pb2.Event()
+    event.ParseFromString(r)
+    result.append(event)
+  return result
+
+
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
-  def testResourceVariableAssignOnHost(self):
-    strategy = get_tpu_strategy()
-    with strategy.scope():
-      v = variables.Variable(
-          0.0, aggregation=variables.VariableAggregation.MEAN)
-    v2 = variables.Variable(0.0, aggregation=variables.VariableAggregation.MEAN)
-
-    def assign_fn():
-      v2.assign_add(4.0)
-
-    @def_function.function
-    def train_step():
-
-      def assign_add():
-        v.assign_add(2.0)
-        tpu.outside_compilation(assign_fn)
-        v.assign_add(3.0)
-
-      strategy.run(assign_add)
-      return
-
-    train_step()
-    self.assertAllEqual(4.0 * strategy.num_replicas_in_sync, v2.numpy())
-    self.assertAllEqual(5.0, v.numpy())
+  def setUp(self):
+    super(TpuOutsideCompilationTest, self).setUp()
+    config.set_soft_device_placement(False)
 
   def testHostNoInput(self):
     strategy = get_tpu_strategy()
@@ -452,7 +448,8 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         constant_op.constant(2916., shape=(strategy.num_replicas_in_sync)))
 
 
-class OutsideCompilationOnUnsupportedOpTest(test.TestCase):
+class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
+                                            parameterized.TestCase):
 
   def setUp(self):
     super(OutsideCompilationOnUnsupportedOpTest, self).setUp()
@@ -487,6 +484,75 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase):
     self.assertAllEqual(
         strategy.experimental_local_results(train_step(0)),
         constant_op.constant(10, shape=(strategy.num_replicas_in_sync)))
+
+  def testSummaryWithAutoOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      summary.scalar("x", x, step=0)
+      return x * 2.0
+
+    @def_function.function
+    def step():
+
+      def computation(x):
+        x = x + 1.0
+        y = host_computation(x)
+        return y + 1.0
+
+      return strategy.run(computation, args=(2.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
+    events = _events_from_logdir(self, logdir)
+    # There will be 2 entries: 1 summary file header entry, and 1 entry
+    # written by host.
+    self.assertLen(events, 2)
+    self.assertEqual(events[1].summary.value[0].tag, "x")
+    self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
+
+  @parameterized.parameters((True), (False))
+  def testSummaryControlFlowIfWithAutoOutsideCompilation(
+      self, take_true_branch):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def step():
+
+      def computation(x):
+        x = x + 1.0
+        if x < 5:
+          summary.scalar("x", x, step=0)
+          x = x * 2.0
+        return x + 1.0
+
+      if take_true_branch:
+        return strategy.run(computation, args=(2.0,))
+      else:
+        return strategy.run(computation, args=(10.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    output_value = 12.
+    if take_true_branch:
+      output_value = 7.
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(
+              output_value, shape=(strategy.num_replicas_in_sync)))
+    if take_true_branch:
+      events = _events_from_logdir(self, logdir)
+      # There will be 2 entries: 1 summary file header entry, and 1 entry
+      # written by host.
+      #
+      self.assertLen(events, 2)
+      self.assertEqual(events[1].summary.value[0].tag, "cond/x")
+      self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
   def testAutoOutsideCompilationWithFunctionalNodes(self):
     strategy = get_tpu_strategy()

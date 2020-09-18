@@ -37,8 +37,11 @@ namespace cl {
 class ConvolutionTransposed3x3 : public GPUOperation {
  public:
   ConvolutionTransposed3x3() = default;
-  absl::Status Tune(const TuningParameters& params) override {
-    return absl::OkStatus();
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
   }
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
@@ -58,14 +61,12 @@ class ConvolutionTransposed3x3 : public GPUOperation {
 
  private:
   ConvolutionTransposed3x3(const OperationDef& definition,
-                           const CLDevice& device, int2 padding);
-  friend absl::Status CreateConvolutionTransposed3x3(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr,
-      ConvolutionTransposed3x3* result);
+                           const DeviceInfo& device_info, int2 padding);
+  friend ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -82,8 +83,8 @@ class ConvolutionTransposed3x3 : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposed3x3::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void ConvolutionTransposed3x3::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;  //  This operation support only 3x3 kernel
@@ -93,19 +94,6 @@ absl::Status ConvolutionTransposed3x3::UploadWeights(
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  Buffer weights_buffer;
-  if (f32_weights) {
-    std::vector<float4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
-  } else {
-    std::vector<half4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
-  }
-
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
@@ -114,12 +102,19 @@ absl::Status ConvolutionTransposed3x3::UploadWeights(
               ConvolutionTransposed3x3::WeightsUploadType::CONSTANT_MEM
           ? MemoryType::CONSTANT
           : MemoryType::GLOBAL;
+  desc.size = flt4_size * flt4_count;
+  desc.data.resize(desc.size);
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  if (f32_weights) {
+    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+  } else {
+    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+  }
 
-  return absl::OkStatus();
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 template <DataType S, typename T>
@@ -178,13 +173,12 @@ void ConvolutionTransposed3x3::RearrangeWeightsData(
 }
 
 bool IsConvolutionTransposed3x3Supported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
-absl::Status CreateConvolutionTransposed3x3(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed3x3* result);
+ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

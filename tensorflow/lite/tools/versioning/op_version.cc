@@ -237,6 +237,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 5;
+      }
       if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }
@@ -320,6 +323,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
       // Version 3 supports string input types.
       if (op_sig.input_types.at(0) == TensorType_STRING) {
         return 3;
@@ -368,6 +374,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_ABS:
     case BuiltinOperator_RELU:
       if (op_sig.input_types.at(0) == TensorType_INT8 ||
           op_sig.input_types.at(0) == TensorType_UINT8) {
@@ -399,8 +406,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
-      if (op_sig.options.resize.half_pixel_centers ||
-          op_sig.options.resize.align_corners) {
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      } else if (op_sig.options.resize.half_pixel_centers ||
+                 op_sig.options.resize.align_corners) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;

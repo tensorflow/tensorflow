@@ -146,6 +146,7 @@ cuda_py_tests(
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
         "no_rocm",
         "no_windows",
         "nomac",
@@ -172,7 +173,6 @@ cuda_py_test(
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
         "no_rocm",
-        "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
     ],

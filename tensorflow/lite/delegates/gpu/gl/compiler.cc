@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -102,9 +103,10 @@ class CompilerImpl : public Compiler {
     }
   }
 
-  absl::Status Compile(const GraphFloat32& graph,
-                       const std::unordered_set<int>& tflite_graph_io,
-                       const ShaderCodeCallback& callback) final {
+  absl::Status Compile(
+      const GraphFloat32& graph,
+      const std::unordered_set<int>& tflite_graph_io,  // NOLINT
+      const ShaderCodeCallback& callback) final {
     // It is important to have ids in a compiled graph identical to the given
     // graph.
     RETURN_IF_ERROR(graph.MakeExactCopy(&compiled_graph_));
@@ -158,7 +160,7 @@ class CompilerImpl : public Compiler {
     }
 
     // Prepare internal objects.
-    std::unordered_map<ValueId, Object> objects;
+    absl::flat_hash_map<ValueId, Object> objects;
     for (auto value : compiled_graph_.values()) {
       Object object = MakePHWC4Ref(value->id, value->tensor.shape);
       object.data_type = value->tensor.type;

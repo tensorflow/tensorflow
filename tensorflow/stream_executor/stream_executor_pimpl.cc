@@ -230,23 +230,6 @@ port::Status StreamExecutor::EnablePeerAccessTo(StreamExecutor *other) {
   return implementation_->EnablePeerAccessTo(other->implementation_.get());
 }
 
-SharedMemoryConfig StreamExecutor::GetDeviceSharedMemoryConfig() {
-  return implementation_->GetDeviceSharedMemoryConfig();
-}
-
-port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
-    SharedMemoryConfig config) {
-  if (config != SharedMemoryConfig::kDefault &&
-      config != SharedMemoryConfig::kFourByte &&
-      config != SharedMemoryConfig::kEightByte) {
-    std::string error_msg = absl::StrFormat(
-        "Invalid shared memory config specified: %d", static_cast<int>(config));
-    LOG(ERROR) << error_msg;
-    return port::Status(port::error::INVALID_ARGUMENT, error_msg);
-  }
-  return implementation_->SetDeviceSharedMemoryConfig(config);
-}
-
 const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
   absl::MutexLock lock(&mu_);
   if (device_description_ != nullptr) {
@@ -858,7 +841,7 @@ absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 }
 
 template <typename TraceCallT, typename... ArgsT>
-void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&... args) {
+void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&...args) {
   if (tracing_enabled_) {
     {
       // instance tracers held in a block to limit the lock lifetime.

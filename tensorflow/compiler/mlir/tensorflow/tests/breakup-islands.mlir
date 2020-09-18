@@ -285,7 +285,7 @@ func @empty_island_multiple_data_results(%arg0: tensor<*xf32>, %arg1: tensor<*xi
 // and certain tf_executor ops are added correctly.
 
 // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
-// CHECK: tf_executor.NextIteration.Sink [{{.*}}] {{.*}}, %[[CONTROL]]
+// CHECK: tf_executor.NextIteration.Sink[{{.*}}] {{.*}}, %[[CONTROL]]
 func @next_iteration_sink_control_input() {
   tf_executor.graph {
     %source:3 = tf_executor.NextIteration.Source : tensor<*xi32>

@@ -20,6 +20,8 @@ limitations under the License.
 
 namespace mlir {
 
+class BufferAssignmentPlacer;
+class BufferAssignmentTypeConverter;
 class LLVMTypeConverter;
 class MLIRContext;
 class OwningRewritePatternList;
@@ -37,6 +39,15 @@ void PopulateEmbedTFFrameworkConversionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace tf_framework
+
+namespace transforms {
+
+/// Collects a set of patterns that bufferize operations from the standard
+/// dialect.
+void populateStandardBufferizePattern(MLIRContext *context,
+                                      BufferAssignmentTypeConverter *converter,
+                                      OwningRewritePatternList *patterns);
+}  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir
 

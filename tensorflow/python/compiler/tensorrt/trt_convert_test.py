@@ -86,7 +86,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         is_dynamic_op=True,
         maximum_cached_engines=2)
     rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
-        conversion_params=conversion_params)
+        conversion_params=conversion_params, is_v2=True)
     self.assertEqual(["constfold", "layout", "constfold"],
                      rewriter_cfg.optimizers)
     self.assertEqual(rewriter_config_pb2.RewriterConfig.ONE,

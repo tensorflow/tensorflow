@@ -19,7 +19,9 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
@@ -122,6 +124,13 @@ class ShardedVariable(trackable.Trackable):
           'axis, found {}'.format([v.shape for v in variables]))
     first_dim = sum(int(v.shape[0]) for v in variables)
     self._shape = tensor_shape.TensorShape([first_dim] + first_var.shape[1:])
+    self._var_offsets = [
+        [0 for _ in range(len(first_var.shape))] for _ in range(len(variables))
+    ]
+    for i in range(1, len(variables)):
+      # Always partition on the first axis. Offsets on other axes are 0.
+      self._var_offsets[i][0] += (
+          self._var_offsets[i - 1][0] + variables[i - 1].shape[0])
 
     save_slice_info = [v._get_save_slice_info() for v in variables]  # pylint: disable=protected-access
     if any(slice_info is not None for slice_info in save_slice_info):
@@ -162,6 +171,20 @@ class ShardedVariable(trackable.Trackable):
     """The overall shape, combining all shards along axis `0`."""
     return self._shape
 
+  def assign(self, value, use_locking=None, name=None, read_value=True):
+    for i, v in enumerate(self._variables):
+      v.assign(array_ops.slice(value, self._var_offsets[i], v.shape.as_list()))
+
+  def assign_add(self, delta, use_locking=False, name=None, read_value=True):
+    for i, v in enumerate(self._variables):
+      v.assign_add(
+          array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()))
+
+  def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
+    for i, v in enumerate(self._variables):
+      v.assign_sub(
+          array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()))
+
   def _gather_saveables_for_checkpoint(self):
     """Return a `Saveable` for each shard. See `Trackable`."""
 
@@ -195,3 +218,20 @@ class ShardedVariable(trackable.Trackable):
                                     name=self.name)
 
     return obj_map, resource_map
+
+
+def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
+  del name
+  if dtype is not None and not dtype.is_compatible_with(var.dtype):
+    raise ValueError(
+        'Incompatible type conversion requested to type {!r} for variable '
+        'of type {!r}'.format(dtype.name, var.dtype.name))
+  if as_ref:
+    raise NotImplementedError(
+        "ShardedVariable doesn't support being used as a reference.")
+  return array_ops.concat(var.variables, axis=0)
+
+
+# Register a conversion function which reads the value of the variable,
+# allowing instances of the class to be used as tensors.
+ops.register_tensor_conversion_function(ShardedVariable, _var_to_tensor)

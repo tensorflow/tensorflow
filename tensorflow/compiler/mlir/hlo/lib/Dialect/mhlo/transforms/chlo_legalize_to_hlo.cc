@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <numeric>
+
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -30,6 +32,39 @@ limitations under the License.
 namespace mlir {
 namespace chlo {
 namespace {
+
+struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
+  using OpConversionPattern<ConstantLikeOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      ConstantLikeOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    auto result_ty = op.getType().cast<ShapedType>();
+
+    // Unranked uses are not supported.  Consider `transform-unranked-hlo`.
+    if (!result_ty.hasRank()) return failure();
+
+    // Lower to MHLO constant if statically shaped.
+    if (result_ty.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<mhlo::ConstOp>(
+          op, DenseElementsAttr::get(result_ty, op.value()));
+      return success();
+    }
+
+    // Lower to broadcasted constant.
+    ConstantLikeOp::Adaptor transformed(operands);
+    auto loc = op.getLoc();
+    Type extent_tensor_type = shape::getExtentTensorType(op.getContext());
+    Value constant = rewriter.create<mhlo::ConstOp>(loc, op.value());
+    Value uncasted_shape = rewriter.create<shape::ShapeOfOp>(
+        loc, extent_tensor_type, transformed.operand());
+    Type shape_ty =
+        RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType());
+    Value shape = rewriter.create<TensorCastOp>(loc, shape_ty, uncasted_shape);
+    rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
+        op, result_ty, constant, shape, rewriter.getI64TensorAttr({}));
+    return success();
+  }
+};
 
 // Converts binary ops that statically are determined to not broadcast directly
 // to the corresponding mhlo non-broadcasting op.
@@ -124,8 +159,8 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
     Value result_extents =
-        hlo::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
-                                                               rewriter);
+        hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
+            loc, lhs, rhs, rewriter, /*unsafe_as_extent_tensor=*/true);
 
     // Note that we unconditionally emit DynamicBroadcastInDim ops and let
     // downstream canonicalizations fold them away if possible. This is
@@ -338,30 +373,37 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value lhs_shape = if_builder.create<shape::ShapeOfOp>(loc, lhs);
     Value rhs_shape = if_builder.create<shape::ShapeOfOp>(loc, rhs);
     SmallVector<int64_t, 6> ranked_shape(targeted_rank, 1);
-    auto extent_tensor_type =
+    auto unknown_rank_extent_tensor_type = RankedTensorType::get(
+        {RankedTensorType::kDynamicSize}, builder.getIndexType());
+    auto known_rank_extent_tensor_type =
         RankedTensorType::get({targeted_rank}, builder.getIndexType());
     auto reshaped_type = RankedTensorType::get(
         llvm::SmallVector<int64_t, 6>(targeted_rank,
                                       RankedTensorType::kDynamicSize),
         lhs.getType().template dyn_cast<TensorType>().getElementType());
     Value ranked_shape_val = if_builder.create<shape::ConstShapeOp>(
-        loc, extent_tensor_type,
-        mlir::DenseIntElementsAttr::get(extent_tensor_type, ranked_shape));
-    // TODO(tpopp): Return extent tensors when possible to signal that this is a
-    // guaranteed safe broadcast by construction.
+        loc, known_rank_extent_tensor_type,
+        mlir::DenseIntElementsAttr::get(known_rank_extent_tensor_type,
+                                        ranked_shape));
     Value extended_lhs = if_builder.create<shape::BroadcastOp>(
-        loc, extent_tensor_type, lhs_shape, ranked_shape_val, nullptr);
+        loc, unknown_rank_extent_tensor_type, lhs_shape, ranked_shape_val,
+        nullptr);
+    Value extended_lhs_casted = if_builder.create<TensorCastOp>(
+        loc, known_rank_extent_tensor_type, extended_lhs);
     Value extended_rhs = if_builder.create<shape::BroadcastOp>(
-        loc, extent_tensor_type, rhs_shape, ranked_shape_val, nullptr);
+        loc, unknown_rank_extent_tensor_type, rhs_shape, ranked_shape_val,
+        nullptr);
+    Value extended_rhs_casted = if_builder.create<TensorCastOp>(
+        loc, known_rank_extent_tensor_type, extended_rhs);
 
     // 1. Reshape operands to the given rank (with the same number of elements)
     // 2. Compute the ranked-broadcasted ChloOp (which will assert that the ops
     //    can be broadcasted and do the actual broadcasting)
     // 3. Type erase the output back to unranked
     Value reshaped_lhs = if_builder.create<mhlo::DynamicReshapeOp>(
-        loc, reshaped_type, lhs, extended_lhs);
+        loc, reshaped_type, lhs, extended_lhs_casted);
     Value reshaped_rhs = if_builder.create<mhlo::DynamicReshapeOp>(
-        loc, reshaped_type, rhs, extended_rhs);
+        loc, reshaped_type, rhs, extended_rhs_casted);
     Value result = if_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{reshaped_type},
         ArrayRef<Value>{reshaped_lhs, reshaped_rhs}, op.getAttrs());
@@ -469,10 +511,13 @@ struct HloCompareAdaptor {
   }
 };
 
+#include "generated_chlo_legalize_to_hlo.inc"
 }  // namespace
 
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns) {
+  populateWithGenerated(context, patterns);
+
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do
   // not have special attributes that need to be preserved.
@@ -502,6 +547,9 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns);
   PopulateForBinaryOp<BroadcastCompareOp, mhlo::CompareOp, HloCompareAdaptor>(
       context, patterns);
+
+  // Other patterns.
+  patterns->insert<ConvertConstantLikeOp>(context);
 }
 
 }  // namespace chlo

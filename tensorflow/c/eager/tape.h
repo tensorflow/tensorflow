@@ -146,13 +146,16 @@ class GradientTape {
   // once) and produces the gradient of the target tensors with respect to the
   // source tensors. The output gradients are used if not empty and not
   // null. The result is populated with one tensor per target element.
+  // When running backward functions, builds zeros-like tensors for
+  // incoming grads which are nullptrs, unless `build_default_zeros_grads`
+  // is set to false.
   Status ComputeGradient(
       const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
       const gtl::ArraySlice<int64> target_tensor_ids,
       const gtl::ArraySlice<int64> source_tensor_ids,
       const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
       gtl::ArraySlice<Gradient*> output_gradients,
-      std::vector<Gradient*>* result);
+      std::vector<Gradient*>* result, bool build_default_zeros_grads = true);
 
   bool IsPersistent() const { return persistent_; }
 
@@ -655,8 +658,8 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     const gtl::ArraySlice<int64> target_tensor_ids,
     const gtl::ArraySlice<int64> source_tensor_ids,
     const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
-    gtl::ArraySlice<Gradient*> output_gradients,
-    std::vector<Gradient*>* result) {
+    gtl::ArraySlice<Gradient*> output_gradients, std::vector<Gradient*>* result,
+    bool build_default_zeros_grads) {
   std::unordered_set<int64> sources_set(source_tensor_ids.begin(),
                                         source_tensor_ids.end());
   BackpropInitialState<BackwardFunction, TapeTensor> state = PrepareBackprop(
@@ -717,14 +720,14 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       const int64 id = trace.output_tensor_info[i].GetID();
       auto grad_it = gradients.find(id);
       if (grad_it == gradients.end()) {
-        auto func_name_it =
-            FunctionsAcceptingNoneForIndicesMap()->find(trace.op_type);
-        if (func_name_it != FunctionsAcceptingNoneForIndicesMap()->end() &&
-            func_name_it->second.find(i) != func_name_it->second.end()) {
-          out_gradients.push_back(nullptr);
-        } else {
-          out_gradients.push_back(nullptr);
-          zero_indices.push_back(i);
+        out_gradients.push_back(nullptr);
+        if (build_default_zeros_grads) {
+          auto func_name_it =
+              FunctionsAcceptingNoneForIndicesMap()->find(trace.op_type);
+          if (func_name_it == FunctionsAcceptingNoneForIndicesMap()->end() ||
+              func_name_it->second.find(i) == func_name_it->second.end()) {
+            zero_indices.push_back(i);
+          }
         }
       } else {
         any_gradient_nonzero = true;
@@ -745,6 +748,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       }
     }
     std::vector<Gradient*> in_gradients;
+    DCHECK(build_default_zeros_grads || zero_indices.empty());
     if (any_gradient_nonzero) {
       for (const auto i : zero_indices) {
         out_gradients[i] = trace.output_tensor_info[i].ZerosLike();

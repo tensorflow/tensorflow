@@ -101,6 +101,7 @@ class AllocRawOpConverter : public ConvertToLLVMCallOpPattern<AllocRawOp> {
 
  protected:
   StringRef GetFuncName() const override { return kCInterfaceAlloc; }
+
   LLVMType GetFuncType() const override {
     LLVMType llvm_void_ptr_type = getVoidPtrType();
     return LLVM::LLVMType::getFunctionTy(
@@ -175,10 +176,23 @@ class DeallocRawOpConverter : public ConvertToLLVMCallOpPattern<DeallocRawOp> {
   }
 };
 
+class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
+ public:
+  using ConvertOpToLLVMPattern<NullContextOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      Operation *op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<LLVM::NullOp>(op, getVoidPtrType());
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateTFFrameworkToLLVMConversionPatterns(
     LLVMTypeConverter *converter, OwningRewritePatternList *patterns) {
+  patterns->insert<NullContextOpConverter>(*converter);
   patterns->insert<AllocRawOpConverter, DeallocRawOpConverter>(*converter);
 }
 

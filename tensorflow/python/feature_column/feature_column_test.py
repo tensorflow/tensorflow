@@ -2821,27 +2821,26 @@ class FunctionalInputLayerTest(test.TestCase):
                             variables_lib.Variable)
       self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
 
-  @test_util.run_deprecated_v1
   def test_fills_cols_to_vars_shared_embedding(self):
     # Provide 5 DenseColumn's to input_layer: a NumericColumn, a
     # BucketizedColumn, an EmbeddingColumn, two SharedEmbeddingColumns. The
     # EmbeddingColumn creates a Variable and the two SharedEmbeddingColumns
     # shared one variable.
-    price1 = fc._numeric_column('price1')
-    dense_feature = fc._numeric_column('dense_feature')
-    dense_feature_bucketized = fc._bucketized_column(
-        dense_feature, boundaries=[0.])
-    some_sparse_column = fc._categorical_column_with_hash_bucket(
-        'sparse_feature', hash_bucket_size=5)
-    some_embedding_column = fc._embedding_column(
-        some_sparse_column, dimension=10)
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    shared_embedding_a, shared_embedding_b = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b], dimension=2)
     with ops.Graph().as_default():
+      price1 = fc._numeric_column('price1')
+      dense_feature = fc._numeric_column('dense_feature')
+      dense_feature_bucketized = fc._bucketized_column(
+          dense_feature, boundaries=[0.])
+      some_sparse_column = fc._categorical_column_with_hash_bucket(
+          'sparse_feature', hash_bucket_size=5)
+      some_embedding_column = fc._embedding_column(
+          some_sparse_column, dimension=10)
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      shared_embedding_a, shared_embedding_b = fc_new.shared_embedding_columns(
+          [categorical_column_a, categorical_column_b], dimension=2)
       features = {
           'price1': [[3.], [4.]],
           'dense_feature': [[-1.], [4.]],
@@ -3019,18 +3018,17 @@ class FunctionalInputLayerTest(test.TestCase):
           expected_var_names,
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
-  @test_util.run_deprecated_v1
   def test_multiple_layers_with_same_shared_embedding_column(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    embedding_dimension = 2
-    embedding_column_b, embedding_column_a = fc_new.shared_embedding_columns(
-        [categorical_column_b, categorical_column_a],
-        dimension=embedding_dimension)
-
     with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      embedding_dimension = 2
+      embedding_column_b, embedding_column_a = fc_new.shared_embedding_columns(
+          [categorical_column_b, categorical_column_a],
+          dimension=embedding_dimension)
+
       features = {
           'aaa':
               sparse_tensor.SparseTensor(
@@ -3053,19 +3051,18 @@ class FunctionalInputLayerTest(test.TestCase):
           ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
-  @test_util.run_deprecated_v1
   def test_multiple_layers_with_same_shared_embedding_column_diff_graphs(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    embedding_dimension = 2
-    embedding_column_b, embedding_column_a = fc_new.shared_embedding_columns(
-        [categorical_column_b, categorical_column_a],
-        dimension=embedding_dimension)
-    all_cols = [embedding_column_a, embedding_column_b]
-
     with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      embedding_dimension = 2
+      embedding_column_b, embedding_column_a = fc_new.shared_embedding_columns(
+          [categorical_column_b, categorical_column_a],
+          dimension=embedding_dimension)
+      all_cols = [embedding_column_a, embedding_column_b]
+
       features = {
           'aaa':
               sparse_tensor.SparseTensor(
@@ -3105,56 +3102,56 @@ class FunctionalInputLayerTest(test.TestCase):
           ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
-  @test_util.run_deprecated_v1
   def test_with_1d_sparse_tensor(self):
-    embedding_values = (
-        (1., 2., 3., 4., 5.),  # id 0
-        (6., 7., 8., 9., 10.),  # id 1
-        (11., 12., 13., 14., 15.)  # id 2
-    )
-    def _initializer(shape, dtype, partition_info):
-      del shape, dtype, partition_info
-      return embedding_values
+    with ops.Graph().as_default():
+      embedding_values = (
+          (1., 2., 3., 4., 5.),  # id 0
+          (6., 7., 8., 9., 10.),  # id 1
+          (11., 12., 13., 14., 15.)  # id 2
+      )
+      def _initializer(shape, dtype, partition_info):
+        del shape, dtype, partition_info
+        return embedding_values
 
-    # price has 1 dimension in input_layer
-    price = fc._numeric_column('price')
+      # price has 1 dimension in input_layer
+      price = fc._numeric_column('price')
 
-    # one_hot_body_style has 3 dims in input_layer.
-    body_style = fc._categorical_column_with_vocabulary_list(
-        'body-style', vocabulary_list=['hardtop', 'wagon', 'sedan'])
-    one_hot_body_style = fc._indicator_column(body_style)
+      # one_hot_body_style has 3 dims in input_layer.
+      body_style = fc._categorical_column_with_vocabulary_list(
+          'body-style', vocabulary_list=['hardtop', 'wagon', 'sedan'])
+      one_hot_body_style = fc._indicator_column(body_style)
 
-    # embedded_body_style has 5 dims in input_layer.
-    country = fc._categorical_column_with_vocabulary_list(
-        'country', vocabulary_list=['US', 'JP', 'CA'])
-    embedded_country = fc._embedding_column(
-        country, dimension=5, initializer=_initializer)
+      # embedded_body_style has 5 dims in input_layer.
+      country = fc._categorical_column_with_vocabulary_list(
+          'country', vocabulary_list=['US', 'JP', 'CA'])
+      embedded_country = fc._embedding_column(
+          country, dimension=5, initializer=_initializer)
 
-    # Provides 1-dim tensor and dense tensor.
-    features = {
-        'price': constant_op.constant([11., 12.,]),
-        'body-style': sparse_tensor.SparseTensor(
-            indices=((0,), (1,)),
-            values=('sedan', 'hardtop'),
-            dense_shape=(2,)),
-        # This is dense tensor for the categorical_column.
-        'country': constant_op.constant(['CA', 'US']),
-    }
-    self.assertEqual(1, features['price'].shape.ndims)
-    self.assertEqual(1, features['body-style'].dense_shape.get_shape()[0])
-    self.assertEqual(1, features['country'].shape.ndims)
+      # Provides 1-dim tensor and dense tensor.
+      features = {
+          'price': constant_op.constant([11., 12.,]),
+          'body-style': sparse_tensor.SparseTensor(
+              indices=((0,), (1,)),
+              values=('sedan', 'hardtop'),
+              dense_shape=(2,)),
+          # This is dense tensor for the categorical_column.
+          'country': constant_op.constant(['CA', 'US']),
+      }
+      self.assertEqual(1, features['price'].shape.ndims)
+      self.assertEqual(1, features['body-style'].dense_shape.get_shape()[0])
+      self.assertEqual(1, features['country'].shape.ndims)
 
-    net = fc.input_layer(features,
-                         [price, one_hot_body_style, embedded_country])
-    self.assertEqual(1 + 3 + 5, net.shape[1])
-    with _initialized_session() as sess:
+      net = fc.input_layer(features,
+                           [price, one_hot_body_style, embedded_country])
+      self.assertEqual(1 + 3 + 5, net.shape[1])
+      with _initialized_session():
 
-      # Each row is formed by concatenating `embedded_body_style`,
-      # `one_hot_body_style`, and `price` in order.
-      self.assertAllEqual(
-          [[0., 0., 1., 11., 12., 13., 14., 15., 11.],
-           [1., 0., 0., 1., 2., 3., 4., 5., 12.]],
-          sess.run(net))
+        # Each row is formed by concatenating `embedded_body_style`,
+        # `one_hot_body_style`, and `price` in order.
+        self.assertAllEqual(
+            [[0., 0., 1., 11., 12., 13., 14., 15., 11.],
+             [1., 0., 0., 1., 2., 3., 4., 5., 12.]],
+            self.evaluate(net))
 
   @test_util.run_deprecated_v1
   def test_with_1d_unknown_shape_sparse_tensor(self):
@@ -3347,7 +3344,6 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         'python/feature_column/testdata/wire_vocabulary.txt')
     self._wire_vocabulary_size = 3
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
     column = fc._categorical_column_with_vocabulary_file(
         key='aaa', vocabulary_file='path_to_file', vocabulary_size=3)
@@ -3364,7 +3360,6 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
       fc._categorical_column_with_vocabulary_file(
           key=('aaa',), vocabulary_file='path_to_file', vocabulary_size=3)
 
-  @test_util.run_deprecated_v1
   def test_all_constructor_args(self):
     column = fc._categorical_column_with_vocabulary_file(
         key='aaa',
@@ -3377,7 +3372,6 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int32)
     }, column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     original = fc._categorical_column_with_vocabulary_file(
         key='aaa',
@@ -3402,18 +3396,18 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
       fc._categorical_column_with_vocabulary_file(
           key='aaa', vocabulary_file='', vocabulary_size=3)
 
-  @test_util.run_deprecated_v1
   def test_invalid_vocabulary_file(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa', vocabulary_file='file_does_not_exist', vocabulary_size=10)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    with self.assertRaisesRegex(errors.OpError, 'file_does_not_exist'):
-      with self.cached_session():
-        lookup_ops.tables_initializer().run()
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file='file_does_not_exist', vocabulary_size=10)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      with self.assertRaisesRegex(errors.OpError, 'file_does_not_exist'):
+        with self.cached_session():
+          lookup_ops.tables_initializer().run()
 
   def test_invalid_vocabulary_size(self):
     with self.assertRaisesRegex(ValueError, 'Invalid vocabulary_size'):
@@ -3427,20 +3421,20 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
           vocabulary_file=self._wire_vocabulary_file_name,
           vocabulary_size=0)
 
-  @test_util.run_deprecated_v1
   def test_too_large_vocabulary_size(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size + 1)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    with self.assertRaisesRegex(errors.OpError, 'Invalid vocab_size'):
-      with self.cached_session():
-        lookup_ops.tables_initializer().run()
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size + 1)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      with self.assertRaisesRegex(errors.OpError, 'Invalid vocab_size'):
+        with self.cached_session():
+          lookup_ops.tables_initializer().run()
 
   def test_invalid_num_oov_buckets(self):
     with self.assertRaisesRegex(ValueError, 'Invalid num_oov_buckets'):
@@ -3517,64 +3511,64 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
               dense_shape=[1, 2]),
           features['aaa'].eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, -1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, -1, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_none_vocabulary_size(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa', vocabulary_file=self._wire_vocabulary_file_name)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(self,
-                                  sparse_tensor.SparseTensorValue(
-                                      indices=inputs.indices,
-                                      values=np.array(
-                                          (2, -1, 0), dtype=np.int64),
-                                      dense_shape=inputs.dense_shape),
-                                  id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file=self._wire_vocabulary_file_name)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(self,
+                                    sparse_tensor.SparseTensorValue(
+                                        indices=inputs.indices,
+                                        values=np.array(
+                                            (2, -1, 0), dtype=np.int64),
+                                        dense_shape=inputs.dense_shape),
+                                    id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_transform_feature(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_tensor = _transform_features({'aaa': inputs}, [column])[column]
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, -1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_tensor = _transform_features({'aaa': inputs}, [column])[column]
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, -1, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
 
   def test_get_sparse_tensors_weight_collections(self):
     column = fc._categorical_column_with_vocabulary_file(
@@ -3594,163 +3588,162 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
                           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
     self.assertCountEqual([], ops.get_collection('my_weights'))
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size)
-    id_weight_pair = column._get_sparse_tensors(
-        _LazyBuilder({
-            'aaa': (('marlo', ''), ('skywalker', 'omar'))
-        }))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=np.array((2, -1, 0), dtype=np.int64),
-              dense_shape=(2, 2)),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size)
+      id_weight_pair = column._get_sparse_tensors(
+          _LazyBuilder({
+              'aaa': (('marlo', ''), ('skywalker', 'omar'))
+          }))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1)),
+                values=np.array((2, -1, 0), dtype=np.int64),
+                dense_shape=(2, 2)),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_default_value_in_vocabulary(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size,
-        default_value=2)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, 2, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size,
+          default_value=2)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, 2, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_oov_buckets(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size,
-        num_oov_buckets=100)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1), (1, 2)),
-        values=('marlo', 'skywalker', 'omar', 'heisenberg'),
-        dense_shape=(2, 3))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, 33, 0, 62), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size,
+          num_oov_buckets=100)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1), (1, 2)),
+          values=('marlo', 'skywalker', 'omar', 'heisenberg'),
+          dense_shape=(2, 3))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, 33, 0, 62), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_small_vocabulary_size(self):
-    # 'marlo' is the last entry in our vocabulary file, so be setting
-    # `vocabulary_size` to 1 less than number of entries in file, we take
-    # 'marlo' out of the vocabulary.
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size - 1)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((-1, -1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      # 'marlo' is the last entry in our vocabulary file, so be setting
+      # `vocabulary_size` to 1 less than number of entries in file, we take
+      # 'marlo' out of the vocabulary.
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size - 1)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((-1, -1, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_int32(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._warriors_vocabulary_file_name,
-        vocabulary_size=self._warriors_vocabulary_size,
-        dtype=dtypes.int32)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
-        values=(11, 100, 30, 22),
-        dense_shape=(3, 3))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, -1, 0, 4), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._warriors_vocabulary_file_name,
+          vocabulary_size=self._warriors_vocabulary_size,
+          dtype=dtypes.int32)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+          values=(11, 100, 30, 22),
+          dense_shape=(3, 3))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, -1, 0, 4), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_int32_dense_input(self):
-    default_value = -100
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._warriors_vocabulary_file_name,
-        vocabulary_size=self._warriors_vocabulary_size,
-        dtype=dtypes.int32,
-        default_value=default_value)
-    id_weight_pair = column._get_sparse_tensors(
-        _LazyBuilder({
-            'aaa': ((11, -1, -1), (100, 30, -1), (-1, -1, 22))
-        }))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1), (2, 2)),
-              values=np.array((2, default_value, 0, 4), dtype=np.int64),
-              dense_shape=(3, 3)),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      default_value = -100
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._warriors_vocabulary_file_name,
+          vocabulary_size=self._warriors_vocabulary_size,
+          dtype=dtypes.int32,
+          default_value=default_value)
+      id_weight_pair = column._get_sparse_tensors(
+          _LazyBuilder({
+              'aaa': ((11, -1, -1), (100, 30, -1), (-1, -1, 22))
+          }))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+                values=np.array((2, default_value, 0, 4), dtype=np.int64),
+                dense_shape=(3, 3)),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_int32_with_oov_buckets(self):
-    column = fc._categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._warriors_vocabulary_file_name,
-        vocabulary_size=self._warriors_vocabulary_size,
-        dtype=dtypes.int32,
-        num_oov_buckets=100)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
-        values=(11, 100, 30, 22),
-        dense_shape=(3, 3))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, 60, 0, 4), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._warriors_vocabulary_file_name,
+          vocabulary_size=self._warriors_vocabulary_size,
+          dtype=dtypes.int32,
+          num_oov_buckets=100)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+          values=(11, 100, 30, 22),
+          dense_shape=(3, 3))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, 60, 0, 4), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     wire_column = fc._categorical_column_with_vocabulary_file(
         key='wire',
@@ -3777,7 +3770,6 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
         self.assertAllClose(((3.,), (5.,)), self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     wire_column = fc._categorical_column_with_vocabulary_file(
         key='wire',
@@ -3835,7 +3827,6 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_all_constructor_args(self):
     column = fc._categorical_column_with_vocabulary_list(
         key='aaa',
@@ -3847,7 +3838,6 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int32)
     }, column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     original = fc._categorical_column_with_vocabulary_list(
         key='aaa', vocabulary_list=(12, 24, 36), dtype=dtypes.int32)
@@ -3982,41 +3972,41 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
               dense_shape=[1, 2]),
           features['aaa'].eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors(self):
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, -1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, -1, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_transform_feature(self):
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_tensor = _transform_features({'aaa': inputs}, [column])[column]
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, -1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_tensor = _transform_features({'aaa': inputs}, [column])[column]
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, -1, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
 
   def test_get_sparse_tensors_weight_collections(self):
     column = fc._categorical_column_with_vocabulary_list(
@@ -4034,134 +4024,129 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
                           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
     self.assertCountEqual([], ops.get_collection('my_weights'))
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
-    id_weight_pair = column._get_sparse_tensors(
-        _LazyBuilder({
-            'aaa': (('marlo', ''), ('skywalker', 'omar'))
-        }))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=np.array((2, -1, 0), dtype=np.int64),
-              dense_shape=(2, 2)),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+      id_weight_pair = column._get_sparse_tensors(
+          _LazyBuilder({'aaa': (('marlo', ''), ('skywalker', 'omar'))}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1)),
+                values=np.array((2, -1, 0), dtype=np.int64),
+                dense_shape=(2, 2)), id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_default_value_in_vocabulary(self):
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa',
-        vocabulary_list=('omar', 'stringer', 'marlo'),
-        default_value=2)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, 2, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa',
+          vocabulary_list=('omar', 'stringer', 'marlo'),
+          default_value=2)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=('marlo', 'skywalker', 'omar'),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, 2, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_oov_buckets(self):
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa',
-        vocabulary_list=('omar', 'stringer', 'marlo'),
-        num_oov_buckets=100)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1), (1, 2)),
-        values=('marlo', 'skywalker', 'omar', 'heisenberg'),
-        dense_shape=(2, 3))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, 33, 0, 62), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa',
+          vocabulary_list=('omar', 'stringer', 'marlo'),
+          num_oov_buckets=100)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1), (1, 2)),
+          values=('marlo', 'skywalker', 'omar', 'heisenberg'),
+          dense_shape=(2, 3))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, 33, 0, 62), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_int32(self):
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa',
-        vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
-        dtype=dtypes.int32)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
-        values=np.array((11, 100, 30, 22), dtype=np.int32),
-        dense_shape=(3, 3))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, -1, 0, 4), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa',
+          vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
+          dtype=dtypes.int32)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+          values=np.array((11, 100, 30, 22), dtype=np.int32),
+          dense_shape=(3, 3))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, -1, 0, 4), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_int32_dense_input(self):
-    default_value = -100
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa',
-        vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
-        dtype=dtypes.int32,
-        default_value=default_value)
-    id_weight_pair = column._get_sparse_tensors(
-        _LazyBuilder({
-            'aaa':
-                np.array(
-                    ((11, -1, -1), (100, 30, -1), (-1, -1, 22)), dtype=np.int32)
-        }))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1), (2, 2)),
-              values=np.array((2, default_value, 0, 4), dtype=np.int64),
-              dense_shape=(3, 3)),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      default_value = -100
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa',
+          vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
+          dtype=dtypes.int32,
+          default_value=default_value)
+      id_weight_pair = column._get_sparse_tensors(
+          _LazyBuilder({
+              'aaa':
+                  np.array(((11, -1, -1), (100, 30, -1), (-1, -1, 22)),
+                           dtype=np.int32)
+          }))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+                values=np.array((2, default_value, 0, 4), dtype=np.int64),
+                dense_shape=(3, 3)), id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_int32_with_oov_buckets(self):
-    column = fc._categorical_column_with_vocabulary_list(
-        key='aaa',
-        vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
-        dtype=dtypes.int32,
-        num_oov_buckets=100)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
-        values=(11, 100, 30, 22),
-        dense_shape=(3, 3))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((2, 60, 0, 4), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_vocabulary_list(
+          key='aaa',
+          vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
+          dtype=dtypes.int32,
+          num_oov_buckets=100)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+          values=(11, 100, 30, 22),
+          dense_shape=(3, 3))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((2, 60, 0, 4), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     wire_column = fc._categorical_column_with_vocabulary_list(
         key='aaa',
@@ -4187,7 +4172,6 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
         self.assertAllClose(((3.,), (5.,)), self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     wire_column = fc._categorical_column_with_vocabulary_list(
         key='aaa',
@@ -4231,7 +4215,6 @@ class IdentityCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_identity(key=('aaa',), num_buckets=3)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     original = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
     for column in (original, copy.deepcopy(original)):
@@ -4290,39 +4273,39 @@ class IdentityCategoricalColumnTest(test.TestCase):
               dense_shape=[1, 2]),
           features['aaa'].eval())
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors(self):
-    column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(0, 1, 0),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((0, 1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(0, 1, 0),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((0, 1, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
   def test_transform_feature(self):
-    column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(0, 1, 0),
-        dense_shape=(2, 2))
-    id_tensor = _transform_features({'aaa': inputs}, [column])[column]
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((0, 1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(0, 1, 0),
+          dense_shape=(2, 2))
+      id_tensor = _transform_features({'aaa': inputs}, [column])[column]
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((0, 1, 0), dtype=np.int64),
+                dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
 
   def test_get_sparse_tensors_weight_collections(self):
     column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
@@ -4339,139 +4322,139 @@ class IdentityCategoricalColumnTest(test.TestCase):
                           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
     self.assertCountEqual([], ops.get_collection('my_weights'))
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
-    column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
-    id_weight_pair = column._get_sparse_tensors(
-        _LazyBuilder({
-            'aaa': ((0, -1), (1, 0))
-        }))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=np.array((0, 1, 0), dtype=np.int64),
-              dense_shape=(2, 2)),
-          id_weight_pair.id_tensor.eval())
-
-  @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_inputs_too_big(self):
-    # Inputs.
-    vocabulary_size = 2
-    sparse_input = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)), values=(2, 1, 0), dense_shape=(2, 2))
-
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-    )
-
-    def _initializer(shape, dtype, partition_info=None):
-      del shape, dtype, partition_info
-      return embedding_values
-
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
-        initializer=_initializer)
-
-    # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
-
-    with _initialized_session():
-      with self.assertRaisesRegex(errors.OpError,
-                                  r'indices\[0\] .* 2 .* \[0, 2\)'):
-        self.evaluate(embedding_lookup)
-
-  @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_inputs_too_small(self):
-    # Inputs.
-    vocabulary_size = 2
-    sparse_input = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (0, 0), (1, 1), (1, 2)),
-        values=(-9, 0, -6, 1),
-        dense_shape=(2, 4))
-
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-    )
-
-    def _initializer(shape, dtype, partition_info=None):
-      del shape, dtype, partition_info
-      return embedding_values
-
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
-        initializer=_initializer)
-
-    # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
-    expected_lookups = ((1., 2.), (3., 5))
-    with _initialized_session():
-      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
-
-  @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_default_value(self):
-    column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=4, default_value=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(1, -1, 99),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array((1, 3, 3), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_weight_pair.id_tensor.eval())
-
-  @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_default_value_and_placeholder_inputs(self):
-    column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=4, default_value=3)
-    input_indices = array_ops.placeholder(dtype=dtypes.int64)
-    input_values = array_ops.placeholder(dtype=dtypes.int32)
-    input_shape = array_ops.placeholder(dtype=dtypes.int64)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=input_indices,
-        values=input_values,
-        dense_shape=input_shape)
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=np.array(((0, 0), (1, 0), (1, 1)), dtype=np.int64),
-              values=np.array((1, 3, 3), dtype=np.int64),
-              dense_shape=np.array((2, 2), dtype=np.int64)),
-          id_weight_pair.id_tensor.eval(feed_dict={
-              input_indices: ((0, 0), (1, 0), (1, 1)),
-              input_values: (1, -1, 99),
-              input_shape: (2, 2),
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
+      id_weight_pair = column._get_sparse_tensors(
+          _LazyBuilder({
+              'aaa': ((0, -1), (1, 0))
           }))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1)),
+                values=np.array((0, 1, 0), dtype=np.int64),
+                dense_shape=(2, 2)),
+            id_weight_pair.id_tensor.eval())
 
-  @test_util.run_deprecated_v1
+  def test_get_sparse_tensors_with_inputs_too_big(self):
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 2
+      sparse_input = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)), values=(2, 1, 0),
+          dense_shape=(2, 2))
+
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+      )
+
+      def _initializer(shape, dtype, partition_info=None):
+        del shape, dtype, partition_info
+        return embedding_values
+
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      embedding_column = fc._embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_initializer)
+
+      # Provide sparse input and get dense result.
+      embedding_lookup = embedding_column._get_dense_tensor(
+          _LazyBuilder({'aaa': sparse_input}))
+
+      with _initialized_session():
+        with self.assertRaisesRegex(errors.OpError,
+                                    r'indices\[0\] .* 2 .* \[0, 2\)'):
+          self.evaluate(embedding_lookup)
+
+  def test_get_sparse_tensors_with_inputs_too_small(self):
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 2
+      sparse_input = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (0, 0), (1, 1), (1, 2)),
+          values=(-9, 0, -6, 1),
+          dense_shape=(2, 4))
+
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+      )
+
+      def _initializer(shape, dtype, partition_info=None):
+        del shape, dtype, partition_info
+        return embedding_values
+
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      embedding_column = fc._embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_initializer)
+
+      # Provide sparse input and get dense result.
+      embedding_lookup = embedding_column._get_dense_tensor(
+          _LazyBuilder({'aaa': sparse_input}))
+      expected_lookups = ((1., 2.), (3., 5))
+      with _initialized_session():
+        self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
+
+  def test_get_sparse_tensors_with_default_value(self):
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=4, default_value=3)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(1, -1, 99),
+          dense_shape=(2, 2))
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array((1, 3, 3), dtype=np.int64),
+                dense_shape=inputs.dense_shape),
+            id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_with_default_value_and_placeholder_inputs(self):
+    with ops.Graph().as_default():
+      column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=4, default_value=3)
+      input_indices = array_ops.placeholder(dtype=dtypes.int64)
+      input_values = array_ops.placeholder(dtype=dtypes.int32)
+      input_shape = array_ops.placeholder(dtype=dtypes.int64)
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=input_indices,
+          values=input_values,
+          dense_shape=input_shape)
+      id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=np.array(((0, 0), (1, 0), (1, 1)), dtype=np.int64),
+                values=np.array((1, 3, 3), dtype=np.int64),
+                dense_shape=np.array((2, 2), dtype=np.int64)),
+            id_weight_pair.id_tensor.eval(feed_dict={
+                input_indices: ((0, 0), (1, 0), (1, 1)),
+                input_values: (1, -1, 99),
+                input_shape: (2, 2),
+            }))
+
   def test_linear_model(self):
     column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
     self.assertEqual(3, column._num_buckets)
@@ -4493,7 +4476,6 @@ class IdentityCategoricalColumnTest(test.TestCase):
         # weight_var[2] + weight_var[1] = 3+2 = 5
         self.assertAllClose(((1.,), (5.,)), self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
     self.assertEqual(3, column._num_buckets)
@@ -4645,7 +4627,6 @@ class IndicatorColumnTest(test.TestCase):
     with self.cached_session():
       self.assertAllEqual([[0., 1., 1., 0.]], self.evaluate(output))
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     a = fc._categorical_column_with_hash_bucket('a', 4)
     column = fc._indicator_column(a)
@@ -4678,66 +4659,66 @@ class IndicatorColumnTest(test.TestCase):
               dense_shape=[1, 2]),
           features['aaa'].eval())
 
-  @test_util.run_deprecated_v1
   def test_transform(self):
-    a = fc._categorical_column_with_vocabulary_list(
-        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
-    a_indicator = fc._indicator_column(a)
-    features = {
-        'aaa': sparse_tensor.SparseTensorValue(
-            indices=((0, 0), (1, 0), (1, 1)),
-            values=('marlo', 'skywalker', 'omar'),
-            dense_shape=(2, 2))
-    }
-    indicator_tensor = _transform_features(features, [a_indicator])[a_indicator]
-    with _initialized_session():
-      self.assertAllEqual([[0, 0, 1], [1, 0, 0]],
-                          self.evaluate(indicator_tensor))
+    with ops.Graph().as_default():
+      a = fc._categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+      a_indicator = fc._indicator_column(a)
+      features = {
+          'aaa': sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=('marlo', 'skywalker', 'omar'),
+              dense_shape=(2, 2))
+      }
+      indicator_tensor = _transform_features(features,
+                                             [a_indicator])[a_indicator]
+      with _initialized_session():
+        self.assertAllEqual([[0, 0, 1], [1, 0, 0]],
+                            self.evaluate(indicator_tensor))
 
-  @test_util.run_deprecated_v1
   def test_transform_with_weighted_column(self):
-    # Github issue 12557
-    ids = fc._categorical_column_with_vocabulary_list(
-        key='ids', vocabulary_list=('a', 'b', 'c'))
-    weights = fc._weighted_categorical_column(ids, 'weights')
-    indicator = fc._indicator_column(weights)
-    features = {
-        'ids': constant_op.constant([['c', 'b', 'a', 'c']]),
-        'weights': constant_op.constant([[2., 4., 6., 1.]])
-    }
-    indicator_tensor = _transform_features(features, [indicator])[indicator]
-    with _initialized_session():
-      self.assertAllEqual([[6., 4., 3.]], self.evaluate(indicator_tensor))
+    with ops.Graph().as_default():
+      # Github issue 12557
+      ids = fc._categorical_column_with_vocabulary_list(
+          key='ids', vocabulary_list=('a', 'b', 'c'))
+      weights = fc._weighted_categorical_column(ids, 'weights')
+      indicator = fc._indicator_column(weights)
+      features = {
+          'ids': constant_op.constant([['c', 'b', 'a', 'c']]),
+          'weights': constant_op.constant([[2., 4., 6., 1.]])
+      }
+      indicator_tensor = _transform_features(features, [indicator])[indicator]
+      with _initialized_session():
+        self.assertAllEqual([[6., 4., 3.]], self.evaluate(indicator_tensor))
 
-  @test_util.run_deprecated_v1
   def test_transform_with_missing_value_in_weighted_column(self):
-    # Github issue 12583
-    ids = fc._categorical_column_with_vocabulary_list(
-        key='ids', vocabulary_list=('a', 'b', 'c'))
-    weights = fc._weighted_categorical_column(ids, 'weights')
-    indicator = fc._indicator_column(weights)
-    features = {
-        'ids': constant_op.constant([['c', 'b', 'unknown']]),
-        'weights': constant_op.constant([[2., 4., 6.]])
-    }
-    indicator_tensor = _transform_features(features, [indicator])[indicator]
-    with _initialized_session():
-      self.assertAllEqual([[0., 4., 2.]], self.evaluate(indicator_tensor))
+    with ops.Graph().as_default():
+      # Github issue 12583
+      ids = fc._categorical_column_with_vocabulary_list(
+          key='ids', vocabulary_list=('a', 'b', 'c'))
+      weights = fc._weighted_categorical_column(ids, 'weights')
+      indicator = fc._indicator_column(weights)
+      features = {
+          'ids': constant_op.constant([['c', 'b', 'unknown']]),
+          'weights': constant_op.constant([[2., 4., 6.]])
+      }
+      indicator_tensor = _transform_features(features, [indicator])[indicator]
+      with _initialized_session():
+        self.assertAllEqual([[0., 4., 2.]], self.evaluate(indicator_tensor))
 
-  @test_util.run_deprecated_v1
   def test_transform_with_missing_value_in_categorical_column(self):
-    # Github issue 12583
-    ids = fc._categorical_column_with_vocabulary_list(
-        key='ids', vocabulary_list=('a', 'b', 'c'))
-    indicator = fc._indicator_column(ids)
-    features = {
-        'ids': constant_op.constant([['c', 'b', 'unknown']]),
-    }
-    indicator_tensor = _transform_features(features, [indicator])[indicator]
-    with _initialized_session():
-      self.assertAllEqual([[0., 1., 1.]], self.evaluate(indicator_tensor))
+    with ops.Graph().as_default():
+      # Github issue 12583
+      ids = fc._categorical_column_with_vocabulary_list(
+          key='ids', vocabulary_list=('a', 'b', 'c'))
+      indicator = fc._indicator_column(ids)
+      features = {
+          'ids': constant_op.constant([['c', 'b', 'unknown']]),
+      }
+      indicator_tensor = _transform_features(features, [indicator])[indicator]
+      with _initialized_session():
+        self.assertAllEqual([[0., 1., 1.]], self.evaluate(indicator_tensor))
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     animal = fc._indicator_column(
         fc._categorical_column_with_identity('animal', num_buckets=4))
@@ -4757,7 +4738,6 @@ class IndicatorColumnTest(test.TestCase):
         weight_var.assign([[1.], [2.], [3.], [4.]]).eval()
         self.assertAllClose([[2. + 3.]], self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     animal = fc._indicator_column(
         fc._categorical_column_with_identity('animal', num_buckets=4))
@@ -4777,7 +4757,6 @@ class IndicatorColumnTest(test.TestCase):
         weight_var.assign([[1.], [2.], [3.], [4.]]).eval()
         self.assertAllClose([[2. + 3.]], self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_input_layer(self):
     animal = fc._indicator_column(
         fc._categorical_column_with_identity('animal', num_buckets=4))
@@ -6287,7 +6266,6 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
 class WeightedCategoricalColumnTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
     column = fc._weighted_categorical_column(
         categorical_column=fc._categorical_column_with_identity(
@@ -6301,7 +6279,6 @@ class WeightedCategoricalColumnTest(test.TestCase):
         'values': parsing_ops.VarLenFeature(dtypes.float32)
     }, column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     """Tests deepcopy of categorical_column_with_hash_bucket."""
     original = fc._weighted_categorical_column(
@@ -6400,95 +6377,94 @@ class WeightedCategoricalColumnTest(test.TestCase):
               dense_shape=[1, 2]),
           features['weights'].eval())
 
-  @test_util.run_deprecated_v1
   def test_transform_features(self):
-    column = fc._weighted_categorical_column(
-        categorical_column=fc._categorical_column_with_identity(
-            key='ids', num_buckets=3),
-        weight_feature_key='values')
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(0, 1, 0),
-        dense_shape=(2, 2))
-    weights = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(0.5, 1.0, 0.1),
-        dense_shape=(2, 2))
-    id_tensor, weight_tensor = _transform_features({
-        'ids': inputs,
-        'values': weights,
-    }, (column,))[column]
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array(inputs.values, dtype=np.int64),
-              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=weights.indices,
-              values=np.array(weights.values, dtype=np.float32),
-              dense_shape=weights.dense_shape), self.evaluate(weight_tensor))
+    with ops.Graph().as_default():
+      column = fc._weighted_categorical_column(
+          categorical_column=fc._categorical_column_with_identity(
+              key='ids', num_buckets=3),
+          weight_feature_key='values')
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(0, 1, 0),
+          dense_shape=(2, 2))
+      weights = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(0.5, 1.0, 0.1),
+          dense_shape=(2, 2))
+      id_tensor, weight_tensor = _transform_features({
+          'ids': inputs,
+          'values': weights,
+      }, (column,))[column]
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array(inputs.values, dtype=np.int64),
+                dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=weights.indices,
+                values=np.array(weights.values, dtype=np.float32),
+                dense_shape=weights.dense_shape), self.evaluate(weight_tensor))
 
-  @test_util.run_deprecated_v1
   def test_transform_features_dense_input(self):
-    column = fc._weighted_categorical_column(
-        categorical_column=fc._categorical_column_with_identity(
-            key='ids', num_buckets=3),
-        weight_feature_key='values')
-    weights = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(0.5, 1.0, 0.1),
-        dense_shape=(2, 2))
-    id_tensor, weight_tensor = _transform_features({
-        'ids': ((0, -1), (1, 0)),
-        'values': weights,
-    }, (column,))[column]
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=np.array((0, 1, 0), dtype=np.int64),
-              dense_shape=(2, 2)), self.evaluate(id_tensor))
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=weights.indices,
-              values=np.array(weights.values, dtype=np.float32),
-              dense_shape=weights.dense_shape), self.evaluate(weight_tensor))
+    with ops.Graph().as_default():
+      column = fc._weighted_categorical_column(
+          categorical_column=fc._categorical_column_with_identity(
+              key='ids', num_buckets=3),
+          weight_feature_key='values')
+      weights = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(0.5, 1.0, 0.1),
+          dense_shape=(2, 2))
+      id_tensor, weight_tensor = _transform_features({
+          'ids': ((0, -1), (1, 0)),
+          'values': weights,
+      }, (column,))[column]
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1)),
+                values=np.array((0, 1, 0), dtype=np.int64),
+                dense_shape=(2, 2)), self.evaluate(id_tensor))
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=weights.indices,
+                values=np.array(weights.values, dtype=np.float32),
+                dense_shape=weights.dense_shape), self.evaluate(weight_tensor))
 
-  @test_util.run_deprecated_v1
   def test_transform_features_dense_weights(self):
-    column = fc._weighted_categorical_column(
-        categorical_column=fc._categorical_column_with_identity(
-            key='ids', num_buckets=3),
-        weight_feature_key='values')
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 1, 0),
-        dense_shape=(2, 2))
-    id_tensor, weight_tensor = _transform_features({
-        'ids': inputs,
-        'values': ((.5, 0.), (1., .1)),
-    }, (column,))[column]
-    with _initialized_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=inputs.indices,
-              values=np.array(inputs.values, dtype=np.int64),
-              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=np.array((.5, 1., .1), dtype=np.float32),
-              dense_shape=(2, 2)), self.evaluate(weight_tensor))
+    with ops.Graph().as_default():
+      column = fc._weighted_categorical_column(
+          categorical_column=fc._categorical_column_with_identity(
+              key='ids', num_buckets=3),
+          weight_feature_key='values')
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 1, 0),
+          dense_shape=(2, 2))
+      id_tensor, weight_tensor = _transform_features({
+          'ids': inputs,
+          'values': ((.5, 0.), (1., .1)),
+      }, (column,))[column]
+      with _initialized_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=inputs.indices,
+                values=np.array(inputs.values, dtype=np.int64),
+                dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1)),
+                values=np.array((.5, 1., .1), dtype=np.float32),
+                dense_shape=(2, 2)), self.evaluate(weight_tensor))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     column = fc._weighted_categorical_column(
         categorical_column=fc._categorical_column_with_identity(
@@ -6591,7 +6567,6 @@ class WeightedCategoricalColumnTest(test.TestCase):
         # = 3*1 + 2*.1 = 3+.2 = 3.2
         self.assertAllClose(((.5,), (3.2,)), self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     column = fc._weighted_categorical_column(
         categorical_column=fc._categorical_column_with_identity(

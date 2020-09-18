@@ -101,7 +101,8 @@ bool BlockWrapsSingleOp(Block* block) {
 }  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
-    : Dialect(/*name=*/"tf_device", context) {
+    : Dialect(/*name=*/"tf_device", context,
+              TypeID::get<TensorFlowDeviceDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
@@ -117,31 +118,6 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 // Checks if a tf_device.launch wraps a single operation and the single
 // operation results are perfectly forwarded to the launch return.
 bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
-
-//===----------------------------------------------------------------------===//
-// tf_device.return
-//===----------------------------------------------------------------------===//
-
-namespace {
-ParseResult ParseReturnOp(OpAsmParser* parser, OperationState* state) {
-  llvm::SmallVector<OpAsmParser::OperandType, 2> op_info;
-  llvm::SmallVector<Type, 2> types;
-  llvm::SMLoc loc = parser->getCurrentLocation();
-  return failure(parser->parseOperandList(op_info) ||
-                 (!op_info.empty() && parser->parseColonTypeList(types)) ||
-                 parser->resolveOperands(op_info, types, loc, state->operands));
-}
-
-void Print(ReturnOp op, OpAsmPrinter* p) {
-  *p << op.getOperationName();
-  if (op.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(op.getOperands());
-    *p << " : ";
-    interleaveComma(op.getOperandTypes(), *p);
-  }
-}
-}  // anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // tf_device.parallel_execute
@@ -393,7 +369,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   //     [%a, ...] as %block_arg0: type
   //   packed_input
   //     %b as %block_arg1: type
-  const int32_t n = op.n().getSExtValue();
+  const int32_t n = op.n();
   const int32_t num_replicated_inputs =
       (*op.operand_segment_sizes().int_value_begin()).getSExtValue();
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
@@ -437,7 +413,7 @@ LogicalResult VerifyCompatibleTypes(Type a, Type b) {
 }
 
 LogicalResult Verify(ReplicateOp op) {
-  int32_t n = op.n().getSExtValue();
+  int32_t n = op.n();
 
   // Check number of devices, if set, matches `n`.
   if (op.devices().hasValue()) {
@@ -694,12 +670,12 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<DropEmptyLaunch>(context);
 }
 
+}  // namespace tf_device
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
-
-}  // namespace tf_device
-}  // namespace mlir

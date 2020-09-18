@@ -423,8 +423,8 @@ class TensorLikeDataAdapter(DataAdapter):
 class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
   """Adapter that handles array-like data without forcing it into memory.
 
-  As an example, this adapter handles `keras.utils.HDF5Matrix` which holds
-  datasets that may be too big to fully fit into memory.
+  This adapter handles array-like datasets that may be too big to fully
+  fit into memory.
 
   Specifically, this adapter handles any Python class which implements:
   `__get_item__`, `__len__`, `shape`, and `dtype` with the same meanings
@@ -1006,7 +1006,7 @@ def _process_tensorlike(inputs):
       dtype = None
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
-      return ops.convert_to_tensor(x, dtype=dtype)
+      return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
     elif scipy_sparse and scipy_sparse.issparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
@@ -1281,7 +1281,7 @@ def _make_class_weight_map_fn(class_weight):
         "than the number of classes, found {}").format(class_weight)
     raise ValueError(error_msg)
 
-  class_weight_tensor = ops.convert_to_tensor_v2(
+  class_weight_tensor = ops.convert_to_tensor_v2_with_dispatch(
       [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):

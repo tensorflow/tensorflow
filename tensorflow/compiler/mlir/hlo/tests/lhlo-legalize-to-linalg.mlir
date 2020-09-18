@@ -496,6 +496,18 @@ func @sin(%input: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @floor
+func @floor(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "lmhlo.floor"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = floorf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @negf
 func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.negate"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -688,6 +700,46 @@ func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
 
 // -----
 
+// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape_3D_4D
+func @reshape_3D_4D(%arg0: memref<1x49x16xf32>, %arg1: memref<1x784x1x1xf32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<1x49x16xf32>, memref<1x784x1x1xf32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP1]]]
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+// CHECK: linalg.copy
+
+// -----
+
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape1_4D_4D
+func @reshape1_4D_4D(%arg0: memref<4x512x1x1xi32>,
+                     %arg1: memref<1x4x1x512xi32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<4x512x1x1xi32>, memref<1x4x1x512xi32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape2_4D_4D
+func @reshape2_4D_4D(%arg0: memref<4x1x1x1024xi32>,
+                     %arg1: memref<4x1024x1x1xi32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<4x1x1x1024xi32>, memref<4x1024x1x1xi32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, -d1 + 2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @reverse
@@ -722,3 +774,16 @@ func @conv(%input: memref<3x5x5x3xf32>, %filter: memref<2x2x3x4xf32>, %output: m
   "lmhlo.copy"(%0, %output) : (memref<3x5x5x4xf32>, memref<3x5x5x4xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
+
+// -----
+
+// CHECK-DAG: #[[TRANSPOSE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d1, d0)>
+// CHECK-DAG: #[[TRANSPOSE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @transpose
+func @transpose(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
+  "lmhlo.transpose"(%arg0, %arg1) {
+    permutation = dense<[1, 0]> : tensor<2xi64>
+  } : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[TRANSPOSE_INPUT_MAP]], #[[TRANSPOSE_OUTPUT_MAP]]]

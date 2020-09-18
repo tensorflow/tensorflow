@@ -15,43 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 namespace micro {
-
-const TfLiteEvalTensor* GetEvalInput(const TfLiteContext* context,
-                                     const TfLiteNode* node, int index) {
-  return GetMutableEvalInput(context, node, index);
-}
-
-TfLiteEvalTensor* GetMutableEvalInput(const TfLiteContext* context,
-                                      const TfLiteNode* node, int index) {
-  TFLITE_DCHECK(context != nullptr);
-  TFLITE_DCHECK(node != nullptr);
-  return context->GetEvalTensor(context, node->inputs->data[index]);
-}
-
-TfLiteEvalTensor* GetEvalOutput(const TfLiteContext* context,
-                                const TfLiteNode* node, int index) {
-  TFLITE_DCHECK(context != nullptr);
-  TFLITE_DCHECK(node != nullptr);
-  return context->GetEvalTensor(context, node->outputs->data[index]);
-}
-
-const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
-  if (tensor == nullptr) {
-    return RuntimeShape();
-  }
-  TfLiteIntArray* dims = tensor->dims;
-  const int dims_size = dims->size;
-  const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
-  return RuntimeShape(dims_size, dims_data);
-}
 
 bool HaveSameShapes(const TfLiteEvalTensor* input1,
                     const TfLiteEvalTensor* input2) {
   TFLITE_DCHECK(input1 != nullptr);
   TFLITE_DCHECK(input2 != nullptr);
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
+}
+
+const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
+  if (tensor == nullptr || tensor->dims == nullptr) {
+    return RuntimeShape();
+  }
+  TfLiteIntArray* dims = tensor->dims;
+  const int dims_size = dims->size;
+  const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
+  return RuntimeShape(dims_size, dims_data);
 }
 
 }  // namespace micro

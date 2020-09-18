@@ -63,8 +63,10 @@ struct SE_DeviceOptions {
   stream_executor::DeviceOptions options;
 };
 
+// Ignored -- these are just used to enforce the interface types
 struct XLA_TransferManager {};
-
 struct XLA_ComputationPlacer {};
+struct SE_TpuTopology {};
+struct SE_TpuTopology_Core {};
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
