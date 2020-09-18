@@ -155,6 +155,12 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
 }
 
 TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
+  bool use_function = !std::get<2>(GetParam());
+  if (use_function) {
+    // TODO(b/168850692): Enable this.
+    GTEST_SKIP() << "Can't take gradient of "
+                    "SparseSoftmaxCrossEntropyWithLogits in tracing mode.";
+  }
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
 

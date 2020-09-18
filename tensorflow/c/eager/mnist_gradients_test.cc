@@ -390,6 +390,12 @@ TEST_P(CppGradients, TestReluGrad) {
 }
 
 TEST_P(CppGradients, TestSoftmaxLossGrad) {
+  bool use_function = !std::get<2>(GetParam());
+  if (use_function) {
+    // TODO(b/168850692): Enable this.
+    GTEST_SKIP() << "Can't take gradient of "
+                    "SparseSoftmaxCrossEntropyWithLogits in tracing mode.";
+  }
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
 
@@ -458,6 +464,12 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
 }
 
 TEST_P(CppGradients, TestMNISTGrad) {
+  bool use_function = !std::get<2>(GetParam());
+  if (use_function) {
+    // TODO(b/168850692): Enable this.
+    GTEST_SKIP() << "Can't take gradient of "
+                    "SparseSoftmaxCrossEntropyWithLogits in tracing mode.";
+  }
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   AbstractContextPtr ctx;
@@ -605,6 +617,12 @@ TEST_P(CppGradients, TestScalarMul) {
 }
 
 TEST_P(CppGradients, TestMNIST_Training) {
+  bool use_function = !std::get<2>(GetParam());
+  if (use_function) {
+    // TODO(b/168850692): Enable this.
+    GTEST_SKIP() << "Can't take gradient of "
+                    "SparseSoftmaxCrossEntropyWithLogits in tracing mode.";
+  }
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
 
