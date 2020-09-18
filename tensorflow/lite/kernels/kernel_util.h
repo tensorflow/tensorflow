@@ -29,18 +29,46 @@ namespace tflite {
 // benchmark_model for MobileNet + MobileBERT is unaffected. If such a change is
 // made, move the newly non-inlined function declarations to the top of this
 // header file.
+
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetInput(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
 const TfLiteTensor* GetInput(const TfLiteContext* context,
                              const TfLiteNode* node, int index);
 
 // Note: You must check if result is not null:
-// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
-// TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+//   TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
 TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
                                int index);
 
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetOutput(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
 TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                         int index);
 
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetOptionalInputTensor(context, node, kIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
+//
+// Deprecated. GetInput has the same functionality.
 const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
                                            const TfLiteNode* node, int index);
 
@@ -50,14 +78,46 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetTemporary(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
-  return &context->tensors[node->temporaries->data[index]];
+  if (index >= 0 && index < node->temporaries->size) {
+    const int tensor_index = node->temporaries->data[index];
+    if (tensor_index != kTfLiteOptionalTensor) {
+      if (context->tensors != nullptr) {
+        return &context->tensors[tensor_index];
+      }
+    }
+  }
+  return nullptr;
 }
+
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetIntermediates(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             const TfLiteNode* node, int index) {
-  return &context->tensors[node->intermediates->data[index]];
+  if (index >= 0 && index < node->intermediates->size) {
+    const int tensor_index = node->intermediates->data[index];
+    if (tensor_index != kTfLiteOptionalTensor) {
+      if (context->tensors != nullptr) {
+        return &context->tensors[tensor_index];
+      }
+    }
+  }
+  return nullptr;
 }
+
 inline int NumIntermediates(const TfLiteNode* node) {
   return node->intermediates->size;
 }

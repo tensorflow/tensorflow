@@ -32,11 +32,17 @@ namespace {
 
 inline TfLiteTensor* GetMutableInput(const TfLiteContext* context,
                                      const TfLiteNode* node, int index) {
-  if (context->tensors != nullptr) {
-    return &context->tensors[node->inputs->data[index]];
-  } else {
-    return context->GetTensor(context, node->inputs->data[index]);
+  if (index >= 0 && index < node->inputs->size) {
+    const int tensor_index = node->inputs->data[index];
+    if (tensor_index != kTfLiteOptionalTensor) {
+      if (context->tensors != nullptr) {
+        return &context->tensors[tensor_index];
+      } else {
+        return context->GetTensor(context, tensor_index);
+      }
+    }
   }
+  return nullptr;
 }
 
 }  // anonymous namespace.
@@ -54,11 +60,17 @@ TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
 
 TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                         int index) {
-  if (context->tensors != nullptr) {
-    return &context->tensors[node->outputs->data[index]];
-  } else {
-    return context->GetTensor(context, node->outputs->data[index]);
+  if (index >= 0 && index < node->outputs->size) {
+    const int tensor_index = node->outputs->data[index];
+    if (tensor_index != kTfLiteOptionalTensor) {
+      if (context->tensors != nullptr) {
+        return &context->tensors[tensor_index];
+      } else {
+        return context->GetTensor(context, tensor_index);
+      }
+    }
   }
+  return nullptr;
 }
 
 const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
