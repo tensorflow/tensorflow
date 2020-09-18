@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.platform import test
@@ -78,6 +79,13 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
               right_pad="",
               pad_width=0,
               preserve_short_sequences=False))
+
+  def testGetSessionHandle(self):
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(
+          errors.FailedPreconditionError,
+          "GetSessionHandle called on null session state"):
+        gen_data_flow_ops.GetSessionHandle(value=[1])
 
 
 if __name__ == "__main__":
