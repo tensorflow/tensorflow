@@ -19,7 +19,6 @@ limitations under the License.
 #if defined(__CUDACC__) || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/random_op.h"
-#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -34,16 +33,14 @@ struct FillPhiloxRandomKernel;
 template <class Distribution>
 struct FillPhiloxRandomKernel<Distribution, false> {
   typedef typename Distribution::ResultElementType T;
-  PHILOX_DEVICE_INLINE void Run(const uint64* key, const uint64* counter,
-                                random::PhiloxRandom gen, T* data, int64 size,
+  PHILOX_DEVICE_INLINE void Run(random::PhiloxRandom gen, T* data, int64 size,
                                 Distribution dist);
 };
 
 template <class Distribution>
 struct FillPhiloxRandomKernel<Distribution, true> {
   typedef typename Distribution::ResultElementType T;
-  PHILOX_DEVICE_INLINE void Run(const uint64* key, const uint64* counter,
-                                random::PhiloxRandom base_gen, T* data,
+  PHILOX_DEVICE_INLINE void Run(const random::PhiloxRandom& base_gen, T* data,
                                 int64 size, Distribution dist);
 };
 
@@ -139,16 +136,12 @@ class SampleCopier<int64, 2> {
 // distribution. Each output takes a fixed number of samples.
 template <class Distribution>
 PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, false>::Run(
-    const uint64* key, const uint64* counter, random::PhiloxRandom gen, T* data,
-    int64 size, Distribution dist) {
+    random::PhiloxRandom gen, T* data, int64 size, Distribution dist) {
   const int kGroupSize = Distribution::kResultElementCount;
 
   const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
   const int32 total_thread_count = gridDim.x * blockDim.x;
   int32 offset = thread_id * kGroupSize;
-  if (key != nullptr && counter != nullptr) {
-    gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
-  }
   gen.Skip(thread_id);
 
   const SampleCopier<T, kGroupSize> copier;
@@ -174,8 +167,8 @@ PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, false>::Run(
 // distribution. Each output takes a variable number of samples.
 template <class Distribution>
 PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, true>::Run(
-    const uint64* key, const uint64* counter, random::PhiloxRandom base_gen,
-    T* data, int64 size, Distribution dist) {
+    const random::PhiloxRandom& base_gen, T* data, int64 size,
+    Distribution dist) {
   using random::PhiloxRandom;
   using random::SingleSampleAdapter;
 
@@ -190,9 +183,6 @@ PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, true>::Run(
   int64 group_index = thread_id;
   int64 offset = group_index * kGroupSize;
 
-  if (key != nullptr && counter != nullptr) {
-    base_gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
-  }
   while (offset < size) {
     // Since each output takes a variable number of samples, we need to
     // realign the generator to the beginning for the current output group
@@ -218,20 +208,18 @@ PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, true>::Run(
 // A simple launch pad to call the correct function templates to fill the data
 template <class Distribution>
 __global__ void __launch_bounds__(1024)
-    FillPhiloxRandomKernelLaunch(const uint64* key, const uint64* counter,
-                                 random::PhiloxRandom base_gen,
+    FillPhiloxRandomKernelLaunch(random::PhiloxRandom base_gen,
                                  typename Distribution::ResultElementType* data,
                                  int64 size, Distribution dist) {
   FillPhiloxRandomKernel<Distribution,
                          Distribution::kVariableSamplesPerOutput>()
-      .Run(key, counter, base_gen, data, size, dist);
+      .Run(base_gen, data, size, dist);
 }
 
 // Partial specialization for GPU
 template <class Distribution>
 void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
-    OpKernelContext*, const GPUDevice& d, const uint64* key,
-    const uint64* counter, random::PhiloxRandom gen,
+    OpKernelContext*, const GPUDevice& d, random::PhiloxRandom gen,
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
   const int32 block_size = d.maxGpuThreadsPerBlock();
@@ -240,8 +228,8 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
       block_size;
 
   TF_CHECK_OK(GpuLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>,
-                              num_blocks, block_size, 0, d.stream(), key,
-                              counter, gen, data, size, dist));
+                              num_blocks, block_size, 0, d.stream(), gen, data,
+                              size, dist));
 }
 
 }  // namespace functor

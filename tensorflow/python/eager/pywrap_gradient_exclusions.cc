@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 357> a = {{
+  static std::array<OpIndexInfo, 352> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -332,16 +332,11 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"StatelessRandomBinomial"},
       {"StatelessRandomGammaV2", 1, {1}},
       {"StatelessRandomNormal"},
-      {"StatelessRandomNormalV2"},
       {"StatelessRandomPoisson"},
       {"StatelessRandomUniform"},
       {"StatelessRandomUniformFullInt"},
-      {"StatelessRandomUniformFullIntV2"},
       {"StatelessRandomUniformInt"},
-      {"StatelessRandomUniformIntV2"},
-      {"StatelessRandomUniformV2"},
       {"StatelessTruncatedNormal"},
-      {"StatelessTruncatedNormalV2"},
       {"StopGradient"},
       {"StridedSliceGrad", 2, {0, 4}},
       {"StringSplit"},
@@ -420,7 +415,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 473> a = {{
+  static std::array<OpIndexInfo, 468> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -798,16 +793,11 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"StatelessMultinomial"},
       {"StatelessRandomBinomial"},
       {"StatelessRandomNormal"},
-      {"StatelessRandomNormalV2"},
       {"StatelessRandomPoisson"},
       {"StatelessRandomUniform"},
       {"StatelessRandomUniformFullInt"},
-      {"StatelessRandomUniformFullIntV2"},
       {"StatelessRandomUniformInt"},
-      {"StatelessRandomUniformIntV2"},
-      {"StatelessRandomUniformV2"},
       {"StatelessTruncatedNormal"},
-      {"StatelessTruncatedNormalV2"},
       {"StopGradient"},
       {"StridedSlice"},
       {"StridedSliceGrad"},

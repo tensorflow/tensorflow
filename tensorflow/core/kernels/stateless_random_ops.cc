@@ -121,8 +121,8 @@ class StatelessRandomOp : public StatelessRandomOpBase {
     auto flat = output->flat<T>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), /*key=*/nullptr,
-        /*counter=*/nullptr, random, flat.data(), flat.size(), Distribution());
+        context, context->eigen_device<Device>(), random, flat.data(),
+        flat.size(), Distribution());
   }
 };
 
@@ -158,8 +158,8 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
     auto flat = output->flat<IntType>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), /*key=*/nullptr,
-        /*counter=*/nullptr, random, flat.data(), flat.size(), dist);
+        context, context->eigen_device<Device>(), random, flat.data(),
+        flat.size(), dist);
   }
 };
 
@@ -178,8 +178,8 @@ class StatelessRandomUniformFullIntOp : public StatelessRandomOpBase {
     auto flat = output->flat<IntType>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), /*key=*/nullptr,
-        /*counter=*/nullptr, random, flat.data(), flat.size(), dist);
+        context, context->eigen_device<Device>(), random, flat.data(),
+        flat.size(), dist);
   }
 };
 

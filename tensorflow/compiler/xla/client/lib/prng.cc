@@ -487,10 +487,6 @@ std::pair<XlaOp, XlaOp> BoxMullerTransform(XlaOp x0, XlaOp x1) {
 
 }  // namespace
 
-XlaOp PhiloxIncreaseCounter(XlaOp counter, XlaOp delta) {
-  return Uint128ToOp(Uint128AddUint64(Uint128FromOp(counter), delta));
-}
-
 RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
                                const Shape& shape) {
   PrimitiveType type = shape.element_type();

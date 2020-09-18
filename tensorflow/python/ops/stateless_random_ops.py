@@ -20,18 +20,15 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops
-from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
-
 
 ops.NotDifferentiable("StatelessMultinomial")
 ops.NotDifferentiable("StatelessRandomBinomial")
@@ -41,13 +38,6 @@ ops.NotDifferentiable("StatelessRandomUniform")
 ops.NotDifferentiable("StatelessRandomUniformInt")
 ops.NotDifferentiable("StatelessRandomUniformFullInt")
 ops.NotDifferentiable("StatelessTruncatedNormal")
-
-
-ops.NotDifferentiable("StatelessRandomNormalV2")
-ops.NotDifferentiable("StatelessRandomUniformV2")
-ops.NotDifferentiable("StatelessRandomUniformIntV2")
-ops.NotDifferentiable("StatelessRandomUniformFullIntV2")
-ops.NotDifferentiable("StatelessTruncatedNormalV2")
 
 
 @tf_export("random.experimental.stateless_split")
@@ -121,10 +111,6 @@ def fold_in(seed, data):
   seed1 = stateless_random_uniform(shape=[], seed=seed, dtype=data.dtype,
                                    minval=None, maxval=None)
   return array_ops.stack([seed1, data])
-
-
-_get_key_counter_alg = (gen_stateless_random_ops_v2
-                        .stateless_random_get_key_counter_alg)
 
 
 @tf_export("random.stateless_uniform")
@@ -206,35 +192,17 @@ def stateless_random_uniform(shape,
                       [shape, seed, minval, maxval]) as name:
     shape = tensor_util.shape_tensor(shape)
     if dtype.is_integer and minval is None:
-      if compat.forward_compatible(2020, 10, 25):
-        key, counter, alg = _get_key_counter_alg(seed)
-        result = (gen_stateless_random_ops_v2
-                  .stateless_random_uniform_full_int_v2(
-                      shape, key=key, counter=counter, dtype=dtype, alg=alg,
-                      name=name))
-      else:
-        result = gen_stateless_random_ops.stateless_random_uniform_full_int(
-            shape, seed=seed, dtype=dtype, name=name)
+      result = gen_stateless_random_ops.stateless_random_uniform_full_int(
+          shape, seed=seed, dtype=dtype, name=name)
     else:
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
       if dtype.is_integer:
-        if compat.forward_compatible(2020, 10, 25):
-          key, counter, alg = _get_key_counter_alg(seed)
-          result = gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
-              shape, key=key, counter=counter, minval=minval, maxval=maxval,
-              alg=alg, name=name)
-        else:
-          result = gen_stateless_random_ops.stateless_random_uniform_int(
-              shape, seed=seed, minval=minval, maxval=maxval, name=name)
+        result = gen_stateless_random_ops.stateless_random_uniform_int(
+            shape, seed=seed, minval=minval, maxval=maxval, name=name)
       else:
-        if compat.forward_compatible(2020, 10, 25):
-          key, counter, alg = _get_key_counter_alg(seed)
-          rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
-              shape, key=key, counter=counter, dtype=dtype, alg=alg)
-        else:
-          rnd = gen_stateless_random_ops.stateless_random_uniform(
-              shape, seed=seed, dtype=dtype)
+        rnd = gen_stateless_random_ops.stateless_random_uniform(
+            shape, seed=seed, dtype=dtype)
         result = math_ops.add(rnd * (maxval - minval), minval, name=name)
     tensor_util.maybe_set_static_shape(result, shape)
     return result
@@ -508,12 +476,7 @@ def stateless_random_normal(shape,
     shape = tensor_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-    if compat.forward_compatible(2020, 10, 25):
-      key, counter, alg = _get_key_counter_alg(seed)
-      rnd = gen_stateless_random_ops_v2.stateless_random_normal_v2(
-          shape, key=key, counter=counter, dtype=dtype, alg=alg)
-    else:
-      rnd = gen_stateless_random_ops.stateless_random_normal(shape, seed, dtype)
+    rnd = gen_stateless_random_ops.stateless_random_normal(shape, seed, dtype)
     result = math_ops.add(rnd * stddev, mean, name=name)
     tensor_util.maybe_set_static_shape(result, shape)
     return result
@@ -558,13 +521,8 @@ def stateless_truncated_normal(shape,
     shape = tensor_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-    if compat.forward_compatible(2020, 10, 25):
-      key, counter, alg = _get_key_counter_alg(seed)
-      rnd = gen_stateless_random_ops_v2.stateless_truncated_normal_v2(
-          shape, key=key, counter=counter, dtype=dtype, alg=alg)
-    else:
-      rnd = gen_stateless_random_ops.stateless_truncated_normal(
-          shape, seed, dtype)
+    rnd = gen_stateless_random_ops.stateless_truncated_normal(
+        shape, seed, dtype)
     result = math_ops.add(rnd * stddev, mean, name=name)
     tensor_util.maybe_set_static_shape(result, shape)
     return result
