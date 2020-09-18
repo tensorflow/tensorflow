@@ -145,6 +145,8 @@ struct TransformUnrankedHloPass
     MAP_CHLO_OPERATION_CWISE_UNARY(ADD_LEGAL_CHLO, ;);
 #undef ADD_LEGAL_MHLO
 #undef ADD_LEGAL_CHLO
+    AddLegalOpOnRankedTensor<mhlo::CompareOp>(&target);
+    AddLegalOpOnRankedTensor<mhlo::SelectOp>(&target);
 
     // Populate rewrite patterns.
     OwningRewritePatternList patterns;
@@ -168,7 +170,9 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
   patterns->insert<
       MAP_XLA_OPERATION_CWISE_UNARY(MAP_UNARY, COMMA),
       MAP_XLA_OPERATION_CWISE_BINARY(MAP_BINARY, COMMA),
-      MAP_CHLO_OPERATION_CWISE_UNARY(MAP_CHLO_UNARY, COMMA)>(context);
+      MAP_CHLO_OPERATION_CWISE_UNARY(MAP_CHLO_UNARY, COMMA),
+      ElementwiseOpConversion<mhlo::CompareOp>,
+      ElementwiseOpConversion<mhlo::SelectOp>>(context);
   // clang-format on
 #undef MAP_UNARY
 #undef MAP_BINARY
