@@ -305,12 +305,12 @@ else_branch: A function that takes 'inputs' and returns a list of
 
   let extraClassDeclaration = [{
     // Get the then branch function.
-    FuncOp then_func() {
+    FuncOp then_function() {
      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
     }
 
     // Get the else branch function.
-    FuncOp else_func() {
+    FuncOp else_function() {
      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
     }
   }];
@@ -661,12 +661,12 @@ body: A function that takes a list of tensors and returns another
 
   let extraClassDeclaration = [{
     // Get the condition function.
-    FuncOp cond_func() {
+    FuncOp cond_function() {
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
     }
 
     // Get the body function.
-    FuncOp body_func() {
+    FuncOp body_function() {
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
     }
   }];

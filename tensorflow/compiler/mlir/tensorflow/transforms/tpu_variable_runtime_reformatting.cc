@@ -452,8 +452,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
     return;
 
-  FuncOp body = while_op.body_func();
-  FuncOp cond = while_op.cond_func();
+  FuncOp body = while_op.body_function();
+  FuncOp cond = while_op.cond_function();
 
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =

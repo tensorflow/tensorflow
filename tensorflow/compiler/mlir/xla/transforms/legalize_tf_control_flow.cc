@@ -119,8 +119,8 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
   // return op.
-  ImportXlaRegion(op.then_func(), &if_op.true_branch(), loc);
-  ImportXlaRegion(op.else_func(), &if_op.false_branch(), loc);
+  ImportXlaRegion(op.then_function(), &if_op.true_branch(), loc);
+  ImportXlaRegion(op.else_function(), &if_op.false_branch(), loc);
 
   // De-tuple the results of the xla hlo if result.
   Detuple(if_op.getResult(), op.getResults(), &builder);
@@ -172,8 +172,8 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 
   // Import the regions for both the cond and body. These regions must be
   // updated to tuple the return results together and use the xla hlo return op.
-  ImportXlaRegion(op.body_func(), &while_op.body(), loc);
-  ImportXlaRegion(op.cond_func(), &while_op.cond(), loc,
+  ImportXlaRegion(op.body_function(), &while_op.body(), loc);
+  ImportXlaRegion(op.cond_function(), &while_op.cond(), loc,
                   /*tuple_return=*/false);
 
   // De-tuple the results of the xla hlo while.

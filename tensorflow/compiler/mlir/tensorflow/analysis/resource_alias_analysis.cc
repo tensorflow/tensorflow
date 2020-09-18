@@ -351,7 +351,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
                                result);
     } else if (auto while_op = dyn_cast<WhileOp>(op)) {
       AnalyzeWhileLoop(while_op, backtrack_analysis.GetAnalysisForFunc(
-                                     while_op.body_func()));
+                                     while_op.body_function()));
     } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
       AnalyzeWhileLoop(while_region, backtrack_analysis.GetAnalysisForRegion(
                                          while_region.body()));
@@ -364,8 +364,9 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
 
       AnalyzeFunctionalCaseOrIfOp(case_op, functions, backtrack_analysis);
     } else if (auto if_op = dyn_cast<IfOp>(op)) {
-      AnalyzeFunctionalCaseOrIfOp(if_op, {if_op.then_func(), if_op.else_func()},
-                                  backtrack_analysis);
+      AnalyzeFunctionalCaseOrIfOp(
+          if_op, {if_op.then_function(), if_op.else_function()},
+          backtrack_analysis);
     } else if (llvm::isa<CaseRegionOp, IfRegionOp>(op)) {
       AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {

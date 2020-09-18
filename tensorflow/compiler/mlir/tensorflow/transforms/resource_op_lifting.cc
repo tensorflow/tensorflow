@@ -1204,8 +1204,8 @@ LogicalResult HoistForControlFlow(
         lifted_partitioned_call_callees) {
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-      auto body = while_op.body_func();
-      auto cond = while_op.cond_func();
+      auto body = while_op.body_function();
+      auto cond = while_op.cond_function();
       // Recursively handle the nested control flow.
       HoistForControlFlow(&body.front(), module,
                           lifted_partitioned_call_callees);
@@ -1213,8 +1213,8 @@ LogicalResult HoistForControlFlow(
                           lifted_partitioned_call_callees);
       if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      auto then_branch = if_op.then_func();
-      auto else_branch = if_op.else_func();
+      auto then_branch = if_op.then_function();
+      auto else_branch = if_op.else_function();
       // Recursively handle the nested control flow.
       HoistForControlFlow(&then_branch.front(), module,
                           lifted_partitioned_call_callees);
