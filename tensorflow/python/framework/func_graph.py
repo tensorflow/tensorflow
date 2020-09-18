@@ -36,6 +36,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -716,7 +717,12 @@ class FuncGraph(ops.Graph):
       # device as the source tensor. The device placement may be relaxed at
       # a later date.
       with ops.control_dependencies(None), self.device(tensor.device):
-        graph_const = constant_op.constant(tensor.numpy(), dtype=tensor.dtype,
+        constant_value = tensor_util.constant_value(tensor)
+        if constant_value is None:
+          # Some eager tensors, e.g. parallel tensors, are not convertible to a
+          # single constant. We'll use a placeholder for this case.
+          return self._capture_helper(tensor, name)
+        graph_const = constant_op.constant(constant_value, dtype=tensor.dtype,
                                            shape=tensor.shape, name=name)
       self.add_capture(tensor, graph_const)
     else:
