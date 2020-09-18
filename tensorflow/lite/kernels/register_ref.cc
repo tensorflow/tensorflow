@@ -190,7 +190,7 @@ const TfLiteRegistration* BuiltinRefOpResolver::FindOp(const char* op,
 
 BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH_REF());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 2);
