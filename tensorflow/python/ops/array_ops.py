@@ -574,13 +574,18 @@ def broadcast_static_shape(shape_x, shape_y):
 @dispatch.add_dispatch_support
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
-  """Returns the shape of a tensor.
-  
+  """Returns a tensor containing the shape of the input tensor.
+
   See also `tf.size`, `tf.rank`.
 
   `tf.shape` returns a 1-D integer tensor representing the shape of `input`.
+  For a scalar input, the tensor returned has a shape of (0,) and its value is
+  the empty vector (i.e. []).
 
   For example:
+
+  >>> tf.shape(1.)
+  <tf.Tensor: shape=(0,), dtype=int32, numpy=array([], dtype=int32)>
 
   >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
   >>> tf.shape(t)
@@ -597,7 +602,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a.shape
   TensorShape([None, None, 10])
-  
+
   (The first `None` represents the as yet unknown batch size.)
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
