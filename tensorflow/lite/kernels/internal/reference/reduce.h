@@ -70,6 +70,9 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
     // eg: For num_dims=3, [0, 1, 2] is the same as [-3, -2, -1]  */
     int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
     TFLITE_DCHECK(current >= 0 && current < num_dims);
+    if (current < 0 || current >= num_dims) {
+      return false;
+    }
     bool is_dup = false;
     for (int j = 0; j < *out_num_axis; ++j) {
       if (out_axis[j] == current) {
