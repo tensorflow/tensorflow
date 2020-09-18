@@ -531,7 +531,6 @@ Status SchedulerState::Init(const GrapplerItem* item,
       initial_nodes->push_back(curr_node);
       VLOG(3) << "Added ready node: " << curr_node->name();
     }
-
     feed_nodes.erase(curr_node->name());
 
     if (IsPersistent(*curr_node)) {
@@ -778,6 +777,10 @@ NodeState& SchedulerState::GetNodeStateOrCreateIt(const NodeDef* node) {
   node_state.num_outputs_executed[-1] = 0;
   node_state.outputs[-1] = {};
 
+  // Initialize time_scheduled to infinity, so we know whether it has been
+  // assigned a non-default value later.
+  node_state.time_scheduled = Costs::Duration().infinity();
+
   return it->second;
 }
 
@@ -862,10 +865,16 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr
   // time.
-  node_state.time_scheduled =
-      std::max(device.GetCurrTime(), node_state.time_ready);
-  // Override device curr time with the time_scheduled.
-  device.device_costs.execution_time = node_state.time_scheduled;
+  // NodeState times are assigned infinity at initialization. If they are
+  // still infinity here, we need to assign them. If not, it has been assigned
+  // already, so skip. This latter case may occur when a scheduler in-lines
+  // function calls, and thus schedules only function sub-nodes.
+  if (node_state.time_scheduled == Costs::Duration().infinity()) {
+    node_state.time_scheduled =
+        std::max(device.GetCurrTime(), node_state.time_ready);
+    // Override device curr time with the time_scheduled.
+    device.device_costs.execution_time = node_state.time_scheduled;
+  }
   device.device_costs = CombineCosts(device.device_costs, total_node_costs);
   auto curr_time = device.GetCurrTime();
   node_state.time_finished = curr_time;
@@ -1000,8 +1009,13 @@ Costs SchedulerState::Summary() const {
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
-      const auto output_size =
-          CalculateOutputSize(node_map_.at(node).output_properties, port);
+      auto output_size = 0;
+      // Check if the node is in the node_map. It may be that the node executed
+      // on this device was executed by a different Scheduler.
+      if (node_map_.find(node) != node_map_.end()) {
+        output_size =
+            CalculateOutputSize(node_map_.at(node).output_properties, port);
+      }
       persistent_memory_usage += output_size;
       op_to_memory[node->op()] += output_size;
       persistent_ops.insert(node->op());
@@ -1048,8 +1062,12 @@ Costs SchedulerState::Summary() const {
     for (const auto& node_port : state.mem_usage_snapshot_at_peak) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
-      op_to_memory[node->op()] +=
-          CalculateOutputSize(node_map_.at(node).output_properties, port);
+      // Check if the node is in the node_map. It may be that the node executed
+      // on this device was executed by a different Scheduler.
+      if (node_map_.find(node) != node_map_.end()) {
+        op_to_memory[node->op()] +=
+            CalculateOutputSize(node_map_.at(node).output_properties, port);
+      }
     }
     Costs::NanoSeconds total_compute_time_ns;
     bool is_total_cost_accurate = true;
@@ -1132,6 +1150,12 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
     DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
     device_stepstats->set_device(device.first);
     for (const auto& node_def : device.second.nodes_executed) {
+      // Only proceed if the node is in the node_map. This is to cover the case
+      // where a device has executed a node that is not in the node_map of
+      // this scheduler.
+      if (node_map_.find(node_def) == node_map_.end()) {
+        continue;
+      }
       const NodeState& nodestate = node_map_.at(node_def);
       NodeExecStats* node_stats = device_stepstats->add_node_stats();
       uint64 total_output_size = 0;
@@ -1227,6 +1251,12 @@ SchedulerState::GetPersistentMemoryUsage() const {
     result[name] = persistent_memory_usage;
   }
   return result;
+}
+
+void SchedulerState::SetNodeStateTimeScheduled(const NodeDef* node) {
+  auto& node_state = node_map_.at(node);
+  auto& device = device_[node_state.device_name];
+  node_state.time_scheduled = device.GetCurrTime();
 }
 
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
