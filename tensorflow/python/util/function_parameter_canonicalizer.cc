@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace {
-inline char* PyUnicodeAsUtf8Compat(PyObject* obj) {
+inline const char* PyUnicodeAsUtf8Compat(PyObject* obj) {
 #if PY_MAJOR_VERSION < 3
   return PyString_AS_STRING(obj);
 #else
