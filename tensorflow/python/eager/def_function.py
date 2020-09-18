@@ -530,7 +530,9 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
-        experimental_follow_type_hints=experimental_follow_type_hints)
+        experimental_compile=experimental_compile,
+        experimental_follow_type_hints=experimental_follow_type_hints,
+    )
     self._implements = experimental_implements
     # If `True`, the function uses the rendezvous of the parent. This is only
     # needed to support code where raw send/recv operations are inserted and
