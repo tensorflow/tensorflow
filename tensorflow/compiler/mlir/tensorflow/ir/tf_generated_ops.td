@@ -295,6 +295,35 @@ Equivalent to np.angle.
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_AnonymousRandomSeedGeneratorOp : TF_Op<"AnonymousRandomSeedGenerator", []> {
+  let summary = "";
+
+  let arguments = (ins
+    I64Tensor:$seed,
+    I64Tensor:$seed2
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorAlloc]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+}
+
+def TF_AnonymousSeedGeneratorOp : TF_Op<"AnonymousSeedGenerator", []> {
+  let summary = "";
+
+  let arguments = (ins
+    I64Tensor:$seed,
+    I64Tensor:$seed2,
+    I1Tensor:$reshuffle
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorAlloc]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+}
+
 def TF_AnyOp : TF_Op<"Any", [NoSideEffect]> {
   let summary = [{
 Computes the "logical or" of elements across dimensions of a tensor.
@@ -2433,6 +2462,28 @@ is the same, though it is cleaner to use `tf.io.decode_image`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_DeleteRandomSeedGeneratorOp : TF_Op<"DeleteRandomSeedGenerator", []> {
+  let summary = "";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorFree]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+
+  let results = (outs);
+}
+
+def TF_DeleteSeedGeneratorOp : TF_Op<"DeleteSeedGenerator", []> {
+  let summary = "";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorFree]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+
+  let results = (outs);
+}
+
 def TF_DepthToSpaceOp : TF_Op<"DepthToSpace", [NoSideEffect]> {
   let summary = "DepthToSpace for tensors of type T.";
 
@@ -2765,6 +2816,16 @@ def TF_DivOp : TF_Op<"Div", [NoSideEffect, ResultsBroadcastableShape, TF_SameOpe
   let hasCanonicalizer = 1;
 
   let hasFolder = 1;
+}
+
+def TF_DummySeedGeneratorOp : TF_Op<"DummySeedGenerator", []> {
+  let summary = "";
+
+  let arguments = (ins);
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorAlloc]>:$handle
+  );
 }
 
 def TF_DynamicStitchOp : TF_Op<"DynamicStitch", [NoSideEffect, SameVariadicOperandSize]> {
@@ -10174,6 +10235,64 @@ Generate a sharded filename. The filename is printf formatted as
 
   let results = (outs
     TF_StrTensor:$filename
+  );
+}
+
+def TF_ShuffleAndRepeatDatasetV2Op : TF_Op<"ShuffleAndRepeatDatasetV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    I64Tensor:$buffer_size,
+    I64Tensor:$seed,
+    I64Tensor:$seed2,
+    I64Tensor:$count,
+    Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
+
+    DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
+def TF_ShuffleDatasetV2Op : TF_Op<"ShuffleDatasetV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    I64Tensor:$buffer_size,
+    Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
+def TF_ShuffleDatasetV3Op : TF_Op<"ShuffleDatasetV3", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    I64Tensor:$buffer_size,
+    I64Tensor:$seed,
+    I64Tensor:$seed2,
+    Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
+
+    DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
   );
 }
 
