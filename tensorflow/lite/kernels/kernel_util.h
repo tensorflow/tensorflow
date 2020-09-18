@@ -40,6 +40,17 @@ namespace tflite {
 const TfLiteTensor* GetInput(const TfLiteContext* context,
                              const TfLiteNode* node, int index);
 
+// Same as `GetInput` but returns boolean and uses output argument for tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetInputSafe(context, node, kMyTensorIdx, &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetInputSafe(const TfLiteContext* context, const TfLiteNode* node,
+                          int index, const TfLiteTensor** tensor);
+
 // Note: You must check if result is not null:
 //
 //   TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
@@ -60,6 +71,17 @@ TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
 TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                         int index);
 
+// Same as `GetOutput` but returns boolean and uses output argument for tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetOutputSafe(context, node, kMyTensorIdx, &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetOutputSafe(const TfLiteContext* context, const TfLiteNode* node,
+                           int index, TfLiteTensor** tensor);
+
 // Note: You must check if result is not null:
 //
 //   TfLiteTensor* my_tensor = GetOptionalInputTensor(context, node, kIdx);
@@ -72,11 +94,6 @@ TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
 const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
                                            const TfLiteNode* node, int index);
 
-inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
-inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
-  return t->dims->data[dim];
-}
-
 #ifndef TF_LITE_STATIC_MEMORY
 // Note: You must check if result is not null:
 //
@@ -85,18 +102,22 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 //
 // This is because the index might point to the optional tensor constant
 // (kTfLiteOptionalTensor) in which case there is no tensor to return.
-inline TfLiteTensor* GetTemporary(TfLiteContext* context,
-                                  const TfLiteNode* node, int index) {
-  if (index >= 0 && index < node->temporaries->size) {
-    const int tensor_index = node->temporaries->data[index];
-    if (tensor_index != kTfLiteOptionalTensor) {
-      if (context->tensors != nullptr) {
-        return &context->tensors[tensor_index];
-      }
-    }
-  }
-  return nullptr;
-}
+TfLiteTensor* GetTemporary(TfLiteContext* context, const TfLiteNode* node,
+                           int index);
+
+// Same as `GetTemporary` but returns boolean and uses output argument for
+// tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetTemporarySafe(context, node, kMyTensorIdx,
+//                     &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetTemporarySafe(const TfLiteContext* context,
+                              const TfLiteNode* node, int index,
+                              TfLiteTensor** tensor);
 
 // Note: You must check if result is not null:
 //
@@ -105,25 +126,37 @@ inline TfLiteTensor* GetTemporary(TfLiteContext* context,
 //
 // This is because the index might point to the optional tensor constant
 // (kTfLiteOptionalTensor) in which case there is no tensor to return.
-inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
-                                            const TfLiteNode* node, int index) {
-  if (index >= 0 && index < node->intermediates->size) {
-    const int tensor_index = node->intermediates->data[index];
-    if (tensor_index != kTfLiteOptionalTensor) {
-      if (context->tensors != nullptr) {
-        return &context->tensors[tensor_index];
-      }
-    }
-  }
-  return nullptr;
+const TfLiteTensor* GetIntermediates(TfLiteContext* context,
+                                     const TfLiteNode* node, int index);
+
+// Same as `GetIntermediates` but returns boolean and uses output argument for
+// tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetIntermediatesSafe(context, node, kMyTensorIdx,
+//                     &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
+                                  const TfLiteNode* node, int index,
+                                  TfLiteTensor** tensor);
+#endif  // TF_LITE_STATIC_MEMORY
+
+inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
+inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
+  return t->dims->data[dim];
 }
 
+inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
+inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
+
+#ifndef TF_LITE_STATIC_MEMORY
 inline int NumIntermediates(const TfLiteNode* node) {
   return node->intermediates->size;
 }
 #endif  // TF_LITE_STATIC_MEMORY
-inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
-inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 
 inline int64_t NumElements(const TfLiteIntArray* dims) {
   int64_t count = 1;
