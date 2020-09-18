@@ -22,7 +22,9 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/asset.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 
@@ -51,6 +54,11 @@ Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
 Status LoadSavedVariable(ImmediateExecutionContext* ctx,
                          const SavedVariable& variable,
                          std::unique_ptr<Variable>* output);
+
+Status LoadSavedAsset(ImmediateExecutionContext* ctx, const SavedAsset& asset,
+                      const std::string& saved_model_dir,
+                      absl::Span<const AssetFileDef> assets,
+                      std::unique_ptr<Asset>* output);
 
 // Creates a TFConcreteFunction from a SavedConcreteFunction.
 Status LoadTFConcreteFunction(
