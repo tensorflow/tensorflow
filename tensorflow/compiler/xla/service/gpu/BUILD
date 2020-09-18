@@ -1035,6 +1035,24 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "gpu_conv_padding_legalization_test",
+    srcs = ["gpu_conv_padding_legalization_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_conv_padding_legalization",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "cudnn_pad_for_convolutions",
     srcs = ["cudnn_pad_for_convolutions.cc"],
