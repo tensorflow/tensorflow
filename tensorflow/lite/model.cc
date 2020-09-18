@@ -575,6 +575,11 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
+  if (!buffers) {
+    error_reporter_->Report("No buffers in the model.\n");
+    return cleanup_and_error();
+  }
+
   interpreter->reset(new Interpreter(error_reporter_));
   (*interpreter)->SetNumThreads(num_threads);
   if (subgraphs->Length() > 1) {
@@ -588,9 +593,9 @@ TfLiteStatus InterpreterBuilder::operator()(
         (*interpreter)->subgraph(subgraph_index);
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
-    if (!operators || !tensors || !buffers) {
+    if (!operators || !tensors) {
       error_reporter_->Report(
-          "Did not get operators, tensors, or buffers in subgraph %d.\n",
+          "Did not get operators or tensors in subgraph %d.\n",
           subgraph_index);
       return cleanup_and_error();
     }
