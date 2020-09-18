@@ -53,7 +53,6 @@ Status Shape(AbstractContext* ctx,
              absl::Span<AbstractTensorHandle* const> inputs,
              absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr shape_op(ctx->CreateOperation());
-<<<<<<< HEAD
   TF_RETURN_IF_ERROR(shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
 
   if (isa<tracing::TracingOperation>(shape_op.get())) {
@@ -80,20 +79,6 @@ Status ExpandDims(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(op->AddInput(inputs[1]));
   int num_retvals = 1;
   return op->Execute(outputs, &num_retvals);
-}
-=======
- TF_RETURN_IF_ERROR(
-     shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(shape_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(shape_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0])); // input
- int num_retvals = 1;
- TF_RETURN_IF_ERROR(shape_op->Execute(outputs, &num_retvals));
- return Status::OK();
 }
 
 Status Slice(AbstractContext* ctx,
@@ -175,7 +160,6 @@ return Status::OK();
 }
 
 
->>>>>>> 2ff94dcf7b (pad grad working eager but not graph mode)
 
 }  // namespace ops
 }  // namespace tensorflow

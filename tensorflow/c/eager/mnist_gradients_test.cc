@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/eager/gradients_internal.h"
 #include "tensorflow/c/eager/gradients_util.h"
 #include "tensorflow/c/eager/mnist_gradients_testutil.h"
+#include "tensorflow/c/experimental/gradients/array_grad.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
@@ -54,6 +55,7 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(
       registry->Register("SparseSoftmaxCrossEntropyWithLogits",
                          SparseSoftmaxCrossEntropyWithLogitsRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Pad", PadRegisterer));
   return Status::OK();
 }
 
@@ -702,6 +704,55 @@ TEST_P(CppGradients, TestMNIST_Training) {
   grads[0]->Unref();          // release W1_grad
   grads[1]->Unref();          // release W2_grad
   mnist_outputs[2]->Unref();  // release loss
+}
+
+TEST_P(CppGradients, TestPadGrad) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  float A_vals[] = {2.0f, 1.0f, 1.0f, 3.0f};
+
+  int64_t A_dims[] = {2, 2};  // {N, height, width, in_channels}
+  int num_dims = 2;
+
+  AbstractTensorHandlePtr A =
+      GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
+
+  float B_vals[] = {5, 6, 7, 8};
+
+  int64_t B_dims[] = {2, 2};  // {N, height, width, in_channels}
+
+  AbstractTensorHandlePtr B =
+      GetTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
+
+  int pad_vals[] = {1, 2,  // [left_pad, right_pad] per dimension
+                    3, 4};
+  int64_t pad_dims[] = {2, 2};
+
+  AbstractTensorHandlePtr paddings =
+      GetTensorHandleUtilInt(ctx.get(), pad_vals, pad_dims, num_dims);
+
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  std::vector<AbstractTensorHandle*> outputs(
+      3);  // [pad_out, dA, dpaddings (null)]
+  s = RunModel(PadGradModel, ctx.get(), {A.get(), paddings.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  AbstractTensorHandle* pad_out = outputs[0];
+
+  // TODO(amturati): Eager working, graph mode getting Mangled Stack Trace
 }
 
 #ifdef PLATFORM_GOOGLE

@@ -142,9 +142,9 @@ Status SoftmaxModel(AbstractContext* ctx,
                     const GradientRegistry& registry);
 
 Status PadGradModel(AbstractContext* ctx,
-                       absl::Span<AbstractTensorHandle* const> inputs,
-                       absl::Span<AbstractTensorHandle*> outputs,
-                       const GradientRegistry& registry);
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
 }  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow
