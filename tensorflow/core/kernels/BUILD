@@ -5228,6 +5228,24 @@ tf_kernel_library(
     deps = STRING_DEPS,
 )
 
+tf_cc_test(
+    name = "as_string_op_test",
+    size = "small",
+    srcs = ["as_string_op_test.cc"],
+    deps = [
+        ":as_string_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "unicode_ops",
     prefix = "unicode_ops",
