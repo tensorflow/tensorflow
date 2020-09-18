@@ -86,9 +86,8 @@ void EliminateUnusedResults(
   // Rebuild the new operation with lesser number of results.
   OpBuilder builder(op);
   Operation *new_op = Operation::create(
-      op->getLoc(), op->getName(), new_result_types,
-      llvm::to_vector<4>(op->getOperands()), op->getAttrs(),
-      llvm::to_vector<4>(op->getSuccessors()), op->getNumRegions());
+      op->getLoc(), op->getName(), new_result_types, op->getOperands(),
+      op->getAttrs(), op->getSuccessors(), op->getNumRegions());
   builder.insert(new_op);
 
   // Move region bodies to the new operation.

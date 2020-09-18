@@ -501,9 +501,8 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   OpBuilder builder(op_);
   // Clone ths old operation but with new result types.
   Operation* new_op = Operation::create(
-      op_->getLoc(), op_->getName(), new_result_types,
-      llvm::to_vector<4>(op_->getOperands()), op_->getAttrs(),
-      llvm::to_vector<4>(op_->getSuccessors()), op_->getNumRegions());
+      op_->getLoc(), op_->getName(), new_result_types, op_->getOperands(),
+      op_->getAttrs(), op_->getSuccessors(), op_->getNumRegions());
   builder.insert(new_op);
 
   // Move regions to the new op.
