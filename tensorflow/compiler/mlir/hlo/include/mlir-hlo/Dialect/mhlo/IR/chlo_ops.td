@@ -366,6 +366,20 @@ def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
   }];
 }
 
+def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Sinh operation";
+
+  let description = [{
+    Returns `Sinh(operand)` element-wise.
+
+    $$
+    \sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
+             = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
+    $$
+  }];
+}
+
 def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan", [],
     HLO_FpOrComplexTensor> {
   let summary = "Tan operation";

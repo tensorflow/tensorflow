@@ -47,7 +47,8 @@ namespace {
               sep fn(ShiftRightLogicalOp) sep fn(SubOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep) fn(TanOp) sep fn(AcosOp)
+#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep) \
+  fn(TanOp) sep fn(AcosOp) sep fn(SinhOp)
 
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
