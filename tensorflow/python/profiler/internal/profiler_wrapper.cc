@@ -41,10 +41,6 @@ namespace py = ::pybind11;
 
 namespace {
 
-using ::tensorflow::profiler::KERNEL_STATS_DB;
-using ::tensorflow::profiler::OP_METRICS_DB;
-using ::tensorflow::profiler::STEP_DB;
-
 tensorflow::Status ValidateHostPortPair(const std::string& host_port) {
   tensorflow::uint32 port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
@@ -187,10 +183,14 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
         [](const py::bytes& serialized_xspace_proto) {
           tensorflow::profiler::XSpace xspace;
           xspace.ParseFromString(std::string(serialized_xspace_proto));
+          tensorflow::profiler::OpStatsOptions options;
+          options.generate_kernel_stats_db = true;
+          options.generate_op_metrics_db = true;
+          options.generate_step_db = true;
+          // TODO(profiler): xspace should tell whether this is sampling mode.
           tensorflow::profiler::OverviewPage overview_page =
               tensorflow::profiler::ConvertOpStatsToOverviewPage(
-                  ConvertXSpaceToOpStats(
-                      xspace, {OP_METRICS_DB, STEP_DB, KERNEL_STATS_DB}));
+                  ConvertXSpaceToOpStats(xspace, options));
           return py::bytes(overview_page.SerializeAsString());
         });
 
@@ -198,26 +198,34 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
         [](const py::bytes& serialized_xspace_proto) {
           tensorflow::profiler::XSpace xspace;
           xspace.ParseFromString(std::string(serialized_xspace_proto));
+          tensorflow::profiler::OpStatsOptions options;
+          options.generate_op_metrics_db = true;
+          options.generate_step_db = true;
           tensorflow::profiler::InputPipelineAnalysisResult input_pipeline =
               tensorflow::profiler::ConvertOpStatsToInputPipelineAnalysis(
-                  ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB}));
+                  ConvertXSpaceToOpStats(xspace, options));
           return py::bytes(input_pipeline.SerializeAsString());
         });
 
   m.def("xspace_to_tf_stats", [](const py::bytes& serialized_xspace_proto) {
     tensorflow::profiler::XSpace xspace;
     xspace.ParseFromString(std::string(serialized_xspace_proto));
+    tensorflow::profiler::OpStatsOptions options;
+    options.generate_op_metrics_db = true;
+    options.generate_kernel_stats_db = true;
     tensorflow::profiler::TfStatsDatabase tf_stats_db =
         tensorflow::profiler::ConvertOpStatsToTfStats(
-            ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, KERNEL_STATS_DB}));
+            ConvertXSpaceToOpStats(xspace, options));
     return py::bytes(tf_stats_db.SerializeAsString());
   });
 
   m.def("xspace_to_kernel_stats", [](const py::bytes& serialized_xspace_proto) {
     tensorflow::profiler::XSpace xspace;
     xspace.ParseFromString(std::string(serialized_xspace_proto));
+    tensorflow::profiler::OpStatsOptions options;
+    options.generate_kernel_stats_db = true;
     tensorflow::profiler::OpStats op_stats =
-        ConvertXSpaceToOpStats(xspace, {KERNEL_STATS_DB});
+        ConvertXSpaceToOpStats(xspace, options);
     return py::bytes(op_stats.kernel_stats_db().SerializeAsString());
   });
 

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import warnings
 
 from tensorflow.python import tf2
 from tensorflow.python.framework import ops
@@ -421,9 +422,9 @@ class Sequential(functional.Functional):
     Returns:
         A Numpy array of probability predictions.
     """
-    logging.warning('`model.predict_proba()` is deprecated and '
-                    'will be removed after 2021-01-01. '
-                    'Please use `model.predict()` instead.')
+    warnings.warn('`model.predict_proba()` is deprecated and '
+                  'will be removed after 2021-01-01. '
+                  'Please use `model.predict()` instead.')
     preds = self.predict(x, batch_size, verbose)
     if preds.min() < 0. or preds.max() > 1.:
       logging.warning('Network returning invalid probability values. '
@@ -446,15 +447,15 @@ class Sequential(functional.Functional):
     Returns:
         A numpy array of class predictions.
     """
-    logging.warning('`model.predict_classes()` is deprecated and '
-                    'will be removed after 2021-01-01. '
-                    'Please use instead:'
-                    '* `np.argmax(model.predict(x), axis=-1)`, '
-                    '  if your model does multi-class classification '
-                    '  (e.g. if it uses a `softmax` last-layer activation).'
-                    '* `(model.predict(x) > 0.5).astype("int32")`, '
-                    '  if your model does binary classification '
-                    '  (e.g. if it uses a `sigmoid` last-layer activation).')
+    warnings.warn('`model.predict_classes()` is deprecated and '
+                  'will be removed after 2021-01-01. '
+                  'Please use instead:'
+                  '* `np.argmax(model.predict(x), axis=-1)`, '
+                  '  if your model does multi-class classification '
+                  '  (e.g. if it uses a `softmax` last-layer activation).'
+                  '* `(model.predict(x) > 0.5).astype("int32")`, '
+                  '  if your model does binary classification '
+                  '  (e.g. if it uses a `sigmoid` last-layer activation).')
     proba = self.predict(x, batch_size=batch_size, verbose=verbose)
     if proba.shape[-1] > 1:
       return proba.argmax(axis=-1)

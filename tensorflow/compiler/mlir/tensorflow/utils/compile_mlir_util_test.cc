@@ -42,21 +42,6 @@ xla::StatusOr<xla::Shape> TestShapeRepresentation(const TensorShape& shape,
   return xla_shape;
 }
 
-TEST(CompileSerializedMlirToXlaHloTest, InvalidSerializedMlirModule) {
-  constexpr char invalid_mlir_module[] =
-      "totally @invalid MLIR module {here} <-";
-  std::vector<TensorShape> arg_shapes;
-  XlaCompiler::CompilationResult compilation_result;
-
-  Status s = CompileSerializedMlirToXlaHlo(
-      invalid_mlir_module, arg_shapes, "XLA_CPU_JIT",
-      /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
-  EXPECT_EQ(s.code(), tensorflow::errors::Code::INVALID_ARGUMENT);
-  EXPECT_EQ(s.ToString(),
-            "Invalid argument: could not parse MLIR module-:1:1: error: "
-            "custom op 'totally' is unknown\n");
-}
-
 // Tests that foldable ops are constant-folded to enable legalization of ops
 // that require compile time constant operand.
 TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {

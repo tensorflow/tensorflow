@@ -353,6 +353,21 @@ TEST(AdaptiveSharedBatchSchedulerTest, QueueCapacityInfo) {
   EXPECT_EQ(queue->SchedulingCapacity(), 9 * 1000 + 300);
   finish_processing.Notify();
 }
+
+TEST(AdaptiveSharedBatchSchedulerTest, FullBatches) {
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(AdaptiveSharedBatchScheduler<FakeTask>::Create({}, &scheduler));
+  auto queue_callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+  };
+  AdaptiveSharedBatchScheduler<FakeTask>::QueueOptions queue_options;
+  queue_options.max_batch_size = 100;
+  queue_options.batch_timeout_micros = 1000000000000;
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue));
+  TF_ASSERT_OK(ScheduleTask(100, queue.get()));
+  // Full batches should not have to wait batch_timeout_micros.
+}
 }  // namespace anonymous
 }  // namespace serving
 }  // namespace tensorflow

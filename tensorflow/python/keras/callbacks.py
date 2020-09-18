@@ -665,7 +665,8 @@ class Callback(object):
         epoch: Integer, index of epoch.
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
-          are prefixed with `val_`.
+          are prefixed with `val_`. For training epoch, the values of the  
+         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'acc': 0.7}`.
     """
 
   @doc_controls.for_subclass_implementers

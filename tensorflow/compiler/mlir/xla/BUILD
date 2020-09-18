@@ -406,7 +406,6 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
         "//tensorflow/compiler/mlir/hlo:legalize_to_standard",
         "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_copy_removal",
         "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
