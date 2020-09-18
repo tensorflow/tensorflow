@@ -60,6 +60,23 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_nn_ops",
+    srcs = ["nn_ops.cc"],
+    module_name = "_nn_ops",
+    deps = [
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:unified_api_pywrap_required_headers",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "gradient_registry",
     srcs = ["gradient_registry.py"],
@@ -71,6 +88,16 @@ py_library(
     srcs = ["math_ops.py"],
     deps = [
         ":_math_ops",
+        ":gradient_registry",
+        ":tape_stack",
+    ],
+)
+
+py_library(
+    name = "nn_ops",
+    srcs = ["nn_ops.py"],
+    deps = [
+        ":_nn_ops",
         ":gradient_registry",
         ":tape_stack",
     ],
@@ -126,6 +153,7 @@ cuda_py_test(
         ":context_stack",
         ":def_function",
         ":math_ops",
+        ":nn_ops",
         ":tape",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",

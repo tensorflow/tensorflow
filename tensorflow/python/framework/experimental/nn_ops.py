@@ -12,27 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental impl for gen_math_ops.py using unified APIs, for testing."""
+"""Experimental impl for gen_nn_ops.py using unified APIs, for testing only."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework.experimental import _math_ops
+from tensorflow.python.framework.experimental import _nn_ops
 from tensorflow.python.framework.experimental import context_stack as context
 from tensorflow.python.framework.experimental import gradient_registry
 from tensorflow.python.framework.experimental import tape_stack
 
 
-def add(a, b, name=None):
+def relu(a, name=None):
   ctx = context.get_default()
   tape = tape_stack.get_default()
   grad_registry = gradient_registry.get_global_registry()
-  return _math_ops.add(ctx, a, b, name, tape, grad_registry)
+  return _nn_ops.relu(ctx, a, name, tape, grad_registry)
 
 
-def mat_mul(a, b, name=None):
+def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   ctx = context.get_default()
   tape = tape_stack.get_default()
   grad_registry = gradient_registry.get_global_registry()
-  return _math_ops.mat_mul(ctx, a, b, name, tape, grad_registry)
+  return _nn_ops.sparse_softmax_cross_entropy_with_logits(
+      ctx, logits, labels, name, tape, grad_registry)

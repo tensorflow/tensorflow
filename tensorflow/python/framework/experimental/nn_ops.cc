@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/experimental/ops/nn_ops.h"
 
 #include <pybind11/stl.h>
 
@@ -39,43 +39,44 @@ using tensorflow::gradients::GradientRegistry;
 using tensorflow::gradients::Tape;
 
 namespace tensorflow {
-PYBIND11_MODULE(_math_ops, m) {
-  m.def("add", [](AbstractContext* ctx, AbstractTensorHandle* a,
-                  AbstractTensorHandle* b, const char* name, Tape* tape,
-                  GradientRegistry* registry) {
+PYBIND11_MODULE(_nn_ops, m) {
+  m.def("relu", [](AbstractContext* ctx, AbstractTensorHandle* a,
+                   const char* name, Tape* tape, GradientRegistry* registry) {
     int num_outputs = 1;
     std::vector<AbstractTensorHandle*> outputs(1);
     if (!name) {
-      name = "Add";
+      name = "Relu";
     }
     if (!tape) {
       MaybeRaiseRegisteredFromStatus(
-          ops::Add(ctx, {a, b}, absl::MakeSpan(outputs), name));
+          ops::Relu(ctx, {a}, absl::MakeSpan(outputs), name));
     } else {
-      MaybeRaiseRegisteredFromStatus(gradients::internal::Add(
-          ctx, tape, {a, b}, absl::MakeSpan(outputs), *registry));
+      MaybeRaiseRegisteredFromStatus(gradients::internal::Relu(
+          ctx, tape, {a}, absl::MakeSpan(outputs), name, *registry));
     }
     return outputs[0];
   });
-  m.def("mat_mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
-                      AbstractTensorHandle* b, const char* name, Tape* tape,
-                      GradientRegistry* registry) {
-    int num_outputs = 1;
-    std::vector<AbstractTensorHandle*> outputs(1);
-    if (!name) {
-      name = "MatMul";
-    }
-    if (!tape) {
-      MaybeRaiseRegisteredFromStatus(
-          ops::MatMul(ctx, {a, b}, absl::MakeSpan(outputs), name,
-                      /*transpose_a=*/false, /*transpose_b=*/false));
-    } else {
-      MaybeRaiseRegisteredFromStatus(gradients::internal::MatMul(
-          ctx, tape, {a, b}, absl::MakeSpan(outputs), name,
-          /*transpose_a=*/false,
-          /*transpose_b=*/false, *registry));
-    }
-    return outputs[0];
-  });
+
+  m.def("sparse_softmax_cross_entropy_with_logits",
+        [](AbstractContext* ctx, AbstractTensorHandle* features,
+           AbstractTensorHandle* labels, const char* name, Tape* tape,
+           GradientRegistry* registry) {
+          int num_outputs = 2;
+          std::vector<AbstractTensorHandle*> outputs(2);
+          if (!name) {
+            name = "SparseSoftmaxCrossEntropyWithLogits";
+          }
+          if (!tape) {
+            MaybeRaiseRegisteredFromStatus(
+                ops::SparseSoftmaxCrossEntropyWithLogits(
+                    ctx, {features, labels}, absl::MakeSpan(outputs), name));
+          } else {
+            MaybeRaiseRegisteredFromStatus(
+                gradients::internal::SparseSoftmaxCrossEntropyWithLogits(
+                    ctx, tape, {features, labels}, absl::MakeSpan(outputs),
+                    name, *registry));
+          }
+          return outputs[0];  // Only return the loss vals, not the backprop.
+        });
 }
 }  // namespace tensorflow
