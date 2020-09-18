@@ -267,6 +267,20 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     var_sum = sum(self.client.fetch(worker_local_var._values))
     self.assertEqual(var_sum, 10.0)
 
+  def testDisallowRemoteValueAsInput(self):
+
+    @def_function.function
+    def func_0():
+      return 1.0
+
+    @def_function.function
+    def func_1(x):
+      return x + 1.0
+
+    remote_v = self.client.schedule(func_0)
+    with self.assertRaises(ValueError):
+      self.client.schedule(func_1, args=(remote_v,))
+
 
 class LimitedClosureQueueSizeBasicTest(ParameterServerClientTest):
   """Test basic functionality works with explicit maximum closure queue size.
@@ -368,21 +382,20 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
       self.client.join()
 
   def testInputError(self):
-    aborted = self.client.schedule(self._error_function)
+
+    worker_local_val = self.client._create_per_worker_resources(
+        self._error_function)
 
     @def_function.function
     def func(x):
-      return x + 1.0
+      return x + 1
 
-    with self.assertRaises(errors.InvalidArgumentError):
+    result = self.client.schedule(func, args=(worker_local_val,))
+    with self.assertRaises(client_lib.InputError):
       self.client.join()
 
-    result = self.client.schedule(func, args=(aborted,))
     with self.assertRaises(client_lib.InputError):
       result.fetch()
-
-    with self.assertRaises(client_lib.InputError):
-      self.client.join()
 
   def testCancellation(self):
     for _ in range(3):
