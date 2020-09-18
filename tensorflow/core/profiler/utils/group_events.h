@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
@@ -52,8 +53,8 @@ struct ContextInfo {
 struct GroupMetadata {
   std::string name;
   std::string model_id;  // inference only.
-  std::vector<int64> parents;
-  std::vector<int64> children;
+  absl::flat_hash_set<int64> parents;
+  absl::flat_hash_set<int64> children;
 };
 
 using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
