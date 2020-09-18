@@ -975,12 +975,13 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
 
 StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
   bool changed = false;
+  bool cleanup_changed = false;
   {
     HloPassPipeline subpipeline("before_conditional_code_motion");
     subpipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/is_layout_sensitive_);
     subpipeline.AddPass<HloDCE>();
-    TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
-    changed |= cleanup_changed;
+    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
+    cleanup_changed |= cleanup_changed_now;
   }
   // Gather all the conditional ops in the module ahead of time, to avoid
   // potential complications of modifying the code that affecting traversal.
@@ -999,7 +1000,20 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
             conditional_computations[branch_i] = 0;
           }
         }
-        conditional_ops.push_back(instr);
+        if (instr->shape().IsTuple()) {
+          bool can_change_tuple_shape = true;
+          for (auto user : instr->users()) {
+            VLOG(2) << "user is : " << user->ToString() << "\n";
+            if (user->opcode() != HloOpcode::kGetTupleElement) {
+              can_change_tuple_shape = false;
+            }
+          }
+          if (can_change_tuple_shape) {
+            conditional_ops.push_back(instr);
+          }
+        } else {
+          conditional_ops.push_back(instr);
+        }
       }
     }
   }
@@ -1112,8 +1126,11 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     subpipeline.AddPass<HloDCE>();
     subpipeline.AddPass<TupleSimplifier>();
     subpipeline.AddPass<HloDCE>();
-    TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
-    changed |= cleanup_changed;
+    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
+    cleanup_changed |= cleanup_changed_now;
+  }
+  if (cleanup_changed) {
+    VLOG(2) << "subpipeline cleanup have modified code\n";
   }
   return changed;
 }
