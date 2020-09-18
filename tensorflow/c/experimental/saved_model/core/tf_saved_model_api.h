@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function.h"
 #include "tensorflow/cc/saved_model/bundle_v2.h"
@@ -67,6 +68,8 @@ class TFSavedModelAPI : public SavedModelAPI {
   std::vector<ConcreteFunction*> ListFunctions() override;
 
   ~TFSavedModelAPI() override = default;
+
+  Status GetVariable(const std::string& variable_path, Variable** variable);
 
  private:
   TFSavedModelAPI(

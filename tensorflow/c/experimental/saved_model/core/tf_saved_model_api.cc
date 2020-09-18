@@ -268,6 +268,12 @@ Status RestoreCheckpoint(SavedModelV2Bundle* bundle,
         }
 
         const std::string& checkpoint_key = attribute->checkpoint_key();
+        if (!bundle->variable_reader()->Contains(checkpoint_key)) {
+          LOG(WARNING) << "No checkpoint entry found for " << checkpoint_key
+                       << ". Variable will be uninitialized.";
+          return Status();
+        }
+
         std::string variables_path_prefix =
             io::JoinPath(directory, kSavedModelVariablesDirectory,
                          kSavedModelVariablesFilename);
@@ -323,6 +329,31 @@ std::vector<ConcreteFunction*> TFSavedModelAPI::ListFunctions() {
     result.push_back(index_and_function.second.get());
   }
   return result;
+}
+
+Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
+                                    Variable** variable) {
+  int node_id;
+  const SavedObject* object = internal::FindNodeAtPath(
+      variable_path, bundle_.saved_object_graph(), &node_id);
+  if (object == nullptr) {
+    return errors::NotFound("No saved object found at path ", variable_path);
+  }
+
+  if (object->kind_case() == SavedObject::kVariable) {
+    auto iter = revived_objects_.find(node_id);
+    if (iter == revived_objects_.end()) {
+      return errors::Internal("Variable ", variable_path,
+                              " was not properly revived.");
+    }
+    *variable = static_cast<Variable*>(iter->second.get());
+    return Status();
+  }
+
+  *variable = nullptr;
+  return errors::InvalidArgument(
+      variable_path, " is not a path to a Variable (kind=", object->kind_case(),
+      ")");
 }
 
 TFSavedModelAPI::TFSavedModelAPI(

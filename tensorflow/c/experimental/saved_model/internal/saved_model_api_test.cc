@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_api.h"
+#include "tensorflow/c/experimental/saved_model/internal/saved_model_api_type.h"
 #include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -189,6 +191,49 @@ TEST_P(CSavedModelAPITest, LoadsAssetSavedModel) {
   TF_DeleteTensor(result);
   TFE_DeleteTensorHandle(read_file_fn_outputs[0]);
   TFE_DeleteOp(read_file_op);
+  TF_DeleteSavedModel(saved_model);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
+TEST_P(CSavedModelAPITest, LoadSavedModelWithUninitializedVariable) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  bool use_tfrt = GetParam();
+  if (use_tfrt) {
+    TFE_DeleteContextOptions(opts);
+    TF_DeleteStatus(status);
+    GTEST_SKIP();  // TODO(chky) : Enable this once TFRT is open sourced.
+  }
+
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
+
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::string model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(),
+      "c/experimental/saved_model/internal/testdata/UninitializedVariable");
+
+  TF_SavedModel* saved_model =
+      TF_LoadSavedModel(model_dir.c_str(), ctx, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  tensorflow::TFSavedModelAPI* model_api =
+      tensorflow::down_cast<tensorflow::TFSavedModelAPI*>(
+          tensorflow::unwrap(saved_model));
+  tensorflow::Variable* uninitialized_variable;
+  ASSERT_EQ(tensorflow::Status::OK(),
+            model_api->GetVariable("uninitialized_variable",
+                                   &uninitialized_variable));
+  ASSERT_EQ(tensorflow::DT_FLOAT, uninitialized_variable->dtype());
+
+  ASSERT_EQ(tensorflow::Status::OK(),
+            model_api->GetVariable("sub_module.uninitialized_variable",
+                                   &uninitialized_variable));
+  ASSERT_EQ(tensorflow::DT_INT64, uninitialized_variable->dtype());
+
   TF_DeleteSavedModel(saved_model);
   TF_DeleteStatus(status);
   TFE_DeleteContext(ctx);

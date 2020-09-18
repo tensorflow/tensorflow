@@ -78,9 +78,11 @@ Status FlattenSignature(const StructuredValue& signature,
 // Find the SavedObject in `object_graph` at location `path`. `path` must be
 // a dot-delimited string of object names relative to the root object. If no
 // object is found, returns nullptr. Callers must ensure `object_graph`
-// outlives the returned pointer.
+// outlives the returned pointer. If not `nullptr`, `node_id` will contain the
+// index of the returned object in the `SavedObjectGraph.nodes` array.
 const SavedObject* FindNodeAtPath(StringPiece path,
-                                  const SavedObjectGraph& object_graph);
+                                  const SavedObjectGraph& object_graph,
+                                  int* node_id = nullptr);
 
 // Maps each node in `graphdef` to its corresponding Attribute Map.
 // Callers must ensure that `graphdef` outlives the returned map.

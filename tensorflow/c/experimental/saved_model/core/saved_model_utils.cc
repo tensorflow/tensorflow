@@ -225,7 +225,8 @@ Status FlattenSignature(const StructuredValue& signature,
 }
 
 const SavedObject* FindNodeAtPath(StringPiece path,
-                                  const SavedObjectGraph& object_graph) {
+                                  const SavedObjectGraph& object_graph,
+                                  int* node_id) {
   const auto& nodes = object_graph.nodes();
   if (nodes.empty()) {
     return nullptr;
@@ -244,6 +245,9 @@ const SavedObject* FindNodeAtPath(StringPiece path,
         });
     if (child_node_iter == current_node->children().end()) {
       return nullptr;
+    }
+    if (node_id) {
+      *node_id = child_node_iter->node_id();
     }
     current_node = &nodes.Get(child_node_iter->node_id());
   }
