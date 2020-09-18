@@ -490,11 +490,11 @@ output_data = interpreter.get_tensor(output_details[0]['index'])
 print(output_data)
 ```
 
-Alternatively to loading the model as a pre-converted `.tflite` file, you can
-combine your code with the
+As an alternative to loading the model as a pre-converted `.tflite` file, you
+can combine your code with the
 [TensorFlow Lite Converter Python API](https://www.tensorflow.org/lite/convert/python_api)
 (`tf.lite.TFLiteConverter`), allowing you to convert your TensorFlow model into
-the TensorFlow Lite format and then run an inference:
+the TensorFlow Lite format and then run inference:
 
 ```python
 import numpy as np
