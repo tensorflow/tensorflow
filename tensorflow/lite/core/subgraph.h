@@ -451,6 +451,15 @@ class Subgraph {
   TfLiteStatus CheckTensorIndices(const char* label, const int* indices,
                                   int length);
 
+  // Check that the input indices and the output indices don't overlap.
+  // This is needed because same tensor must not be used both as input and
+  // output for an operator.
+  // NOTE: this changes consistent_ to be false if indices are out of bounds.
+  TfLiteStatus CheckInputAndOutputForOverlap(const int* input_indices,
+                                             int num_inputs,
+                                             const int* output_indices,
+                                             int num_outputs);
+
   // Compute the number of bytes required to represent a tensor with dimensions
   // specified by the array dims (of length dims_size). Returns the status code
   // and bytes.

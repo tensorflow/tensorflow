@@ -581,6 +581,33 @@ TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
   return kTfLiteOk;
 }
 
+// We have two arrays and we need to check that elements from one array don't
+// show up in the other. We could sort both arrays and then iterate with two
+// pointers from start to finish always increasing the smaller one but since
+// these arrays are usually short (<25 elements for inputs, usually <3 for
+// outputs), this might be slower than the naive approach (if arrays have size n
+// and m, with n >> m ~ O(1), first approach is O(nlogn) whereas the other is
+// O(n)). Plus, sorting the input and output arrays might not be something we
+// want as it destroys ordering of elements.
+//
+// If it turns out that this is an issue, we can switch to the other algorithm.
+TfLiteStatus Subgraph::CheckInputAndOutputForOverlap(const int* input_indices,
+                                                     int num_inputs,
+                                                     const int* output_indices,
+                                                     int num_outputs) {
+  for (int i = 0; i < num_inputs; i++) {
+    for (int j = 0; j < num_outputs; j++) {
+      if (input_indices[i] == output_indices[j]) {
+        ReportError("Tensor %d is both input %d and output %d\n",
+                    input_indices[i], i, j);
+        consistent_ = false;
+        return kTfLiteError;
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
 namespace {
 // Multiply two sizes and return true if overflow occurred;
 // This is based off tensorflow/overflow.h but is simpler as we already
@@ -706,6 +733,16 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   TF_LITE_ENSURE_OK(
       &context_,
       CheckTensorIndices("node outputs", outputs.data(), outputs.size()));
+
+  // For builtin ops, inputs and outputs must not overlap. Custom ops must do
+  // this check by themselves if they don't support overlapping tensors. This
+  // distinction is to allow custom ops to just forward a tensor, reusing it as
+  // both input and output.
+  if (builtin_data != nullptr) {
+    TF_LITE_ENSURE_OK(&context_, CheckInputAndOutputForOverlap(
+                                     inputs.data(), inputs.size(),
+                                     outputs.data(), outputs.size()));
+  }
 
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
