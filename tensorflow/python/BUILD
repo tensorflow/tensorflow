@@ -3184,6 +3184,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "stateless_random_ops_v2_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
 )
 
@@ -4440,6 +4444,7 @@ py_library(
         ":framework_ops",
         ":math_ops",
         ":stateful_random_ops_gen",
+        ":stateless_random_ops_v2_gen",
         ":variables",
         "//third_party/py/numpy",
     ],
@@ -4474,6 +4479,7 @@ py_library(
         ":math_ops",
         ":random_ops",
         ":stateless_random_ops_gen",
+        ":stateless_random_ops_v2_gen",
     ],
 )
 

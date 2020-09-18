@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
@@ -87,6 +88,19 @@ REGISTER_OP("RngSkip")
       shape_inference::ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    });
+
+REGISTER_OP("RngReadAndSkip")
+    .Input("resource: resource")
+    .Input("alg: int32")
+    .Input("delta: uint64")
+    .Output("value: int64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->MakeShape({RNG_MAX_COUNTER_SIZE + RNG_KEY_SIZE}));
       return Status::OK();
     });
 
