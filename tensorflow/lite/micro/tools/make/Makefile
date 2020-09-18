@@ -377,7 +377,7 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $@ $< \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
+	$(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	@test -f $(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $(TARGET)?'; exit 1)
