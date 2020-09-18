@@ -1851,7 +1851,6 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
-// TODO(b/168035831): Model dataset read.
 def TF_InitializeTableFromDatasetOp : TF_Op<"InitializeTableFromDataset", []> {
   let summary = "";
 
@@ -1891,6 +1890,24 @@ Where to extract the key and value from a line is specified by `key_index` and
   );
 
   let results = (outs);
+}
+
+// TODO(b/168035831): Model filename read.
+def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    TF_StrTensor:$filename,
+    Arg<TF_ResourceTensor, "", [TF_DatasetMemoryCacheRead, TF_DatasetMemoryCacheWrite]>:$cache,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
 }
 
 #endif // TF_OPS

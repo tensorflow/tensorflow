@@ -295,6 +295,17 @@ Equivalent to np.angle.
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_AnonymousMemoryCacheOp : TF_Op<"AnonymousMemoryCache", []> {
+  let summary = "";
+
+  let arguments = (ins);
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetMemoryCacheAlloc]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+}
+
 def TF_AnonymousRandomSeedGeneratorOp : TF_Op<"AnonymousRandomSeedGenerator", []> {
   let summary = "";
 
@@ -2462,6 +2473,17 @@ is the same, though it is cleaner to use `tf.io.decode_image`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_DeleteMemoryCacheOp : TF_Op<"DeleteMemoryCache", []> {
+  let summary = "";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetMemoryCacheFree]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+
+  let results = (outs);
+}
+
 def TF_DeleteRandomSeedGeneratorOp : TF_Op<"DeleteRandomSeedGenerator", []> {
   let summary = "";
 
@@ -2816,6 +2838,16 @@ def TF_DivOp : TF_Op<"Div", [NoSideEffect, ResultsBroadcastableShape, TF_SameOpe
   let hasCanonicalizer = 1;
 
   let hasFolder = 1;
+}
+
+def TF_DummyMemoryCacheOp : TF_Op<"DummyMemoryCache", []> {
+  let summary = "";
+
+  let arguments = (ins);
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetMemoryCacheAlloc]>:$handle
+  );
 }
 
 def TF_DummySeedGeneratorOp : TF_Op<"DummySeedGenerator", []> {

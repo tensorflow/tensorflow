@@ -48,6 +48,11 @@ struct DatasetSeedGenerator
   StringRef getName() final { return "DatasetSeedGenerator"; }
 };
 
+struct DatasetMemoryCache
+    : ::mlir::SideEffects::Resource::Base<DatasetMemoryCache> {
+  StringRef getName() final { return "DatasetMemoryCache"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir
