@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
@@ -142,14 +143,16 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 
 }  // namespace tflite
 
+// LINT.IfChange
 // Exported C interface function which is used by AcquireFlexDelegate() at
-// interpreter_build.cc. To export the function name globally, the function name
-// must be matched with patterns in tf_version_script.lds
+// interpreter_builder.cc. To export the function name globally, the function
+// name must be matched with patterns in tf_version_script.lds. In Android, we
+// don't use this feature so skip building.
+#if !defined(__ANDROID__)
 extern "C" {
-#if defined(_WIN32)
-__declspec(dllexport)
-#endif
-    tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
+TFL_CAPI_EXPORT tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
   return tflite::FlexDelegate::Create();
 }
 }  // extern "C"
+#endif  // !defined(__ANDROID__)
+// LINT.ThenChange(//tensorflow/lite/interpreter_builder.cc)

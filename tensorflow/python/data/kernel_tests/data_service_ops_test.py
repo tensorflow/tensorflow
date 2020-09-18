@@ -101,7 +101,9 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
                             name="",
                             port=0,
                             work_dir=None,
-                            fault_tolerant_mode=True):
+                            fault_tolerant_mode=True,
+                            job_gc_check_interval_ms=None,
+                            job_gc_timeout_ms=None):
     # If a test starts multiple independent dispatch servers, it should give
     # them different `name` values.
     work_dir = os.path.join(self.get_temp_dir(), "work_dir_",
@@ -110,13 +112,16 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
         server_lib.DispatcherConfig(
             port=port,
             work_dir=work_dir,
-            fault_tolerant_mode=fault_tolerant_mode))
+            fault_tolerant_mode=fault_tolerant_mode,
+            job_gc_check_interval_ms=job_gc_check_interval_ms,
+            job_gc_timeout_ms=job_gc_timeout_ms))
 
   def start_worker_server(self, dispatcher, port=0):
     return server_lib.WorkerServer(
         server_lib.WorkerConfig(
             dispatcher_address=_address_from_target(dispatcher.target),
-            port=port))
+            port=port,
+            heartbeat_interval_ms=200))
 
   def restart_dispatcher(self, dispatcher):
     """Stops `dispatcher` and returns a new dispatcher with the same port."""
@@ -534,6 +539,47 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     for elem in iter2:
       results.append(elem.numpy())
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(job_name=[None, "test"])))
+  def testGcUnusedJob(self, job_name):
+    dispatcher = self.start_dispatch_server(
+        job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
+    worker = self.start_worker_server(dispatcher)  # pylint: disable=unused-variable
+    num_elements = 100
+    ds = _make_distributed_range_dataset(
+        num_elements, dispatcher, job_name=job_name)
+    it = iter(ds)
+    self.assertEqual(next(it).numpy(), 0)
+    self.assertEqual(worker._num_tasks(), 1)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDontGcUsedJob(self):
+    dispatcher = self.start_dispatch_server(
+        job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
+    worker = self.start_worker_server(dispatcher)  # pylint: disable=unused-variable
+    num_elements = 10
+    it1 = iter(
+        _make_distributed_range_dataset(
+            num_elements, dispatcher, job_name="test1"))
+    it2 = iter(
+        _make_distributed_range_dataset(
+            num_elements, dispatcher, job_name="test2"))
+    it3 = iter(  # this iterator keeps the task alive. pylint: disable=unused-variable
+        _make_distributed_range_dataset(
+            num_elements, dispatcher, job_name="test2"))
+    self.assertEqual(2, worker._num_tasks())
+    del it1
+    del it2
+    # Check that only the first job is gced. The second job will not be gced
+    # because there is still an outstanding iterator for it.
+    while worker._num_tasks() > 1:
+      time.sleep(0.1)
+    self.assertEqual(1, worker._num_tasks())
 
   @combinations.generate(test_base.eager_only_combinations())
   def testApplyDeterminismOption(self):

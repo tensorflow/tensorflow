@@ -101,11 +101,17 @@ filegroup(
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
+        "c_api_unified_experimental_internal.h",
         "dlpack.h",
+        "gradients.h",
+        "gradients_internal.h",
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
+        "mnist_gradients_testutil.h",
+        "tape.h",
         "tfe_cancellation_manager_internal.h",
+        "tfe_context_internal.h",
         "tfe_executor_internal.h",
         "tfe_monitoring_internal.h",
         "tfe_op_attrs_internal.h",
@@ -160,31 +166,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
-    name = "gradients",
-    srcs = [
-        "gradients.cc",
-        "gradients_internal.h",
-    ],
-    hdrs = [
-        "gradients.h",
-    ],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-    deps = [
-        ":abstract_context",
-        ":abstract_operation",
-        ":abstract_tensor_handle",
-        ":c_api_unified_internal",
-        ":tape",
-        "//tensorflow/core/common_runtime/eager:attr_builder",
-        "//tensorflow/core/lib/llvm_rtti",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -248,6 +229,44 @@ tf_cuda_cc_test(
 )
 
 cc_library(
+    name = "gradients_util",
+    srcs = [
+        "gradients_util.cc",
+    ],
+    hdrs = [
+        "gradients_util.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":tape",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "mnist_gradients_testutil",
     srcs = [
         "mnist_gradients_testutil.cc",
@@ -263,14 +282,86 @@ cc_library(
         ":c_api_experimental",
         ":c_api_unified_internal",
         ":gradients_internal",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c:tf_tensor",
+        ":gradients_util",
+        ":tape",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gradient_checker",
+    srcs = [
+        "gradient_checker.cc",
+    ],
+    hdrs = [
+        "gradient_checker.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":gradients_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gradient_checker_test",
+    size = "small",
+    srcs = [
+        "gradient_checker_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":c_api_unified_internal",
+        ":gradient_checker",
+        ":gradients_internal",
+        ":gradients_util",
+        ":mnist_gradients_testutil",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -289,9 +380,9 @@ tf_cuda_cc_test(
     deps = [
         ":abstract_tensor_handle",
         ":c_api_experimental",
-        ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
+        ":gradients_util",
         ":mnist_gradients_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
@@ -927,7 +1018,11 @@ filegroup(
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
             "c_api_unified_experimental_internal.h",
+            "gradient_checker.cc",
+            "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.
+            "gradients_util.cc",
+            "gradients_util.h",
             "*test*",
             "*dlpack*",
         ],

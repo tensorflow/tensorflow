@@ -23,6 +23,7 @@ cc_library(
         "spmd_partitioner_util.cc",
     ],
     hdrs = [
+        "convolution_handler.h",
         "spmd_partitioner.h",
         "spmd_partitioner_util.h",
     ],

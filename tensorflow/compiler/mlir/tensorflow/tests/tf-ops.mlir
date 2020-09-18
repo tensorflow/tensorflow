@@ -183,6 +183,20 @@ func @testLeakyWrongAlphaType(tensor<16xf32>) -> tensor<16xf32> {
 
 // -----
 
+// Test tf.Min with complex numbers.
+// Previous versions of tensorflow said complex numbers were allowed with
+// tf.Min even though it doesn't make sense. The legalization of tf to xla
+// requires that complex types are not allowed in tf.Min, so we have an
+// explicit unit here to make sure that invariant is enforced.
+func @testMinComplex(%arg0: tensor<4x8xcomplex<f32>>) -> tensor<4x1xcomplex<f32>> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  // expected-error@below {{'tf.Min' op operand #0 must be tensor of}}
+  %0 = "tf.Min"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xcomplex<f32>>, tensor<1xi64>) -> tensor<4x1xcomplex<f32>>
+  return %0 : tensor<4x1xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @testMul
 func @testMul(%arg0: tensor<2xui16>) -> (tensor<2xui16>) {
   %0 = "tf.Mul"(%arg0, %arg0) {T = "tfdtype$DT_UINT16", device = "/device:CPU:0", name = "Mul"} : (tensor<2xui16>, tensor<2xui16>) -> tensor<2xui16>
@@ -3235,6 +3249,125 @@ func @testBatchMatMulV2(%lhs: tensor<f32>, %rhs: tensor<10x10xf32>) {
 func @testBatchMatMulV2(%lhs: tensor<10x10xf32>, %rhs: tensor<f32>) {
   // expected-error @+1 {{requires rhs operand to have rank at least two}}
   %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x10xf32>, tensor<f32>) -> tensor<10x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBatchMatMulV2NoBatchDimension
+func @testBatchMatMulV2NoBatchDimension(%lhs: tensor<5x10xf32>, %rhs: tensor<10x10xf32>) -> (tensor<5x10xf32>) {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<5x10xf32>, tensor<10x10xf32>) -> tensor<5x10xf32>
+  return %0 : tensor<5x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBatchMatMulV2ValidBroadcastingBatchDimension
+func @testBatchMatMulV2ValidBroadcastingBatchDimension(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<10x10xf32>) -> (tensor<10x2x5x10xf32>) {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<10x10xf32>) -> tensor<10x2x5x10xf32>
+  return %0 : tensor<10x2x5x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBatchMatMulV2ValidMultiBatchDimension
+func @testBatchMatMulV2ValidMultiBatchDimension(%lhs: tensor<4x5x1x3x2xf32>, %rhs: tensor<1x1x3x5xf32>) -> (tensor<4x5x1x2x5xf32>) {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) { adj_x = true } : (tensor<4x5x1x3x2xf32>, tensor<1x1x3x5xf32>) -> tensor<4x5x1x2x5xf32>
+  return %0 : tensor<4x5x1x2x5xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidBroadcastingBatchDimensionWithHigherXRank(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<10x10x10xf32>) {
+  // expected-error @+1 {{found incompatible broadcast batch dimensions for lhs shape 'tensor<10x2x5x10xf32>' and rhs shape 'tensor<10x10x10xf32>'}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<10x10x10xf32>) -> tensor<10x10xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidBroadcastingBatchDimensionWithSameRank(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<10x10x10x10xf32>) {
+  // expected-error @+1 {{found incompatible broadcast batch dimensions for lhs shape 'tensor<10x2x5x10xf32>' and rhs shape 'tensor<10x10x10x10xf32>'}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<10x10x10x10xf32>) -> tensor<10x10xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidBroadcastingBatchDimensionWithHigherYRank(%lhs: tensor<2x5x10xf32>, %rhs: tensor<10x10x10x10xf32>) {
+  // expected-error @+1 {{found incompatible broadcast batch dimensions for lhs shape 'tensor<2x5x10xf32>' and rhs shape 'tensor<10x10x10x10xf32>'}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<2x5x10xf32>, tensor<10x10x10x10xf32>) -> tensor<10x10xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidOutputBatchDimension(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<2x10x10xf32>) {
+  // expected-error @+1 {{has mismatching input batch dimension 2 and output batch dimension 3}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<2x10x10xf32>) -> tensor<10x3x10x10xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidOutputRank(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<10x1x10x10xf32>) {
+  // expected-error @+1 {{found invalid output rank, expected 4 but got 3}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<10x1x10x10xf32>) -> tensor<10x5x10xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidOutputRowDim(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<10x10xf32>) {
+  // expected-error @+1 {{found invalid output dimension on row, expected 5 but got 10}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<10x10xf32>) -> tensor<10x2x10x10xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2AdjXInvalidOutputRowDim(%lhs: tensor<10x2x10x5xf32>, %rhs: tensor<10x10xf32>) {
+  // expected-error @+1 {{found invalid output dimension on row, expected 5 but got 10}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) { adj_x = true } : (tensor<10x2x10x5xf32>, tensor<10x10xf32>) -> tensor<10x2x10x10xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidOutputColDim(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<10x10xf32>) {
+  // expected-error @+1 {{found invalid output dimension on col, expected 10 but got 5}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<10x10xf32>) -> tensor<10x2x5x5xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2AdjYInvalidOutputColDim(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<4x10xf32>) {
+  // expected-error @+1 {{found invalid output dimension on col, expected 4 but got 10}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) { adj_y = true } : (tensor<10x2x5x10xf32>, tensor<4x10xf32>) -> tensor<10x2x5x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBatchMatMulV2PartiallyKnownInputBatchDim
+func @testBatchMatMulV2PartiallyKnownInputBatchDim(%lhs: tensor<4x5x?x3x2xf32>, %rhs: tensor<1x1x3x5xf32>) -> (tensor<4x5x?x2x5xf32>) {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) { adj_x = true } : (tensor<4x5x?x3x2xf32>, tensor<1x1x3x5xf32>) -> tensor<4x5x?x2x5xf32>
+  return %0 : tensor<4x5x?x2x5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBatchMatMulV2PartiallyKnownMatmulDim
+func @testBatchMatMulV2PartiallyKnownMatmulDim(%lhs: tensor<4x5x1x?x3xf32>, %rhs: tensor<1x1x3x5xf32>) -> (tensor<4x5x1x?x5xf32>) {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<4x5x1x?x3xf32>, tensor<1x1x3x5xf32>) -> tensor<4x5x1x?x5xf32>
+  return %0 : tensor<4x5x1x?x5xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2InvalidPartiallyKnownMatmulDim(%lhs: tensor<4x5x1x?x3xf32>, %rhs: tensor<1x1x3x5xf32>) -> (tensor<4x5x1x?x3xf32>) {
+  // expected-error @+1 {{found invalid output dimension on col, expected 5 but got 3}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<4x5x1x?x3xf32>, tensor<1x1x3x5xf32>) -> tensor<4x5x1x?x3xf32>
+  return %0 : tensor<4x5x1x?x3xf32>
+}
+
+// -----
+
+func @testBatchMatMulV2AdjXInvalidPartiallyKnownMatmulDim(%lhs: tensor<4x5x1x3x?xf32>, %rhs: tensor<1x1x3x5xf32>) -> (tensor<4x5x1x?x3xf32>) {
+  // expected-error @+1 {{found invalid output dimension on col, expected 5 but got 3}}
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) { adj_x = true } : (tensor<4x5x1x3x?xf32>, tensor<1x1x3x5xf32>) -> tensor<4x5x1x?x3xf32>
+  return %0 : tensor<4x5x1x?x3xf32>
 }
 
 // -----

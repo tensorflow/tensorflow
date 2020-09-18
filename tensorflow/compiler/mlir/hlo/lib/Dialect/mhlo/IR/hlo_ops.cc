@@ -60,7 +60,11 @@ limitations under the License.
 
 namespace mlir {
 #include "hlo_patterns.cc.inc"
+}  // namespace mlir
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.cc.inc"
+
+namespace mlir {
 namespace mhlo {
 
 Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
@@ -1005,13 +1009,38 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     }
   }
 
-  // If an input is unranked the output shape is unranked.
+  // Find the first ranked input to determine the output rank.
+  for (auto type : operands.getTypes()) {
+    auto shaped_type = type.cast<ShapedType>();
+    if (shaped_type.hasRank()) {
+      first_type = shaped_type;
+      break;
+    }
+  }
+
+  // If all inputs are unranked, the result must be unranked.
   if (!first_type.hasRank()) {
     inferredReturnTypes.push_back(UnrankedTensorType::get(out_element));
     return success();
   }
 
   auto out_shape = llvm::to_vector<6>(first_type.getShape());
+
+  // Determine what the non-concatenate dimensions should be.
+  for (auto type : operands.getTypes()) {
+    auto shaped_ty = type.cast<ShapedType>();
+    if (!shaped_ty.hasRank()) {
+      continue;
+    }
+
+    for (auto it : llvm::enumerate(shaped_ty.getShape())) {
+      // If a dimension is not dynamic, the output shape should match.
+      if (ShapedType::isDynamic(out_shape[it.index()])) {
+        out_shape[it.index()] = it.value();
+      }
+    }
+  }
+
   out_shape[dimension] = 0;
 
   for (auto operand : operands.getTypes()) {
@@ -1362,7 +1391,8 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
 OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
   auto rType = getType().cast<ShapedType>();
   if (lhs() == rhs()) {
-    return DenseIntElementsAttr::get(rType, 0);
+    Builder builder(getContext());
+    return builder.getZeroAttr(rType);
   }
 
   auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
@@ -1648,6 +1678,20 @@ LogicalResult SelectOp::inferReturnTypes(
   return success();
 }
 
+LogicalResult SelectOp::inferReturnTypeComponents(
+    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
+    mlir::DictionaryAttr, mlir::RegionRange,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
+  // TODO(b/168772852)
+  return failure();
+}
+
+LogicalResult SelectOp::reifyReturnTypeShapes(
+    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(),
+                                     &reifiedReturnShapes);
+}
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
@@ -1794,6 +1838,79 @@ static LogicalResult Verify(CaseOp op) {
   }
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// SqrtOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
+  auto val = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  if (!val) return {};
+
+  auto type = getElementTypeOrSelf(getType());
+  if (!type.isF32() && !type.isF64()) return {};
+
+  auto shaped_type = getType().cast<ShapedType>();
+  if (!shaped_type.hasStaticShape()) return {};
+
+  int bit_width = type.getIntOrFloatBitWidth();
+  llvm::SmallVector<APFloat, 4> values;
+  values.reserve(val.getNumElements());
+  for (auto it : val.getFloatValues()) {
+    double value = bit_width == 32 ? it.convertToFloat() : it.convertToDouble();
+    if (value < 0) return {};
+    value = std::sqrt(value);
+    if (bit_width == 32)
+      values.emplace_back(static_cast<float>(value));
+    else
+      values.emplace_back(value);
+  }
+  return DenseFPElementsAttr::get(shaped_type, values);
+}
+
+//===----------------------------------------------------------------------===//
+// UnaryOps
+//===----------------------------------------------------------------------===//
+
+template <typename Op, typename ElementType = Type, typename ValType,
+          typename Convert>
+static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
+  if (!attrs[0]) return {};
+
+  DenseElementsAttr val = attrs[0].dyn_cast<DenseElementsAttr>();
+  if (!val) return {};
+
+  ShapedType type = op->getType().template cast<ShapedType>();
+  if (!type.hasStaticShape()) {
+    return {};
+  }
+
+  Type etype = type.getElementType();
+
+  // Evaluate for integer values.
+  if (!etype.isa<ElementType>()) {
+    return {};
+  }
+
+  SmallVector<ValType, 6> values;
+  values.reserve(val.getNumElements());
+  for (const auto v : val.getValues<ValType>()) {
+    values.push_back(Convert()(v));
+  }
+
+  return DenseElementsAttr::get(type, values);
+}
+
+#define UNARY_FOLDER(Op, Func)                                                \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
+    if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
+      return UnaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
+      return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+    return {};                                                                \
+  }
+
+UNARY_FOLDER(NegOp, std::negate);
 
 //===----------------------------------------------------------------------===//
 // BinaryOps
@@ -2370,8 +2487,27 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
   build(builder, result, new_type, lhs, rhs, comparison_direction);
 }
 
+LogicalResult CompareOp::inferReturnTypeComponents(
+    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
+    mlir::DictionaryAttr, mlir::RegionRange,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
+  // TODO(b/168772852)
+  return failure();
+}
+
+LogicalResult CompareOp::reifyReturnTypeShapes(
+    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(),
+                                     &reifiedReturnShapes);
+}
+
+}  // namespace mhlo
+}  // namespace mlir
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
+
+namespace mlir {
+namespace mhlo {
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Interfaces

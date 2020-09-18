@@ -148,7 +148,7 @@ typedef struct SP_DeviceMemoryBase {
 } SP_DeviceMemoryBase;
 
 #define SP_DEVICE_MEMORY_BASE_STRUCT_SIZE \
-  TF_OFFSET_OF_END(SP_DeviceMemoryBase, size)
+  TF_OFFSET_OF_END(SP_DeviceMemoryBase, payload)
 
 typedef struct SP_Device {
   size_t struct_size;

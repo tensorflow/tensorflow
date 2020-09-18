@@ -114,7 +114,8 @@ do_pylint() {
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
 "^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
-"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "
+"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "\
+"^tensorflow/\.py.*\[C0326.*bad-whitespace.*No space allowed around keyword argument assignment "
 
   echo "ERROR_ALLOWLIST=\"${ERROR_ALLOWLIST}\""
 
@@ -215,7 +216,7 @@ do_pylint() {
     IS_ALLOWLISTED=0
     for WL_REGEX in ${ERROR_ALLOWLIST}; do
       if echo ${LINE} | grep -q "${WL_REGEX}"; then
-        echo "Found a allowlisted error:"
+        echo "Found an allowlisted error:"
         echo "  ${LINE}"
         IS_ALLOWLISTED=1
       fi

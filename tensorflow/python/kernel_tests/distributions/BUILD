@@ -212,6 +212,7 @@ cuda_py_test(
         "no_oss",
         # disable to avoid false positives from scipy.
         "nomsan",
+        "noasan",  #b/168810473
     ],
     deps = [
         "//tensorflow/python:client_testlib",

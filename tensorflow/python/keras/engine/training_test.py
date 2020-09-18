@@ -29,7 +29,6 @@ import six
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -992,7 +991,7 @@ class TrainingTest(keras_parameterized.TestCase):
     layer = layers_module.Dense(1, kernel_regularizer='l1')
     layer(array_ops.ones([1, 10]))
 
-    @function.defun
+    @def_function.function
     def get_losses():
       return layer.losses
 

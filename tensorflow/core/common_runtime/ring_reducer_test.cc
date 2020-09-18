@@ -510,8 +510,9 @@ class RingReducerTest : public ::testing::Test {
       RingReducer* reducer = new RingReducer;
       core::ScopedUnref unref(reducer);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, &tensor_, &tensor_);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, &tensor_, &tensor_);
       TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-reduce.

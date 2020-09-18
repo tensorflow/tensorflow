@@ -602,6 +602,9 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     VLOG(1) << FusionConfigToString(*fusion_config);
     module->set_config(module_config);
   }
+
+  reachability_.reset();
+
   VLOG(1) << "Fusion count: " << fuse_count;
 
   return changed;

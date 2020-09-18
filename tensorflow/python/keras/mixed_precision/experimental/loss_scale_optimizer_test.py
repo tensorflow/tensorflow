@@ -27,6 +27,7 @@ from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -53,7 +54,7 @@ default_strategy_fn = distribution_strategy_context.get_strategy
 
 
 def create_mirrored_strategy():
-  if context.num_gpus() >= 1:
+  if tf_config.list_logical_devices('GPU'):
     return mirrored_strategy.MirroredStrategy(['cpu:0', 'gpu:0'])
   else:
     return mirrored_strategy.MirroredStrategy(['cpu:0'])

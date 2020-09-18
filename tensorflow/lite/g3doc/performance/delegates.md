@@ -86,6 +86,8 @@ execute Conv2D and Mean operations faster.
 
 ```c++
 #include "tensorflow/lite/util.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/context_util.h"
 
 // This is where the execution of the operations or whole graph happens.
 // The class below has an empty implementation just as a guideline

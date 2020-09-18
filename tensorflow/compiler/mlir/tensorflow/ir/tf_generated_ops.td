@@ -529,7 +529,7 @@ see the incremented value or a subsequent newer one.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_Tensor:$value
   );
 
@@ -547,7 +547,7 @@ see the decremented value or a subsequent newer one.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_Tensor:$value
   );
 
@@ -957,7 +957,7 @@ beta function.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_ContractionFusableInterface]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -977,6 +977,11 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // TF_ContractionFusableInterface:
+    Optional<ContractionFusion> GetContractionFusion();
+  }];
 
   let verifier = [{
     return Verify(*this);
@@ -4230,7 +4235,7 @@ table will be immutable.
   );
 
   let results = (outs
-    TF_ResourceTensor:$table_handle
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
   );
 }
 
@@ -4551,33 +4556,21 @@ A placeholder op for a value that will be fed into the computation.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_InitializeTableFromTextFileV2Op : TF_Op<"InitializeTableFromTextFileV2", []> {
-  let summary = "Initializes a table from a text file.";
-
-  let description = [{
-It inserts one key-value pair into the table for each line of the file.
-The key and value is extracted from the whole line content, elements from the
-split line based on `delimiter` or the line number (starting from zero).
-Where to extract the key and value from a line is specified by `key_index` and
-`value_index`.
-
-- A value of -1 means use the line number(starting from zero), expects `int64`.
-- A value of -2 means use the whole line content, expects `string`.
-- A value >= 0 means use the index (starting at zero) of the split line based
-  on `delimiter`.
+def TF_InitializeTableV2Op : TF_Op<"InitializeTableV2", []> {
+  let summary = [{
+Table initializer that takes two tensors for keys and values respectively.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
-    TF_StrTensor:$filename,
-
-    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
-    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
-    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
-    DefaultValuedAttr<StrAttr, "\t">:$delimiter
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$values
   );
 
   let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tval = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr Tkey = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
@@ -4887,7 +4880,7 @@ def TF_LRNGradOp : TF_Op<"LRNGrad", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType, TF_ContractionFusableInterface]> {
   let summary = "Computes rectified linear: `max(features, features * alpha)`.";
 
   let arguments = (ins
@@ -4903,6 +4896,11 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // TF_ContractionFusableInterface:
+    Optional<ContractionFusion> GetContractionFusion();
+  }];
 }
 
 def TF_LeakyReluGradOp : TF_Op<"LeakyReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
@@ -5263,6 +5261,22 @@ def TF_LogicalOrOp : TF_Op<"LogicalOr", [Commutative, NoSideEffect, ResultsBroad
   );
 }
 
+def TF_LookupTableExportV2Op : TF_Op<"LookupTableExportV2", []> {
+  let summary = "Outputs all keys and values in the table.";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableRead]>:$table_handle
+  );
+
+  let results = (outs
+    TF_Tensor:$keys,
+    TF_Tensor:$values
+  );
+
+  TF_DerivedResultTypeAttr Tkeys = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tvalues = TF_DerivedResultTypeAttr<1>;
+}
+
 def TF_LookupTableFindV2Op : TF_Op<"LookupTableFindV2", []> {
   let summary = "Looks up keys in a table, outputs the corresponding values.";
 
@@ -5275,7 +5289,7 @@ table. It must also be of the same type as the table values.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
+    Arg<TF_ResourceTensor, "", [TF_LookupTableRead]>:$table_handle,
     TF_Tensor:$keys,
     TF_Tensor:$default_value
   );
@@ -5299,7 +5313,7 @@ The tensor `values` must be of the type of the table values.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
     TF_Tensor:$keys,
     TF_Tensor:$values
   );
@@ -5308,6 +5322,44 @@ The tensor `values` must be of the type of the table values.
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableInsertV2Op : TF_Op<"LookupTableInsertV2", []> {
+  let summary = "Updates the table to associates keys with values.";
+
+  let description = [{
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$values
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableRemoveV2Op : TF_Op<"LookupTableRemoveV2", []> {
+  let summary = "Removes keys and its associated values from a table.";
+
+  let description = [{
+The tensor `keys` must of the same type as the keys of the table. Keys not
+already in the table are silently ignored.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_LookupTableWrite]>:$table_handle,
+    TF_Tensor:$keys
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
@@ -6546,6 +6598,21 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
+  let summary = "Creates a handle to an in-scope variable.";
+
+  let description = [{
+Used by internal passes for temporary representation of local state, which will
+be eventually removed.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
+  );
+}
+
 def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
@@ -6686,6 +6753,85 @@ def TF_MultinomialOp : TF_Op<"Multinomial", [TF_CannotDuplicate]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr output_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_MutableDenseHashTableV2Op : TF_Op<"MutableDenseHashTableV2", []> {
+  let summary = [{
+Creates an empty hash table that uses tensors as the backing store.
+  }];
+
+  let description = [{
+It uses "open addressing" with quadratic reprobing to resolve
+collisions.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$empty_key,
+    TF_Tensor:$deleted_key,
+
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$value_dtype,
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::ArrayRef<int64_t>({})">:$value_shape,
+    DefaultValuedAttr<I64Attr, "131072">:$initial_num_buckets,
+    DefaultValuedAttr<F32Attr, "0.8f">:$max_load_factor
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
+  );
+
+  TF_DerivedOperandTypeAttr key_dtype = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MutableHashTableOfTensorsV2Op : TF_Op<"MutableHashTableOfTensorsV2", []> {
+  let summary = "Creates an empty hash table.";
+
+  let description = [{
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a vector. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype,
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::ArrayRef<int64_t>({})">:$value_shape
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
+  );
+}
+
+def TF_MutableHashTableV2Op : TF_Op<"MutableHashTableV2", []> {
+  let summary = "Creates an empty hash table.";
+
+  let description = [{
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_LookupTableAlloc]>:$table_handle
+  );
 }
 
 def TF_NdtriOp : TF_Op<"Ndtri", [NoSideEffect]> {
@@ -7951,7 +8097,7 @@ most one RecvTPUEmbeddingActivations op in the TPU graph.
   TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
 }
 
-def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
+def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType, TF_ContractionFusableInterface, TF_LayoutAgnostic]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
   let description = [{
@@ -7970,6 +8116,11 @@ array([ 0.,  0., -0.,  3.], dtype=float32)
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // TF_ContractionFusableInterface:
+    Optional<ContractionFusion> GetContractionFusion();
+  }];
 }
 
 def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, SameOperandsAndResultType]> {
@@ -8176,9 +8327,9 @@ variable <- variable - learning_rate / (1 - beta1^t) * m_t / (v_t + epsilon)
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$m,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$v,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$m,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$v,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta1_power,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta1,
@@ -8205,9 +8356,9 @@ var -= update;
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum_update,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum_update,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rho,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$epsilon,
@@ -8230,8 +8381,8 @@ var -= lr * grad * (1 / sqrt(accum))
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
 
@@ -8248,9 +8399,9 @@ def TF_ResourceApplyAdagradDAOp : TF_Op<"ResourceApplyAdagradDA", []> {
   let summary = "Update '*var' according to the proximal adagrad scheme.";
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$gradient_accumulator,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$gradient_squared_accumulator,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$gradient_accumulator,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$gradient_squared_accumulator,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$l1,
@@ -8274,8 +8425,8 @@ var -= lr * grad * (1 / (sqrt(accum) + epsilon))
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$epsilon,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
@@ -8300,9 +8451,9 @@ $$\text{variable} := \text{variable} - \text{lr}_t * m_t / (\sqrt{v_t} + \epsilo
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$m,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$v,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$m,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$v,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta1_power,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta2_power,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
@@ -8330,8 +8481,8 @@ variable <- variable - lr_t * update
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$m,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$m,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$alpha,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$sign_decay,
@@ -8371,10 +8522,10 @@ var <- var - mom
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$mg,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$ms,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$mom,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$mg,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$ms,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$mom,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rho,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
@@ -8401,9 +8552,9 @@ accum = accum_new
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$linear,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$linear,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$l1,
@@ -8433,9 +8584,9 @@ accum = accum_new
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$linear,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$linear,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$l1,
@@ -8456,7 +8607,7 @@ def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []
   let summary = "Update '*var' by subtracting 'alpha' * 'delta' from it.";
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$alpha,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$delta,
 
@@ -8479,8 +8630,8 @@ var += accum
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
@@ -8505,8 +8656,8 @@ var -= lr * accum
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
@@ -8530,8 +8681,8 @@ variable <- variable - lr_t * update
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$m,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$m,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$logbase,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$sign_decay,
@@ -8558,8 +8709,8 @@ var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$l1,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$l2,
@@ -8582,7 +8733,7 @@ var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$alpha,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$l1,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$l2,
@@ -8613,9 +8764,9 @@ var <- var - mom
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$ms,
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$mom,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$ms,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$mom,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rho,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
@@ -8693,7 +8844,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates
   );
@@ -8732,7 +8883,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates
   );
@@ -8771,7 +8922,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates
   );
@@ -8810,7 +8961,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates
   );
@@ -8849,7 +9000,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates
   );
@@ -8902,7 +9053,7 @@ slices.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$ref,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$ref,
     TF_I32OrI64Tensor:$indices,
     TF_Tensor:$updates,
 
@@ -8957,7 +9108,7 @@ slices.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$ref,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$ref,
     TF_I32OrI64Tensor:$indices,
     TF_Tensor:$updates,
 
@@ -9014,7 +9165,7 @@ slices.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$ref,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$ref,
     TF_I32OrI64Tensor:$indices,
     TF_Tensor:$updates,
 
@@ -9055,7 +9206,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates
   );
@@ -9085,7 +9236,7 @@ This operation computes
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TF_Tensor:$updates
   );
@@ -9109,7 +9260,7 @@ shape must be exactly the shape produced by the slice of `ref`.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$ref,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$ref,
     TF_I32OrI64Tensor:$begin,
     TF_I32OrI64Tensor:$end,
     TF_I32OrI64Tensor:$strides,
@@ -10882,7 +11033,7 @@ def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
   let summary = "Delete the stack from its resource container.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_StackFree]>:$handle
   );
 
   let results = (outs);
@@ -10892,7 +11043,7 @@ def TF_StackPopV2Op : TF_Op<"StackPopV2", []> {
   let summary = "Pop the element at the top of the stack.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_StackRead, TF_StackWrite]>:$handle
   );
 
   let results = (outs
@@ -10906,7 +11057,7 @@ def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
   let summary = "Push an element onto the stack.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_StackRead, TF_StackWrite]>:$handle,
     TF_Tensor:$elem,
 
     DefaultValuedAttr<BoolAttr, "false">:$swap_memory
@@ -10930,7 +11081,7 @@ def TF_StackV2Op : TF_Op<"StackV2", []> {
   );
 
   let results = (outs
-    TF_ResourceTensor:$handle
+    Res<TF_ResourceTensor, "", [TF_StackAlloc]>:$handle
   );
 }
 
@@ -11604,6 +11755,29 @@ The above computation has a replicated output of two replicas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
+  let summary = [{
+Op that reshards on-device TPU variables to specified state. Internal use only.
+  }];
+
+  let description = [{
+The sharding state is represented as the key of the compilation that generated
+the sharding/unsharding programs along with the main program. new_format_key
+specifies the desired state, and format_state_var is the current state of the
+variables.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_ResourceTensor>, "", [TF_VariableRead, TF_VariableWrite]>:$vars,
+    TF_StrTensor:$new_format_key,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$format_state_var
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_TanOp : TF_Op<"Tan", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes tan of x element-wise.";
 
@@ -11684,7 +11858,7 @@ of a step/run.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayFree]>:$handle
   );
 
   let results = (outs);
@@ -11708,7 +11882,7 @@ All elements must have the same shape (excepting the first dimension).
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     F32Tensor:$flow_in,
 
     DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
@@ -11732,7 +11906,7 @@ All elements selected by `indices` must have the same shape.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     I32Tensor:$indices,
     F32Tensor:$flow_in,
 
@@ -11791,14 +11965,14 @@ calculation gets its own TensorArray accumulator.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead, TF_TensorArrayWrite]>:$handle,
     F32Tensor:$flow_in,
 
     StrAttr:$source
   );
 
   let results = (outs
-    TF_ResourceTensor:$grad_handle,
+    Res<TF_ResourceTensor, "", [TF_TensorArrayAlloc]>:$grad_handle,
     F32Tensor:$flow_out
   );
 }
@@ -11807,7 +11981,7 @@ def TF_TensorArrayReadV3Op : TF_Op<"TensorArrayReadV3", []> {
   let summary = "Read an element from the TensorArray into output `value`.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     I32Tensor:$index,
     F32Tensor:$flow_in
   );
@@ -11829,7 +12003,7 @@ Scatter the data from the input value into specific TensorArray elements.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead, TF_TensorArrayWrite]>:$handle,
     I32Tensor:$indices,
     TF_Tensor:$value,
     F32Tensor:$flow_in
@@ -11846,7 +12020,7 @@ def TF_TensorArraySizeV3Op : TF_Op<"TensorArraySizeV3", []> {
   let summary = "Get the current size of the TensorArray.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     F32Tensor:$flow_in
   );
 
@@ -11881,7 +12055,7 @@ and having size
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead, TF_TensorArrayWrite]>:$handle,
     TF_Tensor:$value,
     I64Tensor:$lengths,
     F32Tensor:$flow_in
@@ -11913,7 +12087,7 @@ Write data via Write and read via Read or Pack.
   );
 
   let results = (outs
-    TF_ResourceTensor:$handle,
+    Res<TF_ResourceTensor, "", [TF_TensorArrayAlloc]>:$handle,
     F32Tensor:$flow
   );
 }
@@ -11922,7 +12096,7 @@ def TF_TensorArrayWriteV3Op : TF_Op<"TensorArrayWriteV3", []> {
   let summary = "Push an element onto the tensor_array.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead, TF_TensorArrayWrite]>:$handle,
     I32Tensor:$index,
     TF_Tensor:$value,
     F32Tensor:$flow_in
@@ -13006,140 +13180,6 @@ where(input) ==> [[0, 0, 0],
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_WriteAudioSummaryOp : TF_Op<"WriteAudioSummary", []> {
-  let summary = "Writes an audio summary.";
-
-  let description = [{
-Writes encoded audio summary `tensor` at `step` with `tag` using summary `writer`.
-`sample_rate` is the audio sample rate is Hz.
-  }];
-
-  let arguments = (ins
-    TF_ResourceTensor:$writer,
-    I64Tensor:$step,
-    TF_StrTensor:$tag,
-    F32Tensor:$tensor,
-    F32Tensor:$sample_rate,
-
-    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_outputs
-  );
-
-  let results = (outs);
-}
-
-def TF_WriteGraphSummaryOp : TF_Op<"WriteGraphSummary", []> {
-  let summary = "Writes a graph summary.";
-
-  let description = [{
-Writes TensorFlow graph `tensor` at `step` using summary `writer`.
-  }];
-
-  let arguments = (ins
-    TF_ResourceTensor:$writer,
-    I64Tensor:$step,
-    TF_StrTensor:$tensor
-  );
-
-  let results = (outs);
-}
-
-def TF_WriteHistogramSummaryOp : TF_Op<"WriteHistogramSummary", []> {
-  let summary = "Writes a histogram summary.";
-
-  let description = [{
-Writes histogram `values` at `step` with `tag` using summary `writer`.
-  }];
-
-  let arguments = (ins
-    TF_ResourceTensor:$writer,
-    I64Tensor:$step,
-    TF_StrTensor:$tag,
-    TF_IntOrFpTensor:$values
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
-}
-
-def TF_WriteImageSummaryOp : TF_Op<"WriteImageSummary", []> {
-  let summary = "Writes an image summary.";
-
-  let description = [{
-Writes image `tensor` at `step` with `tag` using summary `writer`.
-`tensor` is image with shape [height, width, channels].
-  }];
-
-  let arguments = (ins
-    TF_ResourceTensor:$writer,
-    I64Tensor:$step,
-    TF_StrTensor:$tag,
-    TensorOf<[F16, F32, TF_Uint8]>:$tensor,
-    TF_Uint8Tensor:$bad_color,
-
-    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_images
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
-}
-
-def TF_WriteRawProtoSummaryOp : TF_Op<"WriteRawProtoSummary", []> {
-  let summary = "Writes a serialized proto summary.";
-
-  let description = [{
-Writes `tensor`, a serialized proto at `step` using summary `writer`.
-  }];
-
-  let arguments = (ins
-    TF_ResourceTensor:$writer,
-    I64Tensor:$step,
-    TF_StrTensor:$tensor
-  );
-
-  let results = (outs);
-}
-
-def TF_WriteScalarSummaryOp : TF_Op<"WriteScalarSummary", []> {
-  let summary = "Writes a scalar summary.";
-
-  let description = [{
-Writes scalar `value` at `step` with `tag` using summary `writer`.
-  }];
-
-  let arguments = (ins
-    TF_ResourceTensor:$writer,
-    I64Tensor:$step,
-    TF_StrTensor:$tag,
-    TF_IntOrFpTensor:$value
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
-}
-
-def TF_WriteSummaryOp : TF_Op<"WriteSummary", []> {
-  let summary = "Writes a tensor summary.";
-
-  let description = [{
-Writes `tensor` at `step` with `tag` using summary `writer`.
-  }];
-
-  let arguments = (ins
-    TF_ResourceTensor:$writer,
-    I64Tensor:$step,
-    TF_Tensor:$tensor,
-    TF_StrTensor:$tag,
-    TF_StrTensor:$summary_metadata
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
-}
-
 def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
@@ -13168,14 +13208,14 @@ for binary operators.
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lhs,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rhs,
-    TF_I32OrI64Tensor:$broadcast_dims
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the LHS input tensor}]>:$lhs,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the RHS input tensor}]>:$rhs,
+    Arg<TF_I32OrI64Tensor, [{an XLA-style broadcast dimension specification}]>:$broadcast_dims
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lhs_output,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rhs_output
+    Res<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the broadcasted LHS tensor}]>:$lhs_output,
+    Res<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the broadcasted RHS tensor}]>:$rhs_output
   );
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
@@ -13191,13 +13231,13 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lhs,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rhs,
-    TF_I32OrI64Tensor:$window_strides,
-    TF_I32OrI64Tensor:$padding,
-    TF_I32OrI64Tensor:$lhs_dilation,
-    TF_I32OrI64Tensor:$rhs_dilation,
-    TF_I32OrI64Tensor:$feature_group_count,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor}]>:$lhs,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the kernel tensor}]>:$rhs,
+    Arg<TF_I32OrI64Tensor, [{the inter-window strides}]>:$window_strides,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply at the start and end of each input dimensions}]>:$padding,
+    Arg<TF_I32OrI64Tensor, [{dilation to apply between input elements}]>:$lhs_dilation,
+    Arg<TF_I32OrI64Tensor, [{dilation to apply between kernel elements}]>:$rhs_dilation,
+    Arg<TF_I32OrI64Tensor, [{number of feature groups for grouped convolution.}]>:$feature_group_count,
 
     StrAttr:$dimension_numbers,
     StrAttr:$precision_config
@@ -13220,8 +13260,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lhs,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rhs,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the LHS tensor}]>:$lhs,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the RHS tensor}]>:$rhs,
 
     StrAttr:$dimension_numbers,
     StrAttr:$precision_config
@@ -13249,8 +13289,11 @@ with dimension size equal to the rank of operand.
   }];
 
   let arguments = (ins
-    TF_Tensor:$input,
-    TF_I32OrI64Tensor:$start_indices,
+    Arg<TF_Tensor, [{A `Tensor` of type T.}]>:$input,
+    Arg<TF_I32OrI64Tensor, [{List of N integers containing the slice size for each
+dimension. Each value must be strictly greater than zero, and start + size
+must be less than or equal to the size of the dimension to avoid
+implementation defined behavior.}]>:$start_indices,
     TF_I32OrI64Tensor:$size_indices
   );
 
@@ -13278,13 +13321,14 @@ Handling of out-of-bounds slice indices is implementation-defined.
   }];
 
   let arguments = (ins
-    TF_Tensor:$input,
-    TF_Tensor:$update,
-    TF_I32OrI64Tensor:$indices
+    Arg<TF_Tensor, [{A `Tensor` of type T.}]>:$input,
+    Arg<TF_Tensor, [{A `Tensor` of type T. Same rank as `input`.}]>:$update,
+    Arg<TF_I32OrI64Tensor, [{A vector of indices into `input`. Must have length equal to the rank of
+`input`.}]>:$indices
   );
 
   let results = (outs
-    TF_Tensor:$output
+    Res<TF_Tensor, [{A `Tensor` of type T.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
@@ -13299,9 +13343,9 @@ https://www.tensorflow.org/xla/operation_semantics#gather
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$operand,
-    TF_I32OrI64Tensor:$start_indices,
-    TF_I32OrI64Tensor:$slice_sizes,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{The array we're gathering from.}]>:$operand,
+    Arg<TF_I32OrI64Tensor, [{Array containing the starting indices of the slices we gather.}]>:$start_indices,
+    Arg<TF_I32OrI64Tensor, [{slice_sizes[i] is the bounds for the slice on dimension i.}]>:$slice_sizes,
 
     StrAttr:$dimension_numbers,
     BoolAttr:$indices_are_sorted
@@ -13350,13 +13394,13 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$keys,
-    TF_Tensor:$values
+    Arg<TF_IntOrFpTensor, [{A `Tensor` of type K.}]>:$keys,
+    Arg<TF_Tensor, [{A `Tensor` of type V.}]>:$values
   );
 
   let results = (outs
-    TF_IntOrFpTensor:$sorted_keys,
-    TF_Tensor:$sorted_values
+    Res<TF_IntOrFpTensor, [{A `Tensor` of type K.}]>:$sorted_keys,
+    Res<TF_Tensor, [{A `Tensor` of type V.}]>:$sorted_values
   );
 
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
@@ -13372,15 +13416,15 @@ https://www.tensorflow.org/performance/xla/operation_semantics#pad
   }];
 
   let arguments = (ins
-    TF_Tensor:$input,
-    TF_Tensor:$padding_value,
-    TF_I32OrI64Tensor:$padding_low,
-    TF_I32OrI64Tensor:$padding_high,
-    TF_I32OrI64Tensor:$padding_interior
+    Arg<TF_Tensor, [{A `Tensor` of type T.}]>:$input,
+    Arg<TF_Tensor, [{A scalar `Tensor` of type T.}]>:$padding_value,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply at the start of each input dimensions}]>:$padding_low,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply at the end of each input dimension.}]>:$padding_high,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply between each input element.}]>:$padding_interior
   );
 
   let results = (outs
-    TF_Tensor:$output
+    Res<TF_Tensor, [{A `Tensor` of type T.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
@@ -13417,8 +13461,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reduce .
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$init_value,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor}]>:$input,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a scalar representing the initial value for the reduction}]>:$init_value,
 
     I64ArrayAttr:$dimensions_to_reduce,
     SymbolRefAttr:$reducer
@@ -13449,9 +13493,10 @@ https://www.tensorflow.org/xla/operation_semantics#scatter.
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$operand,
-    TF_I32OrI64Tensor:$scatter_indices,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Array to be scattered into.}]>:$operand,
+    Arg<TF_I32OrI64Tensor, [{Array containing the starting indices of the slices that must
+be scattered to.}]>:$scatter_indices,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Array containing the values that must be used for scattering.}]>:$updates,
 
     SymbolRefAttr:$update_computation,
     StrAttr:$dimension_numbers,
@@ -13480,7 +13525,7 @@ i=0...N-1.
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$a,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor.}]>:$a,
 
     BoolAttr:$lower,
     I64Attr:$max_iter,
@@ -13488,8 +13533,10 @@ i=0...N-1.
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$w,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$v
+    Res<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{The eigenvalues in ascending order, each repeated according to its
+multiplicity.}]>:$w,
+    Res<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{The column v[..., :, i] is the normalized eigenvector corresponding to the
+eigenvalue w[..., i].}]>:$v
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -13528,7 +13575,7 @@ tensor such that tensor[...,:,:] = u[..., :, :] * Diag(s[..., :]) * Transpose(v[
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$a,
+    Arg<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor.}]>:$a,
 
     I64Attr:$max_iter,
     F32Attr:$epsilon,
@@ -13536,9 +13583,10 @@ tensor such that tensor[...,:,:] = u[..., :, :] * Diag(s[..., :]) * Transpose(v[
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$s,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$u,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$v
+    Res<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Singular values. The values are sorted in reverse order of magnitude, so
+s[..., 0] is the largest value, s[..., 1] is the second largest, etc.}]>:$s,
+    Res<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Left singular vectors.}]>:$u,
+    Res<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Right singular vectors.}]>:$v
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -13730,13 +13778,19 @@ Tensor of activations per table specified in the model.
   }];
 
   let arguments = (ins
-    TF_VariantTensor:$deduplication_data,
+    Arg<TF_VariantTensor, [{A Tensor with type=DT_VARIANT containing the deduplication
+data. The tensor is an XLA nested tuple containing N elements (where N is
+the ratio of the number of embedding to tensor cores per TPU chip). Each
+element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:$deduplication_data,
 
     StrAttr:$config
   );
 
   let results = (outs
-    Variadic<F32Tensor>:$outputs
+    Res<Variadic<F32Tensor>, [{A TensorList of embedding activations containing one Tensor per
+embedding table in the model.}]>:$outputs
   );
 
   TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
@@ -13823,7 +13877,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   }];
 
   let arguments = (ins
-    Variadic<TF_Tensor>:$inputs,
+    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the host.}]>:$inputs,
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
@@ -13831,7 +13885,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   );
 
   let results = (outs
-    Variadic<TF_Tensor>:$outputs
+    Res<Variadic<TF_Tensor>, [{A list of tensors that will be returned to the device.}]>:$outputs
   );
 
   TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
@@ -13844,14 +13898,15 @@ A placeholder op to receive values from a running XLA computation.
   }];
 
   let arguments = (ins
-    TF_StrTensor:$dynamic_key,
+    Arg<TF_StrTensor, [{The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
     I64Attr:$device_ordinal
   );
 
   let results = (outs
-    Variadic<TF_Tensor>:$outputs
+    Res<Variadic<TF_Tensor>, [{A list of tensors that will be received from the XLA computation.}]>:$outputs
   );
 
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
@@ -13861,8 +13916,9 @@ def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", []> {
   let summary = "A placeholder op to send values to a running XLA computation.";
 
   let arguments = (ins
-    Variadic<TF_Tensor>:$inputs,
-    TF_StrTensor:$dynamic_key,
+    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the XLA computation.}]>:$inputs,
+    Arg<TF_StrTensor, [{The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
     I64Attr:$device_ordinal

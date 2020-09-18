@@ -682,6 +682,7 @@ tf_python_pybind_extension(
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
@@ -702,6 +703,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "@com_google_absl//absl/types:optional",
+        "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
@@ -1584,6 +1586,7 @@ py_library(
         "framework/convert_to_constants.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = visibility + ["//waymo/ml:__subpackages__"],
     deps = [
         ":dtypes",
         ":framework_ops",
@@ -1972,7 +1975,7 @@ py_library(
     name = "composite_tensor",
     srcs = ["framework/composite_tensor.py"],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":tensor_util",
@@ -2047,7 +2050,7 @@ py_library(
     name = "type_spec",
     srcs = ["framework/type_spec.py"],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":tensor_shape",
@@ -2168,6 +2171,7 @@ py_library(
     name = "is_mlir_bridge_test_true",
     srcs = ["framework/is_mlir_bridge_test_true.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility,
 )
 
 # Including this as a dependency will result in tests to use TFRT.
@@ -3177,6 +3181,10 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//tensorflow/python/data/experimental/ops:__pkg__",
     ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "stateless_random_ops_v2_gen",
 )
 
 tf_gen_op_wrapper_private_py(
@@ -4436,6 +4444,7 @@ py_library(
         ":framework_ops",
         ":math_ops",
         ":stateful_random_ops_gen",
+        ":stateless_random_ops_v2_gen",
         ":variables",
         "//third_party/py/numpy",
     ],
@@ -4470,6 +4479,7 @@ py_library(
         ":math_ops",
         ":random_ops",
         ":stateless_random_ops_gen",
+        ":stateless_random_ops_v2_gen",
     ],
 )
 
@@ -5242,7 +5252,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_linspace_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "notsan",  # b/168815578
+    ],
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -5528,6 +5541,48 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "function_parameter_canonicalizer",
+    srcs = ["util/function_parameter_canonicalizer.cc"],
+    hdrs = ["util/function_parameter_canonicalizer.h"],
+    deps = [
+        ":py_util",
+        ":safe_pyobject_ptr",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_function_parameter_canonicalizer_binding_for_test",
+    testonly = True,
+    srcs = ["util/function_parameter_canonicalizer_binding_for_test.cc"],
+    module_name = "_function_parameter_canonicalizer_binding_for_test",
+    deps = [
+        ":function_parameter_canonicalizer",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "function_parameter_canonicalizer_test",
+    srcs = ["util/function_parameter_canonicalizer_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # b/168621686
+    ],
+    tfrt_enabled = True,
+    deps = [
+        ":_function_parameter_canonicalizer_binding_for_test",
+        ":client_testlib",
+    ],
+)
+
 py_library(
     name = "global_test_configuration",
     deps = if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]) +
@@ -5553,7 +5608,6 @@ py_library(
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
-        "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
         ":_pywrap_tensor_float_32_execution",
@@ -5937,6 +5991,10 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/experimental/ops",
+        "//tensorflow/c/experimental/gradients",
+        "//tensorflow/c/eager:mnist_gradients_testutil",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
@@ -5995,6 +6053,7 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
+        "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
@@ -7430,6 +7489,37 @@ tf_python_pybind_extension(
     ],
 )
 
+cc_library(
+    name = "unified_api_pywrap_required_headers",
+    textual_hdrs = [
+        "lib/core/numpy.h",
+        "lib/core/py_exception_registry.h",
+        "lib/core/pybind11_status.h",
+        "lib/core/bfloat16.h",
+        "lib/core/ndarray_tensor.h",
+        "lib/core/ndarray_tensor_bridge.h",
+        "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/gradients:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime:core_cpu_lib_headers",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
+    ],
+    visibility = ["//tensorflow/python/framework/experimental:__pkg__"],
+    deps = [
+        "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/core/framework:pywrap_required_hdrs",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
 py_library(
     name = "pywrap_tfe",
     srcs = ["pywrap_tfe.py"],
@@ -7444,12 +7534,14 @@ tf_python_pybind_extension(
     name = "_pywrap_tfe",
     srcs = ["tfe_wrapper.cc"],
     hdrs = [
+        "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
         "util/util.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
@@ -7459,6 +7551,7 @@ tf_python_pybind_extension(
     deps = [
         ":safe_pyobject_ptr",
         ":pybind11_lib",
+        "//third_party/py/numpy:headers",
         ":pybind11_status",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -7471,11 +7564,14 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/compiler/jit:flags_headers_only",
+        "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
+        "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",

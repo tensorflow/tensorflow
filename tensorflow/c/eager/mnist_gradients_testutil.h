@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EAGER_MNIST_GRADIENTS_TESTUTIL_H_
+#define TENSORFLOW_C_EAGER_MNIST_GRADIENTS_TESTUTIL_H_
 #include <memory>
 
 #include "absl/types/span.h"
@@ -24,8 +26,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -61,7 +61,7 @@ Status Relu(AbstractContext* ctx, Tape* tape,
 
 // Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the
 // tape.
-Status SparseSoftmaxCrossEntropyLoss(
+Status SparseSoftmaxCrossEntropyWithLogits(
     AbstractContext* ctx, Tape* tape,
     absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs, const char* name,
@@ -121,30 +121,23 @@ Status ScalarMulModel(AbstractContext* ctx,
                       absl::Span<AbstractTensorHandle*> outputs,
                       const GradientRegistry& registry);
 
-// Updates the weights for a neural network given incoming grads and learning
-// rate
-Status UpdateWeights(AbstractContext* ctx,
-                     std::vector<AbstractTensorHandle*>& grads,
-                     std::vector<AbstractTensorHandle*>& weights,
-                     AbstractTensorHandle* learning_rate);
+Status MatMulModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);
 
-AbstractContext* BuildFunction(const char* fn_name);
-
-Status CreateParamsForInputs(AbstractContext* ctx,
-                             absl::Span<AbstractTensorHandle* const> inputs,
-                             std::vector<AbstractTensorHandle*>* params);
-
-using Model = std::function<Status(
-    AbstractContext*, absl::Span<AbstractTensorHandle* const>,
-    absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
-
-Status RunModel(Model model, AbstractContext* ctx,
+Status MulModel(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, bool use_function,
+                absl::Span<AbstractTensorHandle*> outputs,
                 const GradientRegistry& registry);
 
-Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx);
+Status SoftmaxModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
 
 }  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_C_EAGER_MNIST_GRADIENTS_TESTUTIL_H_

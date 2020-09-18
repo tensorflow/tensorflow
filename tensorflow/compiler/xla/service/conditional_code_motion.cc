@@ -911,14 +911,15 @@ class GroupConnectedBoundaries {
       }
     }
   }
-  std::vector<Boundary> BoundariesToMoveInOrOut(const Boundary& b) {
+  std::vector<Boundary> BoundariesToMoveInOrOut(HloInstruction* conditional,
+                                                const Boundary& b) {
     // At the beginning of optimization, a conditional itself is added to a
     // worklist. Here the conditional is expanded into two sets of boundaries:
     // the first set contains the boundary that is inside branches and
     // contains the root of all branches; the second set of boundaries
     // contains all the users of the conditional.
     HloInstruction* inst = b.operands()[0];
-    if (inst->opcode() == HloOpcode::kConditional) {
+    if (inst == conditional) {
       int branch_count = inst->branch_count();
       // Add conditional roots as a new boundary to visit.
       Boundary boundary_in(Boundary::Position::kInsideBranch);
@@ -949,7 +950,8 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
     HloInstruction* conditional, const Boundary& cur_boundary,
     std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries) {
   GroupConnectedBoundaries connect(conditional, is_layout_sensitive_);
-  auto move_in_or_out = connect.BoundariesToMoveInOrOut(cur_boundary);
+  auto move_in_or_out =
+      connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
   if (!move_in_or_out.empty()) {
     auto benefit = connect.BenefitForMovingBoundaries(move_in_or_out);
     VLOG(2) << "benefit of moving in or out "
@@ -973,12 +975,13 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
 
 StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
   bool changed = false;
+  bool cleanup_changed = false;
   {
     HloPassPipeline subpipeline("before_conditional_code_motion");
     subpipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/is_layout_sensitive_);
     subpipeline.AddPass<HloDCE>();
-    TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
-    changed |= cleanup_changed;
+    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
+    cleanup_changed |= cleanup_changed_now;
   }
   // Gather all the conditional ops in the module ahead of time, to avoid
   // potential complications of modifying the code that affecting traversal.
@@ -997,7 +1000,20 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
             conditional_computations[branch_i] = 0;
           }
         }
-        conditional_ops.push_back(instr);
+        if (instr->shape().IsTuple()) {
+          bool can_change_tuple_shape = true;
+          for (auto user : instr->users()) {
+            VLOG(2) << "user is : " << user->ToString() << "\n";
+            if (user->opcode() != HloOpcode::kGetTupleElement) {
+              can_change_tuple_shape = false;
+            }
+          }
+          if (can_change_tuple_shape) {
+            conditional_ops.push_back(instr);
+          }
+        } else {
+          conditional_ops.push_back(instr);
+        }
       }
     }
   }
@@ -1110,8 +1126,11 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     subpipeline.AddPass<HloDCE>();
     subpipeline.AddPass<TupleSimplifier>();
     subpipeline.AddPass<HloDCE>();
-    TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
-    changed |= cleanup_changed;
+    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
+    cleanup_changed |= cleanup_changed_now;
+  }
+  if (cleanup_changed) {
+    VLOG(2) << "subpipeline cleanup have modified code\n";
   }
   return changed;
 }

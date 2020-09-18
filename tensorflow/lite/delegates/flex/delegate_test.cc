@@ -17,6 +17,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/flex/test_util.h"
+#include "tensorflow/lite/shared_library.h"
 
 namespace tflite {
 namespace flex {
@@ -300,6 +301,17 @@ TEST_F(DelegateTest, MultiThreaded) {
   ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
   ASSERT_EQ(GetType(8), kTfLiteFloat32);
 }
+
+#if !defined(__ANDROID__)
+TEST_F(DelegateTest, TF_AcquireFlexDelegate) {
+  auto TF_AcquireFlexDelegate =
+      reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
+          SharedLibrary::GetLibrarySymbol(nullptr, "TF_AcquireFlexDelegate"));
+  ASSERT_TRUE(TF_AcquireFlexDelegate);
+  auto delegate_ptr = TF_AcquireFlexDelegate();
+  ASSERT_TRUE(delegate_ptr != nullptr);
+}
+#endif  // !defined(__ANDROID__)
 
 }  // namespace
 }  // namespace flex

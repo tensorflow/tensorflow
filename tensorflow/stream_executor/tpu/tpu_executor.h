@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/stream_executor/tpu/tpu_stream.h"
 
 namespace tensorflow {
 
@@ -224,6 +225,11 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   TpuPlatform::StreamMap& stream_map() {
     return *(tpu_platform().stream_map());
+  }
+
+  SE_Stream* get_stream(StreamInterface* ptr) {
+    tensorflow::mutex_lock m(tpu_platform().mutex());
+    return stream_map()[ptr];
   }
 
   TimerMap timer_map_;

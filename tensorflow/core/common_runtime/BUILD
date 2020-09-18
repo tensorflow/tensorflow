@@ -88,7 +88,6 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/common_runtime/sycl:sycl_runtime",
     ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
@@ -546,6 +545,9 @@ cc_library(
     deps = [
         ":device_mgr",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -1664,6 +1666,7 @@ tf_cuda_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
@@ -1736,6 +1739,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
@@ -1865,6 +1869,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
@@ -2220,6 +2225,7 @@ tf_cuda_cc_test(
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["notsan"],  # b/168317266
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -2262,6 +2268,9 @@ tf_cc_test(
     size = "small",
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "notsan",  #b/168811551
+    ],
     deps = [
         ":core",
         ":core_cpu",

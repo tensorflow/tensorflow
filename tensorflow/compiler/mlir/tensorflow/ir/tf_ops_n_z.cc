@@ -565,6 +565,17 @@ OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReluOp
+//===----------------------------------------------------------------------===//
+
+Optional<ContractionFusion> ReluOp::GetContractionFusion() {
+  // Only f32 is supported for fusion.
+  if (!T().isF32()) return None;
+
+  return ContractionFusion("Relu", /*additional_arguments=*/{});
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
@@ -2277,8 +2288,8 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
 }
 
 static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_func();
-  auto body_fn = op.body_func();
+  auto cond_fn = op.cond_function();
+  auto body_fn = op.body_function();
   if (!cond_fn) {
     return op.emitOpError("cond refers to an undefined function : ")
            << op.cond();
@@ -2479,12 +2490,12 @@ void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<XdivyWithSqrtDivisor>(context);
 }
 
+}  // namespace TF
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc.inc"
-
-}  // namespace TF
-}  // namespace mlir

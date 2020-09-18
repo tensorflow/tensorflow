@@ -452,8 +452,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
     return;
 
-  FuncOp body = while_op.body_func();
-  FuncOp cond = while_op.cond_func();
+  FuncOp body = while_op.body_function();
+  FuncOp cond = while_op.cond_function();
 
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =
@@ -537,9 +537,10 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   // Build a constant default key to specify that the unformatting should
   // transform the variables to the original format.
   builder.setInsertionPointAfter(while_op);
-  tensorflow::Tensor default_key_tensor(tensorflow::DT_STRING, {2});
+  tensorflow::Tensor default_key_tensor(tensorflow::DT_STRING, {3});
   default_key_tensor.vec<tensorflow::tstring>()(0) = kDefaultShardingValue;
   default_key_tensor.vec<tensorflow::tstring>()(1) = kDefaultShardingValue;
+  default_key_tensor.vec<tensorflow::tstring>()(2) = kDefaultShardingValue;
   auto default_state_key = builder.create<TF::ConstOp>(
       while_op.getLoc(),
       tensorflow::ConvertTensor(default_key_tensor, &builder).ValueOrDie());

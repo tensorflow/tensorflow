@@ -101,6 +101,11 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
     return nullptr;
   }
 
+  NcclCommunicatorInterface* GetNcclCommunicator() const override {
+    LOG(FATAL) << "Unimplemented";  // Crash OK
+    return nullptr;
+  }
+
   void GetStepSequenceAsync(const GetStepSequenceRequest* request,
                             GetStepSequenceResponse* response,
                             const StatusCallback& done) override {

@@ -25,6 +25,7 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
@@ -32,7 +33,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 from tensorflow.python.platform import tf_logging as logging
-
 
 OP_INSTANCE_KEY_START_NUMBER = 100
 
@@ -339,6 +339,7 @@ def build_collective_gather(input_tensors,
                             devices,
                             group_size,
                             collective_keys,
+                            axis,
                             communication_hint='AUTO',
                             control_inputs=None,
                             timeout=None):
@@ -348,14 +349,16 @@ def build_collective_gather(input_tensors,
 
   Args:
     input_tensors: tensors within a single worker graph that are to be gathered
-      together; must be one per device.
+      together; must be one per device. Input tensors cannot have rank 0.
     devices: a list of device strings to run the collective on.
     group_size: total number of devices globally that will be doing this same
       gathering. The gathering will actually include the corresponding tensors
       at all these workers.
     collective_keys: a CollectiveKeys object.
+    axis: 0-D int32 Tensor. Dimension along which to gather. Must be in the
+      range [0, rank(value)).
     communication_hint: string providing hint to runtime for choosing collective
-      implementation.
+      implementation. Available options are `AUTO`, `NCCL`, and `RING`.
     control_inputs: if not None, add control edges between control_inputs and
       (index-wise) corresponding collective_gather tensors
     timeout: a float or None. The timeout in seconds.
@@ -363,9 +366,6 @@ def build_collective_gather(input_tensors,
   Returns:
     An array of final tensors, one per device, computed by the full gather.
   """
-  assert not context.executing_eagerly(), (
-      'build_collective_gather can only be called in graph mode or inside '
-      'tf.function')
   if len(input_tensors) != len(devices):
     raise ValueError(
         'collective requires one input tensor for each device, %d != %d' %
@@ -374,22 +374,73 @@ def build_collective_gather(input_tensors,
   if group_size < 2:
     return input_tensors
   group_key = collective_keys.get_group_key(devices)
-  instance_key = collective_keys.get_op_instance_key()
+  instance_key_tensor = collective_keys.get_op_instance_key()
+  instance_key_shape = collective_keys.get_op_instance_key()
 
   out_tensors = []
   for idx, input_tensor in enumerate(input_tensors):
-    with ops.device(devices[idx]):
-      with ops.control_dependencies(
-          _control_input(devices, control_inputs, idx)):
-        out_tensor = collective_ops.all_gather(
-            input_tensor,
-            group_size,
-            group_key,
-            instance_key,
-            communication_hint,
-            timeout=timeout)
+    with ops.device(devices[idx]), ops.control_dependencies(
+        _control_input(devices, control_inputs, idx)):
+      # 1. Transpose
+      # E.g. Given an input_tensor with shape [2,2,5,1] and axis to gather is 3,
+      # we use perm_pre=[3 0 1 2] to reshape it to [1,2,2,5], which
+      # brings the 3rd dim first; afterwards we use perm_after=[1,2,3,0] to
+      # place it back.
+      perm_pre = array_ops.concat(
+          ([axis], math_ops.range(axis),
+           math_ops.range(axis + 1, array_ops.rank(input_tensor))),
+          axis=0)
+      input_tensor_t = array_ops.transpose(input_tensor, perm=perm_pre)
+      # 2. Pad
+      gathered_shape = collective_ops.all_gather(
+          array_ops.expand_dims_v2(array_ops.shape_v2(input_tensor_t), axis=0),
+          group_size,
+          group_key,
+          instance_key_shape,
+          communication_hint,
+          timeout=timeout)
+      first_dims = gathered_shape[:, 0]
+      full_axis_dim = math_ops.reduce_max(first_dims)
+      padded_input_tensor = _pad_util(input_tensor_t, full_axis_dim)
+
+      # 3. Gather
+      gather_padded_out_tensor = collective_ops.all_gather(
+          padded_input_tensor,
+          group_size,
+          group_key,
+          instance_key_tensor,
+          communication_hint,
+          timeout=timeout)
+      # 4. Unpad
+      split_tensors = []
+      for i in range(first_dims.shape[0]):
+        start_pos = i * full_axis_dim
+        split_tensors.append(gather_padded_out_tensor[start_pos:start_pos +
+                                                      first_dims[i]])
+      out_tensor_t = array_ops.concat(split_tensors, 0)
+
+      # 5. Transpose back
+      perm_after = array_ops.concat(
+          (math_ops.range(1, axis + 1), [0],
+           math_ops.range(axis + 1, array_ops.rank(input_tensor_t))),
+          axis=0)
+      out_tensor = array_ops.transpose(out_tensor_t, perm=perm_after)
       out_tensors.append(out_tensor)
   return out_tensors
+
+
+def _pad_util(input_tensor, full_axis_dim):
+  """Pad the `input_tensor`'s first dimension to be `full_axis_dim`."""
+  missing_axis_dim = full_axis_dim - array_ops.shape_v2(input_tensor)[0]
+  tensor_rank = array_ops.rank(input_tensor)
+  paddings_axis = [[0, missing_axis_dim]]
+  paddings = array_ops.concat([
+      paddings_axis,
+      array_ops.zeros(shape=(tensor_rank - 1, 2), dtype=dtypes.int32)
+  ],
+                              axis=0)
+  padded_input_tensor = array_ops.pad(input_tensor, paddings)
+  return padded_input_tensor
 
 
 def build_collective_gather_indexed_slices(input_slices_list,

@@ -108,11 +108,38 @@ cc_test(
 )
 
 cc_library(
+    name = "lstm_parser",
+    srcs = ["lstm_parser.cc"],
+    hdrs = ["lstm_parser.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":model_builder_helper",
+        ":object_reader",
+        ":operations",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:lstm_shared",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     deps = [
         ":data_type",
+        ":lstm_parser",
         ":model",
         ":model_builder_helper",
         ":model_transformer",

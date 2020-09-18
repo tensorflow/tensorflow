@@ -18,9 +18,9 @@ Note: In case you encounter any issues during model conversion, create a
 
 ## Python API <a name="python_api"></a>
 
-*Helper code: In Python, to identify the TensorFlow version, run
-`print(tf.__version__)` and to learn more about the API, run
-`print(help(tf.lite.TFLiteConverter))`.*
+*Helper code: To identify the installed TensorFlow version, run
+`print(tf.__version__)` and to learn more about the TensorFlow Lite converter
+API, run `print(help(tf.lite.TFLiteConverter))`.*
 
 If you've
 [installed TensorFlow 2.x](https://www.tensorflow.org/install/pip#tensorflow-2-packages-are-available),
@@ -29,12 +29,13 @@ you have the following two options: (*if you've
 refer to
 [Github](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/r1/convert/python_api.md)*)
 
-*   [`tf.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/lite/TFLiteConverter):
-    Converts TensorFlow 2.x models, which are stored using the SavedModel format
-    and are generated either using the high-level `tf.keras.*` APIs (a Keras
-    model) or the low-level `tf.*` APIs (from which you generate concrete
-    functions). As a result, you have the following three options (detailed
-    examples are in the next few sections):
+*   Convert a TensorFlow 2.x model using
+    [`tf.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/lite/TFLiteConverter).
+    A TensorFlow 2.x model is stored using the SavedModel format and is
+    generated either using the high-level `tf.keras.*` APIs (a Keras model) or
+    the low-level `tf.*` APIs (from which you generate concrete functions). As a
+    result, you have the following three options (examples are in the next few
+    sections):
 
     *   `tf.lite.TFLiteConverter.from_saved_model()` (**recommended**): Converts
         a [SavedModel](https://www.tensorflow.org/guide/saved_model).
@@ -43,8 +44,9 @@ refer to
     *   `tf.lite.TFLiteConverter.from_concrete_functions()`: Converts
         [concrete functions](https://www.tensorflow.org/guide/intro_to_graphs).
 
-*   [`tf.compat.v1.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/compat/v1/lite/TFLiteConverter):
-    Converts TensorFlow 1.x models (detailed examples are on
+*   Convert a TensorFlow 1.x model using
+    [`tf.compat.v1.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/compat/v1/lite/TFLiteConverter)
+    (examples are on
     [Github](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/r1/convert/python_api.md)):
 
     *   `tf.compat.v1.lite.TFLiteConverter.from_saved_model()`: Converts a

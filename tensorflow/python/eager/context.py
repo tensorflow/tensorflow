@@ -183,21 +183,6 @@ class _TensorCaches(threading.local):
     return self._zeros_cache
 
 
-class _ThreadLocalData(threading.local):
-  """Thread local storage for the eager context."""
-
-  def __init__(self):
-    super(_ThreadLocalData, self).__init__()
-    self.device_spec = _starting_device_spec
-    self.device_name = ""
-    self.is_eager = default_execution_mode == EAGER_MODE
-    self.scope_name = ""
-    self.function_call_options = None
-    self.executor = None
-    self.op_callbacks = []
-    self.invoking_op_callbacks = False
-
-
 ContextSwitch = collections.namedtuple(
     "ContextSwitch", ["is_building_function", "enter_context_fn",
                       "device_stack"])
@@ -420,7 +405,10 @@ class Context(object):
     _tensor_caches_map[self._id] = _TensorCaches()
 
     self._config = config
-    self._thread_local_data = _ThreadLocalData()
+    self._thread_local_data = pywrap_tfe.EagerContextThreadLocalData(
+        self,
+        is_eager=lambda: default_execution_mode == EAGER_MODE,
+        device_spec=_starting_device_spec)
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
@@ -759,8 +747,8 @@ class Context(object):
 
     This is intended to be used when a peer failure is detected, which allows
     the user to handle the case instead of hanging. This aborts all on-going
-    collectives. After all subsequent collectives error immediately. The only
-    way to recovery now is to restart the program.
+    collectives. After all subsequent collectives error immediately, and you
+    need to reset_context() to use collectives again.
 
     Args:
       code: a `tf.errors` error code.
@@ -1506,6 +1494,10 @@ class Context(object):
 
     self._virtual_device_map[dev] = virtual_devices
 
+  def get_compiler_ir(self, function_name, args, stage="hlo"):
+    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
+                                       stage, self.device_name, args)
+
   @deprecated(
       None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
   def enable_xla_devices(self):
@@ -1839,11 +1831,13 @@ def _reset_context():
   Should only be used for testing.
   """
   global _context
+  global _device_parsing_cache
   with _context_lock:
     if _context is not None:
       _context._clear_caches()
       _context = None
   _create_context()
+  _device_parsing_cache = {}
   pywrap_tfe.TFE_ClearScalarCache()
 
 
