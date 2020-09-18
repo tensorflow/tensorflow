@@ -51,7 +51,7 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("MatMul", MatMulRegisterer));
   TF_RETURN_IF_ERROR(
       registry->Register("SparseSoftmaxCrossEntropyWithLogits",
-                         SparseSoftmaxCrossEntropyLossRegisterer));
+                         SparseSoftmaxCrossEntropyWithLogitsRegisterer));
   return Status::OK();
 }
 
@@ -89,7 +89,8 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* gt;
-  GetValue(grad_approx, &gt);
+  s = GetValue(grad_approx, &gt);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   float result_data[4] = {0};
   memcpy(&result_data[0], TF_TensorData(gt), TF_TensorByteSize(gt));
 
@@ -136,7 +137,6 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
   std::vector<AbstractTensorHandle*> inputs;
   inputs.push_back(x.get());
   inputs.push_back(y.get());
-  float dapprox[1] = {0};
   AbstractTensorHandle* g;
 
   Status s = CalcNumericalGrad(ctx.get(), MulModel, absl::MakeSpan(inputs),
@@ -145,11 +145,12 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* gt;
-  GetValue(g, &gt);
+  s = GetValue(g, &gt);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   float result_data[1] = {0};
   memcpy(&result_data[0], TF_TensorData(gt), TF_TensorByteSize(gt));
 
-  ASSERT_NEAR(result_data[0], 7.0f, /*tolerance=*/1e-2);
+  ASSERT_NEAR(result_data[0], 7.0f, /*abs_error=*/1e-2);
   TF_DeleteTensor(gt);
 }
 
@@ -223,13 +224,14 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* gt;
-  GetValue(g, &gt);
+  s = GetValue(g, &gt);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   float dnumerical[9] = {0};
   memcpy(&dnumerical[0], TF_TensorData(gt), TF_TensorByteSize(gt));
 
   // Now compare the two implementations:
   for (int j = 0; j < 9; j++) {
-    ASSERT_NEAR(dnumerical[j], danalytical[j], /*tolerance=*/1e-2);
+    ASSERT_NEAR(dnumerical[j], danalytical[j], /*abs_error=*/1e-2);
   }
 
   // Only Unref() first output as 2nd is nullptr grad for labels

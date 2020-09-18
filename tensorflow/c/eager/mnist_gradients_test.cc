@@ -53,7 +53,7 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Relu", ReluRegisterer));
   TF_RETURN_IF_ERROR(
       registry->Register("SparseSoftmaxCrossEntropyWithLogits",
-                         SparseSoftmaxCrossEntropyLossRegisterer));
+                         SparseSoftmaxCrossEntropyWithLogitsRegisterer));
   return Status::OK();
 }
 

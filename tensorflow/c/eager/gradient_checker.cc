@@ -39,18 +39,19 @@ using namespace std;
 // ================== Helper functions =================
 
 // Fills data with values [start,end) with given step size.
-void Range(int data[], int start, int end, int step = 1) {
+void Range(vector<int>* data, int start, int end, int step = 1) {
   for (int i = start; i < end; i += step) {
-    data[i] = i;
+    (*data)[i] = i;
   }
 }
 
 // Returns AbstractTensorHandlePtr containing [0, ..., n-1].
 AbstractTensorHandlePtr GetRangeTensorHandleUtil(AbstractContext* ctx, int n) {
-  int vals[n];
+  vector<int> vals(n);
   int64_t vals_shape[] = {n};
-  Range(vals, 0, n);
-  AbstractTensorHandlePtr r = GetTensorHandleUtilInt(ctx, vals, vals_shape, 1);
+  Range(&vals, 0, n);
+  AbstractTensorHandlePtr r =
+      GetTensorHandleUtilInt(ctx, vals.data(), vals_shape, 1);
   return r;
 }
 
@@ -118,21 +119,21 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
   // Get number of elements and fill data.
   int num_elems = TF_TensorElementCount(theta_tensor);
-  float theta_data[num_elems] = {0};
-  memcpy(&theta_data[0], TF_TensorData(theta_tensor),
+  vector<float> theta_data(num_elems);
+  memcpy(theta_data.data(), TF_TensorData(theta_tensor),
          TF_TensorByteSize(theta_tensor));
 
   // Initialize space for the numerical gradient.
-  float dtheta_approx[num_elems];
+  vector<float> dtheta_approx(num_elems);
 
   // Get theta shape and store in theta_dims.
   int num_dims = TF_NumDims(theta_tensor);
-  int64_t theta_dims[num_dims];
-  GetDims(theta_tensor, theta_dims);
+  vector<int64_t> theta_dims(num_dims);
+  GetDims(theta_tensor, theta_dims.data());
 
   // Initialize auxilary data structures.
-  float thetaPlus_data[num_elems];
-  float thetaMinus_data[num_elems];
+  vector<float> thetaPlus_data(num_elems);
+  vector<float> thetaMinus_data(num_elems);
   std::vector<AbstractTensorHandle*> f_outputs(1);
 
   // Numerical Grad Check
@@ -144,18 +145,18 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
         GetScalarTensorHandleUtil(ctx, 2 * epsilon);
 
     // Initialize theta[i] + epsilon.
-    memcpy(&thetaPlus_data[0], TF_TensorData(theta_tensor),
+    memcpy(thetaPlus_data.data(), TF_TensorData(theta_tensor),
            TF_TensorByteSize(theta_tensor));
     thetaPlus_data[i] += epsilon;
-    AbstractTensorHandlePtr thetaPlus =
-        GetTensorHandleUtilFloat(ctx, thetaPlus_data, theta_dims, num_dims);
+    AbstractTensorHandlePtr thetaPlus = GetTensorHandleUtilFloat(
+        ctx, thetaPlus_data.data(), theta_dims.data(), num_dims);
 
     // Initialize theta[i] - epsilon.
     memcpy(&thetaMinus_data[0], TF_TensorData(theta_tensor),
            TF_TensorByteSize(theta_tensor));
     thetaMinus_data[i] -= epsilon;
-    AbstractTensorHandlePtr thetaMinus =
-        GetTensorHandleUtilFloat(ctx, thetaMinus_data, theta_dims, num_dims);
+    AbstractTensorHandlePtr thetaMinus = GetTensorHandleUtilFloat(
+        ctx, thetaMinus_data.data(), theta_dims.data(), num_dims);
 
     // Get f(theta + eps):
     inputs[input_index] = thetaPlus.get();
@@ -191,8 +192,8 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
   }
 
   // Populate *numerical_grad with the data from dtheta_approx.
-  TF_RETURN_IF_ERROR(TensorHandleWithDimsFloat(ctx, dtheta_approx, theta_dims,
-                                               num_dims, numerical_grad));
+  TF_RETURN_IF_ERROR(TensorHandleWithDimsFloat(
+      ctx, dtheta_approx.data(), theta_dims.data(), num_dims, numerical_grad));
   return Status::OK();
 }
 

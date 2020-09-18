@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace ops {
 
 // Softmax Loss given scores and labels, used by the SoftMaxLossGradient
-Status SparseSoftmaxCrossEntropyLoss(
+Status SparseSoftmaxCrossEntropyWithLogits(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr sm_loss_op(ctx->CreateOperation());

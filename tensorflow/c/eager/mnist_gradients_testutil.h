@@ -26,8 +26,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -63,7 +61,7 @@ Status Relu(AbstractContext* ctx, Tape* tape,
 
 // Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the
 // tape.
-Status SparseSoftmaxCrossEntropyLoss(
+Status SparseSoftmaxCrossEntropyWithLogits(
     AbstractContext* ctx, Tape* tape,
     absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs, const char* name,

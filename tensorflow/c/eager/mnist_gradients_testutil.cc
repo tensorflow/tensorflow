@@ -130,9 +130,9 @@ Status Relu(AbstractContext* ctx, Tape* tape,
                  registry);
 }
 
-// Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the
-// tape.
-Status SparseSoftmaxCrossEntropyLoss(
+// Computes `SoftmaxLoss(scores, labels)` where labels are categorical (not
+// one-hot) and records it on the tape.
+Status SparseSoftmaxCrossEntropyWithLogits(
     AbstractContext* ctx, Tape* tape,
     absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs, const char* name,
@@ -277,7 +277,7 @@ Status MNISTForwardModel(AbstractContext* ctx,
   AbstractTensorHandle* scores = temp_outputs[0];
 
   temp_outputs.resize(2);
-  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyWithLogits(
       ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs),
       "softmax_loss", registry));  // Compute Softmax(Scores,labels)
 
@@ -351,7 +351,7 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   tape->Watch(ToId(inputs[0]));  // Watch scores.
   tape->Watch(ToId(inputs[1]));  // Watch labels.
   vector<AbstractTensorHandle*> sm_outputs(2);
-  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyWithLogits(
       ctx, tape, inputs, absl::MakeSpan(sm_outputs), "softmax0", registry));
 
   std::unordered_map<tensorflow::int64, TapeTensor>
@@ -406,7 +406,7 @@ Status MNISTGradModel(AbstractContext* ctx,
   AbstractTensorHandle* scores = temp_outputs[0];
 
   temp_outputs.resize(2);
-  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyWithLogits(
       ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs),
       "softmaxloss", registry));  // W2*Relu(X*W1)
 
@@ -501,9 +501,9 @@ Status SoftmaxModel(AbstractContext* ctx,
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
   std::vector<AbstractTensorHandle*> temp_outputs(2);
-  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, {x, labels},
-                                                   absl::MakeSpan(temp_outputs),
-                                                   "sm_loss", registry));
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyWithLogits(
+      ctx, tape, {x, labels}, absl::MakeSpan(temp_outputs), "sm_loss",
+      registry));
 
   outputs[0] = temp_outputs[0];  // loss values
 

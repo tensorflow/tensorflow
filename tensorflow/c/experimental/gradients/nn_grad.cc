@@ -19,12 +19,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 
 using std::vector;
-using tensorflow::ops::Conj;
-using tensorflow::ops::Identity;
 using tensorflow::ops::Mul;
 using tensorflow::ops::ReluGrad;
-using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
-using tensorflow::ops::ZerosLike;
 
 namespace tensorflow {
 namespace gradients {
@@ -99,7 +95,7 @@ BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
   return new BackwardFunction(gradient_function, default_gradients);
 }
 
-BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(
+BackwardFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
     const ForwardOperation& op) {
   auto gradient_function =
       new SparseSoftmaxCrossEntropyLossGradientFunction(op.outputs);
