@@ -51,7 +51,6 @@ all_strategies = [
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.mirrored_strategy_with_two_gpus,
     strategy_combinations.tpu_strategy,  # steps_per_run=2
-    strategy_combinations.tpu_strategy_one_step,
 ]
 
 
@@ -118,7 +117,6 @@ def test_combinations_for_embedding_model():
 def test_combinations_with_tpu_strategies():
   tpu_strategies = [
       strategy_combinations.tpu_strategy,
-      strategy_combinations.tpu_strategy_one_step
   ]
 
   return (combinations.times(

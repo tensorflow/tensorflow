@@ -32,7 +32,6 @@ def strategies_for_stateful_embedding_model():
 
   return [
       strategy_combinations.tpu_strategy_one_core,
-      strategy_combinations.tpu_strategy_one_step_one_core
   ]
 
 
