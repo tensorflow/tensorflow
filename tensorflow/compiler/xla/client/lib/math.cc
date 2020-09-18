@@ -1832,4 +1832,98 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
   });
 }
 
+XlaOp Zeta(XlaOp x, XlaOp q) {
+  auto& builder = *x.builder();
+  auto doit = [&builder](XlaOp x, XlaOp q, PrimitiveType type) -> XlaOp {
+    // (2k) ! / B_{2k}, where B_{2k} are the Bernoulli numbers.
+    // These are ordered in reverse.
+    static const std::array<double, 12> kZetaCoeffs{
+        -7.1661652561756670113e18,
+        1.8152105401943546773e17,
+        -4.5979787224074726105e15,
+        1.1646782814350067249e14,
+        -2.950130727918164224e12,
+        7.47242496e10,
+        -1.8924375803183791606e9,
+        47900160.0,
+        -1209600.0,
+        30240.0,
+        -720.0,
+        12.0,
+    };
+
+    // For speed we'll always use 9 iterations for the initial series estimate,
+    // and a 12 term expansion for the Euler-Maclaurin formula.
+
+    XlaOp a = q;
+    XlaOp neg_power = ScalarLike(a, 0.);
+    XlaOp initial_sum = Pow(q, Neg(x));
+    for (int i = 0; i < 9; ++i) {
+      a = a + ScalarLike(a, 1.);
+      neg_power = Pow(a, Neg(x));
+      initial_sum = initial_sum + neg_power;
+    }
+    a = a + ScalarLike(a, 1.);
+    neg_power = Pow(a, Neg(x));
+    XlaOp s = initial_sum + neg_power * a / (x - ScalarLike(a, 1.));
+    XlaOp a_inverse_square = Reciprocal(Square(a));
+    XlaOp horner_sum = ScalarLike(a, 0.);
+    XlaOp factor = ScalarLike(a, 1.);
+    // Use Horner's rule for this.
+    // Note this differs from Cephes which does a 'naive' polynomial evaluation.
+    // Using Horner's rule allows to avoid some NaN's and Infs from happening,
+    // resulting in more numerically stable code.
+    for (int i = 0; i < 11; ++i) {
+      factor =
+          (x - ScalarLike(x, 22 - 2 * i)) * (x - ScalarLike(x, 21 - 2 * i));
+      horner_sum = factor * a_inverse_square *
+                   (horner_sum + ScalarLike(a, 1. / kZetaCoeffs[i]));
+    }
+    s = s + neg_power *
+                (ScalarLike(neg_power, 0.5) +
+                 x / a * (ScalarLike(a, 1. / kZetaCoeffs[11]) + horner_sum));
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    // Use the initial zeta sum without the correction term coming
+    // from Euler-Maclaurin if it is accurate enough.
+    XlaOp output =
+        Select(Lt(Abs(neg_power), Abs(initial_sum) * Epsilon(&builder, type)),
+               initial_sum, s);
+    // This is the harmonic series.
+    output = Select(Eq(x, ScalarLike(x, 1.)), ScalarLike(x, inf), output);
+    // Function is not defined for x < 1.
+    output = Select(Lt(x, ScalarLike(x, 1.)), ScalarLike(x, nan), output);
+    // If q <= 0, then when q is an integer or x is not an integer, this is
+    // NaN.
+    XlaOp domain_error = And(Le(q, ScalarLike(x, 0.)), Ne(x, Floor(x)));
+    XlaOp negative_integer_q = And(Le(q, ScalarLike(x, 0.)), Eq(q, Floor(q)));
+    output = Select(negative_integer_q, ScalarLike(x, inf), output);
+    output = Select(domain_error, ScalarLike(x, nan), output);
+    return output;
+  };
+  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
+    TF_ASSIGN_OR_RETURN(auto q_shape, builder.GetShape(q));
+    if (x_shape != q_shape) {
+      return InvalidArgument(
+          "Arguments to Zeta must have equal shapes and types; got %s and %s",
+          x_shape.ToString(), q_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Zeta", x));
+    bool needs_upcast =
+        x_shape.element_type() == F16 || x_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      x = ConvertElementType(x, F32);
+      q = ConvertElementType(q, F32);
+    }
+    XlaOp result = doit(x, q, x_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, x_shape.element_type());
+    }
+    return result;
+  });
+}
+
 }  // namespace xla

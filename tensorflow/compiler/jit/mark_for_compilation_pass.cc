@@ -2094,6 +2094,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaWhile",
+                                     "Zeta",
                                      "_Arg",
                                      "_ArrayToList",
                                      "_ListToArray",
