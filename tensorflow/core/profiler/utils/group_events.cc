@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -53,6 +54,7 @@ void CreateStatMetadata(XPlane* plane) {
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kIsEager));
+  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kSelectedGroupIds));
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
@@ -78,8 +80,8 @@ int64 GetEventType(bool is_host_plane, const EventNode& event) {
   } else {
     absl::string_view name = event.GetEventVisitor().Name();
     // Legacy event names appended with arguments.
-    if (absl::StartsWith(name, "BatchingSession")) {
-      return HostEventType::kBatchingSession;
+    if (absl::StartsWith(name, "BatchingSessionRun")) {
+      return HostEventType::kBatchingSessionRun;
     } else if (absl::StartsWith(name, "ProcessBatch")) {
       return HostEventType::kProcessBatch;
     }
@@ -154,7 +156,7 @@ bool IsImplicitRootEvent(const XEventVisitor& event) {
 
 void ProcessRootEvent(int64 group_id, bool set_step_name, EventNode* root_event,
                       GroupMetadataMap* group_metadata_map) {
-  root_event->PropagateGroupId(group_id);
+  root_event->PropagateGroupId(group_id, group_metadata_map);
   if (!set_step_name) {
     // Step names are not necessary for inference profiles but add group_id to
     // group_metadata_map to count the number of groups.
@@ -417,22 +419,46 @@ std::string EventNode::GetGroupName() const {
   return name;
 }
 
-void EventNode::PropagateGroupId(int64 group_id) {
+void EventNode::PropagateGroupId(int64 group_id,
+                                 GroupMetadataMap* group_metadata_map) {
   group_id_ = group_id;
   SetGroupId(*plane_, group_id, raw_event_);
   for (const auto& child : children_) {
-    // Skip if it already belongs to a group. Some nodes may be added multiple
-    // times as child (e.g., sometimes async ops are executed synchronously and
-    // their nodes are added as child both in ConnectIntraThread and
-    // ConnectInterThread).
-    if (child->GetGroupId()) continue;
-    child->PropagateGroupId(group_id);
+    absl::optional<int64> child_group_id = child->GetGroupId();
+    if (child_group_id.has_value()) {
+      if (*child_group_id != group_id) {
+        (*group_metadata_map)[group_id].children.push_back(*child_group_id);
+        (*group_metadata_map)[*child_group_id].parents.push_back(group_id);
+      }
+      // Stop propagation if it already belongs to a group. It may have been
+      // grouped by another root.
+      continue;
+    }
+    child->PropagateGroupId(group_id, group_metadata_map);
   }
 }
 
 void EventNode::AddStepName(absl::string_view step_name) {
   AddOrUpdateStrStat(*plane_->GetStatMetadataId(StatType::kStepName), step_name,
                      raw_event_);
+}
+
+void EventNode::AddSelectedGroupIds(
+    const GroupMetadataMap& group_metadata_map) {
+  std::vector<int64> group_ids;
+  group_ids.reserve(1 + group_metadata_map.at(*group_id_).parents.size() +
+                    group_metadata_map.at(*group_id_).children.size());
+  group_ids.push_back(*group_id_);
+  group_ids.insert(group_ids.end(),
+                   group_metadata_map.at(*group_id_).parents.begin(),
+                   group_metadata_map.at(*group_id_).parents.end());
+  group_ids.insert(group_ids.end(),
+                   group_metadata_map.at(*group_id_).children.begin(),
+                   group_metadata_map.at(*group_id_).children.end());
+  AddOrUpdateStrStat(
+      *plane_->GetStatMetadataId(StatType::kSelectedGroupIds),
+      absl::StrCat("?selected_group_ids=", absl::StrJoin(group_ids, ",")),
+      raw_event_);
 }
 
 void EventNode::SetIsEager(bool is_eager) {
@@ -554,21 +580,30 @@ void EventForest::ProcessLegacyRootEvents(
 void EventForest::CreateEventGroup() {
   // Handle inference batching profiles.
   if (event_node_map_.contains(HostEventType::kProcessBatch)) {
+    // Assign group_id per batch.
     for (const auto& process_batch_node :
          event_node_map_[HostEventType::kProcessBatch]) {
       ProcessRootEvent(next_group_id_++, /*set_step_name=*/false,
                        process_batch_node.get(), &group_metadata_map_);
     }
     HostEventType request_event_type =
-        event_node_map_.contains(HostEventType::kBatchingSession)
-            ? HostEventType::kBatchingSession
+        event_node_map_.contains(HostEventType::kBatchingSessionRun)
+            ? HostEventType::kBatchingSessionRun
             : HostEventType::kSessionRun;
     if (auto request_events =
             gtl::FindOrNull(event_node_map_, request_event_type)) {
+      // Assign group_id per request.
       for (const auto& request_event : *request_events) {
         ProcessRootEvent(next_group_id_++, /*set_step_name=*/false,
                          request_event.get(), &group_metadata_map_);
+        // Also, set a helper stat for selected_group_ids.
+        request_event->AddSelectedGroupIds(group_metadata_map_);
       }
+    }
+    // Set a helper stat for selected_group_ids per batch.
+    for (const auto& process_batch_node :
+         event_node_map_[HostEventType::kProcessBatch]) {
+      process_batch_node->AddSelectedGroupIds(group_metadata_map_);
     }
     return;
   }

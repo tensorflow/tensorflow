@@ -49,6 +49,15 @@ struct ContextInfo {
   uint64 id;
 };
 
+struct GroupMetadata {
+  std::string name;
+  std::string model_id;  // inference only.
+  std::vector<int64> parents;
+  std::vector<int64> children;
+};
+
+using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
+
 // A wrapper for XEvent with parent and children pointers. Through these
 // pointers, a tree of EventNode is formed.
 class EventNode {
@@ -72,7 +81,7 @@ class EventNode {
   std::string GetGroupName() const;
 
   // Sets group_id for this node and its descendants.
-  void PropagateGroupId(int64 group_id);
+  void PropagateGroupId(int64 group_id, GroupMetadataMap* group_metadata_map);
 
   const XPlaneVisitor& GetPlaneVisitor() const { return *plane_; }
 
@@ -81,6 +90,10 @@ class EventNode {
   absl::optional<XStatVisitor> GetContextStat(int64 stat_type) const;
 
   void AddStepName(absl::string_view step_name);
+
+  // Add a helper stat, "selected_group_ids", with group_ids of the groups
+  // connected to this event's group.
+  void AddSelectedGroupIds(const GroupMetadataMap& group_metadata_map);
 
   void SetIsEager(bool is_eager);
 
@@ -125,13 +138,6 @@ class EventNode {
 using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
-
-struct GroupMetadata {
-  std::string name;
-  std::string model_id;  // inference only.
-};
-
-using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
 
 using EventList = std::vector<EventNode*>;
 
