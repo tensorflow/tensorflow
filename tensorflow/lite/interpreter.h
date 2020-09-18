@@ -36,6 +36,10 @@ limitations under the License.
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
+#endif
+
 namespace tflite {
 
 class InterpreterTest;
@@ -43,6 +47,8 @@ class TestDelegate;
 namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
 }  // namespace delegates
+
+namespace impl {
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -652,6 +658,14 @@ class Interpreter {
   // delegates have been applied and doesn't need to be applied again.
   std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
 };
+
+}  // namespace impl
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Interpreter = tflrt::EagerInterpreter;
+#else
+using Interpreter = impl::Interpreter;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

@@ -30,6 +30,8 @@ limitations under the License.
 
 namespace tflite {
 
+namespace impl {
+
 namespace {
 
 struct TfLiteQuantizationDeleter {
@@ -1514,5 +1516,7 @@ TfLiteStatus Subgraph::SetCustomAllocationForTensor(
 
   return kTfLiteOk;
 }
+
+}  // namespace impl
 
 }  // namespace tflite

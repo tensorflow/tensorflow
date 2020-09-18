@@ -137,6 +137,8 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
+namespace impl {
+
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
     : model_(model.GetModel()),
@@ -676,5 +678,7 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   return kTfLiteOk;
 }
+
+}  // namespace impl
 
 }  // namespace tflite

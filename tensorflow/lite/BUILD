@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "if_tflite_experimental_runtime", "tflite_cc_shared_object", "tflite_copts", "tflite_experimental_runtime_linkopts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
@@ -35,6 +35,18 @@ config_setting(
     values = {
         "cpu": "mips64",
     },
+)
+
+config_setting(
+    name = "tflite_experimental_runtime_eager",
+    values = {"define": "tflite_experimental_runtime=eager"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "tflite_experimental_runtime_non_eager",
+    values = {"define": "tflite_experimental_runtime=non-eager"},
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -271,11 +283,16 @@ cc_library(
     hdrs = FRAMEWORK_LIB_HDRS,
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    defines = if_tflite_experimental_runtime(
+        if_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_EAGER"],
+        if_non_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER"],
+        if_none = [],
+    ),
     deps = [
+        ":framework_lib",
         ":allocation",
         ":arena_planner",
         ":external_cpu_backend_context",
-        ":framework_lib",
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
@@ -290,7 +307,7 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
-    ],
+    ] + tflite_experimental_runtime_linkopts(),
 )
 
 cc_library(

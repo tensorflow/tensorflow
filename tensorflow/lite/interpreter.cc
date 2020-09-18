@@ -52,6 +52,8 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
 
 namespace tflite {
 
+namespace impl {
+
 namespace {
 
 // Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
@@ -472,5 +474,7 @@ void Interpreter::SetSubgraphProfiler() {
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
+
+}  // namespace impl
 
 }  // namespace tflite

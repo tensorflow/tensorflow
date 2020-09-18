@@ -18,9 +18,23 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MODEL_H_
 #define TENSORFLOW_LITE_MODEL_H_
 
-#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/model_builder.h"
 
-// TODO(b/168725050): Address the issue of proxy header in this file.
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/lib/eager_model.h"
+#else
+#include "tensorflow/lite/interpreter_builder.h"
+#endif
+
+namespace tflite {
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using InterpreterBuilder = tflrt::EagerTfLiteInterpreterBuilderAPI;
+using Interpreter = tflrt::EagerInterpreter;
+#else
+using InterpreterBuilder = impl::InterpreterBuilder;
+#endif
+
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MODEL_H_
