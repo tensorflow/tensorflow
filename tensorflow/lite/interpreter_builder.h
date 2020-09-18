@@ -30,8 +30,6 @@ limitations under the License.
 
 namespace tflite {
 
-namespace impl {
-
 /// Build an interpreter capable of interpreting `model`.
 ///
 /// `model`: A model whose lifetime must be at least as long as any
@@ -95,8 +93,6 @@ class InterpreterBuilder {
   bool has_flex_op_ = false;
   int num_fp32_tensors_ = 0;
 };
-
-}  // namespace impl
 
 }  // namespace tflite
 
