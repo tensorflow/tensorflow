@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 import threading
 import warnings
 
@@ -41,6 +40,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -543,7 +543,7 @@ class IteratorResourceDeleter(object):
 
 @tf_export("data.Iterator", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class IteratorBase(collections.Iterator, trackable.Trackable,
+class IteratorBase(collections_abc.Iterator, trackable.Trackable,
                    composite_tensor.CompositeTensor):
   """Represents an iterator of a `tf.data.Dataset`.
 

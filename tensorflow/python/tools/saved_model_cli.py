@@ -24,7 +24,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import collections
 import os
 import re
 import sys
@@ -51,6 +50,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.tools import saved_model_aot_compile
 from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.tpu import tpu
+from tensorflow.python.util.compat import collections_abc
 
 
 _XLA_DEBUG_OPTIONS_URL = (
@@ -241,7 +241,7 @@ def _print_args(arguments, argument_type='Argument', indent=0):
       in_print('  %s' % element)
     elif isinstance(element, tensor_spec.TensorSpec):
       print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
-    elif (isinstance(element, collections.Iterable) and
+    elif (isinstance(element, collections_abc.Iterable) and
           not isinstance(element, dict)):
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: [', end='')

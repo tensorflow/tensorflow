@@ -44,13 +44,9 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
-
-try:
-  from collections import abc as collections_abc  # pylint: disable=g-import-not-at-top
-except ImportError:  # For Python 2
-  import collections as collections_abc  # pylint: disable=g-import-not-at-top
 
 
 RECURRENT_DROPOUT_WARNING_MSG = (

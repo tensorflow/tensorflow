@@ -70,8 +70,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 import six
 from six.moves import builtins
@@ -100,6 +98,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
@@ -3493,7 +3492,7 @@ def add_n(inputs, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
-  if not inputs or not isinstance(inputs, collections.Iterable):
+  if not inputs or not isinstance(inputs, collections_abc.Iterable):
     raise ValueError("inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
@@ -3626,9 +3625,9 @@ def sigmoid(x, name=None):
 
   Returns:
     A Tensor with the same type as `x`.
-  
+
   Usage Example:
-  
+
   >>> x = tf.constant([-128.0, 0.0, 128.0], dtype=tf.float32)
   >>> tf.sigmoid(x)
   <tf.Tensor: shape=(3,), dtype=float32,
