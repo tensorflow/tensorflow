@@ -616,7 +616,7 @@ TEST(GroupEventsTest, BatchingSessionTest) {
                 group_id = stat->IntValue();
               }
               EXPECT_TRUE(group_id.has_value());
-              std::string selected_group_ids;
+              absl::string_view selected_group_ids;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kSelectedGroupIds)) {
                 selected_group_ids = stat->StrOrRefValue();
