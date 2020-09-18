@@ -113,28 +113,47 @@ int64 CountNonLeafOps(const OpCollection& ops) {
 // of reuses This is used as a placeholder only, assuming all
 // instructions can be fused to enable data reuses
 int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
+  // Reuses in some way work like forces that pull instructions
+  // towards each other. We use a number 0-10 to classify how strong the force
+  // is between a pair of operations. Given a group of instructions that can be
+  // moved together, if the forces inside a conditional are stronger, the group
+  // will be moved incide or remain inside the conditional; otherwise, it will
+  // be moved outside to or remain outside of the conditional.
   VLOG(2) << "ConditionalCodeMotion: Add reuses carried by instr: "
           << op->ToString() << "=>" << user->ToString() << "\n";
   switch (user->opcode()) {
     case HloOpcode::kGetTupleElement:
-    case HloOpcode::kTuple:
       return 0;
+    case HloOpcode::kConvert:
+      // Because convert is treated not moveable when following Dot or
+      // convolution, here if op is dot or convolution, they must be separated
+      // by a conditional boundary. Here we do not try to pull convert inside
+      // conditionals to be together with the dot or convolution.
+      switch (op->opcode()) {
+        case HloOpcode::kConvolution:
+        case HloOpcode::kDot:
+          return 0;
+        default:
+          break;
+      }
+      break;
     default:
       break;
   }
   switch (op->opcode()) {
-      // These instructions are lightweight and easy to fuse.
+      // These instructions do not carry weight of reuse themselves.
+    case HloOpcode::kParameter:
     case HloOpcode::kConstant:
     case HloOpcode::kGetTupleElement:
       return 0;
     case HloOpcode::kConditional:
       return 10;
-    default:
-      // Assume fusion will not happen anyway if user count > 1)
-      if (CountNonLeafOps(op->users()) > 1) {
-        return 0;
-      }
-      return 10;
+    default: {
+      // Assume the reuse decreases with increasing user count.
+      int count1 = CountNonLeafOps(op->users());
+      int count2 = CountNonLeafOps(user->operands());
+      return 10 / count1 / count2;
+    }
   }
 }
 
@@ -192,17 +211,35 @@ Status CopyInOrOutOfConditional(
   absl::InlinedVector<HloInstruction*, 4> new_operands;
   for (int i = 0; i < op->operands().size(); ++i) {
     auto op_i = op->operands()[i];
-    VLOG(2) << "Looking for operand:" << op_i->ToString() << "\n";
+    VLOG(2) << "Looking for " << op_i->ToString() << "\n";
     if (ContainsKey(hoisted_instructions, op_i)) {
       auto new_op_i =
           FindOrDie(hoisted_instructions, op_i).operands()[dest_index];
-      VLOG(2) << "new operand:" << new_op_i->ToString() << "\n";
+      VLOG(2) << "new instruction:" << new_op_i->ToString() << "\n";
       new_operands.push_back(new_op_i);
     } else {
-      CHECK(op_i->opcode() == HloOpcode::kConstant);
-      auto new_op_i = parent->AddInstruction(op_i->Clone());
-      VLOG(2) << "new operand:" << new_op_i->ToString() << "\n";
-      new_operands.push_back(new_op_i);
+      switch (op_i->opcode()) {
+        case HloOpcode::kConstant: {
+          auto new_op_i = parent->AddInstruction(op_i->Clone());
+          VLOG(2) << "new instruction:" << new_op_i->ToString() << "\n";
+          new_operands.push_back(new_op_i);
+          break;
+        }
+        case HloOpcode::kGetTupleElement: {
+          auto gte = Cast<HloGetTupleElementInstruction>(op_i);
+          int64 index = gte->tuple_index();
+          HloInstruction* root = parent->root_instruction();
+          CHECK(root->opcode() == HloOpcode::kTuple &&
+                index < root->operand_count());
+          auto new_op_i = root->mutable_operand(index);
+          VLOG(2) << "new instruction:" << new_op_i->ToString() << "\n";
+          new_operands.push_back(new_op_i);
+          break;
+        }
+        default:
+          LOG(FATAL) << "Unexpected out-of-boundary instruction:"
+                     << op_i->ToString() << "\n";
+      }
     }
   }
   HloInstruction* new_instruction = parent->AddInstruction(
@@ -492,6 +529,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     int64 index = tuple_opd->tuple_index();
     CHECK(old_root->operands().size() > index);
     HloInstruction* old_opd = old_root->operands()[index];
+    VLOG(2) << "old opd = " << old_opd << "\n";
     CHECK(ContainsKey(hoisted_instructions, old_opd));
     HloInstruction* new_opd = hoisted_instructions[old_opd].operands()[0];
     CHECK(old_opd != nullptr);
@@ -535,6 +573,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
+
   //
   VLOG(1) << "done moving instructions out of branches\n"
           << conditional_parent->ToString(HloPrintOptions::Fingerprint())
@@ -558,16 +597,26 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
   absl::flat_hash_map<HloInstruction*, Boundary> hoisted_instructions;
   int64 to_move_in_size = to_move_in.size();
   int64 branch_count = conditional->branch_count();
+  HloGetTupleElementInstruction* tuple_use =
+      DynCast<HloGetTupleElementInstruction>(to_move_in[0].operands()[0]);
+  // If use_index is -1, the old conditional root entry used by to_move_in
+  // instructions still need to be included as an entry of the modified
+  // conditional root, and the new result of the to_move_in instructions
+  // need to be added as an extra entry of the modified root; otherwise, the
+  // old root entry will be replaced with the new result in the modified root.
+  // The entry replacement should be allowed only if tuple_use has <=1 users.
+  int64 use_index = (tuple_use != nullptr && tuple_use->user_count() == 1)
+                        ? tuple_use->tuple_index()
+                        : -1;
+  VLOG(2) << "Tuple use index = " << use_index << "\n";
   // Number of old conditional entries still to be used outside.
   // If conditional shape is not tuple, will create a tuple and use subscript
   // 0 to save the old operand being used.
-  int64 op_index = conditional->shape().IsTuple()
-                       ? conditional->shape().tuple_shapes_size() - 1
-                       : 0;
-  HloGetTupleElementInstruction* tuple_use =
-      dynamic_cast<HloGetTupleElementInstruction*>(to_move_in[0].operands()[0]);
-  int64 use_index = (tuple_use != nullptr) ? tuple_use->tuple_index() : -1;
-  VLOG(2) << "Tuple use index = " << use_index << "\n";
+  int64 op_index =
+      conditional->shape().IsTuple()
+          ? ((use_index >= 0) ? conditional->shape().tuple_shapes_size() - 1
+                              : conditional->shape().tuple_shapes_size())
+          : 0;
   // Use to map the tuple_use instruction to its operand;
   Boundary b_opd_use(Boundary::Position::kInsideBranch);
   Boundary b_old_root(Boundary::Position::kInsideBranch);
@@ -628,26 +677,29 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
   hoisted_instructions[conditional] = b_old_root;
   int64 cp_start = 0;
   if (use_index >= 0) {
+    VLOG(2) << "Mapping GTE: " << tuple_use->ToString() << "\n";
     hoisted_instructions[tuple_use] = b_opd_use;
-    cp_start = 1;
   }
-  for (int64 i = cp_start; i < to_move_in_size; i++) {
-    Boundary b_to_move = to_move_in[i];
+  cp_start = (tuple_use != nullptr) ? 1 : 0;
+  for (int64 to_move_index = cp_start; to_move_index < to_move_in_size;
+       to_move_index++) {
+    Boundary b_to_move = to_move_in[to_move_index];
     HloInstruction* op = b_to_move.operands()[0];
     CHECK(op != nullptr);
     bool to_be_used_outside = true;
     VLOG(2) << "Mapping new boundary instr: " << op->ToString() << "\n";
-    if (i < to_move_in_size - 1 && op->user_count() == 1 &&
-        op->users()[0] == to_move_in[i + 1].operands()[0]) {
+    if (to_move_index < to_move_in_size - 1 && op->user_count() == 1 &&
+        op->users()[0] == to_move_in[to_move_index + 1].operands()[0]) {
       to_be_used_outside = false;
       VLOG(2) << "Instruction is not to be used outside the branch\n";
     }
     Boundary b(Boundary::Position::kInsideBranch);
     for (int i = 0; i < branch_count; i++) {
       auto computation = conditional->branch_computation(i);
+      VLOG(2) << "Copying to branch: " << i << "\n";
       TF_RETURN_IF_ERROR(CopyInOrOutOfConditional(b_to_move, i, computation,
                                                   hoisted_instructions));
-      VLOG(2) << "After Copying to branch: " << computation->ToString() << "\n";
+      VLOG(2) << "Done:" << computation->ToString() << "\n";
       if (to_be_used_outside) {
         auto new_op = hoisted_instructions[op].operands()[i];
         auto new_root = computation->root_instruction();
@@ -681,18 +733,19 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
   // Remove hoisted instructions from the branches.
   for (int64 i = to_move_in_size - 1; i >= 0; i--) {
     Boundary boundary_to_move_in = to_move_in[i];
-    VLOG(2) << "Removing boundary:" << boundary_to_move_in.ToString() << "\n";
     HloInstruction* op = boundary_to_move_in.operands()[0];
-    for (auto user : op->users()) {
-      VLOG(2) << "Has User: " << user->ToString() << "\n";
+    if (op->user_count() == 0) {
+      VLOG(2) << "Removing boundary:" << boundary_to_move_in.ToString() << "\n";
+      TF_RETURN_IF_ERROR(conditional->parent()->RemoveInstruction(op));
+      VLOG(2) << "Done removing boundary.\n";
     }
-    TF_RETURN_IF_ERROR(conditional->parent()->RemoveInstruction(op));
   }
 
   // Reset shapes of user gtes to the new shape.
   if (use_index != -1) {
     for (auto* user : conditional->users()) {
       if (user->opcode() == HloOpcode::kGetTupleElement) {
+        VLOG(2) << "Resetting shape of user: " << user->ToString() << "\n";
         *user->mutable_shape() =
             conditional->shape().tuple_shapes(user->tuple_index());
       }
@@ -712,14 +765,21 @@ class GroupConnectedBoundaries {
   HloComputation* conditional_parent_;
   bool is_layout_sensitive_;
   // Instructions that have been visited but are not going to be moved.
-  absl::flat_hash_set<HloInstruction*> visited_;
+  absl::flat_hash_map<HloInstruction*, int>& visited_count_;
 
  public:
-  explicit GroupConnectedBoundaries(HloInstruction* conditional,
-                                    bool is_layout_sensitive)
+  explicit GroupConnectedBoundaries(
+      HloInstruction* conditional, bool is_layout_sensitive,
+      absl::flat_hash_map<HloInstruction*, int>& visited_count)
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
-        is_layout_sensitive_(is_layout_sensitive) {}
+        is_layout_sensitive_(is_layout_sensitive),
+        visited_count_(visited_count) {}
+  void clear_recently_visited() {
+    for (const auto& boundary : new_boundaries_) {
+      visited_count_.erase(boundary.operands()[0]);
+    }
+  }
   // Returns true if `instruction` is worth hoisting.
   bool WorthHoisting(HloInstruction* instruction) {
     // This is needed for the "moving-in" transformation, to prevent the root
@@ -736,19 +796,26 @@ class GroupConnectedBoundaries {
         // ops such as Dot or Convolutional, it is better to keep convert
         // within conditional so that convert can be fused with Dot or
         // Convolutional.
-        //
-        // TODO(b/154283721): figure out the scenario when convert can be
-        // fused with AllReduce out of conditional.
         switch (instruction->operand(0)->opcode()) {
           case HloOpcode::kAllReduce:
           case HloOpcode::kReshape:
+          case HloOpcode::kGetTupleElement:
             return true;
           default:
-            VLOG(2) << "Instruction is convert and its operand is not know to "
+            VLOG(2) << "Instruction is convert and its operand is not known to "
                        "be worth hoisting\n";
             return false;
         }
+      case HloOpcode::kGetTupleElement:
+        switch (instruction->operand(0)->opcode()) {
+          // do not move GTE if its operand is a parameter
+          case HloOpcode::kParameter:
+            return false;
+          default:
+            return true;
+        }
       case HloOpcode::kAllReduce:
+      case HloOpcode::kReduce:
       case HloOpcode::kAdd:
       case HloOpcode::kPower:
       case HloOpcode::kCopy:
@@ -758,8 +825,10 @@ class GroupConnectedBoundaries {
       case HloOpcode::kDivide:
       case HloOpcode::kTuple:
       case HloOpcode::kSqrt:
+      case HloOpcode::kRsqrt:
       case HloOpcode::kReshape:
-      case HloOpcode::kGetTupleElement:
+      case HloOpcode::kMinimum:
+      case HloOpcode::kMaximum:
         return true;
       default:
         VLOG(2) << "Instruction is not known to be worth hoisting\n";
@@ -772,14 +841,20 @@ class GroupConnectedBoundaries {
       // The operand must be an instruction that is not going to be moved (if
       // user is inside the conditional); otherwise it must be the conditional
       // itself and its user must be outside of the conditional.
-      if (!ContainsKey(visited_, op) && op != conditional_) {
+      if (!ContainsKey(visited_count_, op) && op != conditional_) {
         continue;
       }
-      // Only consider single-user cases as reuseable.
-      if (user->opcode() == HloOpcode::kGetTupleElement &&
-          user->user_count() == 1) {
+      if (auto tuple_gte = DynCast<HloGetTupleElementInstruction>(user)) {
+        if (op->opcode() == HloOpcode::kConditional) {
+          auto tuple = op->branch_computation(0)->root_instruction();
+          if (tuple->opcode() == HloOpcode::kTuple) {
+            auto index = tuple_gte->tuple_index();
+            CHECK(index < tuple->operand_count());
+            op = tuple->mutable_operand(index);
+          }
+        }
         reuses += ReusesCarriedBy(op, user->users()[0]);
-      } else if (op->user_count() == 1) {
+      } else {
         reuses += ReusesCarriedBy(op, user);
       }
     }
@@ -797,6 +872,7 @@ class GroupConnectedBoundaries {
     // some aspects of the overall algorithm need to be redesigned to
     // accommandate the change.
     if (all_users.size() > 1) {
+      VLOG(2) << "Having multiple users from: " << user->ToString() << "\n";
       return 0;
     }
     if (!all_users.empty()) {
@@ -818,7 +894,7 @@ class GroupConnectedBoundaries {
             }
           }
         }
-      } else if (ContainsKey(visited_, op)) {
+      } else if (ContainsKey(visited_count_, op)) {
         reuses += ReusesCarriedBy(user, op);
       }
       VLOG(2) << "reuses after instruction " << user->ToString() << ":"
@@ -866,6 +942,50 @@ class GroupConnectedBoundaries {
     }
     return b2;
   }
+
+  // Checking whether it is safe to move a boundary when visited through a
+  // dependent already considered for moving.
+  bool IsSafeToMoveBoundary(const Boundary& next_boundary) {
+    int64 next_boundary_count =
+        (next_boundary.IsInsideBranch())
+            ? next_boundary.operands()[0]->user_count()
+            : CountNonLeafOps(next_boundary.operands()[0]->operands());
+    if (next_boundary_count <= 1) {
+      // If boundary has only a single or no dependent, safe to move.
+      return true;
+    } else {
+      if (!ContainsKey(visited_count_, next_boundary.operands()[0])) {
+        VLOG(2) << "Skip next boundary " << next_boundary.ToString() << "\n"
+                << " because it has multiple dependents: "
+                << next_boundary_count << "\n";
+        visited_count_[next_boundary.operands()[0]] = 1;
+        new_boundaries_.push_back(next_boundary);
+      } else {
+        auto pos = std::find(new_boundaries_.begin(), new_boundaries_.end(),
+                             next_boundary);
+        if (pos != new_boundaries_.end() ||
+            next_boundary.operands().size() == 1) {
+          int count = ++visited_count_[next_boundary.operands()[0]];
+          if (count == next_boundary_count) {
+            VLOG(2) << "Recovering next boundary " << next_boundary.ToString()
+                    << "\n"
+                    << " because all of its dependents have been visited: "
+                    << next_boundary_count << "\n";
+            visited_count_.erase(next_boundary.operands()[0]);
+            if (pos != new_boundaries_.end()) {
+              new_boundaries_.erase(pos);
+            }
+          }
+          return true;
+        } else {
+          VLOG(2) << "Skip incompatible multi-dependent boundary: "
+                  << next_boundary.ToString() << ":" << next_boundary_count
+                  << "\n";
+        }
+      }
+    }
+    return false;
+  }
   // This function is reused both for moving the boundary outside or into a
   // conditional. As the result, the readability is somewhat compromised.
   // It might be nice to refactor this function to factor the outside-inside
@@ -879,7 +999,7 @@ class GroupConnectedBoundaries {
       VLOG(2) << "visiting boundary " << b.ToString() << "\n";
       if ((b.IsOutsideBranch() || InstructionWithinBranchIdentical(
                                       b.operands(), is_layout_sensitive_)) &&
-          WorthHoisting(b.operands()[0])) {
+          IsSafeToMoveBoundary(b) && WorthHoisting(b.operands()[0])) {
         connected_boundaries_.push_back(b);
         VLOG(2) << "boundary can be moved\n";
         int64 operand_count = (b.IsInsideBranch())
@@ -887,26 +1007,12 @@ class GroupConnectedBoundaries {
                                   : b.operands()[0]->users().size();
         for (int i = 0; i < operand_count; i++) {
           Boundary next_boundary = GetNextBoundary(b, i);
-          int64 next_boundary_count =
-              (next_boundary.IsInsideBranch())
-                  ? next_boundary.operands()[0]->user_count()
-                  : CountNonLeafOps(next_boundary.operands()[0]->operands());
-          // only consider adding an exclusive producor into the same group.
-          if (next_boundary_count == 1) {
-            VLOG(2) << "Add operand " << i << " to visit later\n";
-            visitor.AddToWorkList(next_boundary);
-          } else {
-            VLOG(2) << "Next boundary " << i
-                    << " has multiple uses: " << next_boundary_count << "\n";
-            if (!ContainsKey(visited_, next_boundary.operands()[0])) {
-              visited_.insert(next_boundary.operands()[0]);
-              new_boundaries_.push_back(next_boundary);
-            }
-          }
+          VLOG(2) << "Add operand/user " << i << " to visit later\n";
+          visitor.AddToWorkList(next_boundary);
         }
       } else {
         VLOG(2) << "boundary cannot be moved\n";
-        visited_.insert(b.operands()[0]);
+        visited_count_[b.operands()[0]] = 1;
         new_boundaries_.push_back(b);
       }
     }
@@ -948,8 +1054,10 @@ class GroupConnectedBoundaries {
 
 ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
     HloInstruction* conditional, const Boundary& cur_boundary,
-    std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries) {
-  GroupConnectedBoundaries connect(conditional, is_layout_sensitive_);
+    std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
+    absl::flat_hash_map<HloInstruction*, int>& visited_count) {
+  GroupConnectedBoundaries connect(conditional, is_layout_sensitive_,
+                                   visited_count);
   auto move_in_or_out =
       connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
   if (!move_in_or_out.empty()) {
@@ -964,16 +1072,21 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
       // at the first entry of the sequence is sufficient to know which
       // direction the move is intended.
       to_move = move_in_or_out;
-      return to_move[0].IsInsideBranch() ? Decision::kMoveOutOfBranch
-                                         : Decision::kMoveIntoBranch;
+      return Decision(to_move[0].IsInsideBranch()
+                          ? Decision::Direction::kMoveOutOfBranch
+                          : Decision::Direction::kMoveIntoBranch,
+                      benefit);
+    } else {
+      connect.clear_recently_visited();
     }
   } else {
     connect.AddNewBoundaries(new_boundaries);
   }
-  return ConditionalCodeMotion::Decision::kNoChange;
+  return Decision(Decision::Direction::kNoChange, 0);
 }
 
 StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
+  VLOG(2) << "Begin a new pass of conditional code motion optimization.\n";
   bool changed = false;
   bool cleanup_changed = false;
   {
@@ -1018,6 +1131,8 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     }
   }
 
+  // Use to collect mappings between cloned instructions.
+  HloCloneContext clone_context(module);
   for (HloInstruction* conditional : conditional_ops) {
     int branch_count = conditional->branch_count();
     // check for shared conditional computations
@@ -1031,7 +1146,13 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     }
 
     // Boundaries to move out or to move into the branches.
-    std::vector<Boundary> to_move_out, to_move_in, new_boundaries;
+    std::vector<std::vector<Boundary> > to_move_out, to_move_in;
+    std::vector<std::vector<Boundary> > new_boundaries_for_moveout;
+    std::vector<std::vector<Boundary> > new_boundaries_for_movein;
+    // Number of times each instruction has been visited for moving.
+    absl::flat_hash_map<HloInstruction*, int> visited_count;
+    int benefit_move_out = 0, benefit_move_in = 0;
+    Decision::Direction final_d = Decision::Direction::kNoChange;
     // The conditional is moved into a worklist as the seed (starting point).
     // The conditional will be expanded into multiple seeds (starting points),
     // its roots and its users, when it is visited by GroupConnectedBoundaries.
@@ -1039,76 +1160,114 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     // so that the other seeding boundaries can be visited in turn.
     BoundaryVisitor visitor(conditional);
     VLOG(2) << "Analyzing conditional:" << conditional->ToString() << "\n";
-    ConditionalCodeMotion::Decision d = Decision::kNoChange;
-    // The following loop breaks out as soon as a decision to modify the
-    // conditional is reached --- irrespective of whether visitor is empty.
-    while (d == Decision::kNoChange && visitor.HasNextBoundary()) {
+    // Try visit all the boundaries, collect the analysis results, and save
+    // all the benefitical non-conflicting decisions. If two decisions conflict
+    // with each other, save the more benefitical one.
+    while (visitor.HasNextBoundary()) {
       std::vector<Boundary> to_move, next_boundary;
       Boundary boundary = visitor.PopNextBoundary();
       VLOG(2) << "Analyzing boundary:" << boundary.ToString() << "\n";
-      d = ConsiderCodeMotion(conditional, boundary, to_move, next_boundary);
-      if (d != Decision::kNoChange && conditional_is_shared) {
-        for (int i = 0; i < branch_count; ++i) {
-          HloComputation* branch_i = conditional->branch_computation(i);
-          if (conditional_computations[branch_i] > 0) {
-            // Cloning is absolutely needed if the computation is shared by
-            // different branches, but the cloning can be potentially avoided
-            // if the sharing is only among branches of the same conditional.
-            // If cloning these branches causes a problem due to space issues,
-            // a fix can pass a vector of unique branches to the actual
-            // transformations, as an alternative representation of the
-            // conditional branches to be modified. Right now we assume the
-            // overhead of cloning is minimal since later stages of the compiler
-            // inline all the computations anyway.
-            HloComputation* clone_i =
-                conditional->parent()->parent()->AddEmbeddedComputation(
-                    branch_i->Clone());
-            conditional->set_branch_computation(i, clone_i);
-            conditional_computations[branch_i]--;
+      auto d = ConsiderCodeMotion(conditional, boundary, to_move, next_boundary,
+                                  visited_count);
+      switch (d.GetDirection()) {
+        case Decision::Direction::kMoveOutOfBranch:
+          VLOG(2) << "Local Decision is move out of branch\n";
+          to_move_out.push_back(to_move);
+          new_boundaries_for_moveout.push_back(next_boundary);
+          benefit_move_out += d.GetBenefit();
+          if (benefit_move_out >= benefit_move_in) {
+            final_d = Decision::Direction::kMoveOutOfBranch;
+            VLOG(2) << "Current Decision is move out of branch\n";
+          } else {
+            VLOG(2) << "Current Decision remains move into branch\n";
           }
-        }
-        to_move.clear();
-        next_boundary.clear();
-        VLOG(2) << "Cloned branches as needed: " << conditional->ToString()
-                << "\n";
-        // Need to reanalyze the cloned code to generate correct result.
-        d = ConsiderCodeMotion(conditional, boundary, to_move, next_boundary);
-      }
-      switch (d) {
-        case Decision::kMoveOutOfBranch:
-          VLOG(2) << "Decision is move out of branch\n";
-          to_move_out.insert(to_move_out.end(), to_move.begin(), to_move.end());
-          new_boundaries.insert(new_boundaries.end(), next_boundary.begin(),
-                                next_boundary.end());
           break;
-        case Decision::kMoveIntoBranch:
+        case Decision::Direction::kMoveIntoBranch:
           VLOG(2) << "Decision is move into branch\n";
-          to_move_in.insert(to_move_in.end(), to_move.begin(), to_move.end());
-          new_boundaries.insert(new_boundaries.end(), next_boundary.begin(),
-                                next_boundary.end());
+          to_move_in.push_back(to_move);
+          new_boundaries_for_movein.push_back(next_boundary);
+          benefit_move_in += d.GetBenefit();
+          if (benefit_move_out >= benefit_move_in) {
+            VLOG(2) << "Current Decision remains move out of branch\n";
+          } else {
+            final_d = Decision::Direction::kMoveIntoBranch;
+            VLOG(2) << "Current Decision is move into branch\n";
+          }
           break;
-        case Decision::kNoChange:
+        case Decision::Direction::kNoChange:
           VLOG(2) << "Decision is no change\n";
           for (const Boundary& b : next_boundary) {
             visitor.AddToWorkList(b);
+            VLOG(2) << "Adding new boundary to worklist:" << b.ToString()
+                    << "\n";
           }
           break;
       }
     }
+    // If modification is to be made, need to clone the shared branches.
+    if (final_d != Decision::Direction::kNoChange && conditional_is_shared) {
+      for (int i = 0; i < branch_count; ++i) {
+        HloComputation* branch_i = conditional->branch_computation(i);
+        if (conditional_computations[branch_i] > 0) {
+          // Cloning is absolutely needed if the computation is shared by
+          // different branches, but the cloning can be potentially avoided
+          // if the sharing is only among branches of the same conditional.
+          // If cloning these branches causes a problem due to space issues,
+          // a fix can pass a vector of unique branches to the actual
+          // transformations, as an alternative representation of the
+          // conditional branches to be modified. Right now we assume the
+          // overhead of cloning is minimal since later stages of the compiler
+          // inline all the computations anyway.
+          HloComputation* clone_i =
+              conditional->parent()->parent()->AddEmbeddedComputation(
+                  branch_i->Clone("clone", &clone_context));
+          conditional->set_branch_computation(i, clone_i);
+          conditional_computations[branch_i]--;
+          // Need to translate the analysis result to generate correct result.
+          auto update_boundary = [&](Boundary& boundary) {
+            auto cloned_instr =
+                clone_context.FindInstruction(boundary.operands()[i]);
+            CHECK(cloned_instr != nullptr);
+            VLOG(2) << "boundary before cloning:" << boundary.operands()[i]
+                    << "\n";
+            boundary.mutable_operands()[i] = cloned_instr;
+            VLOG(2) << "boundary after cloning:" << boundary.operands()[i]
+                    << "\n";
+          };
+          // Only boundaries to move out need to be updated.
+          if (final_d == Decision::Direction::kMoveOutOfBranch) {
+            for (int i = 0; i < to_move_out.size(); ++i) {
+              std::vector<Boundary>& m = to_move_out[i];
+              std::for_each(m.begin(), m.end(), update_boundary);
+            }
+            for (int i = 0; i < new_boundaries_for_moveout.size(); ++i) {
+              std::vector<Boundary>& m = new_boundaries_for_moveout[i];
+              std::for_each(m.begin(), m.end(), update_boundary);
+            }
+          }
+        }
+      }
+      VLOG(2) << "Cloned branches as needed: " << conditional->ToString()
+              << "\n";
+    }
     // At most one of to_move_out or to_move_in can be non-empty, since there is
     // only one optimization decision.
-    if (!to_move_out.empty()) {
-      TF_ASSIGN_OR_RETURN(
-          bool result,
-          MoveInstructionOut(conditional, to_move_out, new_boundaries));
-      VLOG(2) << "moving out result:" << result << "\n";
-      changed |= result;
-    } else if (!to_move_in.empty()) {
-      TF_ASSIGN_OR_RETURN(
-          bool result,
-          MoveInstructionIn(conditional, to_move_in, new_boundaries));
-      VLOG(2) << "moving in result:" << result << "\n";
-      changed |= result;
+    if (final_d == Decision::Direction::kMoveOutOfBranch) {
+      CHECK(to_move_out.size() == new_boundaries_for_moveout.size());
+      for (int i = 0; i < to_move_out.size(); ++i) {
+        TF_ASSIGN_OR_RETURN(bool result,
+                            MoveInstructionOut(conditional, to_move_out[i],
+                                               new_boundaries_for_moveout[i]));
+        changed |= result;
+      }
+    } else if (final_d == Decision::Direction::kMoveIntoBranch) {
+      CHECK(to_move_in.size() == new_boundaries_for_movein.size());
+      for (int i = 0; i < to_move_in.size(); ++i) {
+        TF_ASSIGN_OR_RETURN(bool result,
+                            MoveInstructionIn(conditional, to_move_in[i],
+                                              new_boundaries_for_movein[i]));
+        changed |= result;
+      }
     } else if (pursue_full_conditional_code_motion_ && !conditional_is_shared) {
       // Invoke special handling for convert rematerialization/hoisting
       // We need to make sure no sharing is present in the branches because no
@@ -1118,11 +1277,13 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
           bool convert_result,
           ConvertSpecialMove(conditional, is_layout_sensitive_));
       changed |= convert_result;
+      VLOG(2) << "Done special moving of convert\n";
     }
   }
   if (changed) {
     HloPassPipeline subpipeline(
         "after_conditional_code_motion_after_convert_hoisting");
+    VLOG(2) << "starting after motion passes: DCE\n";
     subpipeline.AddPass<HloDCE>();
     subpipeline.AddPass<TupleSimplifier>();
     subpipeline.AddPass<HloDCE>();
