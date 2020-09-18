@@ -50,7 +50,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   // TODO(b/128934713): Add support for fixed-point per-channel quantization.
   // Currently this only support affine per-layer quantization.
