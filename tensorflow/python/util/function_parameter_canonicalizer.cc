@@ -20,6 +20,33 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
+namespace {
+inline char* PyUnicodeAsUtf8Compat(PyObject* obj) {
+#if PY_MAJOR_VERSION < 3
+  return PyString_AS_STRING(obj);
+#else
+  return PyUnicode_AsUTF8(obj);
+#endif
+}
+
+inline PyObject* PyUnicodeInternFromStringCompat(const char* str) {
+#if PY_MAJOR_VERSION < 3
+  return PyString_InternFromString(str);
+#else
+  return PyUnicode_InternFromString(str);
+#endif
+}
+
+inline void PyUnicodeInternInPlaceCompat(PyObject** obj) {
+#if PY_MAJOR_VERSION < 3
+  PyString_InternInPlace(obj);
+#else
+  PyUnicode_InternInPlace(obj);
+#endif
+}
+
+}  // namespace
+
 namespace tensorflow {
 
 FunctionParameterCanonicalizer::FunctionParameterCanonicalizer(
@@ -30,7 +57,7 @@ FunctionParameterCanonicalizer::FunctionParameterCanonicalizer(
 
   interned_arg_names_.reserve(arg_names.size());
   for (const char* obj : arg_names)
-    interned_arg_names_.emplace_back(PyUnicode_InternFromString(obj));
+    interned_arg_names_.emplace_back(PyUnicodeInternFromStringCompat(obj));
 
   DCHECK(AreInternedArgNamesUnique());
 
@@ -77,21 +104,23 @@ bool FunctionParameterCanonicalizer::Canonicalize(
       if (TF_PREDICT_FALSE(index == interned_arg_names_.size())) {
         // `key` might not be an interend string, so get the interned string
         // and try again.
-        PyUnicode_InternInPlace(&key);
+        PyUnicodeInternInPlaceCompat(&key);
+
         index = InternedArgNameLinearSearch(key);
 
         // Stil not found, then return an error.
         if (TF_PREDICT_FALSE(index == interned_arg_names_.size())) {
           PyErr_Format(PyExc_TypeError,
-                       "Got an unexpected keyword argument '%S'", key);
+                       "Got an unexpected keyword argument '%s'",
+                       PyUnicodeAsUtf8Compat(key));
           return false;
         }
       }
 
       // Check if the keyword argument overlaps with positional arguments.
       if (TF_PREDICT_FALSE(index < args_size)) {
-        PyErr_Format(PyExc_TypeError, "Got multiple values for argument '%S'",
-                     key);
+        PyErr_Format(PyExc_TypeError, "Got multiple values for argument '%s'",
+                     PyUnicodeAsUtf8Compat(key));
         return false;
       }
 
