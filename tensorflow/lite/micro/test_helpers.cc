@@ -601,7 +601,8 @@ TfLiteStatus SimpleStatefulOp::Prepare(TfLiteContext* context,
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Make sure that the input is in uint8_t with at least 1 data entry.
-  const TfLiteTensor* input = tflite::GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   if (input->type != kTfLiteUInt8) return kTfLiteError;
   if (NumElements(input->dims) == 0) return kTfLiteError;
 
@@ -622,7 +623,8 @@ TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   *data->invoke_count += 1;
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   const uint8_t* input_data = GetTensorData<uint8_t>(input);
   int size = NumElements(input->dims);
 
@@ -641,9 +643,13 @@ TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
     }
   }
 
-  TfLiteTensor* median = GetOutput(context, node, kMedianTensor);
+  TfLiteTensor* median;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kMedianTensor, &median));
   uint8_t* median_data = GetTensorData<uint8_t>(median);
-  TfLiteTensor* invoke_count = GetOutput(context, node, kInvokeCount);
+  TfLiteTensor* invoke_count;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kInvokeCount, &invoke_count));
   int32_t* invoke_count_data = GetTensorData<int32_t>(invoke_count);
 
   median_data[0] = sorting_buffer[size / 2];
@@ -681,11 +687,14 @@ TfLiteStatus MockCustom::Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus MockCustom::Invoke(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = tflite::GetInput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   const int32_t* input_data = input->data.i32;
-  const TfLiteTensor* weight = tflite::GetInput(context, node, 1);
+  const TfLiteTensor* weight;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &weight));
   const uint8_t* weight_data = weight->data.uint8;
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   int32_t* output_data = output->data.i32;
   output_data[0] =
       0;  // Catch output tensor sharing memory with an input tensor
