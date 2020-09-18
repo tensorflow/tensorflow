@@ -353,8 +353,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<AvgPoolGlobalOpData*>(node->user_data);
 
   op->bias = unpack<4, int32_t>(&bss->data.uint8[0]);
-  op->shift = unpack<2, uint32_t>(&bss->data.uint8[5]);
-  op->scale = unpack<1, uint32_t>(&bss->data.uint8[4]);
+  op->shift = unpack<2, uint16_t>(&bss->data.uint8[5]);
+  op->scale = unpack<1, int8_t>(&bss->data.uint8[4]);
+
+  TFLITE_DCHECK(op->scale > 0);
 
   // setup kernel parameters
   nn_image_params_t in_params = {(uint32_t)input->dims->data[1],
