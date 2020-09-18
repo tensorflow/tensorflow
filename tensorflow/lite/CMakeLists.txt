@@ -66,7 +66,7 @@ option(TFLITE_ENABLE_GPU "Enable GPU (not supported)" OFF)
 # https://www.tensorflow.org/lite/guide/ops_select#converting_the_model
 # This is currently not supported.
 option(TFLITE_ENABLE_FLEX "Enable SELECT_TF_OPS" OFF) # TODO: Add support
-option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" OFF) # TODO: Add XNNPACK
+option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_NNAPI "${TFLITE_ENABLE_NNAPI}")
@@ -214,8 +214,13 @@ else()
   )
 endif()
 if(TFLITE_ENABLE_XNNPACK)
+  find_package(xnnpack REQUIRED)
   populate_tflite_source_vars("delegates/xnnpack"
     TFLITE_DELEGATES_XNNPACK_SRCS
+    FILTER ".*(_test|_tester)\\.(cc|h)"
+  )
+  list(APPEND TFLITE_TARGET_DEPENDENCIES
+    XNNPACK
   )
 endif()
 if (TFLITE_ENABLE_RESOURCE)
@@ -326,6 +331,8 @@ list(APPEND TFLITE_BENCHMARK_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
 )
@@ -334,6 +341,14 @@ list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflowlite
   ${CMAKE_DL_LIBS}
 )
+
+if(TFLITE_ENABLE_XNNPACK)
+  list(APPEND TFLITE_BENCHMARK_SRCS
+    ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
+  )
+else()
+  set(TFLITE_BENCHMARK_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
+endif()  # TFLITE_ENABLE_XNNPACK
 
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_BENCHMARK_SRCS
@@ -349,6 +364,10 @@ endif()  # Android
 add_executable(benchmark_model
   EXCLUDE_FROM_ALL
   ${TFLITE_BENCHMARK_SRCS}
+)
+target_compile_options(benchmark_model
+  PRIVATE
+    ${TFLITE_BENCHMARK_CC_OPTIONS}
 )
 target_link_libraries(benchmark_model
     ${TFLITE_BENCHMARK_LIBS}
