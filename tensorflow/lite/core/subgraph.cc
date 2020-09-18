@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/arena_planner.h"
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
@@ -1029,6 +1030,19 @@ TfLiteStatus Subgraph::Invoke() {
       if (tensor->delegate && tensor->delegate != node.delegate &&
           tensor->data_is_stale) {
         TF_LITE_ENSURE_STATUS(EnsureTensorDataIsReadable(tensor_index));
+      }
+      if (tensor->data.raw == nullptr && tensor->bytes > 0) {
+        if (registration.builtin_code == kTfLiteBuiltinReshape && i == 1) {
+          // In general, having a tensor here with no buffer will be an error.
+          // However, for the reshape operator, the second input tensor is only
+          // used for the shape, not for the data. Thus, null buffer is ok.
+          continue;
+        } else {
+          // In all other cases, we need to return an error as otherwise we will
+          // trigger a null pointer dereference (likely).
+          ReportError("Input tensor %d lacks data", tensor_index);
+          return kTfLiteError;
+        }
       }
     }
 
