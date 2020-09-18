@@ -27,26 +27,48 @@ inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
+
 inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
                                     int index) {
-  return &context->tensors[node->inputs->data[index]];
+  const int tensor_index = node->inputs->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context, TfLiteNode* node,
                                       int index) {
-  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  const int tensor_index = node->inputs->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  TfLiteTensor* tensor = &context->tensors[tensor_index];
   return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {
-  return &context->tensors[node->outputs->data[index]];
+  const int tensor_index = node->outputs->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
 inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
                                   int index) {
-  return &context->tensors[node->temporaries->data[index]];
+  const int tensor_index = node->temporaries->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
+
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             TfLiteNode* node, int index) {
-  return &context->tensors[node->intermediates->data[index]];
+  const int tensor_index = node->intermediates->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
