@@ -979,10 +979,19 @@ class Function(object):
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
-    return functools.partial(
-        context.context().get_compiler_ir,
-        function_name=fn_name,
-        args=list(canon_args) + concrete_fn.captured_inputs)
+    def compiler_ir_generator(stage='hlo'):
+      """Returns compiler IR for the given `stage`.
+
+      Args:
+        stage: Stage at which to return the IR. Allowed values are 'hlo' and
+        'optimized_hlo'.
+      """
+      return context.context().get_compiler_ir(
+          stage=stage,
+          function_name=fn_name,
+          args=list(canon_args) + concrete_fn.captured_inputs)
+
+    return compiler_ir_generator
 
   @property
   def python_function(self):
