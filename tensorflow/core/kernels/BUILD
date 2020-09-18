@@ -4457,12 +4457,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stateless_random_ops_v2_header",
+    hdrs = ["stateless_random_ops_v2.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "stateful_random_ops",
     prefix = "stateful_random_ops",
     deps = [
         ":bounds_check",
         ":dense_update_functor",
+        ":fill_functor",
         ":gather_functor",
         ":mutex_ops",
         ":random_op",
@@ -5337,7 +5347,7 @@ tf_kernel_library(
     prefix = "random_binomial_op",
     deps = [
         ":cwise_op",
-        ":random_ops",
+        ":random_op",
         ":resource_variable_ops",
         ":stateful_random_ops",
         ":stateless_random_ops",
@@ -6159,6 +6169,7 @@ filegroup(
         "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
+        "random_ops_util.h",
         "random_poisson_op.cc",
         "reduce_join_op.cc",
         "reduction_ops_all.cc",

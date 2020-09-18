@@ -30,8 +30,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
@@ -375,7 +377,7 @@ class RandomBinomialOp : public OpKernel {
     OP_REQUIRES(ctx, alg_tensor.dims() == 0,
                 errors::InvalidArgument("algorithm must be of shape [], not ",
                                         alg_tensor.shape().DebugString()));
-    Algorithm alg = alg_tensor.flat<Algorithm>()(0);
+    Algorithm alg = Algorithm(alg_tensor.flat<int64>()(0));
 
     int64 samples_per_batch = 1;
     const int64 num_sample_dims =
