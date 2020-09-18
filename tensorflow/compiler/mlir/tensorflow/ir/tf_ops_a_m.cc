@@ -546,8 +546,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   if (!matchPattern(op.branch_index(), m_Constant(&branch))) return failure();
 
   int index = *branch.getValues<int>().begin();
-  if (index < 0 || index >= op.branches().size())
-    index = op.branches().size() - 1;
+  if (index < 0 || index >= op.num_branches()) index = op.num_branches() - 1;
 
   auto func = op.branches()[index].cast<SymbolRefAttr>();
   auto empty = rewriter.getStringAttr("");

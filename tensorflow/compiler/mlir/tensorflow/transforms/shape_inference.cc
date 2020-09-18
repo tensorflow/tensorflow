@@ -927,10 +927,7 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
         {if_op.then_function(), if_op.else_function()}, max_iteration);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
     SmallVector<FuncOp, 4> branches;
-    for (Attribute branch : case_op.branches()) {
-      auto sym = branch.cast<FlatSymbolRefAttr>();
-      branches.push_back(SymbolTable::lookupNearestSymbolFrom<FuncOp>(op, sym));
-    }
+    case_op.get_branch_functions(branches);
     return PropagateShapeToFunctions(module,
                                      drop_begin(case_op.getOperandTypes(), 1),
                                      branches, max_iteration);

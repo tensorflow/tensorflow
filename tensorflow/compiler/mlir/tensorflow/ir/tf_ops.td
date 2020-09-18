@@ -116,6 +116,24 @@ An n-way switch statement, implementing the following:
   let verifier = [{
     return Verify(*this);
   }];
+
+
+ let extraClassDeclaration = [{
+    int num_branches() { return branches().size(); }
+
+    // Gets function corresponding branch # `index`.
+    FuncOp branch_function(int index) {
+      auto flat_sym_ref = branches()[index].cast<FlatSymbolRefAttr>();
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
+    }
+
+    // Gets all branch functions.
+    void get_branch_functions(SmallVectorImpl<FuncOp> &functions) {
+      functions.reserve(num_branches());
+      for (int idx : llvm::seq<int>(0, num_branches()))
+        functions.push_back(branch_function(idx));
+    }
+  }];
 }
 
 def TF_CaseRegionOp : TF_Op<"CaseRegion",

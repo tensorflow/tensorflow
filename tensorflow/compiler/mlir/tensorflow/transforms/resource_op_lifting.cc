@@ -1224,14 +1224,11 @@ LogicalResult HoistForControlFlow(
         return failure();
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
       SmallVector<FuncOp, 4> branch_functions;
-      branch_functions.reserve(case_op.branches().size());
-      for (const Attribute& branch : case_op.branches()) {
-        FuncOp func =
-            module.lookupSymbol<FuncOp>(branch.cast<FlatSymbolRefAttr>());
+      case_op.get_branch_functions(branch_functions);
+      for (FuncOp func : branch_functions) {
         // Recursively handle the nested control flow.
         HoistForControlFlow(&func.front(), module,
                             lifted_partitioned_call_callees);
-        branch_functions.push_back(func);
       }
       if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {

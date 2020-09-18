@@ -708,10 +708,7 @@ LogicalResult DecomposeTensorListOpsInternal(
       }
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
       SmallVector<FuncOp, 2> branches;
-      for (auto branch_symbol : case_op.branches()) {
-        branches.push_back(module.lookupSymbol<FuncOp>(
-            branch_symbol.cast<FlatSymbolRefAttr>()));
-      }
+      case_op.get_branch_functions(branches);
       if (failed(HandleCaseOrIfOp(case_op, branches, module, buffer_to_size,
                                   decomposed_partitioned_call_callees))) {
         return failure();
