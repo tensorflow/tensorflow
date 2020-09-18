@@ -337,7 +337,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 
 // Maps each block to a column range TF_RED_WARPSIZE wide
 template <typename T, typename OUT_T, typename Op>
-__global__ void ColumnReduceKernel(
+__global__ __launch_bounds__(1024) void ColumnReduceKernel(
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;

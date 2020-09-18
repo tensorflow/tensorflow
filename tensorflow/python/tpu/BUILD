@@ -32,6 +32,7 @@ py_test(
         "no_oss_py2",
         "no_oss_py35",
         "no_pip",
+        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -76,6 +77,7 @@ tpu_py_test(
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
+    tags = ["no_rocm"],
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",

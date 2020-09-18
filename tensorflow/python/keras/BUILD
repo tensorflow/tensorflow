@@ -585,7 +585,10 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 16,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -750,6 +753,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
+    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -1034,7 +1038,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan"],  # http://b/62136390
+    tags = [
+        "no_rocm",
+        "notsan",  # http://b/62136390
+    ],
 )
 
 tf_py_test(
@@ -1049,6 +1056,7 @@ tf_py_test(
     ],
     shard_count = 4,
     tags = [
+        "no_rocm",
         "noasan",  # times out b/63678675
         "notsan",  # http://b/62189182
     ],
@@ -1065,6 +1073,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 10,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -1812,6 +1821,7 @@ tf_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
 )
 
 tf_py_test(
