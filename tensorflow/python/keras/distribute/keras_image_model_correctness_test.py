@@ -105,7 +105,6 @@ class DistributionStrategyCnnCorrectnessTest(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
                                            use_validation_data):
-    self.skipTest('Flakily times out, b/134670856')
     self.run_correctness_test(
         distribution,
         use_numpy,
