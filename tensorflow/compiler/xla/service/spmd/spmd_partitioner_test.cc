@@ -5893,6 +5893,50 @@ ENTRY entry {
                           op::Shape("f32[1,1,128,256]")));
 }
 
+TEST_F(SpmdPartitioningTest,
+       ConvolutionInputSpatialDimAndFeatureDimParttiioned) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[8,210,210,12] parameter(0)
+  %lhs.copy = f32[8,210,210,12] copy(f32[8,210,210,12] %lhs),
+    sharding={devices=[1,2,1,2]0,1,2,3}
+  %rhs = f32[3,3,12,32] parameter(1)
+  %rhs.copy = f32[3,3,12,32] copy(f32[3,3,12,32] %rhs),
+    sharding={devices=[1,1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %conv = f32[8,210,210,32] convolution(
+    f32[8,210,210,12] %lhs.copy,
+    f32[3,3,12,32] %rhs.copy),
+    window={size=3x3 pad=1_1x1_1},
+    dim_labels=b01f_01io->b01f,
+    sharding={devices=[1,2,1,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Reshape(),
+                                op::Constant(), op::Reshape())),
+      op::Shape("f32[8,105,210,6]"));
+  auto left_halo =
+      AllOf(op::CollectivePermute(op::Slice(lhs)), op::Shape("f32[8,1,210,6]"));
+  auto right_halo =
+      AllOf(op::CollectivePermute(op::Slice(lhs)), op::Shape("f32[8,1,210,6]"));
+  auto exchanged_lhs = AllOf(
+      op::Select(op::And(_, _), op::Concatenate(left_halo, lhs, right_halo),
+                 op::Broadcast(_)),
+      op::Shape("f32[8,107,210,6]"));
+  auto rhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Constant(),
+                                op::Reshape(), op::Constant())),
+      op::Shape("f32[3,3,6,32]"));
+  EXPECT_THAT(root, AllOf(op::AllReduce(op::Convolution(
+                              exchanged_lhs, op::CollectivePermute(rhs))),
+                          op::Shape("f32[8,105,210,32]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
