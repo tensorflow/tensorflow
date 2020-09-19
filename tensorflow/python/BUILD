@@ -6078,6 +6078,7 @@ filegroup(
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:op_gen_lib",  # tf_session
         "//tensorflow/core/common_runtime/eager:context",  # tfe
+        "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
