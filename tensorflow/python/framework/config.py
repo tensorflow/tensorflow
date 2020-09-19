@@ -212,9 +212,8 @@ def set_optimizer_experimental_options(options):
   >>> tf.config.optimizer.get_experimental_options()
   {'disable_model_pruning': False, 'disable_meta_optimizer': False}
   >>> tf.config.optimizer.set_experimental_options({'constant_folding': True})
-  >>> tf.config.optimizer.get_experimental_options()
-  {'constant_folding': True, 'disable_model_pruning': False,
-  'disable_meta_optimizer': False}
+  >>> tf.config.optimizer.get_experimental_options() == {'constant_folding': True,
+  ... 'disable_model_pruning': False, 'disable_meta_optimizer': False}
 
   Args:
     options: `Dictionary` of experimental optimizer options to configure.
