@@ -176,7 +176,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
     auto DoWork = [samples_per_batch, num_elements, &counts, &probs, &gen,
-                   &output](int start_batch, int limit_batch) {
+                   &output](int64 start_batch, int64 limit_batch) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
