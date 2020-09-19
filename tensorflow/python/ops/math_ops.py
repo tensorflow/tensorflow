@@ -545,8 +545,8 @@ def subtract(x, y, name=None):
   >>> x = tf.constant([1.0, -1.0, 5.0, -2.0, 0.0])
   >>> y = tf.constant([5.0, 1.0, 3.7, -19.9, float("inf")])
   >>> tf.subtract(x,y)
-  <tf.Tensor: shape=(5,), dtype=float32, numpy=
-  array([-4. , -2. ,  1.3, 17.9, -inf], dtype=float32)>
+  <tf.Tensor: shape=(5,), dtype=float32,
+  numpy= array([-4. , -2. ,  1.3, 17.9, -inf], dtype=float32)>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
@@ -4972,8 +4972,8 @@ def add(x, y, name=None):
   >>> x = tf.constant([1.0, -1.0, 5.0, -2.0, 0.0])
   >>> y = tf.constant([5.0, 1.0, 3.7, -19.9, float("inf")])
   >>> tf.add(x,y)
-  <tf.Tensor: shape=(5,), dtype=float32, numpy=
-  array([  6. ,   0. ,   8.7, -21.9,   inf], dtype=float32)>
+  <tf.Tensor: shape=(5,), dtype=float32,
+  numpy= array([  6. ,   0. ,   8.7, -21.9,   inf], dtype=float32)>
 
   Args:
     x: A `Tensor`. Must be one of the following types:
@@ -5004,9 +5004,9 @@ def acos(x, name=None):
 
   >>> x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2], dtype = tf.float32)
   >>> tf.math.acos(x)
-  <tf.Tensor: shape=(6,), dtype=float32, numpy=
-  array([0. , 2.0943952, nan, 1.3694383, 1.5707964, nan],
-      dtype=float32)>
+  <tf.Tensor: shape=(6,), dtype=float32,
+  numpy= array([0. , 2.0943952, nan, 1.3694383, 1.5707964, nan],
+  dtype=float32)>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
@@ -5032,8 +5032,8 @@ def floor(x, name=None):
 
   >>> x = tf.constant([1.3324, -1.5, 5.555, -2.532, 0.99, float("inf")])
   >>> tf.floor(x)
-  <tf.Tensor: shape=(6,), dtype=float32, numpy=
-  array([ 1., -2.,  5., -3.,  0., inf], dtype=float32)>
+  <tf.Tensor: shape=(6,), dtype=float32,
+  numpy= array([ 1., -2.,  5., -3.,  0., inf], dtype=float32)>
 
   Args:
     x:  A `Tensor`. Must be one of the following types:
