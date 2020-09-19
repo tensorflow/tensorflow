@@ -95,12 +95,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  const bool use_tensor = index < node->inputs->size &&
-                          node->inputs->data[index] != kTfLiteOptionalTensor;
-  if (use_tensor) {
-    return &context->tensors[node->inputs->data[index]];
-  }
-  return nullptr;
+  return GetInput(context, node, index);
 }
 
 // Determines whether tensor is constant.
