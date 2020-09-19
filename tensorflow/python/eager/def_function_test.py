@@ -938,6 +938,17 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertLen(logs.output, 1)
     self.assertIn('Tracing is expensive', logs.output[0])
+  
+  def test_experimental_get_tracing_count(self):
+    @tf.function
+    def double(a):
+      return a + a
+    
+    double(tf.constant(1))
+    double(tf.constant(2))
+    assertAllEqual(double.experimental_get_tracing_count(), 1)
+    double(tf.constant("a"))
+    assertAllEqual(double.experimental_get_tracing_count(), 2)
 
 
 if __name__ == '__main__':
