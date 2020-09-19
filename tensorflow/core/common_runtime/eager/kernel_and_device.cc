@@ -308,12 +308,7 @@ Status KernelAndDeviceOp::Run(
   if (outputs != nullptr) {
     outputs->clear();
     for (int i = 0; i < context.num_outputs(); ++i) {
-      const auto* output_tensor = context.mutable_output(i);
-      if (output_tensor != nullptr) {
-        outputs->push_back(Tensor(*output_tensor));
-      } else {
-        outputs->push_back(Tensor());
-      }
+      outputs->push_back(Tensor(*context.mutable_output(i)));
     }
   }
   return Status::OK();
