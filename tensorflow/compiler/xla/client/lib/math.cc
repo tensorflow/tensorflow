@@ -1832,6 +1832,47 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
   });
 }
 
+XlaOp Polygamma(XlaOp n, XlaOp x) {
+  auto& builder = *x.builder();
+  auto doit = [](XlaOp n, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp n_plus_one = n + ScalarLike(n, 1.);
+    XlaOp sign =
+        (ScalarLike(n, 2.) * Rem(n, ScalarLike(n, 2.)) - ScalarLike(n, 1.));
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+
+    XlaOp output = Select(Eq(n, ScalarLike(n, 0.)), Digamma(x),
+                          sign * Exp(Lgamma(n_plus_one)) * Zeta(n_plus_one, x));
+    // Check that n is a natural number.
+    output = Select(Or(Ne(n, Floor(n)), Lt(n, ScalarLike(n, 0.))),
+                    ScalarLike(n, nan), output);
+    return output;
+  };
+  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto n_shape, builder.GetShape(n));
+    TF_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
+    if (n_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to Polygamma must have equal shapes and types; "
+          "got %s and %s",
+          n_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Zeta", x));
+    bool needs_upcast =
+        n_shape.element_type() == F16 || x_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      n = ConvertElementType(n, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(n, x, n_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, n_shape.element_type());
+    }
+    return result;
+  });
+}
+
 XlaOp Zeta(XlaOp x, XlaOp q) {
   auto& builder = *x.builder();
   auto doit = [&builder](XlaOp x, XlaOp q, PrimitiveType type) -> XlaOp {

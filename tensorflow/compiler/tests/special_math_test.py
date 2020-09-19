@@ -56,6 +56,11 @@ def _igammac(a, x):
 
 
 @def_function.function(experimental_compile=True)
+def _polygamma(n, x):
+  return math_ops.polygamma(n, x)
+
+
+@def_function.function(experimental_compile=True)
 def _zeta(a, q):
   return math_ops.zeta(a, q)
 
@@ -253,6 +258,94 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
     with self.session() as sess:
       with self.test_scope():
         actual = sess.run(_zeta(x, q))
+    self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
+
+
+class PolygammaTest(xla_test.XLATestCase, parameterized.TestCase):
+
+  def setUp(self):
+    if flags.FLAGS.vary_seed:
+      entropy = os.urandom(64)
+      if six.PY2:
+        answer = int(entropy.encode('hex'), 16)
+      else:
+        answer = int.from_bytes(entropy, 'big')
+      np.random.seed(answer % (2**32 - 1))
+    super(PolygammaTest, self).setUp()
+
+  def adjust_tolerance_for_tpu(self, dtype, rtol, atol):
+    if self.device not in ['TPU']:
+      return rtol, atol
+
+    if dtype == np.float32:
+      return 2e-2, 1e-7
+    return 2e-4, 1e-20
+
+  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
+  def testBadValues(self):
+    x = np.random.uniform(low=0.3, high=20., size=[10])
+    with self.session() as sess:
+      with self.test_scope():
+        y = _polygamma(np.float64(-1.), x)
+      actual = sess.run(y)
+    # Not defined for negative numbers.
+    self.assertTrue(np.all(np.isnan(actual)))
+
+    with self.session() as sess:
+      with self.test_scope():
+        y = _polygamma(np.float64(0.1), x)
+      actual = sess.run(y)
+    # Not defined for non-integers.
+    self.assertTrue(np.all(np.isnan(actual)))
+
+  @parameterized.parameters((np.float32, 1e-2, 1e-11),
+                            (np.float64, 1e-4, 1e-30))
+  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
+  def testRecoverDigamma(self, dtype, rtol, atol):
+    rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
+    if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == np.float64:
+      self.skipTest(
+          'Skipping test because some F64 operations are '
+          'numerically unstable on TPU.'
+      )
+
+    x = np.random.uniform(low=0.1, high=50., size=[NUM_SAMPLES]).astype(dtype)
+    expected_values = sps.digamma(x)
+    with self.session() as sess:
+      with self.test_scope():
+        y = _polygamma(dtype(0.), x)
+      actual = sess.run(y)
+
+    self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
+
+  @parameterized.parameters((np.float32, 1e-2, 1e-11),
+                            (np.float64, 1e-4, 1e-30))
+  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
+  def testSmallN(self, dtype, rtol, atol):
+    rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
+    # Test values near zero.
+    n = np.random.randint(low=1, high=5, size=[NUM_SAMPLES]).astype(dtype)
+    x = np.random.uniform(
+        low=np.finfo(dtype).tiny, high=1., size=[NUM_SAMPLES]).astype(dtype)
+
+    expected_values = sps.polygamma(n, x)
+    with self.session() as sess:
+      with self.test_scope():
+        actual = sess.run(_polygamma(n, x))
+    self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
+
+  @parameterized.parameters((np.float32, 1e-2, 1e-11),
+                            (np.float64, 1e-4, 1e-30))
+  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
+  def testMediumLargeN(self, dtype, rtol, atol):
+    rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
+    n = np.random.randint(low=5, high=10, size=[NUM_SAMPLES]).astype(dtype)
+    x = np.random.uniform(low=1., high=1e1, size=[NUM_SAMPLES]).astype(dtype)
+
+    expected_values = sps.polygamma(n, x)
+    with self.session() as sess:
+      with self.test_scope():
+        actual = sess.run(_polygamma(n, x))
     self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
 
 

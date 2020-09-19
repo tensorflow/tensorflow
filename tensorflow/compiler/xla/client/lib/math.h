@@ -72,6 +72,9 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x);
 // Computes an approximation of the complementary incomplete gamma function.
 XlaOp Igammac(XlaOp a, XlaOp x);
 
+// Computes the Polygamma of two arguments.
+XlaOp Polygamma(XlaOp n, XlaOp x);
+
 // Computes the Riemann zeta function of two arguments.
 XlaOp Zeta(XlaOp x, XlaOp q);
 
