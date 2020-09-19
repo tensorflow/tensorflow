@@ -29,7 +29,7 @@ def TFFramework_Dialect : Dialect {
     This dialect contains operations and types for that correspond to
     TensorFlow C++ Framework.
   }];
-  let cppNamespace = "kernel_gen::tf_framework";
+  let cppNamespace = "::mlir::kernel_gen::tf_framework";
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,

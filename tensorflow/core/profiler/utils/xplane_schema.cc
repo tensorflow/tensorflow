@@ -109,7 +109,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ParseExampleProduce", kParseExampleProduce},
       {"ParseExampleConsume", kParseExampleConsume},
       // Batching related.
-      {"BatchingSession", kBatchingSession},
+      {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
@@ -185,6 +185,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
+      {"selected_group_ids", kSelectedGroupIds},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

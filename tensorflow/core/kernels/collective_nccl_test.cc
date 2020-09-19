@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
@@ -84,6 +85,7 @@ class NcclTestBase : public ::testing::Test {
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
       : collective_type_(collective_type),
         collective_name_(collective_name),
+        nccl_communicator_(MaybeCreateNcclCommunicator()),
         work_queue_(std::make_shared<UnboundedWorkQueue>(
             Env::Default(), "collective_executor")),
         col_exec_(nullptr) {}
@@ -318,7 +320,8 @@ class NcclTestBase : public ::testing::Test {
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       auto* reducer = new NcclReducer();
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(),
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/&input_, /*output=*/&input_);
       TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
@@ -349,7 +352,8 @@ class NcclTestBase : public ::testing::Test {
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       auto* broadcaster = new NcclBroadcaster();
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(),
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/col_params_.is_source ? &input_ : nullptr,
           /*output=*/&input_);
@@ -389,7 +393,8 @@ class NcclTestBase : public ::testing::Test {
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       auto* gatherer = new NcclGatherer();
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(),
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/&input_,
           /*output=*/&output_);
@@ -419,6 +424,7 @@ class NcclTestBase : public ::testing::Test {
   const string collective_name_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpus_;
   TestCollectiveExecutorMgr col_exec_mgr_;
+  std::unique_ptr<NcclCommunicatorInterface> nccl_communicator_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CollectiveExecutor* col_exec_;
   std::unique_ptr<DeviceMgr> dev_mgr_;

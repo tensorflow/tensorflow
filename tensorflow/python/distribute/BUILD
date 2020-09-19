@@ -136,9 +136,6 @@ cuda_py_test(
 
 py_library(
     name = "distribute",
-    srcs = [
-        "__init__.py",
-    ],
     srcs_version = "PY2AND3",
     deps = [
         ":all_reduce",
@@ -147,7 +144,7 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":sharded_variable",
-        "//tensorflow/python/distribute/client:parameter_server_client",
+        "//tensorflow/python/distribute/client",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -1136,6 +1133,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+        "notsan",  # b/168645872
     ],
     tpu_tags = [
         "no_oss",  # b/150954621 Target too big to run serially reliably.
@@ -1699,9 +1697,6 @@ distribute_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
-        # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
-        # runner can run on guitar.
-        "noguitar",
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1811,6 +1806,9 @@ tf_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
+    tags = [
+        "notsan",  # b/168675975
+    ],
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",

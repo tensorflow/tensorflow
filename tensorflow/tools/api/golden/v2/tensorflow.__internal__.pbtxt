@@ -8,4 +8,8 @@ tf_module {
     name: "test"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "tracking"
+    mtype: "<type \'module\'>"
+  }
 }

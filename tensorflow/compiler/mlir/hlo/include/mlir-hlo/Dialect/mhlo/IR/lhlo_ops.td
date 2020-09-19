@@ -41,7 +41,7 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
   let name = "lmhlo";
-  let cppNamespace = "lmhlo";
+  let cppNamespace = "::mlir::lmhlo";
 }
 
 //===----------------------------------------------------------------------===//

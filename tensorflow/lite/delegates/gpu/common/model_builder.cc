@@ -1166,6 +1166,9 @@ class MulOperationParser : public TFLiteOperationParser {
     }
     auto input0 = tflite::GetInput(context, tflite_node, 0);
     auto input1 = tflite::GetInput(context, tflite_node, 1);
+    if (input0 == nullptr || input1 == nullptr) {
+      return absl::InvalidArgumentError("At least one input tensor is null");
+    }
     if (input0->dims->size == input1->dims->size) {
       // this code checks that at least one input of Mul not smaller in all
       // dimensions. Sometimes Mul used for matrix-vector multiplication that we
@@ -1380,7 +1383,10 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    auto pad_tensor = tflite::GetInput(context, tflite_node, 1);
+    const TfLiteTensor* pad_tensor = tflite::GetInput(context, tflite_node, 1);
+    if (pad_tensor == nullptr) {
+      return absl::InvalidArgumentError("Padding tensor was null");
+    }
     if (pad_tensor->dims->size != 2) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Invalid paddings tensor dimension: expected 2 dim, got ",

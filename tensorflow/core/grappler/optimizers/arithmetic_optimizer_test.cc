@@ -44,7 +44,7 @@ constexpr char kHoistFactorOptimizerMul[] =
     "ArithmeticOptimizer/HoistCommonFactor_Mul_";
 
 constexpr char kHoistFactorOptimizerAdd[] =
-    "ArithmeticOptimizer/HoistCommonFactor_Add_";
+    "ArithmeticOptimizer/HoistCommonFactor_AddV2_";
 
 constexpr char kSimplifyAggregationConst[] =
     "ArithmeticOptimizer/SimplifyAggregation_Const_";
@@ -2219,7 +2219,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCast) {
   // Then add results together starting from smaller shapes [a, x] + [b, y]
   const NodeDef* outer_0_node = node_map.GetNode(outer_0_add_name);
   ASSERT_NE(outer_0_node, nullptr);
-  EXPECT_EQ(outer_0_node->op(), "Add");
+  EXPECT_EQ(outer_0_node->op(), "AddV2");
   ASSERT_EQ(outer_0_node->input_size(), 2);
   EXPECT_EQ(outer_0_node->input(0), inner_0_add_name);
   EXPECT_EQ(outer_0_node->input(1), inner_1_add_name);
@@ -2227,7 +2227,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCast) {
   // And finally top level Add node
   const NodeDef* outer_node = node_map.GetNode(outer_add_name);
   ASSERT_NE(outer_node, nullptr);
-  EXPECT_EQ(outer_node->op(), "Add");
+  EXPECT_EQ(outer_node->op(), "AddV2");
   ASSERT_EQ(outer_node->input_size(), 2);
   EXPECT_EQ(outer_node->input(0), outer_0_add_name);
   EXPECT_EQ(outer_node->input(1), inner_2_add_name);
@@ -2299,7 +2299,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCastWithSymbolicShapes) {
   // outer Add node
   const NodeDef* outer_add = node_map.GetNode(outer_add_name);
   ASSERT_NE(outer_add, nullptr);
-  EXPECT_EQ(outer_add->op(), "Add");
+  EXPECT_EQ(outer_add->op(), "AddV2");
   ASSERT_EQ(outer_add->input_size(), 2);
   EXPECT_EQ(outer_add->input(0), inner_add_name);
   EXPECT_EQ(outer_add->input(1), "b");
@@ -2384,7 +2384,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
       EXPECT_EQ(node.input(1), "y");
     } else if (node.name() == "Sub_x_negy") {
       ++found;
-      EXPECT_EQ(node.op(), "Add");
+      EXPECT_EQ(node.op(), "AddV2");
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "x");
       EXPECT_EQ(node.input(1), "y");

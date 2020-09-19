@@ -771,7 +771,7 @@ TEST(MaybeAddPrefixToColocationConstraints, Basic) {
                strings::StrCat(kColocationGroupPrefix, "Node3")},
               &node_def);
 
-  absl::flat_hash_set<string> match;
+  std::unordered_set<string> match;
   match.insert("Node1");
   match.insert("Node3");
   TF_ASSERT_OK(MaybeAddPrefixToColocationConstraints(match, "fn/", &node_def));
@@ -787,7 +787,7 @@ TEST(MaybeAddPrefixToColocationConstraints, NoConstraints) {
   node_def.set_name("Identity");
   node_def.set_op("Identity");
 
-  absl::flat_hash_set<string> match;
+  std::unordered_set<string> match;
   match.insert("Node1");
   match.insert("Node3");
   TF_ASSERT_OK(MaybeAddPrefixToColocationConstraints(match, "fn/", &node_def));

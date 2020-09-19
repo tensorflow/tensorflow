@@ -119,9 +119,11 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   TFLITE_DCHECK(node->user_data != nullptr);
   SoftmaxParams* data = static_cast<SoftmaxParams*>(node->user_data);

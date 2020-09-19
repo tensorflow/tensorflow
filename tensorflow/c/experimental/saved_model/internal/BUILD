@@ -245,14 +245,17 @@ tf_cc_test(
         "saved_model_api_test.cc",
     ],
     data = [
+        "//tensorflow/c/experimental/saved_model/internal/testdata:saved_models",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     deps = [
+        ":saved_model_api_type",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_api",
         "//tensorflow/c/experimental/saved_model/public:concrete_function",
         "//tensorflow/c/experimental/saved_model/public:saved_model_api",
         "//tensorflow/core:lib",

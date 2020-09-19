@@ -64,6 +64,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
 
   // Validate axis type
   const TfLiteTensor* axis = GetInput(context, node, 1);
+  TF_LITE_ENSURE(context, axis != nullptr);
   TF_LITE_ENSURE_TYPES_EQ(context, axis->type, kTfLiteInt32);
 
   if (input->type == kTfLiteInt8) {

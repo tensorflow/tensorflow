@@ -72,9 +72,9 @@ Status GetComputationCacheEntry(
   TF_RETURN_IF_ERROR(context->input("key", &key));
   profiler::TraceMe trace_me("TpuExecuteOp::LookupProto", /*level=*/2);
   if (!TensorShapeUtils::IsVector(key->shape()) ||
-      key->shape().dim_size(0) != 2) {
+      key->shape().dim_size(0) != 3) {
     return errors::InvalidArgument(
-        "Key argument to TPUExecute must be a 2-element vector");
+        "Key argument to TPUExecute must be a 3-element vector");
   }
 
   ResourceMgr* rmgr = GetTPUConfigResourceMgr();

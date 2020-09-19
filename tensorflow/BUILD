@@ -579,11 +579,6 @@ package_group(
     packages = ["//learning/pathways/..."],
 )
 
-# Packages that use composite tensors or dispatch.
-# TODO(b/154762408) Remove this package group once it's no longer needed.
-# If this is modified, then copy.bara.sky must also be modified.
-package_group(name = "composite_tensor_whitelist")
-
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
 package_group(

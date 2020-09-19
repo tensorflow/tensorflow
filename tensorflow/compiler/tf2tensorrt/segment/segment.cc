@@ -676,6 +676,21 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
       device_name);
 }
 
+bool OpBatchSizeExceedMaximumBatchSize(
+    const grappler::GraphProperties* graph_properties, const Node* node,
+    bool use_implicit_batch, absl::optional<int> maximum_batch_size) {
+  ClusterBatchSize cluster_batch_size =
+      GetClusterBatchSizeForNode(graph_properties, node, use_implicit_batch);
+  if (cluster_batch_size.HasStaticBatchValue() &&
+      maximum_batch_size.has_value() &&
+      cluster_batch_size.GetStaticBatchValue() > maximum_batch_size.value()) {
+    VLOG(2) << "OP batch size " << cluster_batch_size.GetStaticBatchValue()
+            << "  max_batch_size " << maximum_batch_size.value();
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 Status SegmentGraph(const Graph* tf_graph,
@@ -688,6 +703,10 @@ Status SegmentGraph(const Graph* tf_graph,
   if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
     return errors::Internal(
         "Explicit batch mode should allow dynamic non-batch dimensions");
+  }
+
+  if (options.use_implicit_batch && !options.maximum_batch_size.has_value()) {
+    return errors::Internal("Implicit batch mode requires maximum_batch_size");
   }
 
   if (!options.allow_dynamic_non_batch_dim && !graph_properties) {
@@ -768,6 +787,14 @@ Status SegmentGraph(const Graph* tf_graph,
             << "(Op type: " << node->tf_node()->type_string() << "), "
             << "(Op name: " << node->name() << ")";
         exclude_node("Denylisted with the env var TF_TRT_OP_DENYLIST");
+      } else if (OpBatchSizeExceedMaximumBatchSize(
+                     graph_properties, node->tf_node(),
+                     options.use_implicit_batch, options.maximum_batch_size)) {
+        LOG_WARNING_WITH_PREFIX
+            << "Implicit batch mode requires OP batch size not larger than "
+            << "the converter maximum batch size: "
+            << "(Op name: " << node->name() << ")";
+        exclude_node("OP batch size too large");
       } else {
         VLOG(2) << "Accepted as a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "

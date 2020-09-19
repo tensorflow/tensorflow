@@ -77,9 +77,9 @@ LogicalResult Verify<AllocRawOp>(AllocRawOp op) {
   return success();
 }
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"
-
 }  // namespace tf_framework
 }  // namespace kernel_gen
 }  // namespace mlir
+
+#define GET_OP_CLASSES
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"

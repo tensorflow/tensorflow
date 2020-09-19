@@ -100,9 +100,6 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
 // long as the caller ensures the indexing tensors are present.
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 StridedSliceContext* op_context) {
-  TF_LITE_ENSURE_EQ(context, GetTensorShape(op_context->begin).Dims(0),
-                    GetTensorShape(op_context->end).Dims(0));
-
   std::vector<int> output_shape_vector;
   StridedSliceParams op_params = BuildStridedSliceParams(op_context);
   RuntimeShape input_shape = GetTensorShape(op_context->input);

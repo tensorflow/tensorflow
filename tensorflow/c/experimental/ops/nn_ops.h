@@ -23,13 +23,17 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
-Status SparseSoftmaxCrossEntropyLoss(
+Status SparseSoftmaxCrossEntropyWithLogits(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
 Status ReluGrad(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status Relu(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
 }  // namespace ops
 }  // namespace tensorflow

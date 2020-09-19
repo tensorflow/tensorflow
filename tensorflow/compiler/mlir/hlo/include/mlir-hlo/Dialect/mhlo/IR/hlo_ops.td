@@ -27,7 +27,7 @@ include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
   let name = "mhlo";
-  let cppNamespace = "mhlo";
+  let cppNamespace = "::mlir::mhlo";
 }
 
 class HLO_Op<string mnemonic, list<OpTrait> traits> :
@@ -265,7 +265,9 @@ def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
 
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
-    BASE_HLO_SqrtOp;
+    BASE_HLO_SqrtOp {
+  let hasFolder = 1;
+}
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     [NoSideEffect, SameOperandsAndResultType],
@@ -676,9 +678,10 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
   let hasCanonicalizer = 1;
 }
 
-def HLO_CompareOp: HLO_Op<"compare",
-      [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]>,
-      BASE_HLO_CompareOp {
+def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
+    SameOperandsAndResultShape,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>]>, BASE_HLO_CompareOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -1150,7 +1153,10 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
 }
 
 // TODO(jpienaar): Add broadcastable trait.
-def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]>, BASE_HLO_SelectOp {
+def HLO_SelectOp: HLO_Op<"select", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>, DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    ]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,
     HLO_Tensor:$on_true,

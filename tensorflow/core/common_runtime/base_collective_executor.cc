@@ -218,6 +218,9 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   cem_->GetParamResolver()->StartAbort(s);
   remote_access_->StartAbort(s);
+  if (cem_->GetNcclCommunicator() != nullptr) {
+    cem_->GetNcclCommunicator()->StartAbort(s);
+  }
 }
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
@@ -270,8 +273,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
   core::ScopedUnref unref(col_impl);
   auto col_ctx = std::make_shared<CollectiveContext>(
-      this, dev_mgr_, ctx, CtxParams(ctx), col_params, exec_key, step_id_,
-      input, output);
+      this, cem_->GetNcclCommunicator(), dev_mgr_, ctx, CtxParams(ctx),
+      col_params, exec_key, step_id_, input, output);
   status = col_impl->InitializeCollectiveContext(col_ctx);
   if (!status.ok()) {
     done_safe(status);

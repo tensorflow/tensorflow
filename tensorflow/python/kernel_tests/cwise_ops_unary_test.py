@@ -405,7 +405,6 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(z, compute_f32(np.log), math_ops.log)
     self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
     self._compareCpu(y, np.sign, math_ops.sign)
-    self._compareCpu(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
     self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
     self._compareBoth(x, compute_f32(np.tan), math_ops.tan)

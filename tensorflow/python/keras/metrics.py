@@ -2824,7 +2824,7 @@ class MeanIoU(Metric):
     sum_over_col = math_ops.cast(
         math_ops.reduce_sum(self.total_cm, axis=1), dtype=self._dtype)
     true_positives = math_ops.cast(
-        array_ops.diag_part(self.total_cm), dtype=self._dtype)
+        array_ops.tensor_diag_part(self.total_cm), dtype=self._dtype)
 
     # sum_over_row + sum_over_col =
     #     2 * true_positives + false_positives + false_negatives.

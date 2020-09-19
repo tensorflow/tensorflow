@@ -1666,6 +1666,7 @@ tf_cuda_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
@@ -1738,6 +1739,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
@@ -1867,6 +1869,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
@@ -2265,6 +2268,9 @@ tf_cc_test(
     size = "small",
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "notsan",  #b/168811551
+    ],
     deps = [
         ":core",
         ":core_cpu",

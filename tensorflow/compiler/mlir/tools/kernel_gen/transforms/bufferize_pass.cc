@@ -79,7 +79,8 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<DynamicTensorFromElementsOp, ExtractElementOp,
-                        TensorFromElementsOp, TensorLoadOp, YieldOp>();
+                        TensorFromElementsOp, TensorLoadOp, YieldOp,
+                        TensorCastOp>();
     target.addDynamicallyLegalOp<TensorStoreOp>([&](TensorStoreOp op) {
       return !op.tensor().getType().isa<UnrankedTensorType>();
     });

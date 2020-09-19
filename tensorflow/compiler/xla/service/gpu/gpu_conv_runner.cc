@@ -84,11 +84,10 @@ Status RunGpuConvForward(GpuConvParams params,
         "StreamExecutor doesn't support scaled convolution: %lf.",
         params.conv_result_scale);
   }
-  stream->ThenConvolveWithAlgorithm(
+  return stream->ConvolveWithAlgorithm(
       params.input_descriptor, input_buf, params.filter_descriptor, filter_buf,
       params.conv_desc, params.output_descriptor, &output_buf,
       scratch_allocator, algorithm, options.profile_result);
-  return Status::OK();
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -123,15 +122,13 @@ Status RunGpuConvForwardActivation(GpuConvParams params,
     side_input = output_buf;
   }
 
-  stream->ThenFusedConvolveWithAlgorithm(
+  return stream->FusedConvolveWithAlgorithm(
       params.input_descriptor, input_buf, params.conv_result_scale,
       params.filter_descriptor, filter_buf, params.conv_desc, side_input,
       params.fusion->side_input_scale, bias_desc,
       DeviceMemory<BiasType>(params.fusion->bias_buf), params.fusion->mode,
       params.output_descriptor, &output_buf, scratch_allocator, algorithm,
       options.profile_result);
-
-  return Status::OK();
 }
 
 // StreamExecutor supports various data types via overloading, and the support
@@ -162,7 +159,7 @@ Status RunGpuConvInternalImpl(GpuConvParams params,
             "StreamExecutor doesn't support scaled convolution: %lf.",
             params.conv_result_scale);
       }
-      stream->ThenConvolveBackwardDataWithAlgorithm(
+      return stream->ConvolveBackwardDataWithAlgorithm(
           params.filter_descriptor, filter_buf, params.output_descriptor,
           output_buf, params.conv_desc, params.input_descriptor, &input_buf,
           scratch_allocator, algorithm, options.profile_result);
@@ -173,7 +170,7 @@ Status RunGpuConvInternalImpl(GpuConvParams params,
             "StreamExecutor doesn't support scaled convolution: %lf.",
             params.conv_result_scale);
       }
-      stream->ThenConvolveBackwardFilterWithAlgorithm(
+      return stream->ConvolveBackwardFilterWithAlgorithm(
           params.input_descriptor, input_buf, params.output_descriptor,
           output_buf, params.conv_desc, params.filter_descriptor, &filter_buf,
           scratch_allocator, algorithm, options.profile_result);

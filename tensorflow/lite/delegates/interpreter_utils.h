@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace delegates {
-#if !TFLITE_EXPERIMENTAL_RUNTIME_EAGER
 class InterpreterUtils {
  public:
   /// Invokes an interpreter with automatic fallback from delegation to CPU.
@@ -45,7 +44,6 @@ class InterpreterUtils {
   /// WARNING: This is an experimental API and subject to change.
   static TfLiteStatus InvokeWithCPUFallback(Interpreter* interpreter);
 };
-#endif  // !TFLITE_EXPERIMENTAL_RUNTIME_EAGER
 }  // namespace delegates
 }  // namespace tflite
 

@@ -1007,102 +1007,6 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
   return true;
 }  // namespace xla
 
-Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
-  // Try allocate same buffer for dynamic update slice's operand and output.
-
-  // If memory_space_assignment is run and there is information about a color in
-  // preset assignments, don't merge those buffers. We expect
-  // memory_space_assignment to have merged these buffers. If
-  // memory_space_assignment didn't merge these buffers and have assigned
-  // different offsets to the operand and the output buffer, merging the buffers
-  // can cause memory corruption if memory_space_assignment assigned a different
-  // buffer at the same offset.
-  absl::flat_hash_set<int64> excluded_colors;
-  if (preset_assignments_) {
-    for (const auto& color_and_info :
-         preset_assignments_->assignment_informations()) {
-      excluded_colors.insert(color_and_info.first);
-    }
-  }
-
-  // TODO(yunxing): Moving this logic to alias analysis and add must-alias rule
-  // to operations that can be done in place.
-  for (HloComputation* computation : assignment->module().computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (!(instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
-            (instruction->opcode() == HloOpcode::kFusion &&
-             (instruction->fused_expression_root()->opcode() ==
-              HloOpcode::kDynamicUpdateSlice)))) {
-        continue;
-      }
-      if (instruction->parent()->IsFusionComputation()) {
-        continue;
-      }
-      if (instruction->operand_count() == 0) {
-        continue;
-      }
-
-      // The operand can't share the same buffer with the user based on dataflow
-      // analysis.
-      if (!assignment->dataflow_analysis().CanShareOperandBufferWithUser(
-              instruction->mutable_operand(0), {}, instruction, {})) {
-        continue;
-      }
-      HloBuffer& instruction_buffer =
-          assignment->alias_analysis().GetUniqueBufferAt(instruction, {});
-
-      HloBuffer& operand_buffer =
-          assignment->alias_analysis().GetUniqueBufferAt(
-              instruction->operand(0), {});
-
-      // The instruction or operand color is excluded because it was assigned by
-      // memory_space_assignment.
-      if (excluded_colors.contains(instruction_buffer.color()) ||
-          excluded_colors.contains(operand_buffer.color())) {
-        continue;
-      }
-
-      // Already have the same buffer. No need to merge those.
-      if (instruction_buffer.id() == operand_buffer.id()) {
-        continue;
-      }
-
-      // Do not perform in-place dynamic update slice if the operand buffer is
-      // read-only.
-      if (HloBufferIsReadOnly(operand_buffer)) {
-        continue;
-      }
-
-      bool interfere = false;
-
-      for (const HloValue* instruction_value : instruction_buffer.values()) {
-        for (const HloValue* operand_value : operand_buffer.values()) {
-          if (assignment->hlo_ordering().MayInterfere(
-                  *instruction_value, *operand_value,
-                  assignment->dataflow_analysis())) {
-            interfere = true;
-            break;
-          }
-        }
-      }
-      if (interfere) {
-        continue;
-      }
-      if (assignment->alias_analysis().BufferLivesOut(instruction_buffer)) {
-        continue;
-      }
-      if (instruction_buffer.color() != operand_buffer.color()) {
-        continue;
-      }
-      VLOG(3) << "Merging inplace " << instruction_buffer << " and "
-              << operand_buffer;
-      assignment->alias_analysis().MergeBuffers(instruction_buffer,
-                                                operand_buffer);
-    }
-  }
-  return Status::OK();
-}
-
 Status BufferAssigner::AssignSingleHloBuffer(
     const HloBuffer* hlo_buffer, bool is_thread_local,
     absl::flat_hash_map<const HloComputation*,
@@ -1654,7 +1558,6 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3,
                  assignment->alias_analysis().dataflow_analysis().ToString());
-  TF_RETURN_IF_ERROR(MergeInplaceOpBuffers(assignment.get()));
 
   std::vector<const HloComputation*> thread_local_computations;
   std::vector<const HloComputation*> global_computations;

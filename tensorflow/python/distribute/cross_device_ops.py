@@ -35,6 +35,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
@@ -286,6 +287,88 @@ class CrossDeviceOps(object):
       experimental_hints = collective_util.Hints()
     return self.reduce_implementation(reduce_op, per_replica_value,
                                       destinations, experimental_hints)
+
+  def _gather(self,
+              per_replica_value,
+              destinations,
+              axis,
+              experimental_hints=None):
+    """Gather `per_replica_value` to `destinations`.
+
+    Args:
+      per_replica_value: a `tf.distribute.DistributedValues`, or a `tf.Tensor`
+        like object.
+      destinations: a `tf.distribute.DistributedValues`, a `tf.Variable`, a
+        `tf.Tensor` alike object, or a device string. It specifies the devices
+        to gather to. To perform an all-gather, pass the same to `value` and
+        `destinations`. Note that if it's a `tf.Variable`, the value is gathered
+        to the devices of that variable, and this method doesn't update the
+        variable.
+      axis: specifies the dimension to gather along within each replica's
+        tensor.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. See
+        `tf.distribute.experimental.CollectiveHints` for details.
+
+    Returns:
+      A `tf.Tensor` or `tf.distribute.DistributedValues`
+
+    Raises:
+      ValueError: if per_replica_value can't be converted to a
+        `tf.distribute.DistributedValues` or if destinations is not a string,
+        `tf.Variable` or `tf.distribute.DistributedValues`.
+    """
+    if isinstance(per_replica_value, ops.IndexedSlices):
+      raise NotImplementedError("gather/all_gather does not support "
+                                "IndexedSlices")
+    if experimental_hints is None:
+      experimental_hints = collective_util.Hints()
+
+    if not isinstance(per_replica_value, value_lib.DistributedValues):
+      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+
+    validate_destinations(destinations)
+
+    # Shortcut if `per_replica_value` only contains one value.
+    if self._num_between_graph_workers == 1 and len(
+        per_replica_value.values) == 1 and _devices_match(
+            per_replica_value, destinations):
+      with ops.device(per_replica_value.values[0].device):
+        v = array_ops.identity(per_replica_value.values[0])
+      return distribute_utils.regroup((v,), wrap_class=value_lib.Mirrored)
+
+    return self._gather_implementation(per_replica_value, destinations, axis,
+                                       experimental_hints)
+
+  def _gather_implementation(self, per_replica_value, destinations, axis,
+                             experimental_hints):
+    """Implementation of `gather` method of `tf.distribute.CrossDeviceOps`.
+
+    Overriding this method is useful for subclass implementers.
+
+    Args:
+      per_replica_value: a `tf.distribute.DistributedValues`, or a `tf.Tensor`
+        like object.
+      destinations: a `tf.distribute.DistributedValues`, a `tf.Variable`, a
+        `tf.Tensor` alike object, or a device string. It specifies the devices
+        to gather to. To perform an all-gather, pass the same to `value` and
+        `destinations`. Note that if it's a `tf.Variable`, the value is gathered
+        to the devices of that variable, this method doesn't update the
+        variable.
+      axis: specifies the dimension to gather along within each replica's
+        tensor.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. See
+        `tf.distribute.experimental.CollectiveHints` for details.
+
+    Returns:
+      A `tf.Tensor` or `tf.distribute.DistributedValues`.
+
+    Raises:
+      ValueError: if per_replica_value can't be converted to a
+        `tf.distribute.DistributedValues` or if destinations is not a string,
+        `tf.Variable` or `tf.distribute.DistributedValues`.
+    """
+    raise NotImplementedError(
+        "_gather method must be implemented in descendants.")
 
   def batch_reduce(self,
                    reduce_op,
@@ -913,7 +996,7 @@ class CollectiveAllReduce(CrossDeviceOps):
     # cross_device_utils.build_collectve_*.
     #
     # In a multi threaded eager program we need to ensure different groups of
-    # collectives don't interleave each other, otherwise there couuld be
+    # collectives don't interleave each other, otherwise there could be
     # deadlocks. E.g. if two user threads both are launching collectives:
     #   user-thread-0  device0                 device1
     #   user-thread-1          device0 device1
@@ -1126,6 +1209,84 @@ class CollectiveAllReduce(CrossDeviceOps):
         for i, v in enumerate(value):
           with ops.device(v.device):
             value[i].values = value[i].values / self._group_size
+      mirrored.append(
+          distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
+    return mirrored
+
+  def _gather_implementation(self, per_replica_value, destinations, axis,
+                             experimental_hints):
+    all_gathered = self._batch_all_gather([per_replica_value], axis,
+                                          experimental_hints)[0]
+    devices = get_devices_from(destinations)
+
+    if _devices_match(per_replica_value, destinations):
+      return all_gathered
+
+    # Convert `all_gathered` to a `Mirrored` object, as a simple and uniform
+    # utility to access component for a particular device.
+    if not isinstance(all_gathered, value_lib.Mirrored):
+      all_gathered = value_lib.Mirrored([all_gathered])
+
+    # If we got this far, the destination devices do not match the all-gather
+    # devices, so we must map from one to the other.
+    index = []
+    # We must add these control dependencies, otherwise we can get deadlock.
+    with ops.control_dependencies(all_gathered.values):
+      for d in devices:
+        with ops.device(d):
+          for v in all_gathered.values:
+            if v.device == d:
+              index.append(array_ops.identity(v))
+              break
+            else:
+              index.append(array_ops.identity(all_gathered._primary))  # pylint: disable=protected-access
+    return distribute_utils.regroup(index, wrap_class=value_lib.Mirrored)
+
+  def _batch_all_gather(self, per_replica_values, axis, experimental_hints):
+    """all gather multiple per-replica-values."""
+    batch_size = len(per_replica_values)
+    # Pass self._communication to the runtime as a communication hint.
+    communication = self._communication.value
+    # For now, we use NCCL only when batch_size > 1.
+    # TODO(b/132575814): switch to NCCL for all collectives when communication
+    # is NCCL.
+    if self._communication == CollectiveCommunication.NCCL and batch_size == 1:
+      communication = CollectiveCommunication.AUTO.value
+
+    logging.log_first_n(
+        logging.INFO, "Collective batch_all_gather: %d all-gathers, "
+        "num_devices = %d, group_size = %d, communication_hint = %s, " %
+        (batch_size, len(self._devices), self._group_size, communication), 10)
+
+    def compute_gathered_values():
+      gathered_values = []
+      with self._lock, ops.name_scope("allgather"):
+        for per_replica in per_replica_values:
+          if (communication == CollectiveCommunication.NCCL.value and
+              gathered_values):
+            control_inputs = list(gathered_values[-1])
+          else:
+            control_inputs = None
+          gathered_values.append(
+              cross_device_utils.build_collective_gather(
+                  per_replica.values,
+                  self._devices,
+                  self._group_size,
+                  self._collective_keys,
+                  axis,
+                  communication,
+                  control_inputs,
+                  timeout=experimental_hints.timeout_seconds))
+      return gathered_values
+
+    if context.executing_eagerly():
+      gathered_values = def_function.function(compute_gathered_values)()
+    else:
+      gathered_values = compute_gathered_values()
+
+    mirrored = []
+    # Reverse the order of gathered value to recover the order in the input.
+    for value in reversed(gathered_values):
       mirrored.append(
           distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
     return mirrored

@@ -563,7 +563,7 @@ class TFETest(test_util.TensorFlowTestCase):
     context.context().executor.clear_error()
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Device placement not implemented.')
+  @test_util.disable_tfrt('Device placement policy not configurable yet.')
   def testCopyScope(self):
     constant = constant_op.constant(1.0)
     with ops.device('gpu:0'):
@@ -686,7 +686,6 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.int32.as_datatype_enum))[0]
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Device placement not implemented yet.')
   def testMatMulGPU(self):
     three = constant_op.constant([[3.]]).gpu()
     five = constant_op.constant([[5.]]).gpu()
@@ -697,6 +696,19 @@ class TFETest(test_util.TensorFlowTestCase):
         attrs=('transpose_a', False, 'transpose_b', False, 'T',
                three.dtype.as_datatype_enum))[0]
     self.assertAllEqual([[15.0]], product)
+
+  @test_util.run_gpu_only
+  def testMatMulGPUCopyToCPU(self):
+    three = constant_op.constant([[3.]]).gpu()
+    five = constant_op.constant([[5.]]).gpu()
+    with ops.device('CPU:0'):
+      product = execute(
+          b'MatMul',
+          num_outputs=1,
+          inputs=[three, five],
+          attrs=('transpose_a', False, 'transpose_b', False, 'T',
+                 three.dtype.as_datatype_enum))[0]
+      self.assertAllEqual([[15.0]], product)
 
   def testExecuteStringAttr(self):
     checked_three = execute(

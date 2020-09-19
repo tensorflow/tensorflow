@@ -291,6 +291,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("RandomGammaGrad", &RandomGammaGrad, py::arg("a"), py::arg("x"));
   ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, py::arg("a"),
           py::arg("b"), py::arg("x"));
+  ops.def("Zeta", &Zeta, py::arg("x"), py::arg("q"));
 
 #define BINARY_OP(op)                                                 \
   ops.def(                                                            \

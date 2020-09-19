@@ -55,6 +55,10 @@ class WrapperDataset : public DatasetBase {
 
   string DebugString() const override { return "WrapperDataset"; }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
@@ -243,6 +247,12 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // TODO(rachelim): this might be wrong if the ratio is not fixed, for
       // example, from a BatchDataset with drop_remainder = False
       return static_cast<double>(n) * ratio_numerator_ / ratio_denominator_;
+    }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
     }
 
     Status CheckExternalState() const override {

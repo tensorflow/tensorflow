@@ -1024,14 +1024,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
               : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
       ProfileResult profile_result;
-      bool cudnn_launch_status =
-          stream
-              ->ThenConvolveWithAlgorithm(
-                  input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                  output_desc, &output_tensor, allocator_used,
-                  AlgorithmConfig(profile_algorithm), &profile_result)
-              .ok();
-      if (cudnn_launch_status && profile_result.is_valid()) {
+      auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+          input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+          output_desc, &output_tensor, allocator_used,
+          AlgorithmConfig(profile_algorithm), &profile_result);
+      if (cudnn_launch_status.ok() && profile_result.is_valid()) {
         results.emplace_back();
         auto& result = results.back();
         result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -1083,17 +1080,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-        bool miopen_launch_status = false;
-        miopen_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm,
-                                    miopen_algorithm.scratch_size()),
-                    &profile_result)
-                .ok();
-        if (miopen_launch_status && profile_result.is_valid()) {
+        auto miopen_launch_status = stream->ConvolveWithAlgorithm(
+            input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+            output_desc, &output_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
+            &profile_result);
+        if (miopen_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();
           result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -1121,18 +1113,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
           << algorithm_config.algorithm()->tensor_ops_enabled();
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-  bool cudnn_launch_status =
-      stream
-          ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                      filter_ptr, conv_desc, output_desc,
-                                      &output_ptr, &scratch_allocator,
-                                      algorithm_config, nullptr)
-          .ok();
+  auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
+      &output_ptr, &scratch_allocator, algorithm_config, nullptr);
 
-  if (!cudnn_launch_status) {
-    ctx->SetStatus(errors::Internal(
-        "cuDNN launch failure : input shape(", input.shape().DebugString(),
-        ") filter shape(", filter.shape().DebugString(), ")"));
+  if (!cudnn_launch_status.ok()) {
+    ctx->SetStatus(cudnn_launch_status);
   }
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {

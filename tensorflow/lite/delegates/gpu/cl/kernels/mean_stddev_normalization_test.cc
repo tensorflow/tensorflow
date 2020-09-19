@@ -104,6 +104,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
   };
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps =
+          precision == CalculationsPrecision::F32 ? 2.53e-05f : 3.57e-4f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -128,8 +130,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, small variance
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
       };
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(3.57e-4f), expected_output));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected_output))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }
@@ -153,6 +155,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps =
+          precision == CalculationsPrecision::F32 ? 0.0f : 8.60e-4f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -175,8 +179,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
         expected_output[i + 0] = +expected_elem;
         expected_output[i + 1] = -expected_elem;
       }
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(1.17e-4f), expected_output));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected_output))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }

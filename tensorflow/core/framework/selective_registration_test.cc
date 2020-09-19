@@ -30,9 +30,9 @@ STORE_NEXT_ID(kNextId1);
 STORE_NEXT_ID(kNextId2);
 
 TEST(NewIdForInitTest, SequentialIds) {
-  static_assert(kBaseId >= 0);
-  static_assert(kNextId1 == kBaseId + 1);
-  static_assert(kNextId2 == kBaseId + 2);
+  static_assert(kBaseId >= 0, "kBaseId < 0");
+  static_assert(kNextId1 == kBaseId + 1, "kNextId1 != kBaseId+1");
+  static_assert(kNextId2 == kBaseId + 2, "kNextId2 != kBaseId+2");
 }
 
 int observed_unconditional_init;

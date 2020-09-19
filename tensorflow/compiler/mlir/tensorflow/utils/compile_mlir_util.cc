@@ -29,9 +29,9 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -401,27 +402,6 @@ Status CompileMlirToXlaHlo(
   return Status::OK();
 }
 
-Status ParseMlirModule(llvm::StringRef mlir_module_string,
-                       mlir::MLIRContext* mlir_context,
-                       mlir::OwningModuleRef* mlir_module) {
-  TF_RET_CHECK(!mlir_module_string.empty())
-      << "unexpected empty serialized MLIR module string";
-  TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
-
-  // Make sure we catch any error reported by MLIR and forward it to the TF
-  // error reporting system.
-  mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
-
-  // Parse the module.
-  *mlir_module = mlir::parseSourceString(mlir_module_string, mlir_context);
-  if (!*mlir_module) {
-    return error_handler.Combine(
-        errors::InvalidArgument("could not parse MLIR module"));
-  }
-
-  return Status::OK();
-}
-
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args,
@@ -434,7 +414,7 @@ Status CompileSerializedMlirToXlaHlo(
   mlir::OwningModuleRef mlir_module;
 
   TF_RETURN_IF_ERROR(
-      ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
+      DeserializeMlirModule(mlir_module_string, &mlir_context, &mlir_module));
   llvm::SmallVector<TensorOrResourceShape, 4> tensor_or_resource_shapes;
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)

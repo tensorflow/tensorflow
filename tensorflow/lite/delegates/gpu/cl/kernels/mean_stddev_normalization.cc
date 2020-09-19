@@ -36,8 +36,16 @@ std::string GetVectorReduceCode() {
 
 std::string GetReduceCode() {
   // If it is supported, use the built-in work_group_reduce_add function.
-  // Otherwise, implement a reduction using __local memory. Note this only works
-  // with power-of-two work group sizes.
+  // Otherwise, implement a reduction using __local memory.
+
+  // In the reduction step add upper half of the still-to-be-summed vector to
+  // the lower half, while taking care of odd sizes and rounding. E.g.:
+  // Number of items still to be summed before: 5
+  // Local memory before: [a, b, c, d, e];
+  // Local memory after: [a+d, b+e, c, d, e];
+  // Threads doing work: id < 2 = floor(5/2)
+  // Offset to the added items: 3 = ceil(5/2)
+  // Number of items still to be summed after: 3 = ceil(5/2)
   return R"(
 #if (__OPENCL_C_VERSION__ >= 200) && (__OPENCL_C_VERSION__ < 300) && \
   !defined(__opencl_c_work_group_collective_functions)
@@ -54,18 +62,11 @@ static inline float local_reduce(float item, __local float* tmp) {
   // The number of items still need to be summed
   int reduction_size = get_local_size(0);
   while (reduction_size > 1) {
-    // Reduction step: add upper half of the still-to-be-summed vector to the
-    // lower half, while taking care of odd sizes and rounding. E.g.:
-    // Number of items still to be summed before: 5
-    // Local memory before: [a, b, c, d, e];
-    // Local memory after: [a+d, b+e, c, d, e];
-    // Threads doing work: id < 2 = floor(5/2)
-    // Offset to the added items: 3 = ceil(5/2)
-    // Number of items still to be summed after: 3 = ceil(5/2)
     const int active_thread_limit = reduction_size / 2;
     const int offset = (reduction_size + 1) / 2;
     if (local_id < active_thread_limit) {
-      tmp[local_id] += tmp[local_id + offset];
+      item += tmp[local_id + offset];
+      tmp[local_id] = item;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
     reduction_size = offset;

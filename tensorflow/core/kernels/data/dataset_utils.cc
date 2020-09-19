@@ -618,34 +618,35 @@ VariantTensorDataReader::VariantTensorDataReader(
   }
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
+Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) const {
   return ReadScalarInternal(key, val);
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, tstring* val) {
+Status VariantTensorDataReader::ReadScalar(StringPiece key,
+                                           tstring* val) const {
   return ReadScalarInternal(key, val);
 }
 
-Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
+Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) const {
   return ReadTensorInternal(key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           int64* val) {
+                                           int64* val) const {
   return ReadScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           tstring* val) {
+                                           tstring* val) const {
   return ReadScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensor(StringPiece name, StringPiece key,
-                                           Tensor* val) {
+                                           Tensor* val) const {
   return ReadTensorInternal(name, key, val);
 }
 
-bool VariantTensorDataReader::Contains(StringPiece key) {
+bool VariantTensorDataReader::Contains(StringPiece key) const {
   string name;
   if (!GetIteratorName(key, &name).ok()) {
     return false;
@@ -653,20 +654,26 @@ bool VariantTensorDataReader::Contains(StringPiece key) {
   return Contains(name, key);
 }
 
-bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) {
+bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) const {
   string name(n);
-  return map_[name].find(string(key)) != map_[name].end();
+  auto it = map_.find(name);
+  if (it == map_.end()) {
+    return false;
+  }
+  const auto& bucket = it->second;
+  return bucket.find(string(key)) != bucket.end();
 }
 
 template <typename T>
-Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
+Status VariantTensorDataReader::ReadScalarInternal(StringPiece key,
+                                                   T* val) const {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return ReadScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
-                                                   Tensor* val) {
+                                                   Tensor* val) const {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return ReadTensorInternal(name, key, val);
@@ -674,23 +681,36 @@ Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
 
 template <typename T>
 Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
-                                                   StringPiece key, T* val) {
+                                                   StringPiece key,
+                                                   T* val) const {
   string name(n);
-  if (map_[name].find(string(key)) == map_[name].end()) {
+  auto it = map_.find(name);
+  if (it == map_.end()) {
+    return errors::NotFound(name);
+  }
+  const auto& bucket = it->second;
+  auto key_it = bucket.find(string(key));
+  if (key_it == bucket.end()) {
     return errors::NotFound(key);
   }
-  *val = data_[name]->tensors(map_[name][string(key)]).scalar<T>()();
+  *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
   return Status::OK();
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(StringPiece n,
                                                    StringPiece key,
-                                                   Tensor* val) {
+                                                   Tensor* val) const {
   string name(n);
-  if (map_[name].find(string(key)) == map_[name].end()) {
+  auto it = map_.find(name);
+  if (it == map_.end()) {
+    return errors::NotFound(name);
+  }
+  const auto& bucket = it->second;
+  auto key_it = bucket.find(string(key));
+  if (key_it == bucket.end()) {
     return errors::NotFound(key);
   }
-  *val = data_[name]->tensors(map_[name][string(key)]);
+  *val = data_.at(name)->tensors(key_it->second);
   return Status::OK();
 }
 

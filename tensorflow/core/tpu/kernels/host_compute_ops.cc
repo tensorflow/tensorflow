@@ -58,9 +58,9 @@ class RecvAtHostOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         ctx,
         TensorShapeUtils::IsVector(input.shape()) &&
-            input.shape().dim_size(0) == 2,
+            input.shape().dim_size(0) == 3,
         errors::InvalidArgument("Input shape ", input.shape().DebugString(),
-                                " is not a vector of length 2."),
+                                " is not a vector of length 3."),
         done);
     const string rendezvous_key_base = input.vec<tstring>()(1);
     OP_REQUIRES_ASYNC(
@@ -164,10 +164,10 @@ class SendFromHostOp : public OpKernel {
     const Tensor& key_input = ctx->input(ctx->num_inputs() - 1);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(key_input.shape()) &&
-                    key_input.shape().dim_size(0) == 2,
+                    key_input.shape().dim_size(0) == 3,
                 errors::InvalidArgument("Key input shape ",
                                         key_input.shape().DebugString(),
-                                        " is not a vector of length 2."));
+                                        " is not a vector of length 3."));
     const string rendezvous_key_base = key_input.vec<tstring>()(1);
     OP_REQUIRES(
         ctx, ctx->rendezvous() != nullptr,

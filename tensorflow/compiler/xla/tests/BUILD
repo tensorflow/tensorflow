@@ -2676,6 +2676,7 @@ xla_test(
 xla_test(
     name = "cholesky_test",
     srcs = ["cholesky_test.cc"],
+    real_hardware_only = True,
     tags = [
         "no_rocm",
         "optonly",

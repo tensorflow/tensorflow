@@ -358,7 +358,7 @@ class TTParameters(object):
     int_list = []
     found, flag_value = self.get_flag_value(wanted_flag_name)
 
-    if found:
+    if found and flag_value:
       try:
         integer_values = flag_value.split(',')
         int_list = [int(int_val) for int_val in integer_values]

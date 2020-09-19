@@ -86,7 +86,7 @@ def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
     "types must be broadcastable">;
 
 class DirectBinaryPat<Op FromOp, Op ToOp>
-  : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+  : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_AddOp, HLOClient_BroadcastAddOp],
@@ -586,6 +586,7 @@ foreach Mapping = [
                    [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SigmoidOp, HLO_LogisticOp],
+                   [TF_SinhOp, HLOClient_SinhOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],

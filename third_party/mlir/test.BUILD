@@ -180,6 +180,7 @@ cc_library(
         ":TestDialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:GPUDialect",

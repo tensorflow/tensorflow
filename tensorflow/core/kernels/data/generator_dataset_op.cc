@@ -74,6 +74,10 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(init_func_->CheckExternalState());
     TF_RETURN_IF_ERROR(next_func_->CheckExternalState());

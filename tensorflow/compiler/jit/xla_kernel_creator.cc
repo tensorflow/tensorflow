@@ -30,47 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/ptr_util.h"
 
-namespace {
-
-// Utility which searches for values in a sorted list by scanning over it once.
-// No matter how many times ScanForValue is called, the list is scanned at most
-// once. However, if a call to ScanForValue skips over a value, that value is
-// not revisited in future calls to ScanForValue, so callers must take
-// care to order their calls.
-//
-// Useful for merging multiple sorted lists in O(n) time.
-class SinglePassSearch {
- public:
-  // Creates a SinglePassSearch object that can be used to search in `values`.
-  // Does not take ownership of `values`. `values` must outlive this.
-  // `values` must be sorted.
-  explicit SinglePassSearch(const std::vector<int>* values)
-      : current_index_(0), values_(values) {}
-
-  // Scans forward in the vector looking for "value", updating the internal
-  // position in to the vector.
-  // Returns true iff the vector contains the given value at or after current
-  // position.
-  // Not thread-safe.
-  bool ScanForValue(int value) {
-    while (current_index_ < values_->size() &&
-           (*values_)[current_index_] <= value) {
-      if ((*values_)[current_index_] == value) {
-        current_index_++;
-        return true;
-      }
-      current_index_++;
-    }
-    return false;
-  }
-
- private:
-  int current_index_;
-  const std::vector<int>* values_;
-};
-
-}  // end namespace
-
 namespace tensorflow {
 
 bool XlaKernelCreator::CanCreateKernel(
@@ -130,52 +89,9 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
       flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
 
-  // Set input and output memory types.
-  MemoryTypeVector input_memory_types(fbody->arg_types.size(), DEVICE_MEMORY);
-  // These indices are used only for optimization purposes. They allow us
-  // to loop over constant_arg_indices and resource_arg_indices only once
-  // while iterating over all the function arguments checking if it is a
-  // resource or a constant.
-  // The reason we optimized this code is because functions can have a lot of
-  // captured arguments. For example, the backward pass of ResNet50 takes in all
-  // 214 variables and a similar number of activations.
-  SinglePassSearch constants_search(&constant_arg_indices);
-  SinglePassSearch resources_search(&resource_arg_indices);
-  for (size_t i = 0; i < fbody->arg_types.size(); ++i) {
-    if (resources_search.ScanForValue(i) || constants_search.ScanForValue(i)) {
-      // Compile-time constants and resource handles are expected to be in
-      // host memory.
-      input_memory_types[i] = HOST_MEMORY;
-    }
-  }
-  // One might wonder, about the case where a compile-time constant argument
-  // (which must be in host memory) is also used as an input into an op,
-  // e.g. Add, that expects its inputs in device memory. Here is how it
-  // works now.
-  // First, what do we mean by "op expects an input in XYZ memory"?
-  // There are two types of "ops" here: the tf2xla kernel and the HLO
-  // computation it builds. The tf2xla kernel needs to retrieve the actual
-  // numeric value of the compile-time constant tensors, so it really expects
-  // them to be on in host memory. However, for other inputs, it refers to them
-  // using xla::ComputationDataHandle, which is just a symbolic handle that
-  // xla::ComputationBuilder assigns. How does this handle gets assigned for
-  // constant arguments? Even constant arguments get an _Arg node in the graph
-  // instantiated for Function compilation. The tf2xla kernel for constant _Arg
-  // nodes takes the constant value, converts it to XlaLiteral, and feeds it
-  // to xla::ComputationBuilder.ConstantLiteral, which returns the handle. This
-  // constant XlaLiteral is included in the HLO graph, and subsequently, in
-  // the actual executable, which is copied to the device before being
-  // executed. Thus, when this executable runs, the constant is available in
-  // device memory.
-
-  // XlaLaunch kernel keeps all outputs (including constants, which it copies),
-  // in device memory except for resources.
-  MemoryTypeVector output_memory_types(fbody->ret_types.size(), DEVICE_MEMORY);
-  for (size_t i = 0; i < fbody->ret_types.size(); ++i) {
-    if (fbody->ret_types[i] == DT_RESOURCE) {
-      output_memory_types[i] = HOST_MEMORY;
-    }
-  }
+  MemoryTypeVector input_memory_types =
+      GetInputMemoryTypes(fbody, constant_arg_indices, resource_arg_indices);
+  MemoryTypeVector output_memory_types = GetOutputMemoryTypes(fbody);
 
   // Create the kernel.
   Device* dev = flr->device();

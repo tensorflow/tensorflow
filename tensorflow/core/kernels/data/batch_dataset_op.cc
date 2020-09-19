@@ -117,6 +117,11 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }

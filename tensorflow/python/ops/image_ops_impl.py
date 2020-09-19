@@ -534,7 +534,7 @@ def flip_left_right(image):
 
   Outputs the contents of `image` flipped along the width dimension.
 
-  See also `reverse()`.
+  See also `tf.reverse`.
 
   Usage Example:
 

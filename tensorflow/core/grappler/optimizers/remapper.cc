@@ -366,9 +366,9 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 
 bool IsSupportedActivation(const NodeDef& node) {
 #ifdef INTEL_MKL
-  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsTanh(node);
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node) ||
+         IsTanh(node);
 #else
-  // Disable LeakyRelu temporarily before MKL PR is merged.
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
 #endif
 }

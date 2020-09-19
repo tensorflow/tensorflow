@@ -39,7 +39,9 @@ tf_py_test(
     deps = [
         ":server_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/profiler:profiler_client",
     ],
 )
 

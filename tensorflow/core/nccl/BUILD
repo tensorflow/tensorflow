@@ -3,14 +3,16 @@
 #   APIs are meant to change over time.
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
@@ -76,4 +78,29 @@ tf_cuda_cc_test(
         "@local_config_rocm//rocm:rccl",
         "//tensorflow/core/common_runtime/gpu:rocm",
     ]),
+)
+
+cc_library(
+    name = "collective_communicator",
+    srcs = ["collective_communicator.cc"],
+    hdrs = ["collective_communicator.h"],
+    copts = tf_copts() + if_nccl(["-DTENSORFLOW_USE_NCCL=1"]),
+    visibility = [
+        "//learning/brain/runtime:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    deps =
+        ["//tensorflow/core:framework"] + if_nccl([
+            ":nccl_lib",
+            "@com_google_absl//absl/memory",
+            "//tensorflow/core/profiler/lib:traceme",
+        ]),
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "collective_communicator.cc",
+        "collective_communicator.h",
+    ],
 )

@@ -39,7 +39,7 @@ def TFL_Dialect : Dialect {
       represented using zero-dimensional tensors);
   }];
 
-  let cppNamespace = "TFL";
+  let cppNamespace = "::mlir::TFL";
 }
 
 //===----------------------------------------------------------------------===//
