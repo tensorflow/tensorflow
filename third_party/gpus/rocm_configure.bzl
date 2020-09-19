@@ -27,6 +27,7 @@ load(
     "get_bash_bin",
     "get_cpu_value",
     "get_host_environ",
+    "get_python_bin",
     "raw_exec",
     "realpath",
     "which",
@@ -212,20 +213,6 @@ def _enable_rocm(repository_ctx):
         return True
     return False
 
-def _rocm_toolkit_path(repository_ctx, bash_bin):
-    """Finds the rocm toolkit directory.
-
-    Args:
-      repository_ctx: The repository context.
-
-    Returns:
-      A speculative real path of the rocm toolkit install directory.
-    """
-    rocm_toolkit_path = get_host_environ(repository_ctx, _ROCM_TOOLKIT_PATH, _DEFAULT_ROCM_TOOLKIT_PATH)
-    if files_exist(repository_ctx, [rocm_toolkit_path], bash_bin) != [True]:
-        auto_configure_fail("Cannot find rocm toolkit path.")
-    return rocm_toolkit_path
-
 def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
     """Returns a list of strings representing AMDGPU targets."""
     amdgpu_targets_str = get_host_environ(repository_ctx, _TF_ROCM_AMDGPU_TARGETS)
@@ -402,7 +389,20 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
 
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
-def _get_rocm_config(repository_ctx, bash_bin):
+def _exec_find_rocm_config(repository_ctx, script_path):
+    python_bin = get_python_bin(repository_ctx)
+    return execute(repository_ctx, [python_bin, script_path])
+
+def find_rocm_config(repository_ctx, script_path):
+    """Returns ROCm config dictionary from running find_rocm_config.py"""
+    exec_result = _exec_find_rocm_config(repository_ctx, script_path)
+    if exec_result.return_code:
+        auto_configure_fail("Failed to run find_rocm_config.py: %s" % err_out(exec_result))
+
+    # Parse the dict from stdout.
+    return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
+
+def _get_rocm_config(repository_ctx, bash_bin, find_rocm_config_script):
     """Detects and returns information about the ROCm installation on the system.
 
     Args:
@@ -413,11 +413,21 @@ def _get_rocm_config(repository_ctx, bash_bin):
       A struct containing the following fields:
         rocm_toolkit_path: The ROCm toolkit installation directory.
         amdgpu_targets: A list of the system's AMDGPU targets.
+        rocm_version_number: The version of ROCm on the system.
+        miopen_version_number: The version of MIOpen on the system.
+        hipruntime_version_number: The version of HIP Runtime on the system.
     """
-    rocm_toolkit_path = _rocm_toolkit_path(repository_ctx, bash_bin)
+    config = find_rocm_config(repository_ctx, find_rocm_config_script)
+    rocm_toolkit_path = config["rocm_toolkit_path"]
+    rocm_version_number = config["rocm_version_number"]
+    miopen_version_number = config["miopen_version_number"]
+    hipruntime_version_number = config["hipruntime_version_number"]
     return struct(
-        rocm_toolkit_path = rocm_toolkit_path,
         amdgpu_targets = _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin),
+        rocm_toolkit_path = rocm_toolkit_path,
+        rocm_version_number = rocm_version_number,
+        miopen_version_number = miopen_version_number,
+        hipruntime_version_number = hipruntime_version_number,
     )
 
 def _tpl_path(repository_ctx, labelname):
@@ -550,8 +560,10 @@ def _create_local_rocm_repository(repository_ctx):
         "rocm:rocm_config.h",
     ]}
 
+    find_rocm_config_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"))
+
     bash_bin = get_bash_bin(repository_ctx)
-    rocm_config = _get_rocm_config(repository_ctx, bash_bin)
+    rocm_config = _get_rocm_config(repository_ctx, bash_bin, find_rocm_config_script)
 
     # Copy header and library files to execroot.
     # rocm_toolkit_path
@@ -749,6 +761,9 @@ def _create_local_rocm_repository(repository_ctx):
                 ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
             ),
             "%{rocm_toolkit_path}": rocm_config.rocm_toolkit_path,
+            "%{rocm_version_number}": rocm_config.rocm_version_number,
+            "%{miopen_version_number}": rocm_config.miopen_version_number,
+            "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
         },
     )
 
