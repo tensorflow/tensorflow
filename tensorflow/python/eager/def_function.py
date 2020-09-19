@@ -773,7 +773,41 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
-  def _get_tracing_count(self):
+  def experimental_get_tracing_count(self):
+    """Returns the number of times the function has been traced.
+
+    A function may be traced more than once.
+
+    For example, as of now a function that was traced using the
+    tf.function decorator would be retraced if called with arguments
+    of different types wrt any previous call of said function.
+    
+    For example if this function is defined:
+
+    ```@tf.function
+    def double(a):
+      return a + a
+    ```
+
+    and then it is called like this:
+
+    ```print(double(tf.constant(1)))
+    print(double(tf.constant(2)))
+    double.experimental_get_tracing_count()
+    ```
+
+    then the last line would return 1, as the function is traced the first
+    time it is called, and the second time the same graph is used since
+    we're calling it with an int parameter. If, afterwards, we run this:
+
+    ```print(double(tf.constant("a")))
+    double.experimental_get_tracing_count()
+    ```
+
+    then this time the last line returns 2, as we called double with a
+    different argument type, and so it was traced again.
+
+    """
     result = self._stateless_fn.tracing_count if self._stateless_fn else 0
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
@@ -784,11 +818,11 @@ class Function(object):
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
-    tracing_count = self._get_tracing_count()
+    tracing_count = self.experimental_get_tracing_count()
     with trace.Trace(self._name) as tm:
       result = self._call(*args, **kwds)
       compiler = "xla" if self._experimental_compile else "nonXla"
-      new_tracing_count = self._get_tracing_count()
+      new_tracing_count = self.experimental_get_tracing_count()
       without_tracing = (tracing_count == new_tracing_count)
       execution_mode = "notTraced" if without_tracing else "traced"
       tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
