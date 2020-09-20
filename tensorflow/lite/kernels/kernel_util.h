@@ -46,7 +46,6 @@ inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
     return nullptr;
   }
   TfLiteTensor* tensor = &context->tensors[tensor_index];
->>>>>>> d8f8236c29 ([tflite] Test for `kTfLiteOptionalTensor` in `GetInput`.)
   return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
