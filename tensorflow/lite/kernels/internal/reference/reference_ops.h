@@ -2658,6 +2658,9 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
     // Handle negative index.
     int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
     TFLITE_DCHECK(current >= 0 && current < num_dims);
+    if (current < 0 || current >= num_dims) {
+      return false;
+    }
     bool is_dup = false;
     for (int j = 0; j < *out_num_axis; ++j) {
       if (out_axis[j] == current) {
