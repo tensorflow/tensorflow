@@ -74,6 +74,7 @@ TfLiteRegistration Register_RESHAPE();
 TfLiteRegistration Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration Register_ROUND();
 TfLiteRegistration Register_RSQRT();
+TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SIN();
 TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPLIT();
