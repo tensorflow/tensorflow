@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/function.proto.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/path.h"
