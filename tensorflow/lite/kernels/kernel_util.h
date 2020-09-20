@@ -30,27 +30,48 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 }
 inline const TfLiteTensor* GetInput(const TfLiteContext* context,
                                     const TfLiteNode* node, int index) {
-  return &context->tensors[node->inputs->data[index]];
+  const int tensor_index = node->inputs->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
 // Note: You must check if result is not null:
 // TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
 // TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  const int tensor_index = node->inputs->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  TfLiteTensor* tensor = &context->tensors[tensor_index];
   return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
-  return &context->tensors[node->outputs->data[index]];
+  const int tensor_index = node->outputs->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
-  return &context->tensors[node->temporaries->data[index]];
+  const int tensor_index = node->temporaries->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
+
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             const TfLiteNode* node, int index) {
-  return &context->tensors[node->intermediates->data[index]];
+  const int tensor_index = node->intermediates->data[index];
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return &context->tensors[tensor_index];
 }
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
@@ -73,12 +94,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  const bool use_tensor = index < node->inputs->size &&
-                          node->inputs->data[index] != kTfLiteOptionalTensor;
-  if (use_tensor) {
-    return &context->tensors[node->inputs->data[index]];
-  }
-  return nullptr;
+  return GetInput(context, node, index);
 }
 
 // Determines whether tensor is constant.
