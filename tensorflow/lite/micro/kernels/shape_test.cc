@@ -27,7 +27,6 @@ namespace {
 void ValidateShape(TfLiteTensor* tensors, const int tensor_count,
                    int* output_data, const int* expected_output,
                    int output_dims_count) {
-  TfLiteShapeParams builtin_data;
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
