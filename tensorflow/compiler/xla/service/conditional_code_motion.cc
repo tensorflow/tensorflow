@@ -975,8 +975,8 @@ class GroupConnectedBoundaries {
             if (pos != new_boundaries_.end()) {
               new_boundaries_.erase(pos);
             }
+            return true;
           }
-          return true;
         } else {
           VLOG(2) << "Skip incompatible multi-dependent boundary: "
                   << next_boundary.ToString() << ":" << next_boundary_count

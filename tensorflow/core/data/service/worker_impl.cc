@@ -70,6 +70,10 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address) {
 
   Status s = Heartbeat();
   while (!s.ok()) {
+    if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
+        !errors::IsCancelled(s)) {
+      return s;
+    }
     LOG(WARNING) << "Failed to register with dispatcher at "
                  << config_.dispatcher_address() << ": " << s;
     Env::Default()->SleepForMicroseconds(kRetryIntervalMicros);
