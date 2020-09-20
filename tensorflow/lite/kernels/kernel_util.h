@@ -91,7 +91,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  return GetInput(context, node, index);
+  return GetInput(context, const_cast<TfLiteNode*>(node), index);
 }
 
 inline int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
