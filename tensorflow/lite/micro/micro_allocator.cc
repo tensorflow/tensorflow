@@ -229,6 +229,18 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     current->first_created = 0;
   }
 
+  // Mark all tensors that server as outputs to ops as persistent to the end of
+  // invocation. This is neccessary so that outputs that aren't used later on in
+  // the graph will have a legal lifetime.
+  for (int i = (subgraph->operators()->size() - 1); i >= 0; --i) {
+    const auto* op = subgraph->operators()->Get(i);
+    for (size_t n = 0; n < op->outputs()->size(); ++n) {
+      const int tensor_index = op->outputs()->Get(n);
+      AllocationInfo* current = &info_[tensor_index];
+      current->last_used = subgraph->operators()->size() - 1;
+    }
+  }
+
   // Mark all outputs as persistent to the end of the invocation.
   for (size_t i = 0; i < subgraph->outputs()->size(); ++i) {
     const int tensor_index = subgraph->outputs()->Get(i);
