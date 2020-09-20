@@ -70,6 +70,7 @@ uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
 }
 
 // Ensure that constant tensors loaded from the saved model have valid shape.
+// Also ensure that constant nodes have a value assigned to them.
 // TODO(b/154763635): this is temporary and will be replaced with a better audit
 static Status ValidateSavedTensors(const GraphDef& graph_def) {
   for (const auto& node : graph_def.node()) {
@@ -85,6 +86,10 @@ static Status ValidateSavedTensors(const GraphDef& graph_def) {
               node_shape.num_elements(), " elements");
         }
       }
+    } else if (node.op() == "Const") {
+      return errors::FailedPrecondition(
+          "Saved model contains node \"", node.name(),
+          "\" which is a constant tensor but no value has been provided");
     }
   }
   return Status::OK();
