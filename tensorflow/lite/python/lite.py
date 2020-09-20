@@ -62,7 +62,7 @@ from tensorflow.lite.python.util import get_grappler_config as _get_grappler_con
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
-from tensorflow.lite.python.util import modify_integer_quantized_model_io_type as _modify_integer_quantized_model_io_type
+from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io_type
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.python import keras as _keras
@@ -652,8 +652,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     flags_modify_model_io_type = quant_mode.flags_modify_model_io_type(
         self.inference_input_type, self.inference_output_type)
     if flags_modify_model_io_type:
-      result = _modify_integer_quantized_model_io_type(
-          result, **flags_modify_model_io_type)
+      result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
     if self._experimental_sparsify_model:
       result = _mlir_sparsify(result)
@@ -764,8 +763,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     flags_modify_model_io_type = quant_mode.flags_modify_model_io_type(
         self.inference_input_type, self.inference_output_type)
     if flags_modify_model_io_type:
-      result = _modify_integer_quantized_model_io_type(
-          result, **flags_modify_model_io_type)
+      result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
     if self._experimental_sparsify_model:
       result = _mlir_sparsify(result)

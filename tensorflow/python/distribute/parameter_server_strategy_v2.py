@@ -42,10 +42,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   """An asynchronous multi-worker parameter server tf.distribute strategy.
 
   Currently, `ParameterServerStrategyV2` is not supported to be used as a
-  standalone tf.distribute strategy. It must be used in conjunction with
-  `Client`. The recommended way of using the combination is through a
-  `ParameterServerClient` object. Please see `Client` and
-  `ParameterServerClient` for more information.
+  standalone tf.distribute strategy. It should be used in conjunction with
+  `Client`. Please see `Client` for more information.
 
   This is currently under development, and the API as well as implementation
   is subject to changes.

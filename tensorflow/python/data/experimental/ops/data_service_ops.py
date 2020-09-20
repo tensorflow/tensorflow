@@ -467,9 +467,9 @@ def register_dataset(service, dataset):
 
   # Compress the dataset elements to reduce the amount of data that needs to
   # be sent over the network.
-  # TODO(b/157105111): Make this an autotuned parallel map when we have a way
-  # to limit memory usage.
-  dataset = dataset.map(lambda *x: compression_ops.compress(x))
+  dataset = dataset.map(
+      lambda *x: compression_ops.compress(x),
+      num_parallel_calls=dataset_ops.AUTOTUNE)
   # Prefetch one compressed element to reduce latency when requesting data
   # from tf.data workers.
   # TODO(b/157105111): Set this to autotune when we have a way to limit

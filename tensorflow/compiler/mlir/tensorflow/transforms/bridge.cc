@@ -120,8 +120,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(CreateTPUParallelExecuteSinkResourceWritePass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
   pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {

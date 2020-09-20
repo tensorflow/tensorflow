@@ -590,6 +590,35 @@ class DeviceTest(test.TestCase):
 
   @test_util.run_gpu_only
   @reset_eager
+  def testGetMemoryUsage(self):
+    device = array_ops.zeros([]).backing_device
+    self.assertGreater(config.get_memory_usage(device), 0)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGetMemoryUsageSubstring(self):
+    self.assertGreater(config.get_memory_usage('GPU:0'), 0)
+
+  @reset_eager
+  def testGetMemoryUsageCPU(self):
+    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
+      config.get_memory_usage('CPU:0')
+
+  @reset_eager
+  def testGetMemoryUsageUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      config.get_memory_usage('unknown_device')
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGetMemoryUsageAmbiguousDevice(self):
+    if len(config.list_physical_devices('GPU')) < 2:
+      self.skipTest('Need at least 2 GPUs')
+    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
+      config.get_memory_usage('GPU')
+
+  @test_util.run_gpu_only
+  @reset_eager
   def testGpuInvalidConfig(self):
     gpus = config.list_physical_devices('GPU')
     self.assertNotEqual(len(gpus), 0)

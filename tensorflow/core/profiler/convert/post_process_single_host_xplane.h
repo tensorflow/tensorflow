@@ -12,25 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+#define TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
 
-#include <string>
-#include <vector>
-
-#include "absl/types/span.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/mlir_generated/cwise_op_gpu_base.cu.h"
-#include "tensorflow/core/kernels/mlir_generated/tanh_f16_kernel.h"
-#include "tensorflow/core/kernels/mlir_generated/tanh_f32_kernel.h"
-#include "tensorflow/core/kernels/mlir_generated/tanh_f64_kernel.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
-namespace {
-GENERATE_OP_KERNEL_BASE(Tanh);
-}  // namespace
+namespace profiler {
 
-REGISTER_AND_GENERATE_KERNEL(Tanh, F16, Eigen::half)
-REGISTER_AND_GENERATE_KERNEL(Tanh, F32, float)
-REGISTER_AND_GENERATE_KERNEL(Tanh, F64, double)
+// Post process XSpaces collected locally from multiple profilers.
+void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns);
+
+}  // namespace profiler
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_

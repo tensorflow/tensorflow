@@ -488,6 +488,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::AbsOp>,
       HloToLhloOpConverter<mhlo::AddOp>,
       HloToLhloOpConverter<mhlo::AndOp>,
+      HloToLhloOpConverter<mhlo::Atan2Op>,
       HloToLhloOpConverter<mhlo::BroadcastInDimOp>,
       HloToLhloOpConverter<mhlo::CeilOp>,
       HloToLhloOpConverter<mhlo::CompareOp>,

@@ -15,6 +15,7 @@ package_group(
         "//tensorflow/compiler/tf2xla:internal",
     ],
     packages = [
+        "//tensorflow/c/...",
         "//tensorflow/compiler/tests/...",
         "//tensorflow/python/...",
     ],
@@ -385,6 +386,53 @@ cc_library(
         "//tensorflow/compiler/tf2xla:mlir_bridge_pass_registration",
     ]),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "get_compiler_ir",
+    srcs = ["get_compiler_ir.cc"],
+    hdrs = ["get_compiler_ir.h"],
+    visibility = [
+        ":internal",
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
+    ],
+    deps = [
+        ":common",
+        ":compilability_check_util",
+        ":flags",
+        ":xla_device_no_jit_rewrite_registration",
+        ":xla_launch_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:core_cpu_internal",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = 1,
+)
+
+# Header-only version of "flags" library, for linking from the shared object
+# without ODR violations.
+cc_library(
+    name = "get_compiler_ir_hdrs_only",
+    hdrs = ["get_compiler_ir.h"],
+    visibility = [
+        ":internal",
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(

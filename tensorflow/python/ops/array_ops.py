@@ -574,13 +574,18 @@ def broadcast_static_shape(shape_x, shape_y):
 @dispatch.add_dispatch_support
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
-  """Returns the shape of a tensor.
-  
+  """Returns a tensor containing the shape of the input tensor.
+
   See also `tf.size`, `tf.rank`.
 
   `tf.shape` returns a 1-D integer tensor representing the shape of `input`.
+  For a scalar input, the tensor returned has a shape of (0,) and its value is
+  the empty vector (i.e. []).
 
   For example:
+
+  >>> tf.shape(1.)
+  <tf.Tensor: shape=(0,), dtype=int32, numpy=array([], dtype=int32)>
 
   >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
   >>> tf.shape(t)
@@ -597,7 +602,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a.shape
   TensorShape([None, None, 10])
-  
+
   (The first `None` represents the as yet unknown batch size.)
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
@@ -2472,7 +2477,6 @@ def matrix_diag(diagonal,
 @tf_export("linalg.diag_part", v1=["linalg.diag_part", "matrix_diag_part"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("matrix_diag_part")
-@dispatch.add_dispatch_support
 def matrix_diag_part(
     input,  # pylint:disable=redefined-builtin
     name="diag_part",
@@ -2608,6 +2612,51 @@ def matrix_diag_part(
 
   return gen_array_ops.matrix_diag_part_v3(
       input=input, k=k, padding_value=padding_value, align=align, name=name)
+
+
+@tf_export(
+    "linalg.tensor_diag_part", v1=["linalg.tensor_diag_part", "diag_part"])
+@dispatch.add_dispatch_support
+@deprecation.deprecated_endpoints("diag_part")
+def tensor_diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name=None):
+  """Returns the diagonal part of the tensor.
+
+  This operation returns a tensor with the `diagonal` part
+  of the `input`. The `diagonal` part is computed as follows:
+
+  Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+  tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+
+  `diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+
+  For a rank 2 tensor, `linalg.diag_part` and `linalg.tensor_diag_part`
+  produce the same result. For rank 3 and higher, linalg.diag_part extracts
+  the diagonal of each inner-most matrix in the tensor. An example where
+  they differ is given below.
+
+  >>> x = [[[[1111,1112],[1121,1122]],
+  ...       [[1211,1212],[1221,1222]]],
+  ...      [[[2111, 2112], [2121, 2122]],
+  ...       [[2211, 2212], [2221, 2222]]]
+  ...      ]
+  >>> tf.linalg.tensor_diag_part(x)
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[1111, 1212],
+         [2121, 2222]], dtype=int32)>
+  >>> tf.linalg.diag_part(x).shape
+  TensorShape([2, 2, 2])
+
+  Args:
+    input: A `Tensor` with rank `2k`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor containing diagonals of `input`. Has the same type as `input`, and
+    rank `k`.
+  """
+  return gen_array_ops.diag_part(input=input, name=name)
 
 
 @tf_export("linalg.set_diag", v1=["linalg.set_diag", "matrix_set_diag"])
@@ -4252,8 +4301,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
     # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
     matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen.dtype)
     result = row_vector < matrix
-
-    if dtype is None or result.dtype.base_dtype == dtype.base_dtype:
+    if dtype is None or result.dtype.is_compatible_with(dtype):
       return result
     else:
       return gen_math_ops.cast(result, dtype)

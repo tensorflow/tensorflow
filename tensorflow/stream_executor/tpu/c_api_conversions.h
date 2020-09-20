@@ -89,7 +89,10 @@ SE_DeviceMemoryAllocator ToC(stream_executor::DeviceMemoryAllocator* allocator);
 
 // OwningDeviceMemory
 SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem);
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem);
+// mem.HasOwnership() may be true if the buffer is aliased and shouldn't be
+// released. 'aliased' should be true in this case. 'aliased' has no effect if
+// 'mem' is unowned.
+SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem, bool aliased);
 
 // Helper for managing stack based C -> C++ conversions.
 template <class CType>

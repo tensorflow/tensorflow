@@ -501,9 +501,8 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   OpBuilder builder(op_);
   // Clone ths old operation but with new result types.
   Operation* new_op = Operation::create(
-      op_->getLoc(), op_->getName(), new_result_types,
-      llvm::to_vector<4>(op_->getOperands()), op_->getAttrs(),
-      llvm::to_vector<4>(op_->getSuccessors()), op_->getNumRegions());
+      op_->getLoc(), op_->getName(), new_result_types, op_->getOperands(),
+      op_->getAttrs(), op_->getSuccessors(), op_->getNumRegions());
   builder.insert(new_op);
 
   // Move regions to the new op.
@@ -1204,8 +1203,8 @@ LogicalResult HoistForControlFlow(
         lifted_partitioned_call_callees) {
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-      auto body = while_op.body_func();
-      auto cond = while_op.cond_func();
+      auto body = while_op.body_function();
+      auto cond = while_op.cond_function();
       // Recursively handle the nested control flow.
       HoistForControlFlow(&body.front(), module,
                           lifted_partitioned_call_callees);
@@ -1213,8 +1212,8 @@ LogicalResult HoistForControlFlow(
                           lifted_partitioned_call_callees);
       if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      auto then_branch = if_op.then_func();
-      auto else_branch = if_op.else_func();
+      auto then_branch = if_op.then_function();
+      auto else_branch = if_op.else_function();
       // Recursively handle the nested control flow.
       HoistForControlFlow(&then_branch.front(), module,
                           lifted_partitioned_call_callees);
@@ -1224,14 +1223,11 @@ LogicalResult HoistForControlFlow(
         return failure();
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
       SmallVector<FuncOp, 4> branch_functions;
-      branch_functions.reserve(case_op.branches().size());
-      for (const Attribute& branch : case_op.branches()) {
-        FuncOp func =
-            module.lookupSymbol<FuncOp>(branch.cast<FlatSymbolRefAttr>());
+      case_op.get_branch_functions(branch_functions);
+      for (FuncOp func : branch_functions) {
         // Recursively handle the nested control flow.
         HoistForControlFlow(&func.front(), module,
                             lifted_partitioned_call_callees);
-        branch_functions.push_back(func);
       }
       if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {

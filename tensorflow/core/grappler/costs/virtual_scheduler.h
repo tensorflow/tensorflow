@@ -371,6 +371,10 @@ class SchedulerState {
   }
 
  protected:
+  // Assigns the time_scheduled in the NodeState of node to the current
+  // execution_time of the device executing this node.
+  void SetNodeStateTimeScheduled(const NodeDef* node);
+
   // This method can be used by a class derived from SchedulerState to
   // access the device state map.
   std::unordered_map<string, DeviceState>* GetMutableDeviceState() {

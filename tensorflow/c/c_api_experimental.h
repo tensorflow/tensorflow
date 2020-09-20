@@ -231,10 +231,10 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    TF_Status* status);
 
 // Aborts all ongoing collectives with the specified status. After abortion,
-// subsequent collectives will error with this status immediately.
+// subsequent collectives will error with this status immediately. To reset the
+// collectives, create a new EagerContext.
 //
-// This is intended to be used when a peer failure is detected. There's yet no
-// way to reset the collectives other than restarting the program.
+// This is intended to be used when a peer failure is detected.
 TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
                                                   TF_Status* status);
 

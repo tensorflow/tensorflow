@@ -2709,7 +2709,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
   // no_scratch algorithm.
   if (!algo_desc.has_value()) {
     return port::Status(
-        port::error::INVALID_ARGUMENT,
+        scratch_or.status().code(),
         absl::StrCat("The primary convolution algorithm failed, ",
                      "while a secondary algorithm is not provided. ",
                      "Returned status: ", scratch_or.status().ToString()));

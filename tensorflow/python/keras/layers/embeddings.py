@@ -26,6 +26,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import embedding_ops
@@ -106,13 +107,17 @@ class Embedding(Layer):
       raise ValueError('Both `input_dim` and `output_dim` should be positive, '
                        'found input_dim {} and output_dim {}'.format(
                            input_dim, output_dim))
-    dtype = kwargs.pop('dtype', K.floatx())
+    if (not base_layer_utils.v2_dtype_behavior_enabled() and
+        'dtype' not in kwargs):
+      # In TF1, the dtype defaults to the input dtype which is typically int32,
+      # so explicitly set it to floatx
+      kwargs['dtype'] = K.floatx()
     # We set autocast to False, as we do not want to cast floating- point inputs
     # to self.dtype. In call(), we cast to int32, and casting to self.dtype
     # before casting to int32 might cause the int32 values to be different due
     # to a loss of precision.
     kwargs['autocast'] = False
-    super(Embedding, self).__init__(dtype=dtype, **kwargs)
+    super(Embedding, self).__init__(**kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
@@ -139,14 +144,16 @@ class Embedding(Layer):
             initializer=self.embeddings_initializer,
             name='embeddings',
             regularizer=self.embeddings_regularizer,
-            constraint=self.embeddings_constraint)
+            constraint=self.embeddings_constraint,
+            experimental_autocast=False)
     else:
       self.embeddings = self.add_weight(
           shape=(self.input_dim, self.output_dim),
           initializer=self.embeddings_initializer,
           name='embeddings',
           regularizer=self.embeddings_regularizer,
-          constraint=self.embeddings_constraint)
+          constraint=self.embeddings_constraint,
+          experimental_autocast=False)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
@@ -187,6 +194,10 @@ class Embedding(Layer):
       out = embedding_ops.embedding_lookup_v2(self.embeddings.variables, inputs)
     else:
       out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
+    if self._dtype_policy.should_cast_variables:
+      # Instead of casting the variable as in most layers, cast the output, as
+      # this is mathematically equivalent but is faster.
+      out = math_ops.cast(out, self._dtype_policy.compute_dtype)
     return out
 
   def get_config(self):

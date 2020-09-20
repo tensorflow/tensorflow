@@ -32,7 +32,6 @@ def strategies_for_stateful_embedding_model():
 
   return [
       strategy_combinations.tpu_strategy_one_core,
-      strategy_combinations.tpu_strategy_one_step_one_core
   ]
 
 
@@ -94,7 +93,8 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
 
   @ds_combinations.generate(
       combinations.times(
-          keras_correctness_test_base.test_combinations_with_tpu_strategies()))
+          keras_correctness_test_base
+          .test_combinations_with_tpu_strategies_graph()))
   def test_incorrectly_use_multiple_cores_for_stateful_lstm_model(
       self, distribution, use_numpy, use_validation_data):
     with self.assertRaisesRegex(

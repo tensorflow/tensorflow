@@ -200,17 +200,6 @@ tf_cc_test(
     ],
 )
 
-# virtual targets since nested select statements not possible
-tf_kernel_library(
-    name = "virtual_nccl",
-    deps = if_cuda(["@local_config_nccl//:nccl"]),
-)
-
-tf_kernel_library(
-    name = "virtual_rccl",
-    deps = if_rocm(["@local_config_rocm//rocm:rccl"]),
-)
-
 tf_kernel_library(
     name = "collective_ops",
     srcs = if_nccl([
@@ -228,11 +217,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
-        ":virtual_nccl",
-        ":virtual_rccl",
-        "//tensorflow/core/nccl:nccl_lib",
+        "//tensorflow/core/nccl:collective_communicator",
     ]),
 )
 
@@ -255,6 +243,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/nccl:collective_communicator",
     ],
 )
 
@@ -4468,12 +4457,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stateless_random_ops_v2_header",
+    hdrs = ["stateless_random_ops_v2.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "stateful_random_ops",
     prefix = "stateful_random_ops",
     deps = [
         ":bounds_check",
         ":dense_update_functor",
+        ":fill_functor",
         ":gather_functor",
         ":mutex_ops",
         ":random_op",
@@ -5229,6 +5228,24 @@ tf_kernel_library(
     deps = STRING_DEPS,
 )
 
+tf_cc_test(
+    name = "as_string_op_test",
+    size = "small",
+    srcs = ["as_string_op_test.cc"],
+    deps = [
+        ":as_string_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "unicode_ops",
     prefix = "unicode_ops",
@@ -5348,7 +5365,7 @@ tf_kernel_library(
     prefix = "random_binomial_op",
     deps = [
         ":cwise_op",
-        ":random_ops",
+        ":random_op",
         ":resource_variable_ops",
         ":stateful_random_ops",
         ":stateless_random_ops",
@@ -6170,6 +6187,7 @@ filegroup(
         "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
+        "random_ops_util.h",
         "random_poisson_op.cc",
         "reduce_join_op.cc",
         "reduction_ops_all.cc",
@@ -7467,6 +7485,7 @@ exports_files([
     "cwise_op_gpu_greater_equal.cu.cc",
     "cwise_op_gpu_less.cu.cc",
     "cwise_op_gpu_less_equal.cu.cc",
+    "cwise_op_gpu_log.cu.cc",
     "cwise_op_gpu_logical_and.cu.cc",
     "cwise_op_gpu_logical_not.cu.cc",
     "cwise_op_gpu_logical_or.cu.cc",
@@ -7489,6 +7508,7 @@ exports_files([
     "cwise_op_greater_equal.cc",
     "cwise_op_less.cc",
     "cwise_op_less_equal.cc",
+    "cwise_op_log.cc",
     "cwise_op_logical_and.cc",
     "cwise_op_logical_not.cc",
     "cwise_op_logical_or.cc",

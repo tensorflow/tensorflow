@@ -26,12 +26,12 @@ import weakref
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import load as keras_load
@@ -522,7 +522,8 @@ def layer_call_wrapper(call_collection, method):
     with base_layer_utils.call_context().enter(
         layer, inputs=inputs, build_graph=False, training=training,
         saving=True):
-      with ops.enable_auto_cast_variables(layer._compute_dtype_object):  # pylint: disable=protected-access
+      with autocast_variable.enable_auto_cast_variables(
+          layer._compute_dtype_object):  # pylint: disable=protected-access
         ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret

@@ -2,6 +2,7 @@
 // (unlike the rest), since this is the primary use case for such ops and
 // verification of shapes and broadcasts is desired.
 // RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -canonicalize %s | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck --check-prefix CHLO %s
 
 //===----------------------------------------------------------------------===//
 // Binary op legalizations.
@@ -56,6 +57,15 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
   // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
+}
+
+// CHECK-LABEL: func @broadcast_add_unranked
+// CHLO-LABEL: func @broadcast_add_unranked
+func @broadcast_add_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK: tf.Add
+  // CHLO: chlo.broadcast_add %arg0, %arg1
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0: tensor<*xi32>
 }
 
 // CHECK-LABEL: func @div

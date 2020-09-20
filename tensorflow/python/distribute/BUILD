@@ -136,9 +136,6 @@ cuda_py_test(
 
 py_library(
     name = "distribute",
-    srcs = [
-        "__init__.py",
-    ],
     srcs_version = "PY2AND3",
     deps = [
         ":all_reduce",
@@ -147,7 +144,7 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":sharded_variable",
-        "//tensorflow/python/distribute/client:parameter_server_client",
+        "//tensorflow/python/distribute/client",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -1700,9 +1697,6 @@ distribute_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
-        # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
-        # runner can run on guitar.
-        "noguitar",
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,

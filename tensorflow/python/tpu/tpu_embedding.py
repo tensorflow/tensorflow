@@ -2234,7 +2234,7 @@ def _create_device_fn(hosts):
     if part_match:
       idx = int(part_match.group(1))
     else:
-      idx = int(dummy_match.group(1))
+      idx = int(dummy_match.group(1))  # pytype: disable=attribute-error
 
     device = hosts[idx]
     logging.debug('assigning {} to {}.', op, device)

@@ -196,12 +196,15 @@ class MathTest(PForTestCase, parameterized.TestCase):
           math_ops.subtract,
           math_ops.truncate_mod,
           safe_polygamma,
-          safe_zeta,
       ]
       # FloorDiv fails on XLA due floor's discontinuities exacerbating small
       # division differences.
       if not test_util.is_xla_enabled():
         float_ops += [math_ops.floor_div]
+        # TODO(b/168912036): Re-enable once GPU + XLA issues for Zeta are
+        # resolved.
+        if not test_util.is_gpu_available():
+          float_ops += [safe_zeta]
       for op in logical_ops + float_ops:
         x = random_ops.random_uniform([7, 3, 5])
         y = random_ops.random_uniform([3, 5])

@@ -82,10 +82,13 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   // parameters set. This is usually done during quantized training.
   if (data_type != kTfLiteFloat32) {
     const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+    TF_LITE_ENSURE(context, input != nullptr);
     const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+    TF_LITE_ENSURE(context, filter != nullptr);
     const TfLiteTensor* bias =
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+    TF_LITE_ENSURE(context, output != nullptr);
     int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
 
     return tflite::PopulateConvolutionQuantizationParams(
@@ -114,8 +117,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = static_cast<OpData*>(node->user_data);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  TF_LITE_ENSURE(context, filter != nullptr);
 
   const TfLiteType data_type = input->type;
   int width = SizeOfDimension(input, 2);

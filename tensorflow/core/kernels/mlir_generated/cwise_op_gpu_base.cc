@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/mlir_generated/cwise_op_gpu_base.cu.h"
+#include "tensorflow/core/kernels/mlir_generated/cwise_op_gpu_base.h"
 
 #include <memory>
 #include <string>

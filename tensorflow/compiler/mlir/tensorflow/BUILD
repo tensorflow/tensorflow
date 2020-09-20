@@ -905,6 +905,7 @@ cc_library(
         ":export_tf_dialect_op",
         ":lower_tf_lib",
         ":mangling_util",
+        ":serialize_mlir_module_utils",
         ":shape_inference_utils",
         ":tensorflow",
         ":tensorflow_analysis",
@@ -1568,10 +1569,12 @@ gentbl(
 COMPILE_MLIR_UTIL_DEPS = [
     ":bridge_logger",
     ":convert_graphdef",
+    ":convert_tensor",
     ":convert_type",
     ":dump_mlir_util",
     ":error_util",
     ":mlir_roundtrip_flags",
+    ":serialize_mlir_module_utils",
     ":tensorflow",
     ":tensorflow_types",
     ":tensorflow_passes",
@@ -1580,7 +1583,6 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@com_google_absl//absl/types:variant",
     "@llvm-project//llvm:Support",
     "@llvm-project//mlir:IR",
-    "@llvm-project//mlir:Parser",
     "@llvm-project//mlir:Pass",
     "@llvm-project//mlir:Shape",
     "@llvm-project//mlir:StandardOps",
@@ -1605,7 +1607,6 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/xla:shape_util",
     "//tensorflow/compiler/xla:xla_data_proto_cc",
     "//tensorflow/compiler/xla/service:hlo",
-    ":convert_tensor",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary
@@ -1643,11 +1644,27 @@ cc_library(
 )
 
 cc_library(
+    name = "serialize_mlir_module_utils",
+    srcs = ["utils/serialize_mlir_module_utils.cc"],
+    hdrs = ["utils/serialize_mlir_module_utils.h"],
+    deps = [
+        ":error_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
+
+cc_library(
     name = "tf_xla_mlir_translate",
     srcs = ["utils/tf_xla_mlir_translate.cc"],
     deps = [
-        "compile_mlir_util",
+        ":compile_mlir_util",
         ":mlir_roundtrip_flags",
+        ":serialize_mlir_module_utils",
         ":tensorflow",
         ":translate_cl_options",
         "//tensorflow/compiler/mlir:string_container_utils",

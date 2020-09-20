@@ -1,6 +1,7 @@
 # Description: Operations defined for Cloud TPUs
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "pytype_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
@@ -41,17 +42,18 @@ py_test(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_ops",
     srcs = ["ops/tpu_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":tpu_function",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:tpu_ops_gen",
     ],
 )
 
-py_library(
+pytype_library(
     name = "async_checkpoint",
     srcs = ["async_checkpoint.py"],
     srcs_version = "PY2AND3",
@@ -88,7 +90,7 @@ tpu_py_test(
     ],
 )
 
-py_library(
+pytype_library(
     name = "preempted_hook_py",
     srcs = ["preempted_hook.py"],
     srcs_version = "PY2AND3",
@@ -185,7 +187,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",
@@ -239,7 +241,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_py",
     srcs = ["tpu.py"],
     deps = [
@@ -273,14 +275,14 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_function",
     srcs = ["tpu_function.py"],
     deps = [
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_system_metadata",
     srcs = ["tpu_system_metadata.py"],
     deps = [
@@ -296,7 +298,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "datasets",
     srcs = [
         "datasets.py",
@@ -306,6 +308,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:function",
         "//tensorflow/python:functional_ops",
+        "//tensorflow/python/data/experimental/ops:interleave_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
@@ -385,7 +388,7 @@ tf_py_test(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_embedding",
     srcs = [
         "tpu_embedding.py",
@@ -407,7 +410,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_strategy_util",
     srcs = ["tpu_strategy_util.py"],
     deps = [
@@ -422,7 +425,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
     deps = [
@@ -435,7 +438,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "feature_column_v2",
     srcs = ["feature_column_v2.py"],
     deps = [
@@ -493,7 +496,7 @@ tf_py_test(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_embedding_v2_utils",
     srcs = ["tpu_embedding_v2_utils.py"],
     srcs_version = "PY2AND3",
@@ -508,7 +511,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "tpu_embedding_v2",
     srcs = ["tpu_embedding_v2.py"],
     srcs_version = "PY2AND3",

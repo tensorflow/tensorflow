@@ -74,6 +74,12 @@ int64 TakeDataset::Cardinality() const {
   return std::min(n, count_);
 }
 
+Status TakeDataset::InputDatasets(
+    std::vector<const DatasetBase*>* inputs) const {
+  inputs->push_back(input_);
+  return Status::OK();
+}
+
 Status TakeDataset::CheckExternalState() const {
   return input_->CheckExternalState();
 }

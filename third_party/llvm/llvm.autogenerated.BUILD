@@ -3526,6 +3526,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":Core",
+        ":Demangle",
         ":Support",
         ":config",
     ],

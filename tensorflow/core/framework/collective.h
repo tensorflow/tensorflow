@@ -36,6 +36,7 @@ class Device;
 class DeviceMgr;
 class GetStepSequenceRequest;
 class GetStepSequenceResponse;
+class NcclManager;
 class Tensor;
 
 // Types of supported collective operations.
@@ -229,6 +230,8 @@ class StepSequenceInterface {
   virtual void RetireStepId(int64 graph_key, int64 step_id) = 0;
 };
 
+class NcclCommunicatorInterface;
+
 // Interface that provides access to per-step CollectiveExecutor
 // instances and various distributed resolution capabilities.
 class CollectiveExecutorMgrInterface : public StepSequenceInterface {
@@ -246,6 +249,8 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
   virtual ParamResolverInterface* GetParamResolver() const = 0;
 
   virtual DeviceResolverInterface* GetDeviceResolver() const = 0;
+
+  virtual NcclCommunicatorInterface* GetNcclCommunicator() const = 0;
 };
 
 // Interface that a Collective Op implementation uses to exchange data
@@ -354,19 +359,12 @@ class CollectiveExecutor : public core::RefCounted {
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
 };
 
-class CollectiveContext {
- public:
-  CollectiveContext(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
-                    OpKernelContext* ctx, OpKernelContext::Params* op_params,
-                    const CollectiveParams& col_params, const string& exec_key,
-                    int64 step_id, const Tensor* input, Tensor* output);
-
-  virtual ~CollectiveContext() = default;
-
-  CollectiveExecutor* col_exec;        // Not owned
-  const DeviceMgr* dev_mgr;            // Not owned
-  OpKernelContext* op_ctx;             // Not owned
-  OpKernelContext::Params* op_params;  // Not owned
+struct CollectiveContext {
+  CollectiveExecutor* col_exec;                  // Not owned
+  NcclCommunicatorInterface* nccl_communicator;  // Not owned
+  const DeviceMgr* dev_mgr;                      // Not owned
+  OpKernelContext* op_ctx;                       // Not owned
+  OpKernelContext::Params* op_params;            // Not owned
   const CollectiveParams& col_params;
   const string exec_key;
   const int64 step_id;
@@ -375,6 +373,23 @@ class CollectiveContext {
   Device* device;       // The device for which this instance labors
   const string device_name;
   DeviceLocality device_locality;
+
+  CollectiveContext(CollectiveExecutor* col_exec,
+                    NcclCommunicatorInterface* nccl_communicator,
+                    const DeviceMgr* dev_mgr, OpKernelContext* ctx,
+                    OpKernelContext::Params* op_params,
+                    const CollectiveParams& col_params, const string& exec_key,
+                    int64 step_id, const Tensor* input, Tensor* output);
+};
+
+class NcclCommunicatorInterface {
+ public:
+  virtual ~NcclCommunicatorInterface() = default;
+
+  virtual void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
+                       StatusCallback done) = 0;
+
+  virtual void StartAbort(const Status& s) = 0;
 };
 
 // Interface of a Collective Op implementation.  Each specific CollectiveOp will

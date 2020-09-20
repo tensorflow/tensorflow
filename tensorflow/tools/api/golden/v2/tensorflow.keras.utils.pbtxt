@@ -57,10 +57,6 @@ tf_module {
     argspec: "args=[\'model\', \'show_shapes\', \'show_dtype\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\', \'subgraph\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'True\', \'TB\', \'False\', \'96\', \'False\'], "
   }
   member_method {
-    name: "multi_gpu_model"
-    argspec: "args=[\'model\', \'gpus\', \'cpu_merge\', \'cpu_relocation\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
-  }
-  member_method {
     name: "normalize"
     argspec: "args=[\'x\', \'axis\', \'order\'], varargs=None, keywords=None, defaults=[\'-1\', \'2\'], "
   }

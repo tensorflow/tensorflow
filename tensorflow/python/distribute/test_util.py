@@ -64,7 +64,7 @@ def _gather(strategy, value):
   @def_function.function
   def gather_fn():
     gathered = cross_device_utils.build_collective_gather(
-        inputs, devices, group_size, collective_keys)
+        inputs, devices, group_size, collective_keys, axis=0)
     return distribute_utils.update_regroup(
         strategy.extended, gathered, group=True)
 

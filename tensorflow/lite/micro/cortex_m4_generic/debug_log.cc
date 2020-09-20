@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/debug_log.h"
 
-#ifdef DEBUG
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
 #include <cstdio>
 #endif
 
 extern "C" void DebugLog(const char* s) {
-#ifdef DEBUG
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   fprintf(stderr, "%s", s);
 #endif
 }

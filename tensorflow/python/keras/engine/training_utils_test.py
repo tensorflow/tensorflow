@@ -140,7 +140,9 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
       ('Concatenate', lambda: dataset_ops.Dataset.range(5).concatenate(
           dataset_ops.Dataset.range(5))),
       ('FlatMap', lambda: dataset_ops.Dataset.range(5).flat_map(
-          lambda _: dataset_ops.Dataset.from_tensors(0)), ValueError),
+          lambda _: dataset_ops.Dataset.from_tensors(0))),
+      ('FlatMap_Shuffle', lambda: dataset_ops.Dataset.range(5).flat_map(
+          lambda _: dataset_ops.Dataset.from_tensors(0).shuffle(1)), True),
       ('Filter', lambda: dataset_ops.Dataset.range(5).filter(lambda _: True)),
       ('FixedLengthRecordDatasetV2',
        lambda: readers.FixedLengthRecordDatasetV2([], 42)),
@@ -148,8 +150,10 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
       ('FromTensorSlices',
        lambda: dataset_ops.Dataset.from_tensor_slices([0, 0, 0])),
       ('Interleave', lambda: dataset_ops.Dataset.range(5).interleave(
-          lambda _: dataset_ops.Dataset.from_tensors(0), cycle_length=1),
-       ValueError),
+          lambda _: dataset_ops.Dataset.from_tensors(0), cycle_length=1)),
+      ('Interleave_Shuffle', lambda: dataset_ops.Dataset.range(5).interleave(
+          lambda _: dataset_ops.Dataset.from_tensors(0).shuffle(1),
+          cycle_length=1), True),
       ('Map', lambda: dataset_ops.Dataset.range(5).map(lambda x: x)),
       ('Options',
        lambda: dataset_ops.Dataset.range(5).with_options(dataset_ops.Options())
@@ -158,13 +162,13 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
       ('ParallelInterleave', lambda: dataset_ops.Dataset.range(5).interleave(
           lambda _: dataset_ops.Dataset.from_tensors(0),
           cycle_length=1,
-          num_parallel_calls=1), ValueError),
+          num_parallel_calls=1)),
       ('ParallelMap', lambda: dataset_ops.Dataset.range(5).map(
           lambda x: x, num_parallel_calls=1)),
       ('Prefetch', lambda: dataset_ops.Dataset.range(5).prefetch(1)),
       ('Range', lambda: dataset_ops.Dataset.range(0)),
       ('Repeat', lambda: dataset_ops.Dataset.range(0).repeat(0)),
-      ('Shuffle', lambda: dataset_ops.Dataset.range(5).shuffle(1), ValueError),
+      ('Shuffle', lambda: dataset_ops.Dataset.range(5).shuffle(1), True),
       ('Skip', lambda: dataset_ops.Dataset.range(5).skip(2)),
       ('Take', lambda: dataset_ops.Dataset.range(5).take(2)),
       ('TextLineDataset', lambda: readers.TextLineDatasetV2([])),
@@ -173,24 +177,17 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
       ('Zip', lambda: dataset_ops.Dataset.zip(dataset_ops.Dataset.range(5))),
       # pylint: enable=g-long-lambda
   )
-  def test_assert_not_shuffled(self, dataset_fn, expected_error=None):
-    if expected_error is None:
-      training_utils.assert_not_shuffled(dataset_fn())
+  def test_verify_dataset_shuffled(self, dataset_fn, expect_shuffled=False):
+    dataset = dataset_fn()
+
+    if not expect_shuffled:
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        shuffled = training_utils.verify_dataset_shuffled(dataset)
+        self.assertRegex(
+            str(mock_log.call_args), 'input dataset `x` is not shuffled.')
+        self.assertFalse(shuffled)
     else:
-      with self.assertRaises(expected_error):
-        training_utils.assert_not_shuffled(dataset_fn())
-
-  def test_verify_dataset_shuffled(self):
-    dataset = dataset_ops.Dataset.range(5)
-    training_utils.assert_not_shuffled(dataset)
-
-    with test.mock.patch.object(logging, 'warning') as mock_log:
-      training_utils.verify_dataset_shuffled(dataset)
-      self.assertRegex(
-          str(mock_log.call_args), 'input dataset `x` is not shuffled.')
-
-    shuffled_dataset = dataset.shuffle(10)
-    training_utils.verify_dataset_shuffled(shuffled_dataset)
+      self.assertTrue(training_utils.verify_dataset_shuffled(dataset))
 
 
 class StandardizeWeightsTest(keras_parameterized.TestCase):

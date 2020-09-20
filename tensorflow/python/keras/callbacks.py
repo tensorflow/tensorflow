@@ -54,6 +54,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.saved_model import save_options as save_options_lib
@@ -2135,7 +2136,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     config_pbtxt = text_format.MessageToString(config)
     path = os.path.join(self._log_write_dir, 'projector_config.pbtxt')
-    with open(path, 'w') as f:
+    with gfile.Open(path, 'w') as f:
       f.write(config_pbtxt)
 
   def _push_writer(self, writer, step):

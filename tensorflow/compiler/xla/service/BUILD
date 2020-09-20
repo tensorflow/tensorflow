@@ -83,6 +83,7 @@ cc_library(
     deps = [
         ":bfloat16_support",
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":hlo_pass",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -1684,6 +1685,7 @@ cc_library(
     hdrs = ["multi_output_fusion.h"],
     deps = [
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":hlo_dce",
         ":hlo_pass",
         ":hlo_reachability",

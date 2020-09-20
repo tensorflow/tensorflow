@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
 
 #
@@ -84,6 +85,7 @@ cc_library(
     hdrs = [
         "delegate.h",
     ],
+    copts = tflite_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -128,6 +130,7 @@ tf_cc_test(
     deps = [
         ":delegate",
         ":test_util",
+        "//tensorflow/lite:shared_library",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],

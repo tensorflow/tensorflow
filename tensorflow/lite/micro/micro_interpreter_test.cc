@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
-#include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/recording_micro_allocator.h"
 #include "tensorflow/lite/micro/test_helpers.h"
@@ -114,9 +113,6 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
     TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), output->bytes);
     TF_LITE_MICRO_EXPECT_NE(nullptr, output->data.i32);
     TF_LITE_MICRO_EXPECT_EQ(42, output->data.i32[0]);
-
-    // Just to make sure that this method works.
-    tflite::PrintInterpreterState(&interpreter);
   }
 
   TF_LITE_MICRO_EXPECT_EQ(tflite::testing::MockCustom::freed_, true);

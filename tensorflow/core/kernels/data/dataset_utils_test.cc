@@ -62,9 +62,7 @@ class DatasetHashUtilsTest : public ::testing::Test {
   }
 };
 
-string full_name(string key) {
-  return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
-}
+string full_name(string key) { return FullName("Iterator:", key); }
 
 TEST(DatasetUtilsTest, MatchesAnyVersion) {
   EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));

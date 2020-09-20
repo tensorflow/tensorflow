@@ -191,24 +191,28 @@ class VariantTensorDataReader : public IteratorStateReader {
   explicit VariantTensorDataReader(
       const std::vector<const VariantTensorData*>& data);
 
-  Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece key) override;
+  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, tstring* val) const override;
+  Status ReadTensor(StringPiece key, Tensor* val) const override;
+  bool Contains(StringPiece key) const override;
 
-  Status ReadScalar(StringPiece name, StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece name, StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece name, StringPiece key) override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    int64* val) const override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    tstring* val) const override;
+  Status ReadTensor(StringPiece name, StringPiece key,
+                    Tensor* val) const override;
+  bool Contains(StringPiece name, StringPiece key) const override;
 
  private:
   template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece key, Tensor* val) const;
 
   template <typename T>
-  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece name, StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece name, StringPiece key,
+                            Tensor* val) const;
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.

@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 from tensorflow.python.distribute import ps_values as ps_distribute_values
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
@@ -27,13 +29,18 @@ from tensorflow.python.ops import variables
 from tensorflow.python.types import core
 
 
+# _autocast_dtype.dtype is the dtype AutoCastVariables should be cast to, or
+# None if AutoCastVariables should not be cast.
+_autocast_dtype = threading.local()
+
+
 class AutoCastVariable(variables.Variable, core.Tensor):
   """Variable that will cast itself to a different dtype in applicable contexts.
 
   This class wraps a floating-point `tf.Variable`. It emulates the variable
   interface and delegates to the wrapped variable, but it additionally will cast
-  the wrapped variable under a `Graph._enable_auto_casting_variables(dtype)`
-  context manager.
+  the wrapped variable under an `enable_auto_cast_variables(dtype)` context
+  manager.
 
   For example:
 
@@ -41,10 +48,10 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   >>> v = AutoCastVariable(v)
   >>> tf.identity(v).dtype
   tf.float32
-  >>> with ops.get_default_graph()._enable_auto_casting_variables(tf.float16):
+  >>> with enable_auto_cast_variables(tf.float16):
   ...   tf.identity(v).dtype
   tf.float16
-  >>> with ops.get_default_graph()._enable_auto_casting_variables(tf.float16):
+  >>> with enable_auto_cast_variables(tf.float16):
   ...   v.dtype  # v.dtype also changes under the context manager
   tf.float16
 
@@ -74,19 +81,14 @@ class AutoCastVariable(variables.Variable, core.Tensor):
 
   def _should_cast(self):
     """Returns True if this variable should be casted when accessed."""
-    g = ops.get_default_graph()
-    # pylint:disable=protected-access
-    return (g._auto_cast_variable_read_dtype is not None and
-            self.true_dtype != g._auto_cast_variable_read_dtype)
-    # pylint:enable=protected-access
+    autocast_dtype = getattr(_autocast_dtype, 'dtype', None)
+    return autocast_dtype is not None and self.true_dtype != autocast_dtype
 
   @property
   def dtype(self):
     """The dtype this variable will be casted to when read."""
-    if self._should_cast():
-      return ops.get_default_graph()._auto_cast_variable_read_dtype  # pylint:disable=protected-access
-    else:
-      return self._variable.dtype
+    dtype = getattr(_autocast_dtype, 'dtype', None)
+    return dtype or self._variable.dtype
 
   @property
   def true_dtype(self):
@@ -160,7 +162,6 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   #     would be the same as the ref of the underlying variable, which would be
   #     strange as they are different Python objects.
 
-  # pylint: disable=multiple-statements
   def set_shape(self, shape):
     return self._variable.set_shape(self, shape)
 
@@ -508,3 +509,27 @@ def create_autocast_variable(variable, op=None):
       # pylint: enable=missing-format-attribute
 
   return AutoCastDistributedVariable(variable, op=op)
+
+
+class enable_auto_cast_variables(object):  # pylint:disable=invalid-name
+  """Context manager which enables the autocasting of `AutoCastVariable`s.
+
+  Under this context manager, `AutoCastVariable`s will be cast to `dtype` if
+  `dtype` is floating-point. Otherwise, `AutoCastVariable`s will not be cast.
+  """
+
+  __slots__ = ['_dtype', '_prev_dtype']
+
+  def __init__(self, dtype):
+    if dtype and not dtype.is_floating:
+      dtype = None
+    self._dtype = dtype
+
+  def __enter__(self):
+    self._prev_dtype = getattr(_autocast_dtype, 'dtype', None)
+    _autocast_dtype.dtype = self._dtype
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    _autocast_dtype.dtype = self._prev_dtype
+
+
