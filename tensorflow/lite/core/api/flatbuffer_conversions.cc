@@ -1508,16 +1508,25 @@ TfLiteStatus ParseRsqrt(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
   return kTfLiteOk;
 }
 
-// We have this parse function instead of directly returning kTfLiteOk from the
-// switch-case in ParseOpData because this function is used as part of the
-// selective registration for the OpResolver implementation in micro.
-TfLiteStatus ParseShape(const Operator*, ErrorReporter* error_reporter,
+TfLiteStatus ParseShape(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data) {
   SafeBuiltinDataAllocator safe_allocator(allocator);
   std::unique_ptr<TfLiteShapeParams,
                   SafeBuiltinDataAllocator::BuiltinDataDeleter>
       params = safe_allocator.Allocate<TfLiteShapeParams>();
   TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const ShapeOptions* schema_params = op->builtin_options_as_ShapeOptions();
+
+  if (schema_params != nullptr) {
+    TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_type(),
+                                            &params->out_type, error_reporter));
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
   *builtin_data = params.release();
   return kTfLiteOk;
 }
