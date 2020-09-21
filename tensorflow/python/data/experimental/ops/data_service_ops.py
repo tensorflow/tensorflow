@@ -321,14 +321,14 @@ def distribute(processing_mode,
   To see the distributed operations in action, the `DispatchServer` should be
   started first so that tf.data workers can register to it.
 
-  >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
-  >>> print(dispatcher.target)
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
+  >>> print(dispatcher.target) # prints grpc://localhost:<port>
 
   >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker1 = tf.data.experimental.service.WorkerServer(
-  ...         port=0, dispatcher_address=dispatcher_address)
+  ...           dispatcher_address=dispatcher_address)
   >>> worker2 = tf.data.experimental.service.WorkerServer(
-  ...         port=0, dispatcher_address=dispatcher_address)
+  ...           dispatcher_address=dispatcher_address)
   >>> dataset = tf.data.Dataset.range(5)
   >>> dataset = dataset.map(lambda x: x*x)
   >>> dataset = dataset.apply(
@@ -342,9 +342,10 @@ def distribute(processing_mode,
   In the above example, the dataset operations (before applying the `distribute`
   function on the elements) will be executed on the tf.data workers,
   and the elements are provided over RPC. The remaining transformations
-  (after the call to `distribute`) will be executed locally. By setting the port
-  to 0 while creating the dispatcher and the workers, they will bind to usused
-  free ports which are chosen at random.
+  (after the call to `distribute`) will be executed locally. The dispatcher
+  and the workers will bind to usused free ports (which are chosen at random),
+  in order to communicate with each other. However, to bind them to specific
+  ports, the `port` parameter can be passed.
 
   The `job_name` argument allows jobs to be shared across multiple
   datasets. Instead of each dataset creating its own job, all
