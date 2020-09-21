@@ -840,6 +840,45 @@ class ScatterNdTensorTest(test.TestCase):
       self.assertAllEqual(max_result,
                           constant_op.constant([1, 1, 1, 2, 1, 1, 1, 2]))
 
+  def testUpdateMinMaxGradients(self):
+    with self.cached_session():
+      x = array_ops.ones([4], dtype=dtypes.float32)
+      indices = constant_op.constant([[1], [2], [3], [3]])
+      updates = constant_op.constant([2.0, 0.5, 1.0, 1.0], dtype=dtypes.float32)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_max(x, indices, updates), [x])
+      # Numerical gradient doesn't work for degenerate values because the
+      # derivative is not continuous. The manually entered gradient divides
+      # the gradient among all contributing elements at the discontinuity.
+      manual = array_ops.reshape(
+          array_ops.matrix_diag([1.0, 0.0, 1.0, 0.3333]), (1, 4, 4))
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_min(x, indices, updates), [x])
+      manual = array_ops.reshape(
+          array_ops.matrix_diag([1.0, 1.0, 0.0, 0.3333]), (1, 4, 4))
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda updates: array_ops.tensor_scatter_max(x, indices, updates),
+          [updates])
+      manual = constant_op.constant(
+          [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.3333, 0.3333]]],
+          dtype=dtypes.float32)
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda updates: array_ops.tensor_scatter_min(x, indices, updates),
+          [updates])
+      manual = constant_op.constant(
+          [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.3333, 0.3333]]],
+          dtype=dtypes.float32)
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
   def testTensorScatterUpdateWithForwarding(self):
     for dtype in (dtypes.int32, dtypes.float32):
 
