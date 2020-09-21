@@ -113,12 +113,12 @@
   * Calling ops with a python constants or numpy values is now consistent with
     tf.convert_to_tensor behavior. This avoids operations like tf.reshape
     truncating inputs such as from int64 to int32.
-  * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
+  * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensor` arguments.
   * The Python bitwise operators for `Tensor` (`__and__`, `__or__`, `__xor__`
     and `__invert__` now support non-`bool` arguments and apply the
     corresponding bitwise ops. `bool` arguments continue to be supported and
     dispatch to logical ops. This brings them more in line with Python and NumPy
-    benavior.
+    behavior.
   * Added `tf.SparseTensor.with_values`. This returns a new SparseTensor with
     the same sparsity pattern, but with new provided values. It is similar to
     the `with_values` function of `RaggedTensor`.
@@ -153,7 +153,7 @@
     dataset when it is safe to do so. The optimization can be disabled via
     the `experimental_optimization.reorder_data_discarding_ops` dataset
     option.
-  * `tf.data.Options` were previously immutable and can now be overriden.
+  * `tf.data.Options` were previously immutable and can now be overridden.
   * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
     with a new `output_signature` argument, which allows `from_generator` to
     produce any type describable by a `tf.TypeSpec`.
@@ -162,7 +162,7 @@
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op
-      `stateless_sample_distorted_bounding_box` which is a determinstic
+      `stateless_sample_distorted_bounding_box` which is a deterministic
       version of `sample_distorted_bounding_box` op. Given the same seed, these
       stateless functions/ops produce the same results independent of how many
       times the function is called, and independent of global seed settings.
@@ -516,7 +516,7 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
   * Libtensorflow packages are available in GCS starting this release. We have also started to [release a nightly version of these packages](https://github.com/tensorflow/tensorflow#official-builds).
 
-  * The experimental Python API [`tf.debugging.experimental.enable_dump_debug_info()`](https://www.tensorflow.org/api_docs/python/tf/debugging/experimental/enable_dump_debug_info) now allows you to instrument a TensorFlow program and dump debugging information to a directory on the file system. The directory can be read and visualized by a new interactive dashboard in TensorBoard 2.3 called [Debugger V2](https://www.tensorflow.org/tensorboard/debugger_v2), which reveals the details of the TensorFlow program including graph structures, history of op executions at the Python (eager) and intra-graph levels, the runtime dtype, shape, and numerical composistion of tensors, as well as their code locations.
+  * The experimental Python API [`tf.debugging.experimental.enable_dump_debug_info()`](https://www.tensorflow.org/api_docs/python/tf/debugging/experimental/enable_dump_debug_info) now allows you to instrument a TensorFlow program and dump debugging information to a directory on the file system. The directory can be read and visualized by a new interactive dashboard in TensorBoard 2.3 called [Debugger V2](https://www.tensorflow.org/tensorboard/debugger_v2), which reveals the details of the TensorFlow program including graph structures, history of op executions at the Python (eager) and intra-graph levels, the runtime dtype, shape, and numerical composition of tensors, as well as their code locations.
 
 ## Breaking Changes
 * Increases the **minimum bazel version** required to build TF to **3.1.0**.
@@ -534,7 +534,7 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
    breaking change only impacts `tf.image.extract_glimpse` and
    `tf.compat.v2.image.extract_glimpse` API endpoints. The behavior of
    `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
-   exsiting C++ kernel `ExtractGlimpse` does not change either, so saved
+   existing C++ kernel `ExtractGlimpse` does not change either, so saved
    models using `tf.raw_ops.ExtractGlimpse` will not be impacted.
 
 ## Known Caveats
@@ -1525,7 +1525,7 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
         conversion. TensorRT initialization arguments are now passed wrapped in
         a named-tuple, `TrtConversionParams`, rather than as separate arguments
         as in `TrtGraphConverter`.
-    *   Changed API to optimize TensorRT enginges during graph optimization.
+    *   Changed API to optimize TensorRT engines during graph optimization.
         This is now done by calling `converter.build()` where previously
         `is_dynamic_op=False` would be set.
     *   `converter.convert()` no longer returns a `tf.function`. Now the
