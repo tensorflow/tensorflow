@@ -58,8 +58,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
-                     input_type == kTfLiteInt32 || input_type == kTfLiteInt64 ||
-                     input_type == kTfLiteBool);
+                     input_type == kTfLiteInt32 || input_type == kTfLiteInt64);
 
   // Output dimensions will match input dimensions, except 'axis', which
   // will be the sum of inputs
@@ -172,9 +171,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt16:
       TF_LITE_CONCATENATION(int16_t);
-      break;
-    case kTfLiteBool:
-      TF_LITE_CONCATENATION(bool);
       break;
     default:
       context->ReportError(context, "Type '%s' is not supported currently.",
