@@ -2405,7 +2405,14 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
 
   bool few_waves = false;
   auto is_good_for_few_waves = [](const HloInstruction* instr) {
-	return instr->opcode() != HloOpcode::kReduceWindow;
+    if (instr->opcode() == HloOpcode::kReduceWindow) {
+      return false;
+    } else if (instr->opcode() == HloOpcode::kBroadcast &&
+	       !instr->dimensions().empty()) {
+      // We need to make the codegen broadcast aware before enabling.
+      return false;
+    }
+    return true;
   };
   if (hlo.opcode() == HloOpcode::kFusion) {
     few_waves = absl::c_all_of(
