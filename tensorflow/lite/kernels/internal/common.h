@@ -219,9 +219,9 @@ inline int CountLeadingSignBits(T integer_input) {
   using U = typename std::make_unsigned<T>::type;
   return integer_input >= 0
              ? CountLeadingZeros(static_cast<U>(integer_input)) - 1
-         : integer_input != std::numeric_limits<T>::min()
-             ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
-             : 0;
+             : integer_input != std::numeric_limits<T>::min()
+                   ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
+                   : 0;
 #endif
 }
 
@@ -241,8 +241,12 @@ inline Integer FloorLog2(Integer n) {
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
 // softmax
-inline void gen_lut(const std::function<double(double)>& func, double min,
-                    double max, int16_t* table, const int num) {
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(double (*func)(double), double min, double max,
+                    int16_t* table, const int num) {
   // size of table should equal to num + 1
   // last element only for slope calculation
   double step = (max - min) / (num - 1);
@@ -265,8 +269,12 @@ inline void gen_lut(const std::function<double(double)>& func, double min,
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
 // softmax
-inline void gen_lut(const std::function<float(float)>& func, float min,
-                    float max, int16_t* table, const int num) {
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(float (*func)(float), float min, float max, int16_t* table,
+                    const int num) {
   // size of table should equal to num + 1
   // last element only for slope calculation
   float step = (max - min) / (num - 1);
@@ -463,13 +471,15 @@ inline void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32_t,
 //  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
 //  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
 constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90   ? 7
-         : input_bits > 44 ? 6
-         : input_bits > 21 ? 5
-         : input_bits > 10 ? 4
-         : input_bits > 4  ? 3
-         : input_bits > 1  ? 2
-                           : 1;
+  return input_bits > 90
+             ? 7
+             : input_bits > 44
+                   ? 6
+                   : input_bits > 21
+                         ? 5
+                         : input_bits > 10
+                               ? 4
+                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
 }
 
 // Although currently the name of this function says that it cannot handle
