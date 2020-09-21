@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace text {
