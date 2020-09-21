@@ -154,6 +154,10 @@ OverviewPageRecommendation ComputeGenericRecommendation(
     const PrecisionStats& precision_stats) {
   OverviewPageRecommendation re;
   GenericRecommendation generic;
+  generic.set_device_collectives_bottleneck(
+      bottleneck.device_collectives_classification());
+  generic.set_device_collectives_statement(
+      bottleneck.device_collectives_statement());
   generic.set_kernel_launch_bottleneck(
       bottleneck.kernel_launch_classification());
   generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement());
