@@ -34,12 +34,17 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 class ProcessingMode(object):
+  """tf.data service processing modes."""
+
   PARALLEL_EPOCHS = "parallel_epochs"
+  DISTRIBUTED_EPOCH = "distributed_epoch"
 
   @staticmethod
   def validate(mode):
     """Raises a ValueError if the given object is not a valid processing mode."""
-    valid_modes = [ProcessingMode.PARALLEL_EPOCHS]
+    valid_modes = [
+        ProcessingMode.PARALLEL_EPOCHS, ProcessingMode.DISTRIBUTED_EPOCH
+    ]
     if mode not in valid_modes:
       raise ValueError(
           "{0} is not a valid processing mode. Valid modes: {1}".format(
@@ -315,7 +320,7 @@ def distribute(processing_mode,
   dataset in different orders.
 
   In the future, there will be additional processing modes. For example,
-  a "one_epoch" mode which partitions the dataset across the tf.data
+  a "distributed_epoch" mode which partitions the dataset across the tf.data
   workers, so that the consumers see each element of the dataset only once.
 
   ```

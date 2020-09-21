@@ -99,7 +99,8 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   return Status::OK();
 }  // static
 
-Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
+Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
+                             std::unique_ptr<Iterator>* result) {
   // Create an `IteratorContext`, which bundles together the necessary runtime
   // support to create and get elements from an iterator.
   std::unique_ptr<IteratorContext> ctx;
@@ -116,6 +117,7 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     params.cancellation_manager = &cancellation_manager_;
+    params.split_provider = std::move(split_provider);
 
     ctx = absl::make_unique<IteratorContext>(std::move(params));
   }
@@ -128,6 +130,14 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
   *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
 
   return Status::OK();
+}
+
+Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
+  return MakeIterator(/*split_provider=*/nullptr, result);
+}
+
+Status Dataset::MakeSplitProvider(std::unique_ptr<SplitProvider>* result) {
+  return dataset_->MakeSplitProvider(result);
 }
 
 Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,

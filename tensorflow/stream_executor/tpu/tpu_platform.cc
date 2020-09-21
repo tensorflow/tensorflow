@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 
 namespace tensorflow {
+namespace tpu {
 
 PLATFORM_DEFINE_ID(TpuPlatform::kId);
 TpuPlatform* tpu_registered_platform = nullptr;
@@ -99,8 +100,7 @@ TpuPlatform::GetUncachedExecutor(
     return status.status();
   }
   return std::make_unique<stream_executor::StreamExecutor>(
-      this, std::make_unique<tensorflow::TpuExecutor>(this, executor),
-      config.ordinal);
+      this, std::make_unique<TpuExecutor>(this, executor), config.ordinal);
 }
 
 ::stream_executor::Platform::Id TpuPlatform::id() const {
@@ -165,9 +165,9 @@ Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
 bool RegisterTpuPlatform() {
   static bool tpu_platform_registered = false;
   if (!tpu_platform_registered) {
-    tensorflow::tpu_registered_platform = new tensorflow::TpuPlatform();
+    tpu_registered_platform = new TpuPlatform();
     std::unique_ptr<stream_executor::Platform> platform(
-        tensorflow::tpu_registered_platform);
+        tpu_registered_platform);
     SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
         std::move(platform)));
     tpu_platform_registered = true;
@@ -175,4 +175,5 @@ bool RegisterTpuPlatform() {
   return true;
 }
 
+}  // namespace tpu
 }  // namespace tensorflow
