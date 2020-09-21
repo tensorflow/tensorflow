@@ -38,6 +38,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import worker_training_state
@@ -2328,6 +2329,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       with summary_ops_v2.always_record_summaries():
         for layer in self.model.layers:
           for weight in layer.weights:
+            # allowed_values from tensorflow/core/ops/compat/ops_history_v2/WriteHistogramSummary.pbtxt
+            if weight.dtype not in [ dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16, dtypes.int32, dtypes.uint8, dtypes.int64, dtypes.uint16, dtypes.uint32, dtypes.uint64 ]:
+              logging.warn('{weight_name} has dtype {weight_dtype} which is currently not supported by histogram summary. Weight histogram will not be shown in TensorBoard.'.format(weight_name=weight.name, weight_dtype = weight.dtype))
+              continue
             weight_name = weight.name.replace(':', '_')
             summary_ops_v2.histogram(weight_name, weight, step=epoch)
             if self.write_images:

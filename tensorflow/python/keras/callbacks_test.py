@@ -1846,6 +1846,20 @@ def list_summaries(logdir):
   return result
 
 
+class UnsupportedSummaryHistogramTypesLayer(keras.layers.Layer):
+  def build(self, input_shape):
+    # TODO should really be AllDtypes \\ supported_types
+    unsupported_histogram_dtypes = \
+      [ ('bool',None)
+      , ('complex64','zeros')
+      , ('complex128','zeros')
+      #, 'q(u)int8/16/32', 'string', 'resource, 'variant'
+      ]
+    for t,i in unsupported_histogram_dtypes:
+      self.add_weight('UnsupportedHistogramTypeWeight_{}'.format(t), shape=(1,), dtype=t, initializer=i)
+  def call(self,inputs):
+    return inputs
+
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestTensorBoardV2(keras_parameterized.TestCase):
@@ -1860,6 +1874,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     layers = [
         keras.layers.Conv2D(8, (3, 3)),
         keras.layers.Flatten(),
+        UnsupportedSummaryHistogramTypesLayer(),
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
