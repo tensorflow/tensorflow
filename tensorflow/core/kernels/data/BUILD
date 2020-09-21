@@ -1449,6 +1449,7 @@ filegroup(
         exclude = [
             "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
             "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
+            "model_dataset_op.*",  # not supported on mobile.
             "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
             "*test.cc",
             "*test.h",
