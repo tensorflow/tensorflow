@@ -97,14 +97,39 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   // larger than the number of tensor slices.
   int desired_work_group_size =
       std::min(tensor_slices, device_info.max_work_group_size_x);
-  if (device_info.IsMali() && desired_work_group_size > 64) {
+  if (device_info.IsMali()) {
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have
     // severe performance penalty.
     desired_work_group_size = 64;
   }
-  if (device_info.IsAdreno3xx()) {
+  if (device_info.IsAdreno()) {
+    AdrenoInfo info = device_info.adreno_info;
+    if (device_info.IsAdreno3xx()) {
+      if (info.gpu_version < 320) {
+        desired_work_group_size = 64;
+      } else {
+        desired_work_group_size = 128;
+      }
+    } else if (device_info.IsAdreno4xx()) {
+      if (info.gpu_version < 430) {
+        desired_work_group_size = 128;
+      } else {
+        desired_work_group_size = 256;
+      }
+    } else if (device_info.IsAdreno5xx()) {
+      if (info.gpu_version < 530) {
+        desired_work_group_size = 128;
+      } else {
+        desired_work_group_size = 256;
+      }
+    }
+  }
+  if (device_info.IsPowerVR()) {
     desired_work_group_size = 64;
+  }
+  while (desired_work_group_size >= tensor_slices * 2) {
+    desired_work_group_size /= 2;
   }
   work_group_size_.x = desired_work_group_size;
   work_group_size_.y = 1;  // Required
