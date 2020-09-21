@@ -79,7 +79,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -2854,7 +2853,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         'weights', 'trainable_weights', 'non_trainable_weights'
     }
     if hasattr(self, '_layers'):
-      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+      nested_layers = layer_utils.filter_empty_layer_containers(
           self._layers)
       return list(
           itertools.chain.from_iterable(
