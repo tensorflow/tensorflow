@@ -635,7 +635,8 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-    for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    for (const string& activation :
+         {"Relu", "Relu6", "Elu", "Tanh", "LeakyRelu"}) {
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
       auto lhs_shape = ops::Placeholder::Shape({8, 32});
@@ -659,6 +660,12 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           return ops::Identity(fetch, ops::Relu6(activate, bias_add));
         } else if (activation == "Elu") {
           return ops::Identity(fetch, ops::Elu(activate, bias_add));
+        } else if (activation == "Tanh") {
+          return ops::Identity(fetch, ops::Tanh(activate, bias_add));
+        } else if (activation == "LeakyRelu") {
+          auto attr = ops::internal::LeakyRelu::Alpha(0.5);
+          return ops::Identity(
+              fetch, ops::internal::LeakyRelu(activate, bias_add, attr));
         }
 
         return ops::Identity(fetch, bias);
@@ -697,6 +704,11 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           ASSERT_EQ(fused_ops.size(), 2);
           EXPECT_EQ(fused_ops[0], "BiasAdd");
           EXPECT_EQ(fused_ops[1], activation);
+
+          if (activation == "LeakyRelu") {
+            EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), 0.5);
+          }
+
           found++;
         }
       }
