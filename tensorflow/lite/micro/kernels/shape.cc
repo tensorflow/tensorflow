@@ -50,14 +50,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       tflite::micro::GetEvalInput(context, node, kInputTensor);
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
-
-  switch (output->type) {
-    case kTfLiteInt32:
-      ExtractShape(input, tflite::micro::GetTensorData<int32_t>(output));
-      break;
-    default:
-      return kTfLiteError;
-  }
+  if (output->type != kTfLiteInt32)
+    return kTfLiteError;
+  else
+    ExtractShape(input, tflite::micro::GetTensorData<int32_t>(output));
 
   return kTfLiteOk;
 }
