@@ -434,6 +434,10 @@ class TestOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override { ctx->set_output(0, Tensor()); }
 };
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_CPU), TestOp);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_GPU), TestOp);
+#endif
+
 
 TEST_F(MathGradTest, Error_Reporting) {
   auto x = test::AsTensor<float>({-3.f});
@@ -890,6 +894,7 @@ TEST_F(MathGradTest, Pow) {
   }
 }
 
+#if !(TENSORFLOW_USE_ROCM || GOOGLE_CUDA)
 TEST_F(MathGradTest, ComplexPow) {
   auto x = test::AsTensor<complex64>({0.f, 2.f, -2.f}, TensorShape({3}));
   auto y = test::AsTensor<complex64>({2.f, 2.f, 2.f}, TensorShape({3}));
@@ -936,6 +941,7 @@ TEST_F(MathGradTest, ComplexPow) {
                                 TensorShape({3})),
       4.5e-6f);
 }
+#endif
 
 TEST_F(MathGradTest, Xlogy) {
   auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
