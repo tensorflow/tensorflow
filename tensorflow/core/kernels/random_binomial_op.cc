@@ -184,7 +184,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
     // the sample shape and [H1, ... Hm] for the batch shape of the samples.
     // We have B1 * ... * Bk samples per batch member we need.
     auto DoWork = [num_batches, samples_per_batch, &bcast, &counts, &probs,
-                   &gen, &output](int start_output, int limit_output) {
+                   &gen, &output](int64 start_output, int64 limit_output) {
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
       Eigen::array<T, 4> z;

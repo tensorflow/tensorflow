@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/group_events.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -32,6 +33,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::testing::UnorderedElementsAre;
 
 TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   constexpr int64 kStepNum = 123;
@@ -566,6 +569,17 @@ TEST(GroupEventsTest, WorkerTest) {
       });
 }
 
+absl::flat_hash_set<int64> ParseGroupIds(absl::string_view selected_group_ids) {
+  absl::flat_hash_set<int64> group_ids;
+  std::vector<absl::string_view> strs = absl::StrSplit(selected_group_ids, '=');
+  std::vector<absl::string_view> group_id_strs = absl::StrSplit(strs[1], ',');
+  for (absl::string_view group_id_str : group_id_strs) {
+    int64 group_id;
+    if (absl::SimpleAtoi(group_id_str, &group_id)) group_ids.insert(group_id);
+  }
+  return group_ids;
+}
+
 TEST(GroupEventsTest, BatchingSessionTest) {
   constexpr absl::string_view kSchedule = "Schedule";
   constexpr int64 kBatchContextType =
@@ -616,20 +630,20 @@ TEST(GroupEventsTest, BatchingSessionTest) {
                 group_id = stat->IntValue();
               }
               EXPECT_TRUE(group_id.has_value());
-              std::string selected_group_ids;
+              absl::string_view selected_group_ids;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kSelectedGroupIds)) {
                 selected_group_ids = stat->StrOrRefValue();
               }
               if (line.Id() == 0) {
                 if (event.Type() == HostEventType::kBatchingSessionRun) {
-                  EXPECT_EQ(
-                      selected_group_ids,
-                      absl::StrCat("?selected_group_ids=", *group_id, ",0"));
+                  EXPECT_THAT(ParseGroupIds(selected_group_ids),
+                              UnorderedElementsAre(*group_id, 0));
                   ++num_checked;
                 }
               } else if (line.Id() == 1) {
-                EXPECT_EQ(selected_group_ids, "?selected_group_ids=0,1,2");
+                EXPECT_THAT(ParseGroupIds(selected_group_ids),
+                            UnorderedElementsAre(0, 1, 2));
                 ++num_checked;
               }
             });

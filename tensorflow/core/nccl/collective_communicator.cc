@@ -164,7 +164,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
 }
 
 void NcclCommunicator::StartAbort(const Status& s) {
-  CHECK(false) << "not implemented yet";  // Crash ok.
+  nccl_manager_.StartAbort(s);
 }
 
 }  // namespace tensorflow

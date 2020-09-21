@@ -100,6 +100,20 @@ Status ValidateSavedFunctionCompatibleWithFunctionDef(
 
 }  // namespace
 
+Status LoadSavedAsset(ImmediateExecutionContext* ctx, const SavedAsset& asset,
+                      const std::string& saved_model_dir,
+                      absl::Span<const AssetFileDef> assets,
+                      std::unique_ptr<Asset>* output) {
+  int asset_index = asset.asset_file_def_index();
+  if (asset_index >= assets.size()) {
+    return errors::FailedPrecondition(
+        "SavedAsset contained asset index ", asset_index,
+        " but AssetFileDef only contains ", assets.size(), " # of assets");
+  }
+  const std::string& asset_filename = assets[asset_index].filename();
+  return Asset::Create(ctx, saved_model_dir, asset_filename, output);
+}
+
 Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
                              const TensorProto& proto,
                              std::unique_ptr<Constant>* output) {
@@ -211,7 +225,8 @@ Status FlattenSignature(const StructuredValue& signature,
 }
 
 const SavedObject* FindNodeAtPath(StringPiece path,
-                                  const SavedObjectGraph& object_graph) {
+                                  const SavedObjectGraph& object_graph,
+                                  int* node_id) {
   const auto& nodes = object_graph.nodes();
   if (nodes.empty()) {
     return nullptr;
@@ -230,6 +245,9 @@ const SavedObject* FindNodeAtPath(StringPiece path,
         });
     if (child_node_iter == current_node->children().end()) {
       return nullptr;
+    }
+    if (node_id) {
+      *node_id = child_node_iter->node_id();
     }
     current_node = &nodes.Get(child_node_iter->node_id());
   }

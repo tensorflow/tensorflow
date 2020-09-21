@@ -530,7 +530,9 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
-        experimental_follow_type_hints=experimental_follow_type_hints)
+        experimental_compile=experimental_compile,
+        experimental_follow_type_hints=experimental_follow_type_hints,
+    )
     self._implements = experimental_implements
     # If `True`, the function uses the rendezvous of the parent. This is only
     # needed to support code where raw send/recv operations are inserted and
@@ -979,10 +981,19 @@ class Function(object):
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
-    return functools.partial(
-        context.context().get_compiler_ir,
-        function_name=fn_name,
-        args=list(canon_args) + concrete_fn.captured_inputs)
+    def compiler_ir_generator(stage='hlo'):
+      """Returns compiler IR for the given `stage`.
+
+      Args:
+        stage: Stage at which to return the IR. Allowed values are 'hlo' and
+        'optimized_hlo'.
+      """
+      return context.context().get_compiler_ir(
+          stage=stage,
+          function_name=fn_name,
+          args=list(canon_args) + concrete_fn.captured_inputs)
+
+    return compiler_ir_generator
 
   @property
   def python_function(self):

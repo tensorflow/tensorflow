@@ -357,11 +357,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
                                          while_region.body()));
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
       llvm::SmallVector<FuncOp, 4> functions;
-      functions.reserve(case_op.branches().size());
-      for (auto branch : case_op.branches())
-        functions.emplace_back(SymbolTable::lookupNearestSymbolFrom<FuncOp>(
-            case_op, branch.cast<SymbolRefAttr>()));
-
+      case_op.get_branch_functions(functions);
       AnalyzeFunctionalCaseOrIfOp(case_op, functions, backtrack_analysis);
     } else if (auto if_op = dyn_cast<IfOp>(op)) {
       AnalyzeFunctionalCaseOrIfOp(

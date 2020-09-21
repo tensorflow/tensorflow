@@ -116,6 +116,24 @@ An n-way switch statement, implementing the following:
   let verifier = [{
     return Verify(*this);
   }];
+
+
+ let extraClassDeclaration = [{
+    int num_branches() { return branches().size(); }
+
+    // Gets function corresponding branch # `index`.
+    FuncOp branch_function(int index) {
+      auto flat_sym_ref = branches()[index].cast<FlatSymbolRefAttr>();
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
+    }
+
+    // Gets all branch functions.
+    void get_branch_functions(SmallVectorImpl<FuncOp> &functions) {
+      functions.reserve(num_branches());
+      for (int idx : llvm::seq<int>(0, num_branches()))
+        functions.push_back(branch_function(idx));
+    }
+  }];
 }
 
 def TF_CaseRegionOp : TF_Op<"CaseRegion",
@@ -206,12 +224,12 @@ source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     I32Tensor:$source_target_pairs
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -231,7 +249,7 @@ element_shape: a shape compatible with that of elements in the list.
 
   let arguments = (ins
     TF_I32OrI64Tensor:$element_shape,
-    I32Tensor:$max_num_elements
+    TF_Int32Tensor:$max_num_elements
   );
 }
 
@@ -424,7 +442,7 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     TF_StrTensor:$names,
     Variadic<TF_StrTensor>:$sparse_keys,
     Variadic<TF_StrTensor>:$dense_keys,
-    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
+    Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     TF_ShapeAttrArray:$dense_shapes,
     I32ElementsAttr:$result_segment_sizes,
@@ -432,10 +450,10 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
   );
 
   let results = (outs
-    Variadic<I64Tensor>:$sparse_indices,                    // len(sparse_types)
-    Variadic<TensorOf<[F32, I64, TF_Str]>>:$sparse_values,  // len(sparse_types)
-    Variadic<I64Tensor>:$sparse_shapes,                     // len(sparse_types)
-    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_values    // len(Tdense)
+    Variadic<TF_Int64Tensor>:$sparse_indices,                           // len(sparse_types)
+    Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$sparse_values,  // len(sparse_types)
+    Variadic<TF_Int64Tensor>:$sparse_shapes,                            // len(sparse_types)
+    Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_values    // len(Tdense)
   );
 
   TF_DerivedOperandSizeAttr Nsparse = TF_DerivedOperandSizeAttr<2>;
@@ -459,7 +477,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     TF_StrTensor:$sparse_keys,
     TF_StrTensor:$dense_keys,
     TF_StrTensor:$ragged_keys,
-    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
+    Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     Confined<I64Attr, [IntMinValue<0>]>:$num_sparse,
     TF_ShapeAttrArray:$dense_shapes,
@@ -467,13 +485,13 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
   );
 
   let results = (outs
-    Variadic<I64Tensor>:$sparse_indices,                    // len(sparse_types)
-    Variadic<TensorOf<[F32, I64, TF_Str]>>:$sparse_values,  // len(sparse_types)
-    Variadic<I64Tensor>:$sparse_shapes,                     // len(sparse_types)
-    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_values,   // len(Tdense)
-    Variadic<TensorOf<[F32, I64, TF_Str]>>:$ragged_values,  // len(ragged_value_types)
+    Variadic<TF_Int64Tensor>:$sparse_indices,                           // len(sparse_types)
+    Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$sparse_values,  // len(sparse_types)
+    Variadic<TF_Int64Tensor>:$sparse_shapes,                            // len(sparse_types)
+    Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_values,   // len(Tdense)
+    Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$ragged_values,  // len(ragged_value_types)
                                                             //     = len(ragged_split_types)
-    Variadic<TensorOf<[I32, I64]>>:$ragged_row_splits       // len(ragged_split_types)
+    Variadic<TensorOf<[TF_Int32, TF_Int64]>>:$ragged_row_splits         // len(ragged_split_types)
                                                             //     = len(ragged_value_types)
   );
 
@@ -735,7 +753,7 @@ element_dtype: the desired type of elements in the list.
 
   let arguments = (ins
     TF_I32OrI64Tensor:$element_shape,
-    I32Tensor:$num_elements
+    TF_Int32Tensor:$num_elements
   );
 }
 
@@ -956,8 +974,8 @@ Creates a dataset that batches `batch_size` elements from `input_dataset`.
 
   let arguments = (ins
     TF_VariantTensor:$input_dataset,
-    I64Tensor:$batch_size,
-    I1Tensor:$drop_remainder,
+    TF_Int64Tensor:$batch_size,
+    TF_BoolTensor:$drop_remainder,
 
     DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
@@ -1006,9 +1024,9 @@ to `batch_size * num_parallel_batches` copies of `f` in parallel.
   let arguments = (ins
     TF_VariantTensor:$input_dataset,
     Variadic<TF_Tensor>:$other_arguments,
-    I64Tensor:$batch_size,
-    I64Tensor:$num_parallel_calls,
-    I1Tensor:$drop_remainder,
+    TF_Int64Tensor:$batch_size,
+    TF_Int64Tensor:$num_parallel_calls,
+    TF_BoolTensor:$drop_remainder,
 
     SymbolRefAttr:$f,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
@@ -1036,7 +1054,7 @@ def TF_ParallelMapDatasetOp : TF_Op<"ParallelMapDataset", [NoSideEffect]> {
   let arguments = (ins
     TF_VariantTensor:$input_dataset,
     Variadic<TF_Tensor>:$other_arguments,
-    I32Tensor:$num_parallel_calls,
+    TF_Int32Tensor:$num_parallel_calls,
 
     SymbolRefAttr:$f,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
@@ -1118,11 +1136,11 @@ This function is faster and numerically stabler than `bessel_i0(x)`.
   }];
 
   let arguments = (ins
-    TF_FpTensor:$x
+    TF_FloatTensor:$x
   );
 
   let results = (outs
-    TF_FpTensor:$y
+    TF_FloatTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1139,11 +1157,11 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   }];
 
   let arguments = (ins
-    TF_FpTensor:$x
+    TF_FloatTensor:$x
   );
 
   let results = (outs
-    TF_FpTensor:$y
+    TF_FloatTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1154,7 +1172,7 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
-    I32Tensor:$device_ordinal,
+    TF_Int32Tensor:$device_ordinal,
 
     SymbolRefAttr:$f,
     DefaultValuedAttr<I64Attr, "0">:$autotuner_thresh
@@ -1264,12 +1282,12 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$y
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$z
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1289,12 +1307,12 @@ def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, 
   }];
 
   let arguments = (ins
-    TensorOf<[F16, F32, F64, TF_Complex, TF_F16Ref, TF_F32Ref, TF_F64Ref, TF_ComplexRef]>:$x,
-    TensorOf<[F16, F32, F64, TF_Complex, TF_F16Ref, TF_F32Ref, TF_F64Ref, TF_ComplexRef]>:$y
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Complex]>:$x,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Complex]>:$y
   );
 
   let results = (outs
-    TensorOf<[F16, F32, F64, TF_Complex, TF_F16Ref, TF_F32Ref, TF_F64Ref, TF_ComplexRef]>:$z
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Complex]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1310,12 +1328,12 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, I16, I32, I64, TF_Uint8, TF_FloatRef, TF_Int16Ref, TF_Int32Ref, TF_Int64Ref, TF_Uint8Ref]>:$x,
-    TensorOf<[TF_Float, I16, I32, I64, TF_Uint8, TF_FloatRef, TF_Int16Ref, TF_Int32Ref, TF_Int64Ref, TF_Uint8Ref]>:$y
+    TensorOf<[TF_Float, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$x,
+    TensorOf<[TF_Float, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, I16, I32, I64, TF_Uint8, TF_FloatRef, TF_Int16Ref, TF_Int32Ref, TF_Int64Ref, TF_Uint8Ref]>:$z
+    TensorOf<[TF_Float, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1333,12 +1351,12 @@ If `x` and `y` are reals, this will return the floating-point division.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint16Ref, TF_Uint8Ref]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint16Ref, TF_Uint8Ref]>:$y
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint16Ref, TF_Uint8Ref]>:$z
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1362,12 +1380,12 @@ Both input and output have a range `(-inf, inf)`.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_NumberNotQuantizedOrStr, TF_NumberNotQuantizedOrStrRef]>:$x,
-    TensorOf<[TF_NumberNotQuantizedOrStr, TF_NumberNotQuantizedOrStrRef]>:$y
+    TensorOf<[TF_NumberNotQuantizedOrStr]>:$x,
+    TensorOf<[TF_NumberNotQuantizedOrStr]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_NumberNotQuantizedOrStr, TF_NumberNotQuantizedOrStrRef]>:$z
+    TensorOf<[TF_NumberNotQuantizedOrStr]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1383,13 +1401,13 @@ The generated values will have mean 0 and standard deviation 1.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, "", [TF_VariableRead, TF_VariableWrite]>:$resource,
-    I64Tensor:$algorithm,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
+    TF_Int64Tensor:$algorithm,
     TF_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TF_FloatTensor:$output
   );
 
   TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
@@ -1407,12 +1425,12 @@ deviations from the mean are dropped and re-picked.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
-    I64Tensor:$algorithm,
+    TF_Int64Tensor:$algorithm,
     TF_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TF_FloatTensor:$output
   );
 
   TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
@@ -1429,12 +1447,12 @@ lower bound 0 is included in the range, while the upper bound 1 is excluded.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
-    I64Tensor:$algorithm,
+    TF_Int64Tensor:$algorithm,
     TF_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TF_FpTensor:$output
+    TF_FloatTensor:$output
   );
 
   TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
@@ -1450,12 +1468,12 @@ The generated values are uniform integers covering the whole range of `dtype`.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
-    I64Tensor:$algorithm,
+    TF_Int64Tensor:$algorithm,
     TF_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$output
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$output
   );
 
   TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
@@ -1480,14 +1498,14 @@ smaller than the range of the output (either `2^32` or `2^64`).
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
-    I64Tensor:$algorithm,
+    TF_Int64Tensor:$algorithm,
     TF_I32OrI64Tensor:$shape,
-    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$minval,
-    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$maxval
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$minval,
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$maxval
   );
 
   let results = (outs
-    TensorOf<[I32, I64, TF_Uint32, TF_Uint64]>:$output
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$output
   );
 
   TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
@@ -1560,8 +1578,8 @@ filename_suffix: Every event file's name is suffixed with this suffix.
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
     TF_StrTensor:$logdir,
-    I32Tensor:$max_queue,
-    I32Tensor:$flush_millis,
+    TF_Int32Tensor:$max_queue,
+    TF_Int32Tensor:$flush_millis,
     TF_StrTensor:$filename_suffix
   );
 
@@ -1647,10 +1665,10 @@ max_outputs: Max number of batch elements to generate audio for.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
-    I64Tensor:$step,
+    TF_Int64Tensor:$step,
     TF_StrTensor:$tag,
-    F32Tensor:$tensor,
-    F32Tensor:$sample_rate,
+    TF_Float32Tensor:$tensor,
+    TF_Float32Tensor:$sample_rate,
 
     Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_outputs
   );
@@ -1669,7 +1687,7 @@ tensor: A scalar string of the serialized tf.GraphDef proto.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
-    I64Tensor:$step,
+    TF_Int64Tensor:$step,
     TF_StrTensor:$tensor
   );
 
@@ -1694,7 +1712,7 @@ values: Any shape. Values to use to build the histogram.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
-    I64Tensor:$step,
+    TF_Int64Tensor:$step,
     TF_StrTensor:$tag,
     TF_IntOrFpTensor:$values
   );
@@ -1753,9 +1771,9 @@ bad_color: Color to use for pixels with non-finite values.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
-    I64Tensor:$step,
+    TF_Int64Tensor:$step,
     TF_StrTensor:$tag,
-    TensorOf<[F16, F32, TF_Uint8]>:$tensor,
+    TensorOf<[TF_Float16, TF_Float32, TF_Uint8]>:$tensor,
     TF_Uint8Tensor:$bad_color,
 
     Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_images
@@ -1777,7 +1795,7 @@ tensor: A tensor holding one or more serialized `Summary` protobufs to write.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
-    I64Tensor:$step,
+    TF_Int64Tensor:$step,
     TF_StrTensor:$tensor
   );
 
@@ -1798,7 +1816,7 @@ value: Value for the summary.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
-    I64Tensor:$step,
+    TF_Int64Tensor:$step,
     TF_StrTensor:$tag,
     TF_IntOrFpTensor:$value
   );
@@ -1822,7 +1840,7 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
 
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_SummaryWrite]>:$writer,
-    I64Tensor:$step,
+    TF_Int64Tensor:$step,
     TF_Tensor:$tensor,
     TF_StrTensor:$tag,
     TF_StrTensor:$summary_metadata
@@ -1833,7 +1851,6 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
-// TODO(b/168035831): Model dataset read.
 def TF_InitializeTableFromDatasetOp : TF_Op<"InitializeTableFromDataset", []> {
   let summary = "";
 
@@ -1873,6 +1890,24 @@ Where to extract the key and value from a line is specified by `key_index` and
   );
 
   let results = (outs);
+}
+
+// TODO(b/168035831): Model filename read.
+def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    TF_StrTensor:$filename,
+    Arg<TF_ResourceTensor, "", [TF_DatasetMemoryCacheRead, TF_DatasetMemoryCacheWrite]>:$cache,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
 }
 
 #endif // TF_OPS

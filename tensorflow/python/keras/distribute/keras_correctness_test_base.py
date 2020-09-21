@@ -51,7 +51,6 @@ all_strategies = [
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.mirrored_strategy_with_two_gpus,
     strategy_combinations.tpu_strategy,  # steps_per_run=2
-    strategy_combinations.tpu_strategy_one_step,
 ]
 
 
@@ -75,9 +74,14 @@ def graph_mode_test_configuration():
 
 def all_strategy_and_input_config_combinations():
   return (combinations.times(
-      combinations.combine(
-          distribution=all_strategies),
+      combinations.combine(distribution=all_strategies),
       eager_mode_test_configuration() + graph_mode_test_configuration()))
+
+
+def all_strategy_and_input_config_combinations_eager():
+  return (combinations.times(
+      combinations.combine(distribution=all_strategies),
+      eager_mode_test_configuration()))
 
 
 def strategy_minus_tpu_and_input_config_combinations_eager():
@@ -115,10 +119,9 @@ def test_combinations_for_embedding_model():
           (eager_mode_test_configuration())))
 
 
-def test_combinations_with_tpu_strategies():
+def test_combinations_with_tpu_strategies_graph():
   tpu_strategies = [
       strategy_combinations.tpu_strategy,
-      strategy_combinations.tpu_strategy_one_step
   ]
 
   return (combinations.times(

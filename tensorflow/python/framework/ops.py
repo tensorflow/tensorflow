@@ -5171,42 +5171,6 @@ class Graph(object):
   def _global_distribute_strategy_scope(self, distribute_strategy_scope):
     self._thread_local.distribute_strategy_scope = (distribute_strategy_scope)
 
-  @property
-  def _auto_cast_variable_read_dtype(self):
-    """The dtype that instances of `AutoCastVariable` will be casted to.
-
-    This is None if `AutoCastVariables` should not be casted.
-
-    See `AutoCastVariable` for more information.
-
-    Returns:
-      The dtype that instances of `AutoCastVariable` will be casted to.
-    """
-    dtype = getattr(self._thread_local, "_auto_cast_variable_read_dtype", None)
-    if dtype is None:
-      self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
-    return dtype
-
-  @_auto_cast_variable_read_dtype.setter
-  def _auto_cast_variable_read_dtype(self, dtype):
-    self._thread_local._auto_cast_variable_read_dtype = dtype  # pylint: disable=protected-access
-
-  def _enable_auto_casting_variables(self, dtype):
-    """Returns a context manager to automatically cast AutoCastVariables.
-
-    If an AutoCastVariable `var` is used under this context manager, it will be
-    casted to `dtype` before being used.
-
-    See `AutoCastVariable` for more information.
-
-    Args:
-      dtype: The dtype that AutoCastVariables should be casted to.
-
-    Returns:
-      Context manager.
-    """
-    return enable_auto_cast_variables(dtype, graph=self)
-
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
 
@@ -5220,38 +5184,6 @@ class Graph(object):
     See the comment for self._group_lock for more info.
     """
     return self._group_lock.group(_SESSION_RUN_LOCK_GROUP)
-
-
-class enable_auto_cast_variables(object):
-  """Enables the autocasting of `AutoCastVariable`s.
-
-  Under this context manager, `AutoCastVariable`s will be cast to `dtype` if
-  `dtype` is floating-point. Otherwise, `AutoCastVariable`s will not be cast.
-  """
-
-  __slots__ = ["_dtype", "_graph", "_prev_read_dtype"]
-
-  def __init__(self, dtype, graph=None):
-    if dtype and not dtype.is_floating:
-      self._dtype = None
-    else:
-      self._dtype = dtype
-    if graph is None:
-      self._graph = get_default_graph()
-    else:
-      self._graph = graph
-
-  def __enter__(self):
-    # For performance, access `_thread_local` attr directly rather than
-    # @property wrappers.
-    graph_thread_local = self._graph._thread_local
-    self._prev_read_dtype = getattr(graph_thread_local,
-                                    "_auto_cast_variable_read_dtype", None)
-    graph_thread_local._auto_cast_variable_read_dtype = self._dtype
-
-  def __exit__(self, type_arg, value_arg, traceback_arg):
-    self._graph._thread_local._auto_cast_variable_read_dtype = (
-        self._prev_read_dtype)
 
 
 # TODO(agarwal): currently device directives in an outer eager scope will not

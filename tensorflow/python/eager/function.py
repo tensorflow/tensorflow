@@ -2312,7 +2312,8 @@ class FunctionSpec(object):
   def from_function_and_signature(python_function,
                                   input_signature,
                                   is_pure=False,
-                                  experimental_follow_type_hints=False):
+                                  experimental_follow_type_hints=False,
+                                  experimental_compile=None):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2321,6 +2322,7 @@ class FunctionSpec(object):
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`
+      experimental_compile: see `tf.function`
 
     Returns:
       instance of FunctionSpec
@@ -2402,6 +2404,7 @@ class FunctionSpec(object):
         is_method,
         input_signature,
         is_pure=is_pure,
+        experimental_compile=experimental_compile,
         experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
@@ -2411,7 +2414,8 @@ class FunctionSpec(object):
                input_signature,
                is_pure=False,
                experimental_follow_type_hints=False,
-               name=None):
+               name=None,
+               experimental_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
@@ -2422,10 +2426,12 @@ class FunctionSpec(object):
         will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
+      experimental_compile: see `tf.function`.
     """
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
+    self._experimental_compile = experimental_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
@@ -2494,6 +2500,10 @@ class FunctionSpec(object):
   @property
   def is_pure(self):
     return self._is_pure
+
+  @property
+  def experimental_compile(self):
+    return self._experimental_compile
 
   @property
   def arg_names(self):

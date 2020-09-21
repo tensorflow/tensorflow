@@ -234,17 +234,16 @@ ENTRY main {
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
-  ASSERT_EQ(on_true->instruction_count(), 2);
+  ASSERT_EQ(on_true->instruction_count(), 1);
   const HloComputation* on_false = conditional->branch_computation(1);
-  ASSERT_EQ(on_false->instruction_count(), 2);
+  ASSERT_EQ(on_false->instruction_count(), 1);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      AllOf(op::Tuple(op::Add(op::Convert(op::Reshape(op::GetTupleElement(
-                                  op::GetTupleElement(op::Conditional())))),
-                              op::Convert(op::Reshape(op::GetTupleElement(
-                                  op::GetTupleElement(op::Conditional()))))))));
+      AllOf(op::Tuple(op::Add(
+          op::Convert(op::Reshape(op::GetTupleElement(op::Conditional()))),
+          op::Convert(op::Reshape(op::GetTupleElement(op::Conditional())))))));
 }
 
 TEST_F(ConditionalCodeMotionTest, UserShareOperandCannotBeMoved) {
@@ -335,7 +334,7 @@ on_false {
   get-tuple-element.2 = f32[] get-tuple-element(arg_tuple.2), index=0
   constant.3 = f32[] constant(1)
   constant.4 = f32[] constant(2)
-  add.4 = f32[] add(get-tuple-element.2, constant.3)
+  add.4 = f32[] add(constant.4, constant.3)
   add.5 = f32[] add(get-tuple-element.2, constant.4)
   add.6 = f32[] add(add.4, add.5)
   ROOT tuple.4 = (f32[]) tuple(add.6)
@@ -360,7 +359,7 @@ ENTRY main {
   const HloComputation* on_true = conditional->branch_computation(0);
   ASSERT_EQ(on_true->instruction_count(), 1);
   const HloComputation* on_false = conditional->branch_computation(1);
-  ASSERT_EQ(on_false->instruction_count(), 1);
+  ASSERT_EQ(on_false->instruction_count(), 3);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -543,6 +542,7 @@ ENTRY main {
   pred.1 = pred[] parameter(0)
   arg_tuple.3 = (bf16[2,54,168,128], bf16[2,52,168,128]) parameter(1)
   arg_tuple.4 = (bf16[2,86,104,128], bf16[2,84,104,128]) parameter(2)
+  arg_tuple.5 = f32[3,3,128,128] parameter(3)
   conditional = (f32[3,3,128,128])
     conditional(pred.1, arg_tuple.3, arg_tuple.4), true_computation=on_true,
     false_computation=on_false
@@ -557,6 +557,7 @@ ENTRY main {
   ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
+  CHECK(conditional != nullptr);
   const HloComputation* on_true = conditional->branch_computation(0);
   ASSERT_EQ(on_true->instruction_count(), 5);
   const HloComputation* on_false = conditional->branch_computation(1);
@@ -619,7 +620,7 @@ ENTRY main {
   EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
 }
 
-TEST_F(ConditionalCodeMotionTest, NoMoveInWithMultipleGTE) {
+TEST_F(ConditionalCodeMotionTest, MoveInWithMultipleGTE) {
   absl::string_view hlo_string =
       R"(
 HloModule RemoveIdenticalInstruction
@@ -647,19 +648,19 @@ ENTRY main {
     false_computation=on_false
   get-first-index = f32[10] get-tuple-element(conditional), index=0
   get-first-index.2 = f32[10] get-tuple-element(conditional), index=0
-  pow.1 = f32[10] power(get-first-index, get-first-index)
+  pow.1 = f32[10] power(get-first-index, get-first-index.2)
   ROOT tuple.3 = (f32[10], f32[10]) tuple(pow.1, get-first-index.2)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Tuple(op::Power(), op::GetTupleElement(op::Conditional())));
+  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(op::Conditional()),
+                              op::GetTupleElement(op::Conditional())));
 }
 
-TEST_F(ConditionalCodeMotionTest, MovePowInWithSharedBranch) {
+TEST_F(ConditionalCodeMotionTest, MoveOutWithSharedBranch) {
   absl::string_view hlo_string =
       R"(
 HloModule RemoveIdenticalInstruction
@@ -688,12 +689,16 @@ ENTRY main {
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
-  ASSERT_EQ(on_true->instruction_count(), 5);
+  ASSERT_EQ(on_true->instruction_count(), 1);
   const HloComputation* on_false = conditional->branch_computation(1);
-  ASSERT_EQ(on_false->instruction_count(), 5);
+  ASSERT_EQ(on_false->instruction_count(), 1);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
+  EXPECT_THAT(
+      root, AllOf(op::Power(op::Add(op::GetTupleElement(op::Conditional()),
+                                    op::GetTupleElement(op::Conditional())),
+                            op::Add(op::GetTupleElement(op::Conditional()),
+                                    op::GetTupleElement(op::Conditional())))));
 }
 
 TEST_F(ConditionalCodeMotionTest, MovePowInWithNonTupleRoot) {
@@ -957,6 +962,104 @@ ENTRY main {
           op::Convert(op::AllReduce(op::GetTupleElement(op::Conditional()))),
           op::Convert(
               op::AllReduce(op::GetTupleElement(op::Conditional())))))));
+}
+
+TEST_F(ConditionalCodeMotionTest, DoNotMoveWithExtraOperand) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+branch {
+  arg.1 = f32[10] parameter(0)
+  ROOT add.1 = f32[10] add(arg.1, arg.1)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = f32[10] parameter(1)
+  tuple.2 = f32[10] parameter(2)
+  conditional = f32[10]
+    conditional(pred.1, tuple.1, tuple.2), true_computation=branch,
+    false_computation=branch
+  ROOT pow.1 = f32[10] power(conditional, tuple.2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+}
+
+TEST_F(ConditionalCodeMotionTest, MultipleIndependentMoveIns) {
+  absl::string_view hlo_string =
+      R"(
+HloModule FromNMT
+
+%add.31755 (x.139: f32[], y.139: bf16[]) -> bf16[] {
+  %x.139 = bf16[]{:T(512)} parameter(0)
+  %y.139 = bf16[]{:T(512)} parameter(1)
+  ROOT %add.44073 = bf16[]{:T(512)} add(bf16[]{:T(512)} %x.139, bf16[]{:T(512)} %y.139)
+}
+
+%nmt.1 {
+  %wide_param.3 = (bf16[1024,4096]{1,0}, bf16[18,64,1024]{2,1,0}, s32[]) parameter(0)
+  %get-tuple-element.16525 = bf16[1024,4096]{1,0} get-tuple-element((bf16[1024,4096]{1,0}, bf16[18,64,1024]{2,1,0}, s32[]) %wide_param.3), index=0
+  %get-tuple-element.16527 = bf16[18,64,1024]{2,1,0} get-tuple-element((bf16[1024,4096]{1,0}, bf16[18,64,1024]{2,1,0}, s32[]) %wide_param.3), index=1
+  %get-tuple-element.16588 = s32[] get-tuple-element((bf16[1024,4096]{1,0}, bf16[18,64,1024]{2,1,0}, s32[]) %wide_param.3), index=2
+  %add.3764 = s32[] add(s32[] %get-tuple-element.16588, s32[] %get-tuple-element.16588), metadata={op_type="Sub" op_name="sub"}
+  %reshape.9821 = s32[1]{0} reshape(s32[] %add.3764)
+  %reshape.9822 = s32[] reshape(s32[1]{0} %reshape.9821)
+  %constant.13127 = s32[] constant(0)
+  %dynamic-slice.1245 = bf16[1,64,1024]{2,1,0} dynamic-slice(bf16[18,64,1024]{2,1,0} %get-tuple-element.16527, s32[] %reshape.9822, s32[] %constant.13127, s32[] %constant.13127), dynamic_slice_sizes={1,64,1024}
+  %reshape.9825 = bf16[64,1024]{1,0} reshape(bf16[1,64,1024]{2,1,0} %dynamic-slice.1245), metadata={op_type="GatherV2" op_name="GatherV2"}
+  %logistic.814 = bf16[64,1024]{1,0} logistic(bf16[64,1024]{1,0} %reshape.9825), metadata={op_type="Sigmoid" op_name="Sigmoid"}
+  %multiply.4890 = bf16[64,1024]{1,0} multiply(bf16[64,1024]{1,0} %reshape.9825, bf16[64,1024]{1,0} %logistic.814), metadata={op_type="Mul" op_name="mul"}
+  %tanh.573 = bf16[64,1024]{1,0} tanh(bf16[64,1024]{1,0} %reshape.9825), metadata={op_type="Tanh" op_name="Tanh"}
+  %multiply.4891 = bf16[64,1024]{1,0} multiply(bf16[64,1024]{1,0} %logistic.814, bf16[64,1024]{1,0} %tanh.573), metadata={op_type="Mul" op_name="mul_1"}
+  %add.3766 = bf16[64,1024]{1,0} add(bf16[64,1024]{1,0} %multiply.4890, bf16[64,1024]{1,0} %multiply.4891), metadata={op_type="AddV2" op_name="add_1"}
+  %multiply.4894 = bf16[64,1024]{1,0} multiply(bf16[64,1024]{1,0} %add.3766, bf16[64,1024]{1,0} %logistic.814), metadata={op_type="Mul" op_name="gradients_1/mul_grad/Mul"}
+  %constant.10568 = bf16[] constant(1), metadata={op_type="TanhGrad" op_name="gradients/Tanh_1_grad/TanhGrad"}
+  %broadcast.7198 = bf16[64,1024]{1,0} broadcast(bf16[] %constant.10568), dimensions={}, metadata={op_type="TanhGrad" op_name="gradients/Tanh_1_grad/TanhGrad"}
+  %multiply.4896 = bf16[64,1024]{1,0} multiply(bf16[64,1024]{1,0} %tanh.573, bf16[64,1024]{1,0} %tanh.573), metadata={op_type="TanhGrad" op_name="gradients/Tanh_1_grad/TanhGrad"}
+  %constant.10571 = bf16[] constant(1), metadata={op_type="SigmoidGrad" op_name="gradients/Sigmoid_grad/SigmoidGrad"}
+  %broadcast.7201 = bf16[64,1024]{1,0} broadcast(bf16[] %constant.10571), dimensions={}, metadata={op_type="SigmoidGrad" op_name="gradients/Sigmoid_grad/SigmoidGrad"}
+  %subtract.1702 = bf16[64,1024]{1,0} subtract(bf16[64,1024]{1,0} %broadcast.7201, bf16[64,1024]{1,0} %logistic.814), metadata={op_type="SigmoidGrad" op_name="gradients/Sigmoid_grad/SigmoidGrad"}
+  %multiply.4907 = bf16[64,1024]{1,0} multiply(bf16[64,1024]{1,0} %tanh.573, bf16[64,1024]{1,0} %add.3766), metadata={op_type="Mul" op_name="gradients/mul_2_grad/Mul_1"}
+  %multiply.4908 = bf16[64,1024]{1,0} multiply(bf16[64,1024]{1,0} %multiply.4907, bf16[64,1024]{1,0} %logistic.814), metadata={op_type="SigmoidGrad" op_name="gradients/Sigmoid_2_grad/SigmoidGrad"}
+  %dot.781 = bf16[64,4096]{1,0} dot(bf16[64,1024]{1,0} %multiply.4908, bf16[1024,4096]{1,0} %get-tuple-element.16525), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_type="MatMul" op_name="MatMul"}
+  ROOT %tuple.3200 = (bf16[64,1024]{1,0}, bf16[64,4096]{1,0}, s32[]) tuple(bf16[64,1024]{1,0} %multiply.4894, bf16[64,4096]{1,0} %dot.781, s32[] %reshape.9822)
+  }
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_tuple.3 = (bf16[1024,4096]{1,0}, bf16[18,64,1024]{2,1,0}, s32[]) parameter(1)
+  arg_tuple.4 = (bf16[1024,4096]{1,0}, bf16[18,64,1024]{2,1,0}, s32[]) parameter(2)
+  %arg.2 = s32[] parameter(3)
+  %conditional.3 = (bf16[64,1024]{1,0}, bf16[64,4096]{1,0}, s32[]) conditional(pred.1, arg_tuple.3, arg_tuple.4), true_computation=nmt.1, false_computation=nmt.1
+  %get-tuple-element.15889 = bf16[64,1024]{1,0} get-tuple-element((bf16[64,1024]{1,0}, bf16[64,4096]{1,0}, s32[]) %conditional.3), index=0, metadata={op_type="Case" op_name="switch_case/indexed_case"}
+  %multiply.4596 = bf16[64,1024]{1,0} multiply(bf16[64,1024]{1,0} %get-tuple-element.15889, bf16[64,1024]{1,0} %get-tuple-element.15889), metadata={op_type="L2Loss" op_name="global_norm/L2Loss"}
+  %constant.10279 = bf16[] constant(0), metadata={op_type="L2Loss" op_name="global_norm/L2Loss"}
+  %reduce.844 = bf16[] reduce(bf16[64,1024]{1,0} %multiply.4596, bf16[] %constant.10279), dimensions={0,1}, to_apply=%add.31755, metadata={op_type="L2Loss" op_name="global_norm/L2Loss"}
+  %get-tuple-element.15890 = bf16[64,4096]{1,0} get-tuple-element((bf16[64,1024]{1,0}, bf16[64,4096]{1,0}, s32[]) %conditional.3), index=1, metadata={op_type="Case" op_name="switch_case/indexed_case"}
+  %multiply.4597 = bf16[64,4096]{1,0} multiply(bf16[64,4096]{1,0} %get-tuple-element.15890, bf16[64,4096]{1,0} %get-tuple-element.15890), metadata={op_type="L2Loss" op_name="global_norm/L2Loss"}
+  %constant.10280 = bf16[] constant(0), metadata={op_type="L2Loss" op_name="global_norm/L2Loss"}
+  %reduce.845 = bf16[] reduce(bf16[64,4096]{1,0} %multiply.4597, bf16[] %constant.10280), dimensions={0,1}, to_apply=%add.31755, metadata={op_type="L2Loss" op_name="global_norm/L2Loss"}
+  %multiply.4667 = bf16[] multiply(bf16[] %reduce.845, bf16[]{:T(128)} %reduce.844), metadata={op_type="L2Loss" op_name="global_norm/L2Loss"}
+  ROOT %tuple.3200 = (bf16[], s32[]) tuple(%multiply.4667, s32[] %arg.2)
+  }
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional.3");
+  CHECK(conditional != nullptr);
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 27);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 27);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Tuple(op::GetTupleElement(op::Conditional()),
+                                    op::Parameter())));
 }
 
 }  // namespace conditional_opt

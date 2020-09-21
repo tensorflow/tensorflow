@@ -834,9 +834,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
       inputs = self._maybe_cast_inputs(inputs)
 
-      # try:
       with backend.name_scope(self._name_scope()):
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           # TODO(kaftan): do we maybe_build here, or have we already done it?
@@ -988,7 +988,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         if not self.built:
           self._maybe_build(inputs)
 
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           outputs = call_fn(inputs, *args, **kwargs)
 
         if self._activity_regularizer:
@@ -1121,7 +1122,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             call_fn = self.call
 
           try:
-            with ops.enable_auto_cast_variables(self._compute_dtype_object):
+            with autocast_variable.enable_auto_cast_variables(
+                self._compute_dtype_object):
               outputs = call_fn(cast_inputs, *args, **kwargs)
 
           except errors.OperatorNotAllowedInGraphError as e:
@@ -1523,7 +1525,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
-        with ops.enable_auto_cast_variables(None):
+        with autocast_variable.enable_auto_cast_variables(None):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property

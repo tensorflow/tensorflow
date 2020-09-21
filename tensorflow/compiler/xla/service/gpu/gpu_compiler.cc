@@ -237,8 +237,7 @@ Status GpuCompiler::OptimizeHloModule(
           return IsMatrixMultiplication(dot)
                      ? candidate_operands
                      : TransposeFolding::OperandIndices{};
-        },
-        TransposeFolding::NeverFoldTranspose);
+        });
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
 

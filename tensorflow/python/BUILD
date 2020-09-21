@@ -1020,6 +1020,11 @@ cc_library(
 )
 
 cc_library(
+    name = "safe_pyobject_ptr_required_hdrs",
+    textual_hdrs = ["lib/core/safe_pyobject_ptr.h"],
+)
+
+cc_library(
     name = "safe_ptr",
     srcs = [
         "lib/core/safe_ptr.cc",
@@ -5560,9 +5565,13 @@ tf_python_pybind_extension(
     name = "_function_parameter_canonicalizer_binding_for_test",
     testonly = True,
     srcs = ["util/function_parameter_canonicalizer_binding_for_test.cc"],
+    hdrs = [
+        "util/function_parameter_canonicalizer.h",
+    ],
     module_name = "_function_parameter_canonicalizer_binding_for_test",
     deps = [
-        ":function_parameter_canonicalizer",
+        ":safe_pyobject_ptr_required_hdrs",
+        "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/types:span",
         "@pybind11",
@@ -5971,6 +5980,7 @@ pywrap_tensorflow_macro(
         ":cost_analyzer_lib",
         ":model_analyzer_lib",
         ":cpp_python_util",
+        ":function_parameter_canonicalizer",
         ":kernel_registry",
         ":numpy_lib",
         ":safe_ptr",
@@ -5982,6 +5992,7 @@ pywrap_tensorflow_macro(
         ":pybind11_status",
         ":pybind11_proto",
         ":python_op_gen",
+        ":safe_pyobject_ptr",
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
@@ -6067,6 +6078,7 @@ filegroup(
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:op_gen_lib",  # tf_session
         "//tensorflow/core/common_runtime/eager:context",  # tfe
+        "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item

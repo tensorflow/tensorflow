@@ -26,23 +26,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -427,8 +421,8 @@ void EventNode::PropagateGroupId(int64 group_id,
     absl::optional<int64> child_group_id = child->GetGroupId();
     if (child_group_id.has_value()) {
       if (*child_group_id != group_id) {
-        (*group_metadata_map)[group_id].children.push_back(*child_group_id);
-        (*group_metadata_map)[*child_group_id].parents.push_back(group_id);
+        (*group_metadata_map)[group_id].children.insert(*child_group_id);
+        (*group_metadata_map)[*child_group_id].parents.insert(group_id);
       }
       // Stop propagation if it already belongs to a group. It may have been
       // grouped by another root.

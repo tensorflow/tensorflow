@@ -43,6 +43,16 @@ struct LookupTable : ::mlir::SideEffects::Resource::Base<LookupTable> {
   StringRef getName() final { return "LookupTable"; }
 };
 
+struct DatasetSeedGenerator
+    : ::mlir::SideEffects::Resource::Base<DatasetSeedGenerator> {
+  StringRef getName() final { return "DatasetSeedGenerator"; }
+};
+
+struct DatasetMemoryCache
+    : ::mlir::SideEffects::Resource::Base<DatasetMemoryCache> {
+  StringRef getName() final { return "DatasetMemoryCache"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

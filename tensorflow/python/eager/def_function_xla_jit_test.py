@@ -557,7 +557,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       b = random_ops.random_normal([2])
 
       self.assertIn('input_output_alias={ {}: (2, {}, may-alias) }',
-                    f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo'))
+                    f.experimental_get_compiler_ir(a, b)('optimized_hlo'))
 
   def testGetCompilerIrNotCompiled(self):
     with ops.device('device:{}:0'.format(self.device)):

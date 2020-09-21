@@ -436,8 +436,8 @@ Status LhloDialectEmitter::Initialize() {
     }
   }
 
-  FunctionType function_type = builder_.getFunctionType(
-      llvm::to_vector<8>(block->getArgumentTypes()), {});
+  FunctionType function_type =
+      builder_.getFunctionType(block->getArgumentTypes(), {});
   func_op.setType(function_type);
   func_op.setAllArgAttrs(args_attrs);
 

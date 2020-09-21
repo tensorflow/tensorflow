@@ -209,9 +209,13 @@ tf_cc_test(
 py_binary(
     name = "testdata/generate_saved_models",
     srcs = ["testdata/generate_saved_models.py"],
+    data = [
+        ":saved_model_asset_data",
+    ],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_spec",
@@ -221,6 +225,7 @@ py_binary(
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save_options",
+        "//tensorflow/python/training/tracking",
         "@absl_py//absl:app",
     ],
 )
@@ -229,6 +234,7 @@ py_binary(
 filegroup(
     name = "saved_model_test_files",
     srcs = glob([
+        "testdata/AssetModule/**",
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
@@ -243,6 +249,13 @@ filegroup(
 alias(
     name = "saved_model_half_plus_two",
     actual = ":saved_model_test_files",
+)
+
+filegroup(
+    name = "saved_model_asset_data",
+    srcs = [
+        "testdata/test_asset.txt",
+    ],
 )
 
 exports_files(

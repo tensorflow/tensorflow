@@ -1358,9 +1358,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // DLPack functions
   m.def("TFE_ToDlpackCapsule", [](py::handle& o) {
     PyObject* eager_tensor_pyobject_ptr = o.ptr();
-    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+
+    if (!EagerTensor_CheckExact(eager_tensor_pyobject_ptr)) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "The argument to `to_dlpack` must be a TF tensor, not Python object");
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+
+    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
     void* dlm_ptr = tensorflow::TFE_HandleToDLPack(thandle, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
 

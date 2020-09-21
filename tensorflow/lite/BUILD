@@ -242,6 +242,7 @@ cc_library(
         ":arena_planner",
         ":external_cpu_backend_context",
         ":graph_info",
+        ":kernel_api",
         ":memory_planner",
         ":minimal_logging",
         ":shared_library",
@@ -466,8 +467,10 @@ cc_test(
     data = [
         "testdata/0_subgraphs.bin",
         "testdata/2_subgraphs.bin",
+        "testdata/add_shared_tensors.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
+        "testdata/segment_sum_invalid_buffer.bin",
         "testdata/sparse_tensor.bin",
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",

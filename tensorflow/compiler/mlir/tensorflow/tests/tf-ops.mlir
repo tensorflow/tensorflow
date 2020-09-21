@@ -242,7 +242,7 @@ func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<1000
 func @testReshape(tensor<*xf32>, tensor<*xf32>) -> (tensor<100x100xf32>) {
 ^bb0(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>):
   %shape1 = constant dense<100.> : tensor<2xf32>
-  // expected-error @+1 {{must be tensor of 32/64-bit signless integer values}}
+  // expected-error @+1 {{must be tensor of 32/64-bit signed integer values}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<*xf32>, tensor<2xf32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
@@ -1967,7 +1967,7 @@ func @testValidShape(tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi32>, t
 // -----
 
 func @testShapeWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf32> {
-  // expected-error @+1 {{result #0 must be tensor of 32/64-bit signless integer values}}
+  // expected-error @+1 {{result #0 must be tensor of 32/64-bit signed integer values}}
   %0 = "tf.Shape"(%arg0) : (tensor<1x32x32x16xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -2011,7 +2011,7 @@ func @testValidShapeN(%arg0 : tensor<1x32x32x16xf32>, %arg1 : tensor<*xf32>) -> 
 // -----
 
 func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf32> {
-  // expected-error @+1 {{result #1 must be tensor of 32/64-bit signless integer values}}
+  // expected-error @+1 {{result #1 must be tensor of 32/64-bit signed integer values}}
   %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<4xf32>)
   return %0#1 : tensor<4xf32>
 }
@@ -2072,7 +2072,7 @@ func @testVariableShapeMultipleSubtypes(%arg0: tensor<*x!tf.resource<tensor<1x32
 // -----
 
 func @testVariableShapeWrongResultElemType(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<?xf32> {
-  // expected-error @+1 {{result #0 must be tensor of 32/64-bit signless integer values}}
+  // expected-error @+1 {{result #0 must be tensor of 32/64-bit signed integer values}}
   %0 = "tf.VariableShape"(%arg0) : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -2208,7 +2208,7 @@ func @testTranspose(tensor<2x3x4xf32>) -> tensor<3x2x4xf32> {
 // Test invalid tf.Less
 func @testLess(tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32> {
 ^bb0(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>):
-  // expected-error @+1 {{op result #0 must be tensor of 1-bit signless integer values}}
+  // expected-error @+1 {{op result #0 must be tensor of bool values}}
   %0 = "tf.Less"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }
@@ -2225,7 +2225,7 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<i32>) -> tensor<?xf32> 
 
 // tf.ConcatV2 with wrong 'axis' element type
 func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<f32>) -> tensor<?xf32> {
-  // expected-error @+1 {{operand #2 must be tensor of 32/64-bit signless integer values}}
+  // expected-error @+1 {{operand #2 must be tensor of 32/64-bit signed integer values}}
   %0 = "tf.ConcatV2"(%arg, %arg, %axis) : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<f32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
@@ -2258,7 +2258,7 @@ func @testAll64(%arg0: tensor<2x2xi1>, %arg1: tensor<i64>) -> tensor<i1> {
 // -----
 
 func @testAllFloat(%arg0: tensor<2x2xi1>, %arg1: tensor<f32>) -> tensor<i1> {
-  // expected-error @+1 {{'tf.All' op operand #1 must be tensor of 32/64-bit signless integer values}}
+  // expected-error @+1 {{'tf.All' op operand #1 must be tensor of 32/64-bit signed integer values}}
   %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<f32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
@@ -2266,7 +2266,7 @@ func @testAllFloat(%arg0: tensor<2x2xi1>, %arg1: tensor<f32>) -> tensor<i1> {
 // -----
 
 func @testAllI32(%arg0: tensor<2x2xi32>, %arg1: tensor<f32>) -> tensor<i32> {
-  // expected-error @+1 {{'tf.All' op operand #0 must be tensor of 1-bit signless integer values}}
+  // expected-error @+1 {{'tf.All' op operand #0 must be tensor of bool values}}
   %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi32>, tensor<f32>) -> tensor<i32>
   return %0 : tensor<i32>
 }

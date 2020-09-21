@@ -86,9 +86,8 @@ void EliminateUnusedResults(
   // Rebuild the new operation with lesser number of results.
   OpBuilder builder(op);
   Operation *new_op = Operation::create(
-      op->getLoc(), op->getName(), new_result_types,
-      llvm::to_vector<4>(op->getOperands()), op->getAttrs(),
-      llvm::to_vector<4>(op->getSuccessors()), op->getNumRegions());
+      op->getLoc(), op->getName(), new_result_types, op->getOperands(),
+      op->getAttrs(), op->getSuccessors(), op->getNumRegions());
   builder.insert(new_op);
 
   // Move region bodies to the new operation.
@@ -415,11 +414,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
           op, {if_op.then_function(), if_op.else_function()}, if_op.input());
     } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
       SmallVector<FuncOp, 4> branches;
-      for (Attribute branch : case_op.branches()) {
-        auto sym = branch.cast<FlatSymbolRefAttr>();
-        branches.push_back(
-            SymbolTable::lookupNearestSymbolFrom<FuncOp>(op, sym));
-      }
+      case_op.get_branch_functions(branches);
       result = CanonicalizeFunctionalIfCase(case_op, branches, case_op.input());
     } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
       if (while_op.cond_function().walk(check_while_cond).wasInterrupted())

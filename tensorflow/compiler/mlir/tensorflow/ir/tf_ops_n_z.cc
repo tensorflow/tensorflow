@@ -1032,6 +1032,7 @@ static LogicalResult Verify(SizeOp op) {
 
 OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
   ShapedType output_type = getType().cast<ShapedType>();
+  if (!output_type.hasRank()) return {};
   ShapedType input_type = getOperand().getType().cast<ShapedType>();
   if (!input_type.hasStaticShape()) return {};
   int size = input_type.getNumElements();
