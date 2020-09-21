@@ -81,6 +81,8 @@ class EventNode {
 
   std::string GetGroupName() const;
 
+  void SetGroupId(int64 group_id);
+
   // Sets group_id for this node and its descendants.
   void PropagateGroupId(int64 group_id, GroupMetadataMap* group_metadata_map);
 
