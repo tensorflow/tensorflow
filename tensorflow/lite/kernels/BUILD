@@ -146,6 +146,10 @@ cc_library(
         "acceleration_test_util_internal.cc",
     ],
     hdrs = ["acceleration_test_util_internal.h"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/types:optional",
@@ -272,6 +276,10 @@ cc_test(
     name = "eigen_support_test",
     size = "small",
     srcs = ["eigen_support_test.cc"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":eigen_support",
         "//tensorflow/lite/c:common",
@@ -454,6 +462,10 @@ cc_test(
     name = "kernel_util_test",
     size = "small",
     srcs = ["kernel_util_test.cc"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":kernel_util",
         "//tensorflow/lite/c:common",
