@@ -395,6 +395,28 @@ func @reshape_3D_4D(%arg0: tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32> {
 
 // -----
 
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape1_4D_4D
+func @reshape1_4D_4D(%arg0: tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32>
+  return %0 : tensor<1x4x1x512xi32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape2_4D_4D
+func @reshape2_4D_4D(%arg0: tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32>
+  return %0 : tensor<4x1024x1x1xi32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+
+// -----
+
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.minimum"(%lhs, %rhs)

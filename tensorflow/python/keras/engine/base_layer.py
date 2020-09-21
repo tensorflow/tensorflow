@@ -37,8 +37,8 @@ from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
-from tensorflow.python.eager import function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -62,11 +62,13 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
+
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -82,7 +84,6 @@ from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -833,9 +834,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
       inputs = self._maybe_cast_inputs(inputs)
 
-      # try:
       with backend.name_scope(self._name_scope()):
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           # TODO(kaftan): do we maybe_build here, or have we already done it?
@@ -987,7 +988,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         if not self.built:
           self._maybe_build(inputs)
 
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           outputs = call_fn(inputs, *args, **kwargs)
 
         if self._activity_regularizer:
@@ -1120,7 +1122,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             call_fn = self.call
 
           try:
-            with ops.enable_auto_cast_variables(self._compute_dtype_object):
+            with autocast_variable.enable_auto_cast_variables(
+                self._compute_dtype_object):
               outputs = call_fn(cast_inputs, *args, **kwargs)
 
           except errors.OperatorNotAllowedInGraphError as e:
@@ -1522,7 +1525,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
-        with ops.enable_auto_cast_variables(None):
+        with autocast_variable.enable_auto_cast_variables(None):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
@@ -2327,11 +2330,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                        'use a different Strategy, e.g. a MirroredStrategy.' %
                        (strategy.__class__.__name__, self._dtype_policy.name))
 
-    # This has no impact on the layer behavior, and is only used for printing
-    # warnings.
-    self._dtype_defaulted_to_floatx = (not dtype and
-                                       policy.policy_defaults_to_floatx())
-
     # Performance optimization: cache the compute dtype as a Dtype object or
     # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
     # TODO(b/157486353): Investigate returning DTypes in Policy.
@@ -2392,36 +2390,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _cast_single_input(self, x):
     """Cast a single Tensor or TensorSpec to the compute dtype."""
     if self._should_cast_single_input(x):
-      if self._dtype_defaulted_to_floatx:
-        self._warn_about_input_casting(x.dtype.base_dtype)
       return math_ops.cast(x, self._compute_dtype_object)
     else:
       return x
-
-  def _warn_about_input_casting(self, input_dtype):
-    # self._already_warned_about_input_casting is only retrieved or set in this
-    # function.
-    already_warned = getattr(self, '_already_warned_about_input_casting', False)
-    if not already_warned:
-      tf_logging.warn(
-          "Layer {self.name} is casting an input tensor from dtype "
-          "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
-          "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          'because its dtype defaults to floatx.\n\n'
-          ""
-          "If you intended to run this layer in {layer_dtype}, you can safely "
-          "ignore this warning. If in doubt, this warning is likely only an "
-          "issue if you are porting a TensorFlow 1.X model to TensorFlow 2.\n\n"
-          ""
-          "To change all layers to have dtype {input_dtype} by default, call "
-          "`tf.keras.backend.set_floatx('{input_dtype}')`. To change just this "
-          "layer, pass dtype='{input_dtype}' to the layer constructor. If you "
-          "are the author of this layer, you can disable autocasting by "
-          "passing autocast=False to the base Layer constructor.\n".format(
-              self=self,
-              input_dtype=input_dtype.name,
-              layer_dtype=self._compute_dtype))
-      self._already_warned_about_input_casting = True
 
   # _dtype used to be an attribute set in the constructor. We still expose it
   # because some clients still use it.
@@ -3186,7 +3157,7 @@ class TensorFlowOpLayer(Layer):
         return op.outputs[0]
       return op.outputs
 
-  @function.defun
+  @def_function.function
   def _defun_call(self, inputs):
     """Wraps the op creation method in an Eager function for `run_eagerly`."""
     return self._make_op(inputs)

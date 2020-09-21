@@ -29,9 +29,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
+from tensorflow.python.training.tracking import tracking
 
 
 class VarsAndArithmeticObjectGraph(module.Module):
@@ -68,9 +71,21 @@ class CyclicModule(module.Module):
     self.child = ReferencesParent(self)
 
 
+class AssetModule(module.Module):
+
+  def __init__(self):
+    self.asset = tracking.Asset(
+        test.test_src_dir_path("cc/saved_model/testdata/test_asset.txt"))
+
+  @def_function.function(input_signature=[])
+  def read_file(self):
+    return io_ops.read_file(self.asset)
+
+
 MODULE_CTORS = {
     "VarsAndArithmeticObjectGraph": VarsAndArithmeticObjectGraph,
     "CyclicModule": CyclicModule,
+    "AssetModule": AssetModule,
 }
 
 

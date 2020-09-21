@@ -5,6 +5,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OptionalParameter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ParameterModifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TestCombination"
     mtype: "<type \'type\'>"
   }

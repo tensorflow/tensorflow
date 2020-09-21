@@ -282,6 +282,19 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       for parallel_component in self.device.unpack(parallel):
         self.assertAllClose(non_parallel, parallel_component)
 
+  def test_capturing(self):
+    with self.device:
+      x = constant_op.constant([1., 2.])
+      x = array_ops.identity(x)
+
+      @def_function.function
+      def f(y):
+        return x + y
+
+      y = array_ops.ones([2])
+      parallel_result = f(y)
+    self.assertAllClose([[2., 3.]] * 2, self.device.unpack(parallel_result))
+
   def test_euclidean_norm(self):
     def _test_fn():
       with backprop.GradientTape() as tape:

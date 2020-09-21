@@ -180,9 +180,6 @@ class IrEmitterUnnested : public IrEmitter,
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
       KernelThunk* thunk, int unroll_factor);
 
-  // Emits LLVM global variables corresponding to constant instructions.
-  Status EmitConstantGlobals();
-
   Status Postprocess(HloInstruction* hlo) override;
 
  private:

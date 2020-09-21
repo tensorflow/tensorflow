@@ -209,7 +209,14 @@ class HDFSRandomAccessFile : public RandomAccessFile {
       : filename_(filename),
         hdfs_filename_(hdfs_filename),
         fs_(fs),
-        file_(file) {}
+        file_(file) {
+    const char* disable_eof_retried = getenv("HDFS_DISABLE_READ_EOF_RETRIED");
+    if (disable_eof_retried && disable_eof_retried[0] == '1') {
+      disable_eof_retried_ = true;
+    } else {
+      disable_eof_retried_ = false;
+    }
+  }
 
   ~HDFSRandomAccessFile() override {
     if (file_ != nullptr) {
@@ -228,8 +235,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
     Status s;
     char* dst = scratch;
     bool eof_retried = false;
-    const char* disable_eof_retried = getenv("HDFS_DISABLE_READ_EOF_RETRIED");
-    if (disable_eof_retried && disable_eof_retried[0] == '1') {
+    if (disable_eof_retried_) {
       // eof_retried = true, avoid calling hdfsOpenFile in Read, Fixes #42597
       eof_retried = true;
     }
@@ -279,6 +285,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
   string filename_;
   string hdfs_filename_;
   hdfsFS fs_;
+  bool disable_eof_retried_;
 
   mutable mutex mu_;
   mutable hdfsFile file_ TF_GUARDED_BY(mu_);

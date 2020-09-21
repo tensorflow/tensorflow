@@ -192,13 +192,15 @@ char* FastFloatToBufferLeft(float f, char* buffer) {
   // works properly.
   *current = '0';
 
-  // Shift fraction values and prepent zeros.
-  for (int i = 0; i < fraction_digits; i++) {
-    current--;
-    *(current + leading_zeros) = *current;
-    *current = '0';
+  // Shift fraction values and prepend zeros if necessary.
+  if (leading_zeros != 0) {
+    for (int i = 0; i < fraction_digits; i++) {
+      current--;
+      *(current + leading_zeros) = *current;
+      *current = '0';
+    }
+    current += kMaxFractionalDigits;
   }
-  current += kMaxFractionalDigits;
 
   // Truncate trailing zeros for cleaner logs. Ensure we leave at least one
   // fractional character for the case when scaled_fraction is 0.

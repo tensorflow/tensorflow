@@ -155,7 +155,7 @@ LogicalResult HandleWhileOp(
     llvm::StringMap<PartitionedCallDecompositionInfo>*
         decomposed_partitioned_call_callees) {
   // Rewrite body.
-  auto body = while_op.body_func();
+  auto body = while_op.body_function();
   llvm::SmallDenseMap<Value, SizeInfo> body_map;
   auto find_arg_tensor_list_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(while_op.getOperand(index));
@@ -176,7 +176,7 @@ LogicalResult HandleWhileOp(
   auto output_buffer_to_size = AddTensorListSizesToReturn(body, body_map);
 
   // Rewrite cond.
-  auto cond = while_op.cond_func();
+  auto cond = while_op.cond_function();
   llvm::SmallDenseMap<Value, SizeInfo> cond_map;
   ModifyFunctionSignature(cond, cutil::GetSizeType(builder), &cond_map,
                           find_arg_tensor_list_type, arg_buffer_size_is_fixed);
@@ -701,17 +701,14 @@ LogicalResult DecomposeTensorListOpsInternal(
         return failure();
       }
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      if (failed(HandleCaseOrIfOp(if_op, {if_op.then_func(), if_op.else_func()},
-                                  module, buffer_to_size,
-                                  decomposed_partitioned_call_callees))) {
+      if (failed(HandleCaseOrIfOp(
+              if_op, {if_op.then_function(), if_op.else_function()}, module,
+              buffer_to_size, decomposed_partitioned_call_callees))) {
         return failure();
       }
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
       SmallVector<FuncOp, 2> branches;
-      for (auto branch_symbol : case_op.branches()) {
-        branches.push_back(module.lookupSymbol<FuncOp>(
-            branch_symbol.cast<FlatSymbolRefAttr>()));
-      }
+      case_op.get_branch_functions(branches);
       if (failed(HandleCaseOrIfOp(case_op, branches, module, buffer_to_size,
                                   decomposed_partitioned_call_callees))) {
         return failure();

@@ -439,6 +439,17 @@ func @fusedBatchNormGradV3_Training_NCHW(%arg0: tensor<8x8x8x8xf32>, %arg1: tens
 // Bias op legalizations.
 //===----------------------------------------------------------------------===//
 
+// CHECK-LABEL: func @biasAdd_default
+func @biasAdd_default(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
+  // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
+  // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
+  // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
+  %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT"} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
+  return %0 : tensor<1x32x10x32xi32>
+}
+
 // CHECK-LABEL: func @biasAdd_NHWC
 func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
@@ -1946,7 +1957,7 @@ func @abs_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: @acos
 // CHLO-LABEL: @acos
 func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK:  "chlo.acos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK:  chlo.acos %arg0 : tensor<2xf32>
 // CHLO:   %[[VAL_1:.*]] = "mhlo.compare"({{.*}}) {comparison_direction = "NE"}
 // CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
 // CHLO:   %[[VAL_4:.*]] = mhlo.constant dense<1.000000e+00>
@@ -1967,20 +1978,11 @@ func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: @acos_dynamic
 // CHLO-LABEL: @acos_dynamic
 func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  "chlo.acos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-// CHLO:   %[[VAL_1:.*]] = "mhlo.compare"({{.*}}) {comparison_direction = "NE"}
-// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
-// CHLO:   %[[VAL_4:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32}
-// CHLO:   %[[VAL_6:.*]] = mhlo.subtract %[[VAL_4]], %[[VAL_5]]
-// CHLO:   %[[VAL_7:.*]] = "mhlo.sqrt"(%[[VAL_6]])
-// CHLO:   %[[VAL_8:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32}
-// CHLO:   %[[VAL_9:.*]] = mhlo.add %[[VAL_8]], %arg0
-// CHLO:   %[[VAL_10:.*]] = mhlo.atan2 %[[VAL_7]], %[[VAL_9]]
-// CHLO:   %[[VAL_3:.*]] = "chlo.constant_like"(%arg0) {value = 2.000000e+00 : f32}
-// CHLO:   %[[VAL_11:.*]] = mhlo.multiply %[[VAL_3]], %[[VAL_10]]
-// CHLO:   %[[VAL_12:.*]] = "chlo.constant_like"(%arg0) {value = 3.14159274 : f32}
-// CHLO:   %[[VAL_13:.*]] = "mhlo.select"(%[[VAL_1]], %[[VAL_11]], %[[VAL_12]])
-// CHLO:       return %[[VAL_13]]
+  // CHECK:  chlo.acos %arg0 : tensor<*xf32>
+  // `tf.Acos` is lowered to `chlo.constant_like` operations which can only be
+  // lowered further on ranked tensors.  Unranked CHLO must be transformed to
+  // ranked code before further lowering.
+  // CHLO: "tf.Acos"
   %0 = "tf.Acos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -1990,7 +1992,7 @@ func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHLO-LABEL: @tan
 // CHLO-SAME: (%[[ARG:.*]]: tensor<2xf32>) -> tensor<2xf32>
 func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: "chlo.tan"(%[[ARG]]) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: chlo.tan %[[ARG]] : tensor<2xf32>
   // CHLO: %[[SINE:.*]] = "mhlo.sine"(%[[ARG]])
   // CHLO  %[[COSINE:.*]] = "mhlo.cosine"(%[[ARG]])
   // CHLO  %[[RESULT:.*]] = "mhlo.divide"(%[[SINE]], %[[COSINE]])
@@ -2003,7 +2005,7 @@ func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
 // CHLO-LABEL: @tan_unranked
 // CHLO-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
 func @tan_unranked(%arg : tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "chlo.tan"(%[[ARG]]) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK: chlo.tan %[[ARG]] : tensor<*xf32>
   // CHLO: %[[SINE:.*]] = "mhlo.sine"(%[[ARG]])
   // CHLO  %[[COSINE:.*]] = "mhlo.cosine"(%[[ARG]])
   // CHLO  %[[RESULT:.*]] = "mhlo.divide"(%[[SINE]], %[[COSINE]])
@@ -2407,10 +2409,10 @@ func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<2x1xf32> {
 }
 
 // CHECK-LABEL: reshape_dynamic
-func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<1x1xf32> {
-  // CHECK:  "mhlo.reshape"
-  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<1x1xf32>
-  return %0 : tensor<1x1xf32>
+func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
+  // CHECK:  "mhlo.dynamic_reshape"
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: reshape_unranked
@@ -2439,6 +2441,25 @@ func @expand_dims(%arg0: tensor<2xf32>, %axis: tensor<i32>) -> tensor<1x2xf32> {
   // CHECK: "mhlo.reshape"
   %0 = "tf.ExpandDims"(%arg0, %axis) : (tensor<2xf32>, tensor<i32>) -> tensor<1x2xf32>
   return %0 : tensor<1x2xf32>
+}
+
+// CHECK-LABEL: expand_dims_dynamic
+func @expand_dims_dynamic(%arg0: tensor<?x?xf32>) -> tensor<?x1x?xf32> {
+  %axis = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> (tensor<i32>)
+
+  // CHECK-DAG: [[SHAPEOF:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[CST0:%.+]] = constant 0
+  // CHECK-DAG: [[CST1:%.+]] = constant 1
+  // CHECK-DAG: [[GETEXTENT0:%.+]] = shape.get_extent [[SHAPEOF]], [[CST0]]
+  // CHECK-DAG: [[CST1_0:%.+]] = constant 1
+  // CHECK-DAG: [[GETEXTENT1:%.+]] = shape.get_extent [[SHAPEOF]], [[CST1_0]]
+  // CHECK-DAG: [[FROMEXTENTS:%.+]] = shape.from_extents [[GETEXTENT0]], [[CST1]], [[GETEXTENT1]]
+  // CHECK-DAG: [[TOEXTENTS:%.+]] = shape.to_extent_tensor [[FROMEXTENTS]]
+  // CHECK-DAG: [[RESHAPE:%.+]] = "mhlo.dynamic_reshape"(%arg0, [[TOEXTENTS]])
+  %0 = "tf.ExpandDims"(%arg0, %axis) : (tensor<?x?xf32>, tensor<i32>) -> tensor<?x1x?xf32>
+
+  // CHECK: return [[RESHAPE]]
+  return %0 : tensor<?x1x?xf32>
 }
 
 // CHECK-LABEL: func @sign

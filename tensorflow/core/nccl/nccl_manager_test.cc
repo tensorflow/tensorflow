@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/nccl/nccl_manager.h"
@@ -300,8 +302,14 @@ class NcclManagerTest : public ::testing::Test {
 
   void RunMultiNodeAllReduceTest(const int num_nodes,
                                  const int num_ranks_per_node) {
-    const int num_global_ranks = num_nodes * num_ranks_per_node;
     std::vector<NodeState> node_states(num_nodes);
+    RunMultiNodeAllReduceTest(node_states, num_ranks_per_node);
+  }
+
+  void RunMultiNodeAllReduceTest(std::vector<NodeState>& node_states,
+                                 const int num_ranks_per_node) {
+    const int num_nodes = node_states.size();
+    const int num_global_ranks = num_nodes * num_ranks_per_node;
     const string collective_key = "allreduce";
     // The NcclManagers in this test synchronize in real-time, so we need to run
     // each node's code in a separate thread.
@@ -840,6 +848,68 @@ TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
   }
 
   this->VerifyError(test_case.get());
+}
+
+TYPED_TEST(NcclManagerTest, Abort) {
+  using NodeState = typename TestFixture::NodeState;
+  using TestCase = typename TestFixture::TestCase;
+  int num_nodes = 2;
+  std::vector<NodeState> nodes(num_nodes);
+  // First do a normal all-reduce to simulate the the case when there're
+  // multiple communicators.
+  this->RunMultiNodeAllReduceTest(nodes, /* num_ranks_per_node */ 1);
+
+  // Use a new communicator_key, which uses a new set of ncclComm underneath.
+  string communicator_key = nodes[0].nccl_manager.GenerateCommunicatorKey();
+  string collective_key = "allreduce";
+  ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(0);
+  auto node_fn = [&](TestCase* test_case, int node) {
+    auto* device = this->GetDevice(/* num_ranks_per_node */ 1, node,
+                                   /* local_rank */ 0);
+    auto* info = device->tensorflow_gpu_device_info();
+    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        device->executor(), stream, info, &test_case->ins[node],
+        &test_case->outs[node], /* global_rank */ node,
+        this->CreateDoneCallback(test_case));
+    nodes[node].nccl_manager.AddToAllReduce(
+        std::move(participant),
+        {collective_key, /* num_local_devices */ 1,
+         /* num_global_devices */ num_nodes, communicator_key,
+         /*source_rank=*/-1},
+        reduction_op);
+    nodes[node].nccl_manager.SignalMultiNodeReady(collective_key);
+  };
+
+  // Do a normal all-reduce with this communicator key to initialize ncclComm.
+  // This is because ncclCommInitRank waits for all ranks and is blocking.
+  {
+    std::unique_ptr<typename TestFixture::TestCase> test_case(
+        this->MakeReductionTestCase(
+            /* num_nodes */ num_nodes, /* num_ranks_per_node */ 1, reduction_op,
+            TensorShape({2, 3}), 0.0f));
+    for (int i = 0; i < num_nodes; ++i) {
+      this->work_queue_->Schedule(
+          [&node_fn, &test_case, i]() { node_fn(test_case.get(), i); });
+    }
+    this->VerifyResults(test_case.get());
+  }
+
+  // A hanging all-reduce.
+  ASSERT_GT(num_nodes, 1);
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeReductionTestCase(
+          /* num_nodes */ num_nodes, /* num_ranks_per_node */ 1, reduction_op,
+          TensorShape({2, 3}), 0.0f));
+  node_fn(test_case.get(), 0);
+  Env::Default()->SleepForMicroseconds(1000000);
+  nodes[0].nccl_manager.StartAbort(errors::Unavailable("peer down"));
+  {
+    mutex_lock l(test_case->mu);
+    while (test_case->num_completed != 1) {
+      test_case->done_cv.wait(l);
+    }
+  }
 }
 
 }  // namespace tensorflow

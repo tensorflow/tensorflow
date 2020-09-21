@@ -114,6 +114,12 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       }
     }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
       return input_->CheckExternalState();

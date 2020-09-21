@@ -40,6 +40,7 @@ using HloToLhloOp = typename HloToLhloOpImpl<HloOpTy>::Type;
 MAP_HLO_TO_LHLO(AbsOp);
 MAP_HLO_TO_LHLO(AddOp);
 MAP_HLO_TO_LHLO(AndOp);
+MAP_HLO_TO_LHLO(Atan2Op);
 MAP_HLO_TO_LHLO(BroadcastInDimOp);
 MAP_HLO_TO_LHLO(CeilOp);
 MAP_HLO_TO_LHLO(ConstOp);

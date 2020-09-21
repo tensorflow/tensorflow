@@ -365,8 +365,9 @@ XLA_TEST_P(ReduceWindowTest, R4UnitWindow) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({0, 3, 2, 1}));
   XlaOp input;
-  auto input_data = CreateParameterAndTransferLiteral(
-      0, input_literal, "parameter", &builder_, &input);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_data, CreateParameterAndTransferLiteral(
+                           0, input_literal, "parameter", &builder_, &input));
 
   Padding padding = Padding::kSame;
   ReduceWindowAdd(input, {1, 1, 7, 1}, {1, 4, 1, 1}, padding);
@@ -423,8 +424,9 @@ XLA_TEST_P(ReduceWindowTest, R4SecondMinorStride) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp input;
-  auto input_data = CreateParameterAndTransferLiteral(
-      0, input_literal, "parameter", &builder_, &input);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_data, CreateParameterAndTransferLiteral(
+                           0, input_literal, "parameter", &builder_, &input));
 
   int win_len = 1;
   int stride = 8;
@@ -444,8 +446,9 @@ XLA_TEST_P(ReduceWindowTest, R4SecondMinorUnitStride) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp input;
-  auto input_data = CreateParameterAndTransferLiteral(
-      0, input_literal, "parameter", &builder_, &input);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_data, CreateParameterAndTransferLiteral(
+                           0, input_literal, "parameter", &builder_, &input));
 
   int win_len = 3;
   int stride = 1;
@@ -465,8 +468,9 @@ XLA_TEST_P(ReduceWindowTest, R4SecondMinorWin) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp input;
-  auto input_data = CreateParameterAndTransferLiteral(
-      0, input_literal, "parameter", &builder_, &input);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_data, CreateParameterAndTransferLiteral(
+                           0, input_literal, "parameter", &builder_, &input));
 
   int win_len = 8;
   int stride = 5;
@@ -631,8 +635,9 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
     Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         input, LayoutUtil::MakeLayout(param.layout));
     XlaOp parameter;
-    auto input_arg = CreateParameterAndTransferLiteral(0, input_literal, "p0",
-                                                       &b, &parameter);
+    TF_ASSERT_OK_AND_ASSIGN(auto input_arg,
+                            CreateParameterAndTransferLiteral(
+                                0, input_literal, "p0", &b, &parameter));
 
     std::vector<std::pair<int64, int64>> padding(4);
     for (int i = 0; i < 4; ++i) {
@@ -1243,7 +1248,9 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
         input, LayoutUtil::MakeLayout(param.layout));
 
     XlaOp parameter;
-    CreateParameterAndTransferLiteral(0, input_literal, "p0", &b, &parameter);
+    TF_ASSERT_OK(CreateParameterAndTransferLiteral(0, input_literal, "p0", &b,
+                                                   &parameter)
+                     .status());
 
     std::vector<std::pair<int64, int64>> padding(2);
     for (int i = 0; i < 2; ++i) {
@@ -1443,8 +1450,9 @@ XLA_TEST_P(R1ReduceWindowTest, DoIt) {
   Literal input_literal =
       LiteralUtil::CreateR1(absl::Span<const float>(input_vector));
   XlaOp parameter;
-  auto input_arg =
-      CreateParameterAndTransferLiteral(0, input_literal, "p0", &b, &parameter);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_arg, CreateParameterAndTransferLiteral(0, input_literal, "p0",
+                                                        &b, &parameter));
 
   std::vector<std::pair<int64, int64>> padding(1);
   padding[0] = {param.pad_low[0], param.pad_high[0]};

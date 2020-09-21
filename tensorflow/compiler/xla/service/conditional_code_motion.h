@@ -52,6 +52,9 @@ class Boundary {
     }
     return res;
   }
+  bool operator==(const Boundary& that) {
+    return ContainersEqual(operands_, that.operands_);
+  }
 
  private:
   // Boundary instructions in the conditional branches, one from each branch
@@ -78,13 +81,30 @@ class ConditionalCodeMotion : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
   // Optimization decision for each boundary of the conditional instruction.
-  enum class Decision { kMoveOutOfBranch, kMoveIntoBranch, kNoChange };
+  class Decision {
+   public:
+    enum class Direction : uint8 {
+      kMoveOutOfBranch,
+      kMoveIntoBranch,
+      kNoChange
+    };
+
+   public:
+    Decision(Direction direction, int benefit)
+        : direction_(direction), benefit_(benefit) {}
+    Direction GetDirection() const { return direction_; }
+    int GetBenefit() const { return benefit_; }
+
+   private:
+    Direction direction_;
+    int benefit_;
+  };
   // If the optimization decision is NO_CHANGE, new_boundary is set to nullptr;
   // otherwise, it is set to the new boundary after proposed optimization.
-  virtual Decision ConsiderCodeMotion(HloInstruction* conditional,
-                                      const Boundary& cur_boundary,
-                                      std::vector<Boundary>& to_move,
-                                      std::vector<Boundary>& new_boundaries);
+  virtual Decision ConsiderCodeMotion(
+      HloInstruction* conditional, const Boundary& cur_boundary,
+      std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
+      absl::flat_hash_map<HloInstruction*, int>& visited_count);
 
  private:
   const bool is_layout_sensitive_;

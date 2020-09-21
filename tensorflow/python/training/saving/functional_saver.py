@@ -72,9 +72,14 @@ class _SingleDeviceSaver(object):
     tensor_slices = []
     for saveable in self._saveable_objects:
       for spec in saveable.specs:
-        tensor_names.append(spec.name)
-        tensors.append(spec.tensor)
-        tensor_slices.append(spec.slice_spec)
+        tensor = spec.tensor
+        # A tensor value of `None` indicates that this SaveableObject gets
+        # recorded in the object graph, but that no value is saved in the
+        # checkpoint.
+        if tensor is not None:
+          tensor_names.append(spec.name)
+          tensors.append(tensor)
+          tensor_slices.append(spec.slice_spec)
     save_device = options.experimental_io_device or "cpu:0"
     with ops.device(save_device):
       return io_ops.save_v2(file_prefix, tensor_names, tensor_slices, tensors)

@@ -40,13 +40,13 @@ from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 
 # pylint: disable=g-classes-have-attributes

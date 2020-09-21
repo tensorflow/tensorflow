@@ -28,6 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace functor {
+
 using random::PhiloxRandom;
 
 template <typename Distribution>
@@ -45,6 +47,7 @@ __global__ void FillKernel(
   __syncthreads();
   functor::FillPhiloxRandomKernel<Distribution,
                                   Distribution::kVariableSamplesPerOutput>()
+<<<<<<< HEAD
       .Run(*philox, output_data, output_size, dist);
 }
 
@@ -55,6 +58,16 @@ __global__ void UpdateState(int64 output_size,
   auto philox = reinterpret_cast<PhiloxRandom*>(philox_raw);
   *philox = GetPhiloxRandomFromMem(state_data);
   UpdateMemWithPhiloxRandom(*philox, output_size, state_data);
+=======
+      .Run(/*key=*/nullptr, /*counter=*/nullptr, *philox, output_data,
+           output_size, dist);
+  // The last thread updates the state.
+  auto total_thread_count = gridDim.x * blockDim.x;
+  auto old_counter_value = atomicAdd(&tensorflow_philox_thread_counter, 1);
+  if (old_counter_value == total_thread_count - 1) {
+    UpdateMemWithPhiloxRandom(*philox, output_size, state_data);
+  }
+>>>>>>> upstream/master
 }
 
 template <typename Distribution>
@@ -89,16 +102,19 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 }
 
 // Precondition: there is only 1 block and 1 thread.
-__global__ void SkipKernel(int64 delta,
-                           StateElementType* __restrict__ state_data) {
-  auto philox = GetPhiloxRandomFromMem(state_data);
-  UpdateMemWithPhiloxRandom(philox, delta, state_data);
+__global__ void SkipKernel(const StateElementType* __restrict__ in_data,
+                           uint64 delta,
+                           StateElementType* __restrict__ out_data) {
+  auto counter = GetCounterFromMem(reinterpret_cast<const uint64*>(in_data));
+  UpdateCounterMemWithPhiloxRandom(counter, delta, out_data);
 }
 
-void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
-                                           Tensor* state_tensor) {
-  TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(), delta,
-                              state_tensor->flat<StateElementType>().data()));
+void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d,
+                                           const StateElementType* in_data,
+                                           uint64 delta,
+                                           StateElementType* out_data) {
+  TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(), in_data, delta,
+                              out_data));
 }
 
 // Explicit instantiation of the GPU distributions functors.
@@ -147,6 +163,7 @@ template struct UpdateVariableAndFill_Philox<
                  random::PhiloxRandom, uint64> >;
 // clang-format on
 
+}  // end namespace functor
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

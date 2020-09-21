@@ -241,8 +241,8 @@ bool InferShapeForCast(CastOp op, Dialect* tf_dialect) {
 // function result types.
 bool InferShapeForIf(IfOp op) {
   bool changed = false;
-  auto then_results = op.then_func().getType().getResults();
-  auto else_results = op.else_func().getType().getResults();
+  auto then_results = op.then_function().getType().getResults();
+  auto else_results = op.else_function().getType().getResults();
   for (auto it : llvm::zip(op.getResults(), then_results, else_results)) {
     // If then and else types do not match, skip refinement for that result.
     if (std::get<1>(it) != std::get<2>(it)) continue;
@@ -924,20 +924,17 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
     return PropagateShapeToFunctions(
         module, drop_begin(if_op.getOperandTypes(), 1),
-        {if_op.then_func(), if_op.else_func()}, max_iteration);
+        {if_op.then_function(), if_op.else_function()}, max_iteration);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
     SmallVector<FuncOp, 4> branches;
-    for (Attribute branch : case_op.branches()) {
-      auto sym = branch.cast<FlatSymbolRefAttr>();
-      branches.push_back(SymbolTable::lookupNearestSymbolFrom<FuncOp>(op, sym));
-    }
+    case_op.get_branch_functions(branches);
     return PropagateShapeToFunctions(module,
                                      drop_begin(case_op.getOperandTypes(), 1),
                                      branches, max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
     return PropagateShapeToFunctions(
         module, while_op.getOperandTypes(),
-        {while_op.cond_func(), while_op.body_func()}, max_iteration);
+        {while_op.cond_function(), while_op.body_function()}, max_iteration);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable())) {
       PropagateConstantToCallee(call_op, func, module);

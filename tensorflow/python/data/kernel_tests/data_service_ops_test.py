@@ -39,12 +39,19 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
+
+
+# This will be resolved to a tmp directory by `start_dispatch_server`.
+TMP_WORK_DIR = "tmp_work_dir_placeholder"
+# `""` indicates not to use a work directory.
+NO_WORK_DIR = ""
 
 
 def _address_from_target(target):
@@ -67,9 +74,9 @@ def _make_distributed_dataset(dataset,
 
 def _all_cluster_configurations():
   with_work_dir = combinations.combine(
-      work_dir=None, fault_tolerant_mode=[True, False])
+      work_dir=TMP_WORK_DIR, fault_tolerant_mode=[True, False])
   without_work_dir = combinations.combine(
-      work_dir="", fault_tolerant_mode=False)
+      work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
   return with_work_dir + without_work_dir
 
 
@@ -100,14 +107,14 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def start_dispatch_server(self,
                             name="",
                             port=0,
-                            work_dir=None,
+                            work_dir=TMP_WORK_DIR,
                             fault_tolerant_mode=True,
                             job_gc_check_interval_ms=None,
                             job_gc_timeout_ms=None):
     # If a test starts multiple independent dispatch servers, it should give
     # them different `name` values.
     work_dir = os.path.join(self.get_temp_dir(), "work_dir_",
-                            name) if work_dir is None else work_dir
+                            name) if work_dir is TMP_WORK_DIR else work_dir
     return server_lib.DispatchServer(
         server_lib.DispatcherConfig(
             port=port,
@@ -143,7 +150,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def start_cluster(self,
                     num_workers,
                     name="",
-                    work_dir=None,
+                    work_dir=TMP_WORK_DIR,
                     fault_tolerant_mode=True):
     """Creates and starts a tf.data service cluster."""
     dispatcher = self.start_dispatch_server(
@@ -798,6 +805,38 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       for _ in range(1, cluster_1_size):
         self.assertAllEqual(next(it).numpy(), element)
     self.assertEmpty(list(it))
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations()))
+  def testDistributeLargeGraph(self):
+    dispatcher, workers = self.start_cluster(  # to avoid gcing workers, pylint: disable=unused-variable
+        1,
+        work_dir=NO_WORK_DIR,
+        fault_tolerant_mode=False)
+    # Larger than default OSS grpc message size limit of 4MB.
+    tensor = array_ops.ones((2, 1000, 1000), dtype=dtypes.float32)
+    ds = dataset_ops.Dataset.from_tensors(tensor)
+    ds = _make_distributed_dataset(ds, dispatcher)
+    self.assertDatasetProduces(ds, [tensor])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(work_dir=[TMP_WORK_DIR, NO_WORK_DIR])))
+  def testDistributeLargeGraphThenRegisterWorker(self, work_dir):
+    dispatcher = self.start_dispatch_server(
+        work_dir=work_dir, fault_tolerant_mode=False)
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=_address_from_target(dispatcher.target), port=0),
+        start=False)
+    # Larger than default OSS grpc message size limit of 4MB.
+    tensor = array_ops.ones((2, 1000, 1000), dtype=dtypes.float32)
+    ds = dataset_ops.Dataset.from_tensors(tensor)
+    ds = _make_distributed_dataset(ds, dispatcher)
+    it = iter(ds)
+    worker.start()
+    self.assertAllEqual(next(it), tensor)
 
 
 if __name__ == "__main__":

@@ -57,5 +57,25 @@ PYBIND11_MODULE(_math_ops, m) {
     }
     return outputs[0];
   });
+  m.def("mat_mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
+                      AbstractTensorHandle* b, const char* name, Tape* tape,
+                      GradientRegistry* registry) {
+    int num_outputs = 1;
+    std::vector<AbstractTensorHandle*> outputs(1);
+    if (!name) {
+      name = "MatMul";
+    }
+    if (!tape) {
+      MaybeRaiseRegisteredFromStatus(
+          ops::MatMul(ctx, {a, b}, absl::MakeSpan(outputs), name,
+                      /*transpose_a=*/false, /*transpose_b=*/false));
+    } else {
+      MaybeRaiseRegisteredFromStatus(gradients::internal::MatMul(
+          ctx, tape, {a, b}, absl::MakeSpan(outputs), name,
+          /*transpose_a=*/false,
+          /*transpose_b=*/false, *registry));
+    }
+    return outputs[0];
+  });
 }
 }  // namespace tensorflow

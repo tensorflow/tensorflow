@@ -101,6 +101,9 @@ enum HostEventType {
   kMapAndBatchConsume,
   kParseExampleProduce,
   kParseExampleConsume,
+  // Batching related.
+  kBatchingSessionRun,
+  kProcessBatch,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -173,6 +176,7 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
+  kSelectedGroupIds,
   // Performance counter related.
   kRawValue,
   kScaledValue,

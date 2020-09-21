@@ -423,8 +423,8 @@ class TensorLikeDataAdapter(DataAdapter):
 class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
   """Adapter that handles array-like data without forcing it into memory.
 
-  As an example, this adapter handles `keras.utils.HDF5Matrix` which holds
-  datasets that may be too big to fully fit into memory.
+  This adapter handles array-like datasets that may be too big to fully
+  fit into memory.
 
   Specifically, this adapter handles any Python class which implements:
   `__get_item__`, `__len__`, `shape`, and `dtype` with the same meanings

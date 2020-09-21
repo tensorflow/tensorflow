@@ -9,6 +9,25 @@ package(
 )
 
 cc_library(
+    name = "asset",
+    srcs = [
+        "asset.cc",
+    ],
+    hdrs = [
+        "asset.h",
+    ],
+    deps = [
+        ":tensorhandle_convertible",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "constant",
     srcs = [
         "constant.cc",

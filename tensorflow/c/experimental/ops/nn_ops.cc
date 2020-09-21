@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace ops {
 
 // Softmax Loss given scores and labels, used by the SoftMaxLossGradient
-Status SparseSoftmaxCrossEntropyLoss(
+Status SparseSoftmaxCrossEntropyWithLogits(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr sm_loss_op(ctx->CreateOperation());
@@ -60,6 +60,24 @@ Status ReluGrad(AbstractContext* ctx,
 
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(relugrad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status Relu(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr relu_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(relu_op->Reset("Relu", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(relu_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(relu_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(relu_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(relu_op->Execute(outputs, &num_retvals));
   return Status::OK();
 }
 

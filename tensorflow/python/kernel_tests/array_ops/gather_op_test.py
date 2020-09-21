@@ -436,6 +436,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
           params=[[10, 11, 12], [13, 14, 15]],
           indices=[1, 0],
           expected=[[11, 10], [14, 13]]),
+      dict(  # 3D indices, batch_dims=-3, axis=1
+          batch_dims=-3,
+          axis=1,
+          params=[[0, 1, 2], [3, 4, 5]],
+          indices=[[[0, 1], [1, 0]]],
+          expected=[[[[0, 1], [1, 0]]], [[[3, 4], [4, 3]]]]),
   ])
   @test_util.run_in_graph_and_eager_modes
   def testBatchDims(self, params, indices, batch_dims, expected=None,

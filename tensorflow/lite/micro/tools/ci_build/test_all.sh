@@ -47,7 +47,7 @@ echo "Running Sparkfun tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh
 
 echo "Running stm32f4 tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh
+tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh PRESUBMIT
 
 echo "Running Arduino tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_arduino.sh

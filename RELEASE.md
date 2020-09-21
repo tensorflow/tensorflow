@@ -80,6 +80,8 @@
     the same sparsity pattern, but with new provided values. It is similar to
     the `with_values` function of `RaggedTensor`.
   * Added `StatelessCase` op, and uses it if none of case branches has stateful ops.
+  * Added `tf.config.experimental.get_memory_usage` to return total memory usage
+    of the device.
 * `tf.data`:
     * Added new `tf.data.experimental.service.register_dataset` and
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
@@ -183,6 +185,8 @@
 *   XLA Support:
     * xla.experimental.compile is deprecated, use
       `tf.function(experimental_compile=True)` instead
+    * Added `tf.function.experimental_get_compiler_ir` which returns compiler IR
+    (currently 'hlo' and 'optimized_hlo') for given input for given function.
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>

@@ -119,8 +119,8 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
   // return op.
-  ImportXlaRegion(op.then_func(), &if_op.true_branch(), loc);
-  ImportXlaRegion(op.else_func(), &if_op.false_branch(), loc);
+  ImportXlaRegion(op.then_function(), &if_op.true_branch(), loc);
+  ImportXlaRegion(op.else_function(), &if_op.false_branch(), loc);
 
   // De-tuple the results of the xla hlo if result.
   Detuple(if_op.getResult(), op.getResults(), &builder);
@@ -137,7 +137,7 @@ void LowerCase(TF::CaseOp op, ModuleOp module) {
   auto tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
   // Create replica of input tuple for each branch
-  SmallVector<Value, 4> n_tuple_inputs(op.branches().size(), tuple_input);
+  SmallVector<Value, 4> n_tuple_inputs(op.num_branches(), tuple_input);
 
   // Create the new case op with tuple inputs.
   auto case_op =
@@ -145,9 +145,8 @@ void LowerCase(TF::CaseOp op, ModuleOp module) {
                                    n_tuple_inputs, op.branches().size());
 
   // Import the regions for all branches.
-  for (unsigned i = 0; i < op.branches().size(); ++i) {
-    mlir::FuncOp branch_func = module.lookupSymbol<mlir::FuncOp>(
-        op.branches()[i].cast<SymbolRefAttr>());
+  for (unsigned i = 0; i < op.num_branches(); ++i) {
+    mlir::FuncOp branch_func = op.branch_function(i);
     ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
                     /*tuple_return=*/false);
   }
@@ -172,8 +171,8 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 
   // Import the regions for both the cond and body. These regions must be
   // updated to tuple the return results together and use the xla hlo return op.
-  ImportXlaRegion(op.body_func(), &while_op.body(), loc);
-  ImportXlaRegion(op.cond_func(), &while_op.cond(), loc,
+  ImportXlaRegion(op.body_function(), &while_op.body(), loc);
+  ImportXlaRegion(op.cond_function(), &while_op.cond(), loc,
                   /*tuple_return=*/false);
 
   // De-tuple the results of the xla hlo while.

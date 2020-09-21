@@ -97,6 +97,10 @@ using ExhaustiveC128UnaryTest = ExhaustiveComplexUnaryTestBase<C128>;
 
 // TODO(b/138578594): Enable the test for the CPU backend after fixing the bug.
 UNARY_TEST_COMPLEX_64(DISABLED_ON_CPU(Log), {
+  // TODO(timshen): see b/162664705.
+  known_incorrect_fn_ = [this](int64 val) {
+    return std::isnan(this->ConvertValue(val));
+  };
   Run(Log, [](complex64 x) { return std::log<float>(x); });
 })
 

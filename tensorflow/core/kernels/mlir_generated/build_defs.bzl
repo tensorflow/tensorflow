@@ -7,7 +7,10 @@ load(
     "if_rocm",
     "rocm_is_configured",
 )
-load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 def if_mlir_generated_gpu_kernels_enabled(if_true, if_false = []):
     return select({
@@ -252,6 +255,6 @@ def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unr
 
     native.cc_library(
         name = name + "_kernels",
-        hdrs = if_cuda_or_rocm(if_true = [":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
+        hdrs = if_gpu_is_configured([":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
         tags = tags,
     )

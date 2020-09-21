@@ -44,8 +44,14 @@ class HloClientDialect : public Dialect {
   static StringRef getDialectNamespace() { return "chlo"; }
 };
 
+}  // namespace chlo
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc"
+
+namespace mlir {
+namespace chlo {
 
 template <typename T>
 static Value getConstantLike(OpBuilder& b, Location loc, T constant,

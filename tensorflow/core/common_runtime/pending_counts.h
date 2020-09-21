@@ -329,10 +329,14 @@ class PendingCounts {
     uint8 has_started : 1;
   };
 
-  struct LargeCounts {
+  // NOTE: alignas(8) is critical to implement efficient atomic<LargeCounts>
+  // on MSVC.
+  struct alignas(8) LargeCounts {
     uint32 pending;
     uint32 dead_count : 31;
-    uint8 has_started : 1;
+    // NOTE(tlipcon): MSVC won't pack this struct into 8 bytes unless
+    // all of the member types are uint32.
+    uint32 has_started : 1;
   };
 
   template <typename T>

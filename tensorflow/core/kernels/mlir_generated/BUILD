@@ -1,6 +1,10 @@
 # Generates CUDA kernels using MLIR codegen.
 
-load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "gen_kernel_library", "if_mlir_generated_gpu_kernels_enabled")
+load(
+    "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
+    "gen_kernel_library",
+    "if_mlir_generated_gpu_kernels_enabled",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
@@ -26,19 +30,21 @@ config_setting(
 
 tf_kernel_library(
     name = "cwise_unary_op",
-    gpu_srcs = [
-        "cwise_op_gpu_base.cu.cc",
-        "cwise_op_gpu_base.cu.h",
-        "cwise_op_gpu_abs.cu.cc",
-        "cwise_op_gpu_tanh.cu.cc",
-    ],
-    tags = ["manual"],
+    # Technically these source files don't need --config=cuda or --config=rocm,
+    # but we want to avoid building them if they are not needed.
+    srcs = if_cuda_or_rocm([
+        "cwise_op_gpu_abs.cc",
+        "cwise_op_gpu_base.cc",
+        "cwise_op_gpu_base.h",
+        "cwise_op_gpu_tanh.cc",
+    ]),
     deps = if_cuda_or_rocm([
         ":abs_kernels",
         ":tanh_kernels",
         "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",

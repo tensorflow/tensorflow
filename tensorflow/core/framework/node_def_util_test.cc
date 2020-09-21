@@ -615,6 +615,39 @@ TEST(AddPrefixAndSuffixToNode, Enter) {
   EXPECT_EQ("prefix/test_frame/suffix", frame_name);
 }
 
+TEST(MaybeAddPrefixToColocationConstraints, Basic) {
+  NodeDef node_def;
+  node_def.set_name("Identity");
+  node_def.set_op("Identity");
+  AddNodeAttr(kColocationAttrName,
+              {strings::StrCat(kColocationGroupPrefix, "Node1"),
+               strings::StrCat(kColocationGroupPrefix, "Node2"),
+               strings::StrCat(kColocationGroupPrefix, "Node3")},
+              &node_def);
+
+  std::unordered_set<string> match;
+  match.insert("Node1");
+  match.insert("Node3");
+  TF_ASSERT_OK(MaybeAddPrefixToColocationConstraints(match, "fn/", &node_def));
+  std::vector<string> coloc_constraints;
+  TF_ASSERT_OK(GetNodeAttr(node_def, kColocationAttrName, &coloc_constraints));
+  EXPECT_EQ(
+      coloc_constraints,
+      std::vector<string>({"loc:@fn/Node1", "loc:@Node2", "loc:@fn/Node3"}));
+}
+
+TEST(MaybeAddPrefixToColocationConstraints, NoConstraints) {
+  NodeDef node_def;
+  node_def.set_name("Identity");
+  node_def.set_op("Identity");
+
+  std::unordered_set<string> match;
+  match.insert("Node1");
+  match.insert("Node3");
+  TF_ASSERT_OK(MaybeAddPrefixToColocationConstraints(match, "fn/", &node_def));
+  EXPECT_FALSE(HasNodeAttr(node_def, kColocationAttrName));
+}
+
 TEST(FormatNodeForErrorTest, Node) {
   Graph g(OpRegistry::Global());
   Node* node;

@@ -1032,6 +1032,7 @@ static LogicalResult Verify(SizeOp op) {
 
 OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
   ShapedType output_type = getType().cast<ShapedType>();
+  if (!output_type.hasRank()) return {};
   ShapedType input_type = getOperand().getType().cast<ShapedType>();
   if (!input_type.hasStaticShape()) return {};
   int size = input_type.getNumElements();
@@ -2288,8 +2289,8 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
 }
 
 static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_func();
-  auto body_fn = op.body_func();
+  auto cond_fn = op.cond_function();
+  auto body_fn = op.body_function();
   if (!cond_fn) {
     return op.emitOpError("cond refers to an undefined function : ")
            << op.cond();
@@ -2490,12 +2491,12 @@ void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<XdivyWithSqrtDivisor>(context);
 }
 
+}  // namespace TF
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc.inc"
-
-}  // namespace TF
-}  // namespace mlir
