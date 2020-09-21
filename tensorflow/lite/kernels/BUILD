@@ -1,5 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
