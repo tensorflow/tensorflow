@@ -32,6 +32,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 namespace {
 REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
                         OptimizeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

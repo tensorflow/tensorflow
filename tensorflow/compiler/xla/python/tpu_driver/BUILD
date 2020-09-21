@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
@@ -77,6 +78,7 @@ cc_library(
 cc_library(
     name = "direct_tpu_driver",
     srcs = ["direct_tpu_driver.cc"],
+    compatible_with = [],
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/strings:str_format",

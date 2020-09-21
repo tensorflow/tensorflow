@@ -2024,6 +2024,8 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "TensorListSplit",
                                      "TensorListStack",
                                      "TensorScatterAdd",
+                                     "TensorScatterMax",
+                                     "TensorScatterMin",
                                      "TensorScatterSub",
                                      "TensorScatterUpdate",
                                      "TridiagonalSolve",

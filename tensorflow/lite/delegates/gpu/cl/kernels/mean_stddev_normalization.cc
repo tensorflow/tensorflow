@@ -29,7 +29,7 @@ namespace cl {
 namespace {
 
 std::string GetVectorReduceCode() {
-  return R"(static inline float reduce_vector(float4 v) {
+  return R"(float reduce_vector(float4 v) {
   return dot(v, (float4)(1.0f));
 })";
 }
@@ -55,7 +55,7 @@ std::string GetReduceCode() {
 #ifdef __opencl_c_work_group_collective_functions
 #define local_reduce(item, tmp) work_group_reduce_add(item)
 #else  // !defined(__opencl_c_work_group_collective_functions)
-static inline float local_reduce(float item, __local float* tmp) {
+float local_reduce(float item, __local float* tmp) {
   const int local_id = get_local_id(0);
   tmp[local_id] = item;
   barrier(CLK_LOCAL_MEM_FENCE);
@@ -79,7 +79,7 @@ static inline float local_reduce(float item, __local float* tmp) {
 
 std::string GetFilterCode() {
   return R"(
-static inline float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
+float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
   return select(x, (float4)(0.0f), slice * 4 + (int4)(0, 1, 2, 3) >= num_channels);
 }
 )";
@@ -101,6 +101,9 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have
     // severe performance penalty.
+    desired_work_group_size = 64;
+  }
+  if (device_info.IsAdreno3xx()) {
     desired_work_group_size = 64;
   }
   work_group_size_.x = desired_work_group_size;

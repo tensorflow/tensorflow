@@ -234,6 +234,7 @@ tf_cuda_library(
     name = "trt_engine_utils",
     srcs = ["utils/trt_engine_utils.cc"],
     hdrs = ["utils/trt_engine_utils.h"],
+    compatible_with = [],
     deps = [
         ":trt_logging",
         ":utils",
@@ -248,6 +249,7 @@ tf_cuda_library(
     name = "trt_logging",
     srcs = ["utils/trt_logger.cc"],
     hdrs = ["utils/trt_logger.h"],
+    compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
         ":common_utils",
@@ -289,6 +291,7 @@ tf_cuda_library(
         "utils/trt_lru_cache.h",
         "utils/trt_shape_optimization_profiles.h",
     ],
+    compatible_with = [],
     deps = [
         ":trt_allocator",
         ":trt_logging",
@@ -306,6 +309,7 @@ tf_cuda_library(
     name = "trt_allocator",
     srcs = ["utils/trt_allocator.cc"],
     hdrs = ["utils/trt_allocator.h"],
+    compatible_with = [],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
@@ -365,6 +369,7 @@ tf_cuda_library(
     hdrs = [
         "convert/logger_registry.h",
     ],
+    compatible_with = [],
     copts = tf_copts(),
     deps = [
         "@com_google_absl//absl/strings",
@@ -385,6 +390,7 @@ tf_cuda_library(
         "convert/convert_nodes.h",
         "convert/trt_optimization_pass.h",
     ],
+    compatible_with = [],
     deps = [
         ":common_utils",
         ":logger_registry",
@@ -543,6 +549,7 @@ tf_cuda_library(
     name = "trt_plugins",
     srcs = ["plugin/trt_plugin.cc"],
     hdrs = ["plugin/trt_plugin.h"],
+    compatible_with = [],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",

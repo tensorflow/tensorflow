@@ -1,11 +1,9 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_kernel_library",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],

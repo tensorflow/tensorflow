@@ -9,6 +9,8 @@
 # Note(bmzhao): The *.cc files in this directory form the direct implementation of the
 # C API functions exposed in tf/c/experimental/saved_model/public/.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Note(bmzhao): All *type.h files in this directory are the internal definitions of
 # the opaque C types. These headers should only be visible to internal tensorflow
 # implementors.

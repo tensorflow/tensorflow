@@ -85,6 +85,8 @@ CollInstanceParams& CollInstanceParams::operator=(
         other.impl_details.subdiv_source_rank.begin(),
         other.impl_details.subdiv_source_rank.end());
     impl_details.dependencies = other.impl_details.dependencies;
+    devices.assign(other.devices.begin(), other.devices.end());
+    permutation.assign(other.permutation.begin(), other.permutation.end());
   }
   return *this;
 }
@@ -125,8 +127,18 @@ string CollInstanceParams::ToString() const {
       strings::StrAppend(&v, r, ",");
     }
     strings::StrAppend(&v, "}");
+  }  // all subdivs
+  if (type == PERMUTE_COLLECTIVE) {
+    strings::StrAppend(&v, "}, permute_devices {");
+    for (const auto& d : devices) {
+      strings::StrAppend(&v, d, ",");
+    }
+    strings::StrAppend(&v, "}, permute_permutation {");
+    for (const auto& p : permutation) {
+      strings::StrAppend(&v, p, ",");
+    }
+    strings::StrAppend(&v, "}");
   }
-  strings::StrAppend(&v, "}");  // all subdivs
   return v;
 }
 

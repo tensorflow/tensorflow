@@ -6,6 +6,12 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
@@ -742,6 +748,7 @@ cc_library(
     name = "runtime_single_threaded_matmul",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [

@@ -8,6 +8,8 @@
 # programmatic checks that all "public" headers only include other "public"
 # headers.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     # This is intentionally public
     default_visibility = [

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 namespace tensorflow {
+namespace tpu {
 
 using Status = stream_executor::port::Status;
 template <typename T>
@@ -319,4 +320,5 @@ Status TpuTransferManager::LinearizeToBuffers(
   return status.status();
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

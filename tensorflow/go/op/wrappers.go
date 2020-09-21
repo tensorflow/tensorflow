@@ -44523,165 +44523,6 @@ func SparseCross(scope *Scope, indices []tf.Output, values []tf.Output, shapes [
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Reverses specific dimensions of a tensor.
-//
-// Given a `tensor`, and a `bool` tensor `dims` representing the dimensions
-// of `tensor`, this operation reverses each dimension i of `tensor` where
-// `dims[i]` is `True`.
-//
-// `tensor` can have up to 8 dimensions. The number of dimensions
-// of `tensor` must equal the number of elements in `dims`. In other words:
-//
-// `rank(tensor) = size(dims)`
-//
-// For example:
-//
-// ```
-// # tensor 't' is [[[[ 0,  1,  2,  3],
-// #                  [ 4,  5,  6,  7],
-// #                  [ 8,  9, 10, 11]],
-// #                 [[12, 13, 14, 15],
-// #                  [16, 17, 18, 19],
-// #                  [20, 21, 22, 23]]]]
-// # tensor 't' shape is [1, 2, 3, 4]
-//
-// # 'dims' is [False, False, False, True]
-// reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
-//                         [ 7,  6,  5,  4],
-//                         [ 11, 10, 9, 8]],
-//                        [[15, 14, 13, 12],
-//                         [19, 18, 17, 16],
-//                         [23, 22, 21, 20]]]]
-//
-// # 'dims' is [False, True, False, False]
-// reverse(t, dims) ==> [[[[12, 13, 14, 15],
-//                         [16, 17, 18, 19],
-//                         [20, 21, 22, 23]
-//                        [[ 0,  1,  2,  3],
-//                         [ 4,  5,  6,  7],
-//                         [ 8,  9, 10, 11]]]]
-//
-// # 'dims' is [False, False, True, False]
-// reverse(t, dims) ==> [[[[8, 9, 10, 11],
-//                         [4, 5, 6, 7],
-//                         [0, 1, 2, 3]]
-//                        [[20, 21, 22, 23],
-//                         [16, 17, 18, 19],
-//                         [12, 13, 14, 15]]]]
-// ```
-//
-// Arguments:
-//	tensor: Up to 8-D.
-//	dims: 1-D. The dimensions to reverse.
-//
-// Returns The same shape as `tensor`.
-func Reverse(scope *Scope, tensor tf.Output, dims tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Reverse",
-		Input: []tf.Input{
-			tensor, dims,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StringLowerAttr is an optional argument to StringLower.
-type StringLowerAttr func(optionalAttr)
-
-// StringLowerEncoding sets the optional encoding attribute to value.
-// If not specified, defaults to ""
-func StringLowerEncoding(value string) StringLowerAttr {
-	return func(m optionalAttr) {
-		m["encoding"] = value
-	}
-}
-
-// Converts all uppercase characters into their respective lowercase replacements.
-//
-// Example:
-//
-// >>> tf.strings.lower("CamelCase string and ALL CAPS")
-// <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
-//
-func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StringLower",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Wraps an arbitrary MLIR computation expressed as a module with a main() function.
-//
-// This operation does not have an associated kernel and is not intended to be
-// executed in a regular TensorFlow session. Instead it is intended to be used for
-// testing or for special case where a user intends to pass custom MLIR computation
-// through a TensorFlow graph with the intent of having custom tooling processing
-// it downstream (when targeting a different environment, like TensorFlow lite for
-// example).
-// The MLIR module is expected to have a main() function that will be used as an
-// entry point. The inputs to the operations will be passed as argument to the
-// main() function and the returned values of the main function mapped to the
-// outputs.
-// Example usage:
-//
-// ```
-// import tensorflow as tf
-// from tensorflow.compiler.mlir.tensorflow.gen_mlir_passthrough_op import mlir_passthrough_op
-//
-// mlir_module = '''python
-// func @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> {
-//    %add = "magic.op"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10x10xf32>
-//    return %ret : tensor<10x10xf32>
-// }
-// '''
-//
-// @tf.function
-// def foo(x, y):
-//   return mlir_passthrough_op([x, y], mlir_module, Toutputs=[tf.float32])
-//
-// graph_def = foo.get_concrete_function(tf.TensorSpec([10], tf.float32), tf.TensorSpec([10], tf.float32)).graph.as_graph_def()
-// ```
-func MlirPassthroughOp(scope *Scope, inputs []tf.Output, mlir_module string, Toutputs []tf.DataType) (outputs []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"mlir_module": mlir_module, "Toutputs": Toutputs}
-	opspec := tf.OpSpec{
-		Type: "MlirPassthroughOp",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
-		scope.UpdateErr("MlirPassthroughOp", err)
-		return
-	}
-	return outputs
-}
-
 // Converts each string in the input Tensor to its hash mod by a number of buckets.
 //
 // The hash function is deterministic on the content of the string within the
@@ -47979,6 +47820,165 @@ func ParseSequenceExampleV2(scope *Scope, serialized tf.Output, debug_name tf.Ou
 		return
 	}
 	return context_sparse_indices, context_sparse_values, context_sparse_shapes, context_dense_values, context_ragged_values, context_ragged_row_splits, feature_list_sparse_indices, feature_list_sparse_values, feature_list_sparse_shapes, feature_list_dense_values, feature_list_dense_lengths, feature_list_ragged_values, feature_list_ragged_outer_splits, feature_list_ragged_inner_splits
+}
+
+// Reverses specific dimensions of a tensor.
+//
+// Given a `tensor`, and a `bool` tensor `dims` representing the dimensions
+// of `tensor`, this operation reverses each dimension i of `tensor` where
+// `dims[i]` is `True`.
+//
+// `tensor` can have up to 8 dimensions. The number of dimensions
+// of `tensor` must equal the number of elements in `dims`. In other words:
+//
+// `rank(tensor) = size(dims)`
+//
+// For example:
+//
+// ```
+// # tensor 't' is [[[[ 0,  1,  2,  3],
+// #                  [ 4,  5,  6,  7],
+// #                  [ 8,  9, 10, 11]],
+// #                 [[12, 13, 14, 15],
+// #                  [16, 17, 18, 19],
+// #                  [20, 21, 22, 23]]]]
+// # tensor 't' shape is [1, 2, 3, 4]
+//
+// # 'dims' is [False, False, False, True]
+// reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
+//                         [ 7,  6,  5,  4],
+//                         [ 11, 10, 9, 8]],
+//                        [[15, 14, 13, 12],
+//                         [19, 18, 17, 16],
+//                         [23, 22, 21, 20]]]]
+//
+// # 'dims' is [False, True, False, False]
+// reverse(t, dims) ==> [[[[12, 13, 14, 15],
+//                         [16, 17, 18, 19],
+//                         [20, 21, 22, 23]
+//                        [[ 0,  1,  2,  3],
+//                         [ 4,  5,  6,  7],
+//                         [ 8,  9, 10, 11]]]]
+//
+// # 'dims' is [False, False, True, False]
+// reverse(t, dims) ==> [[[[8, 9, 10, 11],
+//                         [4, 5, 6, 7],
+//                         [0, 1, 2, 3]]
+//                        [[20, 21, 22, 23],
+//                         [16, 17, 18, 19],
+//                         [12, 13, 14, 15]]]]
+// ```
+//
+// Arguments:
+//	tensor: Up to 8-D.
+//	dims: 1-D. The dimensions to reverse.
+//
+// Returns The same shape as `tensor`.
+func Reverse(scope *Scope, tensor tf.Output, dims tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Reverse",
+		Input: []tf.Input{
+			tensor, dims,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps an arbitrary MLIR computation expressed as a module with a main() function.
+//
+// This operation does not have an associated kernel and is not intended to be
+// executed in a regular TensorFlow session. Instead it is intended to be used for
+// testing or for special case where a user intends to pass custom MLIR computation
+// through a TensorFlow graph with the intent of having custom tooling processing
+// it downstream (when targeting a different environment, like TensorFlow lite for
+// example).
+// The MLIR module is expected to have a main() function that will be used as an
+// entry point. The inputs to the operations will be passed as argument to the
+// main() function and the returned values of the main function mapped to the
+// outputs.
+// Example usage:
+//
+// ```
+// import tensorflow as tf
+// from tensorflow.compiler.mlir.tensorflow.gen_mlir_passthrough_op import mlir_passthrough_op
+//
+// mlir_module = '''python
+// func @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> {
+//    %add = "magic.op"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10x10xf32>
+//    return %ret : tensor<10x10xf32>
+// }
+// '''
+//
+// @tf.function
+// def foo(x, y):
+//   return mlir_passthrough_op([x, y], mlir_module, Toutputs=[tf.float32])
+//
+// graph_def = foo.get_concrete_function(tf.TensorSpec([10], tf.float32), tf.TensorSpec([10], tf.float32)).graph.as_graph_def()
+// ```
+func MlirPassthroughOp(scope *Scope, inputs []tf.Output, mlir_module string, Toutputs []tf.DataType) (outputs []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"mlir_module": mlir_module, "Toutputs": Toutputs}
+	opspec := tf.OpSpec{
+		Type: "MlirPassthroughOp",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
+		scope.UpdateErr("MlirPassthroughOp", err)
+		return
+	}
+	return outputs
+}
+
+// StringLowerAttr is an optional argument to StringLower.
+type StringLowerAttr func(optionalAttr)
+
+// StringLowerEncoding sets the optional encoding attribute to value.
+// If not specified, defaults to ""
+func StringLowerEncoding(value string) StringLowerAttr {
+	return func(m optionalAttr) {
+		m["encoding"] = value
+	}
+}
+
+// Converts all uppercase characters into their respective lowercase replacements.
+//
+// Example:
+//
+// >>> tf.strings.lower("CamelCase string and ALL CAPS")
+// <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
+//
+func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringLower",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // CudnnRNNAttr is an optional argument to CudnnRNN.

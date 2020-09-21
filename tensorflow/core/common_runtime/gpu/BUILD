@@ -14,6 +14,9 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",

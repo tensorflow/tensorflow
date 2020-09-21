@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Experimental SavedModel C APIs for TensorFlow. See RFC
 # https://github.com/tensorflow/community/pull/207
 # Targets in this directory are pure C++ "Classes" underlying the C API types
