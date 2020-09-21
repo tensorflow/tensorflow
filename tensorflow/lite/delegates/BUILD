@@ -76,10 +76,7 @@ cc_test(
     ],
     deps = [
         ":interpreter_utils",
-        ":utils",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:util",
         "//tensorflow/lite:version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -87,7 +84,6 @@ cc_test(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
 )
