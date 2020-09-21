@@ -32,7 +32,6 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.disable_tfrt
 class RawOpsTest(test.TestCase, parameterized.TestCase):
 
   def testSimple(self):
