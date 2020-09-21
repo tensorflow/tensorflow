@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -140,10 +141,28 @@ Status DataServiceDispatcherImpl::Start() {
       TF_RETURN_IF_ERROR(reader.Read(update, end_of_journal));
     }
   }
+  for (const auto& job : state_.ListJobs()) {
+    if (job->processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+      TF_RETURN_IF_ERROR(MakeDistributedEpochJob(job->job_id, job->dataset_id));
+    }
+  }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   started_ = true;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::MakeDistributedEpochJob(int64 job_id,
+                                                          int64 dataset_id)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::unique_ptr<DistributedEpochJob>& distributed_epoch_job =
+      distributed_epoch_jobs_[job_id];
+  DCHECK(!distributed_epoch_job);
+  std::unique_ptr<SplitProvider> split_provider;
+  TF_RETURN_IF_ERROR(MakeSplitProvider(dataset_id, split_provider));
+  distributed_epoch_job = absl::make_unique<DistributedEpochJob>(
+      job_id, dataset_id, std::move(split_provider));
   return Status::OK();
 }
 
@@ -194,6 +213,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     task_def->set_dataset_id(task->dataset_id);
     task_def->set_job_id(task->job_id);
     task_def->set_task_id(task->task_id);
+    task_def->set_processing_mode(ProcessingModeDef(task->processing_mode));
   }
   for (int64 current_task : current_tasks) {
     if (!correct_tasks_set.contains(current_task)) {
@@ -240,6 +260,51 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
   *response->mutable_dataset_def() = *dataset_def;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
+                                           GetSplitResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+  int64 job_id = request->job_id();
+  int64 repetition = request->repetition();
+  std::unique_ptr<DistributedEpochJob>& distributed_epoch_job =
+      distributed_epoch_jobs_[job_id];
+  if (!distributed_epoch_job) {
+    return errors::NotFound("distributed_epoch_job id not found: ", job_id);
+  }
+  std::unique_ptr<SplitProvider>& split_provider =
+      distributed_epoch_job->split_providers[repetition];
+  if (!split_provider) {
+    VLOG(1) << "Creating split provider for job "
+            << distributed_epoch_job->job_id << " repetition " << repetition;
+    TF_RETURN_IF_ERROR(
+        MakeSplitProvider(distributed_epoch_job->dataset_id, split_provider));
+  }
+  Tensor split;
+  bool end_of_splits = false;
+  TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
+  response->set_end_of_splits(end_of_splits);
+  if (!end_of_splits) {
+    split.AsProtoTensorContent(response->mutable_split());
+  }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::MakeSplitProvider(
+    int64 dataset_id, std::unique_ptr<SplitProvider>& split_provider)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
+  std::shared_ptr<const DatasetDef> dataset_def;
+  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> standalone_dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
+      params, dataset_def->graph(), &standalone_dataset));
+  TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProvider(&split_provider));
   return Status::OK();
 }
 
@@ -405,17 +470,16 @@ Status DataServiceDispatcherImpl::CreateJob(
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   switch (processing_mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
+    case ProcessingMode::DISTRIBUTED_EPOCH:
       break;
-    case ProcessingMode::ONE_EPOCH:
-      return errors::Unimplemented(
-          "CreateJob only supports the PARALLEL_EPOCHS job mode. "
-          "ONE_EPOCH is not currently supported.");
     default:
-      return errors::Unimplemented("ProcessingMode ",
-                                   ProcessingModeToString(processing_mode),
-                                   " not recognized");
+      return errors::Internal(
+          absl::StrCat("ProcessingMode ", processing_mode, " not recognized"));
   }
   int64 job_id = state_.NextAvailableJobId();
+  if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+    TF_RETURN_IF_ERROR(MakeDistributedEpochJob(job_id, dataset_id));
+  }
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
@@ -482,6 +546,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_task_id(task_id);
   create_task->set_job_id(job->job_id);
   create_task->set_dataset_id(job->dataset_id);
+  create_task->set_processing_mode(ProcessingModeDef(job->processing_mode));
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
@@ -530,6 +595,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   ProcessTaskRequest req;
   TaskDef* task_def = req.mutable_task();
   task_def->set_dataset_id(task->dataset_id);
+  task_def->set_job_id(task->job_id);
   {
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
@@ -547,6 +613,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     }
   }
   task_def->set_task_id(task->task_id);
+  task_def->set_processing_mode(ProcessingModeDef(task->processing_mode));
   ProcessTaskResponse resp;
   WorkerService::Stub* stub;
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));

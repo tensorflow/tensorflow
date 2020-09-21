@@ -645,6 +645,40 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.run_stateful(distribute_options.ExternalStatePolicy.FAIL)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochTensorSlices(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    vals = [5, 1, 2, 4]
+    ds = dataset_ops.Dataset.from_tensor_slices(vals)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(ds, vals, assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochRepeat(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_repeats = 5
+    num_elements = 20
+    ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(
+        ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochShuffleAndRepeat(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_repeats = 5
+    num_elements = 20
+    ds = dataset_ops.Dataset.range(num_elements).shuffle(num_elements).repeat(
+        num_repeats)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(
+        ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
+
   def testDistributeFromInterleave(self):
     dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
     ds = dataset_ops.Dataset.range(2)
@@ -656,6 +690,40 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     ds = ds.interleave(interleave_fn, cycle_length=2)
     self.assertDatasetProduces(ds, [0, 0, 1, 1])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpoch(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(
+        ds, list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testChangeProcessingModeAfterRestart(self):
+    dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements = 100
+    range_dataset = dataset_ops.Dataset.range(num_elements)
+    ds = range_dataset.apply(
+        data_service_ops.distribute(
+            processing_mode="parallel_epochs",
+            service=dispatcher.target,
+            job_name="test"))
+    iterator = iter(ds)
+    for i in range(num_elements // 2):
+      self.assertEqual(i, next(iterator).numpy())
+    dispatcher = self.restart_dispatcher(dispatcher)
+    ds = range_dataset.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch",
+            service=dispatcher.target,
+            job_name="test"))
+    with self.assertRaisesOpError("already an existing job with that name "
+                                  "using processing mode <parallel_epochs>"):
+      next(iter(ds)).numpy()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeNonStringAddresses(self):

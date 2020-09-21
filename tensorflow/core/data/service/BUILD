@@ -188,6 +188,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:standalone",
         "//tensorflow/core/kernels/data:dataset_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -360,6 +361,20 @@ cc_header_only_library(
 )
 
 cc_library(
+    name = "split_provider",
+    srcs = ["split_provider.cc"],
+    hdrs = [
+        "split_provider.h",
+    ],
+    deps = [
+        ":data_service",
+        ":grpc_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "test_cluster",
     testonly = True,
     srcs = ["test_cluster.cc"],
@@ -450,6 +465,7 @@ cc_library(
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_proto_cc",
         ":grpc_util",
+        ":split_provider",
         ":utils",
         ":worker_proto_cc",
         "//tensorflow/c:c_api_internal",
