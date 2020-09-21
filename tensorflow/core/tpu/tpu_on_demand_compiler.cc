@@ -338,10 +338,12 @@ class TpuCompiler : public Compiler {
       const auto& config = module_group->module(i).config();
       se_module_group.module_config[i] = HloModuleConfigToC(config);
     }
-    SE_StreamExecutorList* se_lists =
-        new SE_StreamExecutorList[stream_exec.size()];
+    std::vector<SE_StreamExecutorList> se_lists(stream_exec.size());
+    std::vector<std::vector<SE_StreamExecutor*>> se_lists_storage;
     for (int i = 0; i < stream_exec.size(); ++i) {
-      se_lists[i].exec = new SE_StreamExecutor*[stream_exec[i].size()];
+      se_lists[i].count = stream_exec[i].size();
+      se_lists_storage.emplace_back(stream_exec[i].size());
+      se_lists[i].exec = se_lists_storage.back().data();
       for (int j = 0; j < stream_exec[i].size(); ++j) {
         se_lists[i].exec[j] = static_cast<tensorflow::TpuExecutor*>(
                                   stream_exec[i][j]->implementation())
@@ -356,8 +358,8 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
 
     ExecutorApiFn()->TpuCompiler_CompileFn(
-        compiler_, &se_module_group, se_lists, stream_exec.size(), &allocator,
-        se_executables, status.c_status);
+        compiler_, &se_module_group, se_lists.data(), stream_exec.size(),
+        &allocator, se_executables, status.c_status);
 
     if (!status.ok()) {
       return status.status();
