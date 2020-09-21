@@ -593,10 +593,9 @@ def map_to_output_names(y_pred, output_names, struct):
   outputs_are_flat_list = (not single_output and
                            isinstance(y_pred, (list, tuple)) and
                            not any(nest.is_nested(y_p) for y_p in y_pred))
-
+  struct = copy.copy(struct)
   if (single_output or outputs_are_flat_list) and isinstance(struct, dict):
     output_names = output_names or create_pseudo_output_names(y_pred)
-    struct = copy.copy(struct)
     new_struct = [struct.pop(name, None) for name in output_names]
     if struct:
       raise ValueError('Found unexpected keys that do not correspond '
