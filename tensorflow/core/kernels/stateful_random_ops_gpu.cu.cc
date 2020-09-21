@@ -84,6 +84,15 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
   GpuLaunchConfig cfg =
       GetGpuLaunchConfig(work_element_count, d, FillKernel<Distribution>, 0, 0);
+  int zero = 0;
+#if GOOGLE_CUDA
+  cudaMemcpyToSymbol(tensorflow_philox_thread_counter, &zero, sizeof(int));
+#else  // TENSORFLOW_USE_ROCM
+  int status = hipMemcpyToSymbol(HIP_SYMBOL(tensorflow_philox_thread_counter),
+                                 &zero, sizeof(int));
+  OP_REQUIRES(ctx, status == hipSuccess,
+              errors::InvalidArgument("hipMemcpyToSymbol failed"));
+#endif
   TF_CHECK_OK(GpuLaunchKernel(
       FillKernel<Distribution>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), dist, state_size, output_size, state_data, output_data));
