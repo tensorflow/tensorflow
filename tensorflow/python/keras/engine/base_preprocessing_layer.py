@@ -31,7 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import training_generator
+from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import sparse_ops
@@ -175,7 +175,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       next_data = self._get_dataset_iterator(
           dataset_ops.Dataset.from_tensor_slices(data).batch(512))
     else:
-      generator, _ = training_generator.convert_to_generator_like(
+      generator, _ = training_generator_v1.convert_to_generator_like(
           data, batch_size=512)
       # If the data is not a dataset, we can iterate over it using next(foo);
       # here, we wrap that into a callable.

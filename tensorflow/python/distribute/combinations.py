@@ -102,6 +102,18 @@ class ClusterParameters(combinations_lib.ParameterModifier):
 class DistributionCombination(combinations_lib.TestCombination):
   """Sets up distribution strategy for tests."""
 
+  XLA_TEST = re.search(r"(test_xla|test_xla_gpu)$", sys.argv[0])
+
+  def should_execute_combination(self, kwargs):
+    distributions = [
+        v for v in kwargs.values() if isinstance(v, NamedDistribution)
+    ]
+    if self.XLA_TEST and any(d.no_xla for d in distributions):
+      return (
+          False,
+          "n/a: skipping strategy combination with no_xla=True in XLA tests")
+    return (True, None)
+
   def parameter_modifiers(self):
     return [
         DistributionParameter(),
@@ -231,7 +243,8 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
-               use_pool_runner=False):
+               use_pool_runner=False,
+               no_xla=False):
     """Initialize NamedDistribution.
 
     Args:
@@ -244,6 +257,7 @@ class NamedDistribution(object):
       num_workers: The number of workers that the strategy requires.
       use_pool_runner: Whether to use a pool runner so that workers are re-used
         each time.
+      no_xla: Whether to skip in XLA tests.
     """
     object.__init__(self)
     self._name = name
@@ -253,6 +267,7 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self.no_xla = no_xla
     self._runner = None
 
     if _num_total_workers(self.has_chief, self.num_workers) > 1:

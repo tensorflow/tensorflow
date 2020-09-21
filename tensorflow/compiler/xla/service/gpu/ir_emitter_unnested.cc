@@ -228,6 +228,7 @@ StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
   auto emitter = std::unique_ptr<IrEmitterUnnested>(new IrEmitterUnnested(
       hlo_module_config, hlo_computation, ir_emitter_context));
   TF_RETURN_IF_ERROR(emitter->lhlo_scratch_emitter_.Initialize());
+  TF_RETURN_IF_ERROR(emitter->EmitConstants(*hlo_computation, true));
   return std::move(emitter);
 }
 
@@ -3988,52 +3989,6 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
       absl::make_unique<SequentialThunk>(GetThunkInfo(unnested_hlo),
                                          std::move(thunks));
   AddThunkToThunkSequence(std::move(sequential_thunk));
-
-  return Status::OK();
-}
-
-Status IrEmitterUnnested::EmitConstantGlobals() {
-  for (const BufferAllocation& allocation :
-       ir_emitter_context_->buffer_assignment().Allocations()) {
-    if (!allocation.is_constant()) {
-      continue;
-    }
-
-    const Literal& literal = llvm_ir::LiteralForConstantAllocation(allocation);
-    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
-    llvm::ArrayType* global_type =
-        llvm::ArrayType::get(b_.getInt8Ty(), allocation.size());
-    llvm::Constant* initializer =
-        should_emit_initializer
-            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
-            : llvm::ConstantAggregateZero::get(global_type);
-    if (should_emit_initializer) {
-      VLOG(3) << "Emitted initializer for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-    }
-
-    // These globals will be looked up by name by GpuExecutable so we need to
-    // give them an external linkage.  Not all of their uses are visible in
-    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
-    // merely preserves their names (like available_externally), we also need
-    // to ensure that they stick around even if they're "unused".
-    //
-    // We may have to be more more clever here in the future if we notice that
-    // we're keeping around too many globals because of their linkage.
-    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
-        *ir_emitter_context_->llvm_module());
-    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-        global_type, /*isConstant=*/should_emit_initializer,
-        llvm::GlobalValue::ExternalLinkage,
-        /*Initializer=*/initializer,
-        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/global_address_space,
-        /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
-        global_for_const);
-  }
 
   return Status::OK();
 }

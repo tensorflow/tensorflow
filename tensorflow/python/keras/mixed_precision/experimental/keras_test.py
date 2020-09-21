@@ -29,6 +29,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
@@ -98,7 +99,7 @@ default_strategy_fn = distribution_strategy_context.get_strategy
 
 def create_mirrored_strategy():
   """Create a MirroredStrategy, using a GPU if it is available."""
-  if context.num_gpus() >= 1:
+  if tf_config.list_logical_devices('GPU'):
     return mirrored_strategy.MirroredStrategy(['cpu:0', 'gpu:0'])
   else:
     return mirrored_strategy.MirroredStrategy(['cpu:0'])
@@ -106,7 +107,8 @@ def create_mirrored_strategy():
 
 def create_central_storage_strategy():
   """Create a CentralStorageStrategy, using a GPU if it is available."""
-  compute_devices = ['cpu:0', 'gpu:0'] if context.num_gpus() >= 1 else ['cpu:0']
+  compute_devices = ['cpu:0', 'gpu:0'] if (
+      tf_config.list_logical_devices('GPU')) else ['cpu:0']
   return central_storage_strategy.CentralStorageStrategy(
       compute_devices, parameter_device='cpu:0')
 

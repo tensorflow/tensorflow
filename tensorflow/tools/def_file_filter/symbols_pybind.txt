@@ -224,6 +224,7 @@ tensorflow::ExperimentalRunPassPipeline
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ImportGraphDef
+tensorflow::ImportFunction
 
 [op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
@@ -388,3 +389,9 @@ tensorflow::GetXlaDeviceFlags
 [tensor_float_32_utils] # tensor_float_32
 tensorflow::enable_tensor_float_32_execution
 tensorflow::tensor_float_32_execution_enabled
+
+[get_compiler_ir] # tfe
+tensorflow::GetCompilerIr
+
+[tensor_handle] # tfe
+tensorflow::TensorHandle::Tensor

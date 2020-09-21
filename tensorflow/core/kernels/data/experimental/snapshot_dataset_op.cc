@@ -122,6 +122,8 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
 
   int64 Cardinality() const override;
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
+
   Status CheckExternalState() const override;
 
  protected:
@@ -325,6 +327,12 @@ string SnapshotDatasetV2Op::Dataset::DebugString() const {
 
 int64 SnapshotDatasetV2Op::Dataset::Cardinality() const {
   return input_->Cardinality();
+}
+
+Status SnapshotDatasetV2Op::Dataset::InputDatasets(
+    std::vector<const DatasetBase*>* inputs) const {
+  inputs->push_back(input_);
+  return Status::OK();
 }
 
 Status SnapshotDatasetV2Op::Dataset::CheckExternalState() const {
@@ -1033,6 +1041,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "SnapshotDatasetOp::Dataset"; }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
 
     Status CheckExternalState() const override {
       return input_->CheckExternalState();

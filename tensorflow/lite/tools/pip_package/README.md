@@ -56,10 +56,18 @@ There is another build steps to build a binary wheel which uses Bazel instead of
 Makefile. You don't need to install additional dependencies.
 This approach can leverage TF's ci_build.sh for ARM cross builds.
 
-### Native build for your workstation
+### Normal build for your workstation
 
 ```sh
 tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
+```
+
+### Optimized build for your workstation
+The output may have a compatibility issue with other machines but it gives the
+best performance for your workstation.
+
+```sh
+tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 ```
 
 ### Cross build for armhf Python 3.5
@@ -98,7 +106,7 @@ You can build TFLite interpreter with flex ops support by providing
 
 Here are some examples.
 
-### Native build with Flex for your workstation
+### Normal build with Flex for your workstation
 
 ```sh
 CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \

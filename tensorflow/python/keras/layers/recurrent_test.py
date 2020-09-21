@@ -33,7 +33,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
@@ -722,7 +721,7 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM,
                  rnn_v2.GRU, rnn_v2.LSTM],
           unroll=[True, False]))
@@ -743,7 +742,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.train_on_batch(x_np, y_np)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           cell=[keras.layers.SimpleRNNCell, keras.layers.GRUCell,
                 keras.layers.LSTMCell],
           unroll=[True, False]))
@@ -1551,7 +1550,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.predict(np.ones((batch, timesteps, input_dim)))
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(layer=[
+      *testing_utils.generate_combinations_with_testcase_name(layer=[
           rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM, rnn_v2.GRU, rnn_v2.LSTM
       ]))
   def test_rnn_with_ragged_input(self, layer):

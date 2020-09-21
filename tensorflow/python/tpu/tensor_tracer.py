@@ -992,16 +992,16 @@ class TensorTracer(object):
 
       Raises:
         ValueError: If tensor_name is not already in
-                    self._tensorname_idx_map.
+                    tensor_trace_order.tensorname_idx_map.
       """
 
       if self._parameters.is_brief_mode():
         if tensor_name not in tensor_trace_order.tensorname_idx_map:
           raise ValueError(
               'Tensor name %s is not in the tensorname_idx_map'%tensor_name)
-        msg = '%d'%self._tensorname_idx_map[tensor_name]
+        msg = '%d' % tensor_trace_order.tensorname_idx_map[tensor_name]
       else:
-        msg = '"%s"'%tensor_name
+        msg = '"%s"' % tensor_name
 
       if self._parameters.trace_dir:
         output_path = os.path.join(self._parameters.trace_dir, _TRACE_FILE_NAME)

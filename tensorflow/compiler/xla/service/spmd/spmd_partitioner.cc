@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
@@ -215,6 +216,125 @@ HloInstruction* SpmdBuilder::AddInstruction(
       HloComputation::Builder::AddInstruction(std::move(instruction));
   if (visiting_hlo_) {
     instructions_[visiting_hlo_].push_back(hlo);
+  }
+  if (hlo->opcode() == HloOpcode::kBroadcast) {
+    for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+      if (!absl::c_linear_search(hlo->dimensions(), i)) {
+        broadcast_dims_[hlo].insert(i);
+      }
+    }
+  }
+  if (hlo->IsElementwise() && hlo->operand_count() > 0) {
+    absl::flat_hash_set<int64> broadcast_dims;
+    for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+      broadcast_dims.insert(i);
+    }
+    for (int64 i = 0; i < hlo->operand_count(); ++i) {
+      auto it = broadcast_dims_.find(hlo->operand(i));
+      if (it == broadcast_dims_.end()) {
+        broadcast_dims.clear();
+        break;
+      }
+      for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+        if (!it->second.contains(i)) {
+          broadcast_dims.erase(i);
+        }
+      }
+    }
+    if (!broadcast_dims.empty()) {
+      broadcast_dims_[hlo] = std::move(broadcast_dims);
+    }
+  }
+  if (hlo->opcode() == HloOpcode::kTranspose) {
+    auto it = broadcast_dims_.find(hlo->operand(0));
+    if (it != broadcast_dims_.end()) {
+      absl::flat_hash_set<int64> xpose_broadcast_dims;
+      std::vector<int64> reverse_map(hlo->shape().rank());
+      for (int64 i = 0; i < reverse_map.size(); ++i) {
+        reverse_map[hlo->dimensions(i)] = i;
+      }
+      for (int64 dim : it->second) {
+        xpose_broadcast_dims.insert(reverse_map[dim]);
+      }
+      broadcast_dims_[hlo] = std::move(xpose_broadcast_dims);
+    }
+  }
+  if (hlo->opcode() == HloOpcode::kReshape &&
+      Product(hlo->shape().dimensions()) > 0) {
+    auto it = broadcast_dims_.find(hlo->operand(0));
+    if (it != broadcast_dims_.end()) {
+      absl::flat_hash_set<int64> reshape_broadcast_dims;
+      for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+        reshape_broadcast_dims.insert(i);
+      }
+      std::vector<int64> before_dim_size_stack;
+      std::vector<int64> after_dim_size_stack;
+      for (int64 i = hlo->operand(0)->shape().rank() - 1; i >= 0; --i) {
+        before_dim_size_stack.push_back(hlo->operand(0)->shape().dimensions(i));
+      }
+      for (int64 i = hlo->shape().rank() - 1; i >= 0; --i) {
+        after_dim_size_stack.push_back(hlo->shape().dimensions(i));
+      }
+      while (!before_dim_size_stack.empty() && !after_dim_size_stack.empty()) {
+        int64 before_size = before_dim_size_stack.back();
+        int64 after_size = after_dim_size_stack.back();
+        int64 current_before_dim =
+            hlo->operand(0)->shape().rank() - before_dim_size_stack.size();
+        int64 current_after_dim =
+            hlo->shape().rank() - after_dim_size_stack.size();
+        before_dim_size_stack.pop_back();
+        after_dim_size_stack.pop_back();
+        if (!it->second.contains(current_before_dim)) {
+          reshape_broadcast_dims.erase(current_after_dim);
+        }
+        if (before_size == after_size) {
+          continue;
+        }
+        if (before_size % after_size == 0) {
+          // Split dim.
+          before_dim_size_stack.push_back(before_size / after_size);
+        } else if (after_size % before_size == 0) {
+          // Merge dim.
+          after_dim_size_stack.push_back(after_size / before_size);
+        } else {
+          // Other cases, mark all remaining dims as non-broadcast.
+          for (int64 i = current_after_dim; i < hlo->shape().rank(); ++i) {
+            reshape_broadcast_dims.erase(i);
+          }
+          break;
+        }
+      }
+      if (!before_dim_size_stack.empty() || !after_dim_size_stack.empty()) {
+        reshape_broadcast_dims.clear();
+      }
+      if (!reshape_broadcast_dims.empty()) {
+        broadcast_dims_[hlo] = std::move(reshape_broadcast_dims);
+      }
+    }
+  }
+  if (hlo->opcode() == HloOpcode::kSlice ||
+      hlo->opcode() == HloOpcode::kDynamicSlice) {
+    auto it = broadcast_dims_.find(hlo->operand(0));
+    if (it != broadcast_dims_.end()) {
+      auto dims = it->second;
+      broadcast_dims_[hlo] = std::move(dims);
+    }
+  }
+  if (hlo->opcode() == HloOpcode::kPad) {
+    auto it = broadcast_dims_.find(hlo->operand(0));
+    if (it != broadcast_dims_.end()) {
+      absl::flat_hash_set<int64> pad_broadcast_dims;
+      for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+        const auto& dim = hlo->padding_config().dimensions(i);
+        if (dim.edge_padding_low() == 0 && dim.edge_padding_high() == 0 &&
+            dim.interior_padding() == 0 && it->second.contains(i)) {
+          pad_broadcast_dims.insert(i);
+        }
+      }
+      if (!pad_broadcast_dims.empty()) {
+        broadcast_dims_[hlo] = std::move(pad_broadcast_dims);
+      }
+    }
   }
   return hlo;
 }
@@ -1099,23 +1219,25 @@ PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
     const HloSharding& target) const {
   CHECK(CanReshardWithCollectivePermute(sharding(), target))
       << sharding().ToString() << " to " << target.ToString();
-  if (hlo()->opcode() == HloOpcode::kBroadcast) {
-    // If hlo() is a broadcast, check if data is already the same between
-    // source/destination pairs.
-    std::vector<int64> new_dims;
-    for (int64 i = 0; i < hlo()->shape().rank(); ++i) {
-      if (!absl::c_linear_search(hlo()->dimensions(), i)) {
-        new_dims.push_back(i);
+  if (auto broadcast_dims = state_.b->BroadcastDimsForCreatedHlo(hlo())) {
+    if (!(*broadcast_dims)->empty()) {
+      // If hlo() has broadcast dims, check if data is already the same between
+      // source/destination pairs.
+      std::vector<int64> broadcast_dims_vector;
+      for (int64 i = 0; i < hlo()->shape().rank(); ++i) {
+        if ((*broadcast_dims)->contains(i)) {
+          broadcast_dims_vector.push_back(i);
+        }
       }
-    }
-    if (hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(sharding(),
-                                                                 new_dims) ==
-        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(target,
-                                                                 new_dims)) {
-      auto copy = state_.b->AddInstruction(
-          HloInstruction::CreateUnary(hlo()->shape(), HloOpcode::kCopy, hlo()));
-      copy->set_sharding(target);
-      return PartitionedHlo(copy, base_shape_, state_);
+      if (hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              sharding(), broadcast_dims_vector) ==
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              target, broadcast_dims_vector)) {
+        auto copy = state_.b->AddInstruction(HloInstruction::CreateUnary(
+            hlo()->shape(), HloOpcode::kCopy, hlo()));
+        copy->set_sharding(target);
+        return PartitionedHlo(copy, base_shape_, state_);
+      }
     }
   }
   std::vector<std::pair<int64, int64>> src_dst_pairs;

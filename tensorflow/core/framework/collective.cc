@@ -158,14 +158,13 @@ string CollectiveParams::ToString() const {
   return ctx->params_;
 }
 
-CollectiveContext::CollectiveContext(CollectiveExecutor* col_exec,
-                                     const DeviceMgr* dev_mgr,
-                                     OpKernelContext* ctx,
-                                     OpKernelContext::Params* op_params,
-                                     const CollectiveParams& col_params,
-                                     const string& exec_key, int64 step_id,
-                                     const Tensor* input, Tensor* output)
+CollectiveContext::CollectiveContext(
+    CollectiveExecutor* col_exec, NcclCommunicatorInterface* nccl_communicator,
+    const DeviceMgr* dev_mgr, OpKernelContext* ctx,
+    OpKernelContext::Params* op_params, const CollectiveParams& col_params,
+    const string& exec_key, int64 step_id, const Tensor* input, Tensor* output)
     : col_exec(col_exec),
+      nccl_communicator(nccl_communicator),
       dev_mgr(dev_mgr),
       op_ctx(ctx),
       op_params(op_params),

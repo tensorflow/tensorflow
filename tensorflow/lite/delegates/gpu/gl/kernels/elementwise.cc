@@ -225,12 +225,13 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     OperationType operation_type) {
   switch (operation_type) {
     case OperationType::ABS:
-    case OperationType::COPY:
     case OperationType::COS:
+    case OperationType::COPY:
     case OperationType::ELU:
     case OperationType::EXP:
-    case OperationType::LOG:
     case OperationType::HARD_SWISH:
+    case OperationType::LOG:
+    case OperationType::NEG:
     case OperationType::RSQRT:
     case OperationType::SIGMOID:
     case OperationType::SIN:

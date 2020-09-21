@@ -157,14 +157,14 @@ static LogicalResult LowerIfOp(IfOp op) {
 
   // Set up the 'then' block.
   Block* then_block = builder.createBlock(merge_block);
-  Operation* call_op = CallFn(loc, get_operand, op.then_func(), &builder);
+  Operation* call_op = CallFn(loc, get_operand, op.then_function(), &builder);
 
   auto get_then_result = [&](int i) { return call_op->getResult(i); };
   JumpToBlock(loc, get_then_result, merge_block, &builder);
 
   // Set up the 'else' block.
   Block* else_block = builder.createBlock(merge_block);
-  call_op = CallFn(loc, get_operand, op.else_func(), &builder);
+  call_op = CallFn(loc, get_operand, op.else_function(), &builder);
 
   auto get_else_result = [&](int i) { return call_op->getResult(i); };
   JumpToBlock(loc, get_else_result, merge_block, &builder);
@@ -190,8 +190,8 @@ static LogicalResult LowerWhileOp(WhileOp op) {
 
   OpBuilder builder(op_inst);
 
-  auto cond_fn = op.cond_func();
-  auto body_fn = op.body_func();
+  auto cond_fn = op.cond_function();
+  auto body_fn = op.body_function();
 
   // Split the block containing the While op into two blocks.  One containing
   // operations before the While op and other containing the rest.  Create two

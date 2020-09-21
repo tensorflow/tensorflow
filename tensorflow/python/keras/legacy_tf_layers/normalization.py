@@ -19,11 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
 
 from tensorflow.python.keras.layers import normalization as keras_normalization
 from tensorflow.python.keras.legacy_tf_layers import base
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -172,11 +172,6 @@ class BatchNormalization(keras_normalization.BatchNormalization, base.Layer):
     return super(BatchNormalization, self).call(inputs, training=training)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.BatchNormalization instead.  In '
-    'particular, `tf.control_dependencies(tf.GraphKeys.UPDATE_OPS)` should not '
-    'be used (consult the `tf.keras.layers.BatchNormalization` '
-    'documentation).')
 @tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,
@@ -309,6 +304,13 @@ def batch_normalization(inputs,
       2017](http://papers.nips.cc/paper/6790-batch-renormalization-towards-reducing-minibatch-dependence-in-batch-normalized-models)
       ([pdf](http://papers.nips.cc/paper/6790-batch-renormalization-towards-reducing-minibatch-dependence-in-batch-normalized-models.pdf))
   """
+  warnings.warn(
+      '`tf.layers.batch_normalization` is deprecated and '
+      'will be removed in a future version. '
+      'Please use `tf.keras.layers.BatchNormalization` instead. '
+      'In particular, `tf.control_dependencies(tf.GraphKeys.UPDATE_OPS)` '
+      'should not be used (consult the `tf.keras.layers.BatchNormalization` '
+      'documentation).')
   layer = BatchNormalization(
       axis=axis,
       momentum=momentum,

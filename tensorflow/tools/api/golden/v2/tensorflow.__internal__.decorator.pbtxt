@@ -1,0 +1,11 @@
+path: "tensorflow.__internal__.decorator"
+tf_module {
+  member_method {
+    name: "make_decorator"
+    argspec: "args=[\'target\', \'decorator_func\', \'decorator_name\', \'decorator_doc\', \'decorator_argspec\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "unwrap"
+    argspec: "args=[\'maybe_tf_decorator\'], varargs=None, keywords=None, defaults=None"
+  }
+}

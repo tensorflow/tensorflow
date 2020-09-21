@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
@@ -49,12 +49,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/logging.h"
@@ -62,26 +64,17 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Parses the MLIR module from the mlir_module_string.
-Status ParseMlirModule(llvm::StringRef mlir_module_string,
-                       mlir::MLIRContext* mlir_context,
-                       mlir::OwningModuleRef* mlir_module) {
-  TF_RET_CHECK(!mlir_module_string.empty())
-      << "unexpected empty serialized MLIR module string";
-  TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
-
-  // Make sure we catch any error reported by MLIR and forward it to the TF
-  // error reporting system.
-  mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
-
-  // Parse the module.
-  *mlir_module = mlir::parseSourceString(mlir_module_string, mlir_context);
-  if (!*mlir_module) {
-    return error_handler.Combine(
-        errors::InvalidArgument("could not parse MLIR module"));
+// Extracts shape from XlaArgument as TensorShape. If shape is a xla::Shape,
+// that is converted to a TensorShape.
+StatusOr<TensorShape> GetTensorShapeFromXlaArgument(const XlaArgument& arg) {
+  if (absl::holds_alternative<xla::Shape>(arg.shape)) {
+    TensorShape arg_shape;
+    TF_RETURN_IF_ERROR(
+        XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &arg_shape));
+    return arg_shape;
+  } else {
+    return absl::get<TensorShape>(arg.shape);
   }
-
-  return Status::OK();
 }
 
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
@@ -281,6 +274,7 @@ void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
@@ -420,7 +414,7 @@ Status CompileSerializedMlirToXlaHlo(
   mlir::OwningModuleRef mlir_module;
 
   TF_RETURN_IF_ERROR(
-      ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
+      DeserializeMlirModule(mlir_module_string, &mlir_context, &mlir_module));
   llvm::SmallVector<TensorOrResourceShape, 4> tensor_or_resource_shapes;
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
@@ -449,7 +443,9 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
     if (xla_arg.kind == XlaArgument::kResource) {
       mlir::Type element_type;
       TF_RETURN_IF_ERROR(ConvertDataType(xla_arg.type, builder, &element_type));
-      auto resource_shape = absl::get<TensorShape>(xla_arg.shape).dim_sizes();
+      TF_ASSIGN_OR_RETURN(TensorShape arg_shape,
+                          GetTensorShapeFromXlaArgument(xla_arg));
+      auto resource_shape = arg_shape.dim_sizes();
       llvm::SmallVector<int64_t, 4> resource_subtype_shape(
           resource_shape.begin(), resource_shape.end());
       auto resource_subtype =
@@ -509,7 +505,9 @@ Status CompileGraphToXlaHlo(
   arg_shapes.reserve(remaining_params.size());
   for (unsigned idx : remaining_params) {
     const auto& arg = args[idx];
-    arg_shapes.push_back({absl::get<TensorShape>(arg.shape),
+    TF_ASSIGN_OR_RETURN(TensorShape arg_shape,
+                        GetTensorShapeFromXlaArgument(arg));
+    arg_shapes.push_back({arg_shape,
                           /*is_resource=*/arg.kind == XlaArgument::kResource});
   }
 

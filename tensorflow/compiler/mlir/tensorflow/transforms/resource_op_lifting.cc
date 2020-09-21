@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -147,6 +149,16 @@ bool IsResource(Value value) {
   return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
 }
 
+// Get the type of the data contained in a resource. Returns null if there is
+// no single type in the resource.
+Type GetResourceSubtype(Value value) {
+  auto resource_type =
+      getElementTypeOrSelf(value.getType()).dyn_cast<TF::ResourceType>();
+  auto subtypes = resource_type.getSubtypes();
+  if (subtypes.size() == 1) return subtypes[0];
+  return nullptr;
+}
+
 // Performs store-load forwarding. This effectively removes
 // 1) Any resource loads after a store to that same resource is done
 // 2) Any resource stores except the last one.
@@ -204,6 +216,12 @@ class RegionResourceHoister {
   // Returns if the given value is a resouce that needs lifting.
   bool Contains(Value resource) const {
     return resources_.find(resource) != resources_.end();
+  }
+
+  // Drops the given resource from lifting.
+  void DropResource(Value resource) {
+    resources_.erase(resource);
+    written_resources_.remove(resource);
   }
 
   // Replaces all resource loads in all regions attached to the op.
@@ -276,6 +294,17 @@ class RegionResourceHoister {
           result_index(-1) {}
 
     bool IsResultIndexAssigned() { return result_index != -1; }
+
+    // Refine the resource type using the given type `type`.
+    void RefineType(Type type) {
+      if (!data_type) {
+        data_type = type;
+      } else {
+        data_type = TF::GetCastCompatibleType(data_type, type,
+                                              /*may_ignore_ref_type_a=*/false);
+        assert(data_type != nullptr && "Resource used with incompatible types");
+      }
+    }
   };
   llvm::MapVector<Value, ResourceInfo> resources_;
   llvm::SetVector<Value> written_resources_;
@@ -309,8 +338,10 @@ LogicalResult RegionResourceHoister::Analyze() {
   num_new_results_ = op_->getNumResults();
 
   for (auto resource : all_resources) {
-    ResourceInfo& info = resources_[resource];
+    ResourceInfo info;
+    info.data_type = GetResourceSubtype(resource);
     llvm::BitVector written_regions(op_->getNumRegions());
+    bool unsupported_use = false;
     for (OpOperand& use : resource.getUses()) {
       Operation* user = use.getOwner();
       // If the user is not in one of the regions, we are not interested in it.
@@ -334,24 +365,27 @@ LogicalResult RegionResourceHoister::Analyze() {
       auto read = dyn_cast<TF::ReadVariableOp>(user);
       auto write = dyn_cast<TF::AssignVariableOp>(user);
       if (!read && !write) {
-        return op_->emitError(
-                   "Unsupported use of resource variable in operation ")
-               << user->getName().getStringRef();
+        unsupported_use = true;
+        break;
       }
 
       if (read && !info.is_read) {
         info.is_read = true;
-        info.data_type = read.value().getType();
+        info.RefineType(read.value().getType());
         info.read_attrs = user->getAttrDictionary();
       }
 
       if (write) {
         info.is_written = true;
-        info.data_type = write.value().getType();
+        info.RefineType(write.value().getType());
         info.write_attrs = user->getAttrDictionary();
         written_regions.set(user->getParentRegion()->getRegionNumber());
       }
     }
+
+    // If the resource is used in an op that we do not understand, skip
+    // lifting for that resource.
+    if (unsupported_use) continue;
 
     info.is_written_all = written_regions.count() == op_->getNumRegions();
 
@@ -371,6 +405,8 @@ LogicalResult RegionResourceHoister::Analyze() {
       written_resources_.insert(resource);
       if (!info.IsResultIndexAssigned()) info.result_index = num_new_results_++;
     }
+
+    resources_.insert({resource, info});
   }
   return success();
 }
@@ -465,9 +501,8 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   OpBuilder builder(op_);
   // Clone ths old operation but with new result types.
   Operation* new_op = Operation::create(
-      op_->getLoc(), op_->getName(), new_result_types,
-      llvm::to_vector<4>(op_->getOperands()), op_->getAttrs(),
-      llvm::to_vector<4>(op_->getSuccessors()), op_->getNumRegions());
+      op_->getLoc(), op_->getName(), new_result_types, op_->getOperands(),
+      op_->getAttrs(), op_->getSuccessors(), op_->getNumRegions());
   builder.insert(new_op);
 
   // Move regions to the new op.
@@ -599,8 +634,11 @@ LogicalResult RegionResourceHoister::ReplaceOpWithNewOp(Operation* op) {
 
 // Holds information about a function's use of a resource argument.
 struct ResourceArgUseInfo {
+  // Data type of the data contained in the resource.
   Type data_type;
+  // Is the resource argument used in an assign op?
   bool updated;
+  // Is the resource argument used in a read or assign op?
   bool used;
 };
 
@@ -611,12 +649,12 @@ struct ResourceArgUseInfo {
 LogicalResult FindResourceArgUseInfo(
     FuncOp func_op, llvm::SmallDenseMap<int64_t, ResourceArgUseInfo>* result) {
   auto return_op = func_op.front().getTerminator();
-  for (auto arg : func_op.getArguments()) {
-    if (!getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) continue;
+  for (auto arg : TF::filter_resources(func_op.getArguments())) {
     ResourceArgUseInfo info;
     info.used = false;
     info.updated = false;
     bool read_or_assigned = false;
+    bool used_in_unsupported_op = false;
     for (auto user : arg.getUsers()) {
       if (user == return_op) continue;
       info.used = true;
@@ -625,14 +663,21 @@ LogicalResult FindResourceArgUseInfo(
         info.data_type = read.getType();
         continue;
       }
+
       if (auto assign = llvm::dyn_cast<TF::AssignVariableOp>(user)) {
         read_or_assigned = true;
         info.updated = true;
         info.data_type = assign.value().getType();
         continue;
       }
+
+      used_in_unsupported_op = true;
+      break;
     }
-    if (!info.used || read_or_assigned) (*result)[arg.getArgNumber()] = info;
+
+    // If the arg is used in an unsupported op, skip lifting it.
+    if (used_in_unsupported_op) continue;
+    (*result)[arg.getArgNumber()] = info;
   }
   return success();
 }
@@ -735,14 +780,24 @@ LogicalResult LiftArgRetResourcesForFunction(
   // Now create read values that will be used to replace each resource that
   // is read in the function body. These read vaulues are just the same argument
   // with type replaced.
+  llvm::SmallVector<Value, 4> skipped_args;
   for (auto& it : hoister.GetResources()) {
     BlockArgument arg = it.first.dyn_cast<BlockArgument>();
     assert(arg && "Expect resources for FuncOp to be its arguments");
-    auto rdt_it = resource_data_types.find(arg.getArgNumber());
-    assert(rdt_it != resource_data_types.end());
-    arg.setType(rdt_it->second);
-    it.second.hoisted_read = arg;
+    auto type_iter = resource_data_types.find(arg.getArgNumber());
+    if (type_iter == resource_data_types.end()) {
+      // Skip lifting the resource if it's not present in the data type map.
+      // This indicates that the resource is not to be lifted because it is used
+      // in an unsupported op in some other function.
+      skipped_args.push_back(arg);
+    } else {
+      arg.setType(type_iter->second);
+      it.second.hoisted_read = arg;
+    }
   }
+
+  // Drop all the args that have to be skipped.
+  for (Value arg : skipped_args) hoister.DropResource(arg);
 
   hoister.ReplaceResourceLoads(/*read_only=*/false);
 
@@ -1148,8 +1203,8 @@ LogicalResult HoistForControlFlow(
         lifted_partitioned_call_callees) {
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-      auto body = while_op.body_func();
-      auto cond = while_op.cond_func();
+      auto body = while_op.body_function();
+      auto cond = while_op.cond_function();
       // Recursively handle the nested control flow.
       HoistForControlFlow(&body.front(), module,
                           lifted_partitioned_call_callees);
@@ -1157,8 +1212,8 @@ LogicalResult HoistForControlFlow(
                           lifted_partitioned_call_callees);
       if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      auto then_branch = if_op.then_func();
-      auto else_branch = if_op.else_func();
+      auto then_branch = if_op.then_function();
+      auto else_branch = if_op.else_function();
       // Recursively handle the nested control flow.
       HoistForControlFlow(&then_branch.front(), module,
                           lifted_partitioned_call_callees);
@@ -1168,14 +1223,11 @@ LogicalResult HoistForControlFlow(
         return failure();
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
       SmallVector<FuncOp, 4> branch_functions;
-      branch_functions.reserve(case_op.branches().size());
-      for (const Attribute& branch : case_op.branches()) {
-        FuncOp func =
-            module.lookupSymbol<FuncOp>(branch.cast<FlatSymbolRefAttr>());
+      case_op.get_branch_functions(branch_functions);
+      for (FuncOp func : branch_functions) {
         // Recursively handle the nested control flow.
         HoistForControlFlow(&func.front(), module,
                             lifted_partitioned_call_callees);
-        branch_functions.push_back(func);
       }
       if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {

@@ -43,7 +43,7 @@ def TfExecutor_Dialect : Dialect {
     value).
 }];
 
-  let cppNamespace = "tf_executor";
+  let cppNamespace = "::mlir::tf_executor";
 }
 
 // Control type.

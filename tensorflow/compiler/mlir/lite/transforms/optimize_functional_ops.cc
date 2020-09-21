@@ -83,8 +83,8 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     if (!llvm::hasSingleElement(parent_op)) return failure();
 
     // Find the then and else branch functions.
-    FuncOp then_func = op.then_func();
-    FuncOp else_func = op.else_func();
+    FuncOp then_func = op.then_function();
+    FuncOp else_func = op.else_function();
 
     // If the If has no uses and its functions are side-effect free, then
     // remove.

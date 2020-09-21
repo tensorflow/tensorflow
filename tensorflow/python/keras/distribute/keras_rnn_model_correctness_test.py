@@ -86,7 +86,6 @@ class DistributionStrategyGruModelCorrectnessTest(
       keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_gru_model_correctness(self, distribution, use_numpy,
                                  use_validation_data):
-    self.skipTest('Test is sensitive to TF random seed, b/TBD')
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 

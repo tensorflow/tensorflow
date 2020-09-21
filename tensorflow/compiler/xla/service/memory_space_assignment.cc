@@ -3341,6 +3341,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                   last_use_instruction, parameter_time, last_use_time,
                   absl::StrCat(indent_string, "  ")));
             } else {
+              last_use_time = std::min(last_use_time, end_time);
               TF_RETURN_IF_ERROR(add_allocation_and_verify(
                   parameter_time, last_use_time, chunk, value));
             }
@@ -3359,12 +3360,13 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
         TF_RETURN_IF_ERROR(split_conditional_buffer(
             last_use_instruction, time_bound.start, time_bound.end, " "));
       } else if (!value->uses().empty()) {
+        last_use_time = std::min(last_use_time, time_bound.end);
         VLOG(3) << " buffer: " << buffer.ToString()
                 << " value: " << value->ToShortString() << ": ("
-                << time_bound.start << ", " << time_bound.end
+                << time_bound.start << ", " << last_use_time
                 << ") off: " << chunk.offset << ", size: " << chunk.size;
         TF_RETURN_IF_ERROR(add_allocation_and_verify(
-            time_bound.start, time_bound.end, chunk, value));
+            time_bound.start, last_use_time, chunk, value));
       }
     }
   }

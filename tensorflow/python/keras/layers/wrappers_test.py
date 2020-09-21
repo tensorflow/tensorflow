@@ -28,7 +28,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -405,7 +404,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(
-      *tf_test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[keras.layers.LSTM,
                  keras.layers.Dense]))
   def test_TimeDistributed_with_ragged_input(self, layer):

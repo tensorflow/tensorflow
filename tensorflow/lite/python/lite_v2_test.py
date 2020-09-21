@@ -727,6 +727,18 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
 
+  @test_util.run_v2_only
+  def testFallbackPath(self):
+    """Test a SavedModel fallback path using old converter."""
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.experimental_new_converter = False
+    tflite_model = converter.convert()
+
+    self.assertTrue(tflite_model)
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 

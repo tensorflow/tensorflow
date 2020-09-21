@@ -98,13 +98,13 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());
-  pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
   pm.addPass(mlir::createInlinerPass());
+  pm.addPass(CreateTPUClusterCleanupAttributesPass());
+  pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
@@ -121,6 +121,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {

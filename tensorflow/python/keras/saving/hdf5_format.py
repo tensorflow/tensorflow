@@ -30,7 +30,6 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import json_utils
-from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
@@ -402,10 +401,6 @@ def preprocess_weights_for_loading(layer,
 
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:
-    if original_backend == 'theano':
-      weights[0] = conv_utils.convert_kernel(weights[0])
-      if layer.__class__.__name__ == 'ConvLSTM2D':
-        weights[1] = conv_utils.convert_kernel(weights[1])
     if K.int_shape(layer.weights[0]) != weights[0].shape:
       weights[0] = np.transpose(weights[0], (3, 2, 0, 1))
       if layer.__class__.__name__ == 'ConvLSTM2D':

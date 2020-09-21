@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -120,7 +121,7 @@ EagerContext::EagerContext(
       "/job:localhost/replica:0/task:0"));
   collective_executor_mgr_.Reset(
       new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
-                                std::move(cprl)),
+                                std::move(cprl), MaybeCreateNcclCommunicator()),
       /*owned=*/true);
 }
 

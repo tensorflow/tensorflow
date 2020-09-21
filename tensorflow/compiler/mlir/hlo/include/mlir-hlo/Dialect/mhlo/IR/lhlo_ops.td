@@ -34,13 +34,14 @@ limitations under the License.
 #define LHLO_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
   let name = "lmhlo";
-  let cppNamespace = "lmhlo";
+  let cppNamespace = "::mlir::lmhlo";
 }
 
 //===----------------------------------------------------------------------===//
@@ -616,11 +617,16 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []>, BASE_HLO_ConvOp {
   );
 }
 
-def LHLO_CopyOp: LHLO_Op<"copy", []>, BASE_HLO_CopyOp {
+def LHLO_CopyOp: LHLO_Op<"copy", [CopyOpInterface]>, BASE_HLO_CopyOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
+
+  let extraClassDeclaration = [{
+    Value getSource() { return operand();}
+    Value getTarget() { return output(); }
+  }];
 }
 
 def LHLO_DotOp: LHLO_Op<"dot", []>, BASE_HLO_DotOp {

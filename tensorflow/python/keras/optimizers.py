@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""Built-in optimizer classes."""
+"""Built-in optimizer classes.
+
+For more examples see the base class `tf.keras.optimizers.Optimizer`.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

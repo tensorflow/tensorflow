@@ -68,6 +68,7 @@ exports_files(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.h",
         "run_handler_util.h",
         "session_state.h",
@@ -385,6 +386,7 @@ filegroup(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.cc",
         "run_handler.h",
         "run_handler_util.cc",
@@ -1044,6 +1046,7 @@ tf_cc_tests(
         "rendezvous_test.cc",
         "resource_mgr_test.cc",
         "resource_op_kernel_test.cc",
+        "selective_registration_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
         "tensor_shape_test.cc",
@@ -1503,5 +1506,8 @@ tf_proto_library(
         ":types_proto",
         ":variable_proto",
         ":versions_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )

@@ -74,6 +74,17 @@ func @ignore_embedding_ops() -> () {
   return
 }
 
+// CHECK-LABEL: func @ignore_stack_ops
+func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
+  "tf_device.cluster"() ( {
+    // CHECK: "tf.StackV2"
+    // CHECK-NOT: _xla_outside_compilation
+    %0 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+    tf_device.return
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @op_string_result
 func @op_string_result() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {
