@@ -672,25 +672,5 @@ TYPED_TEST(StridedSliceOpTest, In3D_SmallBeginWithhrinkAxis1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBegin) {
-  StridedSliceOpModel<TypeParam> m({1, 1, 2}, {1}, {1}, {1}, 0, 1, 0, 0, 0);
-  m.SetInput({1, 2});
-  m.SetBegin({1});
-  m.SetEnd({0});
-  m.SetStrides({1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
-}
-
-TYPED_TEST(StridedSliceOpTest, In3D_Backward) {
-  StridedSliceOpModel<TypeParam> m({1, 1, 2}, {3}, {3}, {3}, 6, 7, 0, 0, 0);
-  m.SetInput({1, 2});
-  m.SetBegin({1, 0, 0});
-  m.SetEnd({0, -1, -1});
-  m.SetStrides({1, 1, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
-}
-
 }  // namespace
 }  // namespace tflite
