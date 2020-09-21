@@ -850,6 +850,7 @@ TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
   this->VerifyError(test_case.get());
 }
 
+#if !TENSORFLOW_USE_ROCM
 TYPED_TEST(NcclManagerTest, Abort) {
   using NodeState = typename TestFixture::NodeState;
   using TestCase = typename TestFixture::TestCase;
@@ -911,6 +912,7 @@ TYPED_TEST(NcclManagerTest, Abort) {
     }
   }
 }
+#endif
 
 }  // namespace tensorflow
 
