@@ -1131,12 +1131,8 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-        "no_rocm", # times out on CI
-=======
         "no_rocm",
         "notsan",  # b/168645872
->>>>>>> upstream/master
     ],
     tpu_tags = [
         "no_oss",  # b/150954621 Target too big to run serially reliably.
@@ -1809,13 +1805,10 @@ tf_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     tags = [
+        "no_rocm",
         "notsan",  # b/168675975
     ],
->>>>>>> upstream/master
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",

@@ -315,56 +315,7 @@ class Stream {
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<InputType> &input_data,
       const dnn::FilterDescriptor &filter_descriptor,
-<<<<<<< HEAD
-      const DeviceMemory<double> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream& ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<tensorflow::bfloat16>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<tensorflow::bfloat16>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<tensorflow::bfloat16>* output,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-
-  Stream& ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<Eigen::half>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Eigen::half>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half>* output, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-
-  Stream &ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<int8> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-=======
       const DeviceMemory<InputType> &filter_data,
->>>>>>> upstream/master
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
@@ -469,64 +420,10 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output);
 
-<<<<<<< HEAD
-  Stream &ThenConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<double> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<double> *backward_input_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<float> *backward_input_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream& ThenConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<tensorflow::bfloat16>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<tensorflow::bfloat16> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<tensorflow::bfloat16>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-
-  Stream& ThenConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Eigen::half>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<Eigen::half>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-
-  Stream &ThenConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<double> &input_data,
-=======
   template <typename ElementType>
   port::Status ConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<ElementType> &filter_data,
->>>>>>> upstream/master
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<ElementType> backward_output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
@@ -555,31 +452,6 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
-<<<<<<< HEAD
-  Stream& ThenConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<tensorflow::bfloat16>& input_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<tensorflow::bfloat16> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemory<tensorflow::bfloat16>* backward_filter_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-
-  Stream& ThenConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<Eigen::half>& input_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemory<Eigen::half>* backward_filter_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-=======
   template <typename ElementType>
   port::Status ConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -611,7 +483,6 @@ class Stream {
     }
     return port::UnimplementedError("DNN library is not found.");
   }
->>>>>>> upstream/master
 
   Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
                                    const DeviceMemory<double> &input_data,

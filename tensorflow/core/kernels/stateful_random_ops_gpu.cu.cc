@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
+// ROCm hipMemcpyToSymbol can only see this variable if it's in global namespace
+__device__ int tensorflow_philox_thread_counter;
+
 namespace tensorflow {
 
 namespace functor {
@@ -47,18 +50,6 @@ __global__ void FillKernel(
   __syncthreads();
   functor::FillPhiloxRandomKernel<Distribution,
                                   Distribution::kVariableSamplesPerOutput>()
-<<<<<<< HEAD
-      .Run(*philox, output_data, output_size, dist);
-}
-
-template <typename Distribution>
-__global__ void UpdateState(int64 output_size,
-                            StateElementType* __restrict__ state_data) {
-  char philox_raw[sizeof(PhiloxRandom)];
-  auto philox = reinterpret_cast<PhiloxRandom*>(philox_raw);
-  *philox = GetPhiloxRandomFromMem(state_data);
-  UpdateMemWithPhiloxRandom(*philox, output_size, state_data);
-=======
       .Run(/*key=*/nullptr, /*counter=*/nullptr, *philox, output_data,
            output_size, dist);
   // The last thread updates the state.
@@ -67,7 +58,6 @@ __global__ void UpdateState(int64 output_size,
   if (old_counter_value == total_thread_count - 1) {
     UpdateMemWithPhiloxRandom(*philox, output_size, state_data);
   }
->>>>>>> upstream/master
 }
 
 template <typename Distribution>
@@ -97,8 +87,6 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   TF_CHECK_OK(GpuLaunchKernel(
       FillKernel<Distribution>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), dist, state_size, output_size, state_data, output_data));
-  TF_CHECK_OK(GpuLaunchKernel(UpdateState<Distribution>, dim3(1), dim3(1), 0,
-                              d.stream(), output_size, state_data));
 }
 
 // Precondition: there is only 1 block and 1 thread.

@@ -434,15 +434,6 @@ class TestOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override { ctx->set_output(0, Tensor()); }
 };
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_CPU), TestOp);
-<<<<<<< HEAD
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_SYCL), TestOp);
-#endif  // TENSORFLOW_USE_SYCL
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_GPU), TestOp);
-#endif  
-=======
->>>>>>> upstream/master
 
 TEST_F(MathGradTest, Error_Reporting) {
   auto x = test::AsTensor<float>({-3.f});
@@ -899,11 +890,6 @@ TEST_F(MathGradTest, Pow) {
   }
 }
 
-<<<<<<< HEAD
-// TODO{lukeiwanski}: Implement Complex  Pow for SYCL
-#if !(TENSORFLOW_USE_SYCL || TENSORFLOW_USE_ROCM || GOOGLE_CUDA)
-=======
->>>>>>> upstream/master
 TEST_F(MathGradTest, ComplexPow) {
   auto x = test::AsTensor<complex64>({0.f, 2.f, -2.f}, TensorShape({3}));
   auto y = test::AsTensor<complex64>({2.f, 2.f, 2.f}, TensorShape({3}));

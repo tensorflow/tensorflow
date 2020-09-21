@@ -1134,41 +1134,29 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-<<<<<<< HEAD
-        bool miopen_launch_status = true;
+        Status miopen_launch_status;
         if (TestMIOpenBFloat16Support<T>()) {
           miopen_launch_status =
               stream
-                  ->ThenConvolveBackwardFilterWithAlgorithm(
+                  ->ConvolveBackwardFilterWithAlgorithm(
                       input_desc, bfloat16_input_ptr, output_desc,
                       bfloat16_out_backprop_ptr, conv_desc, filter_desc,
                       &bfloat16_filter_backprop_ptr, &scratch_allocator,
                       AlgorithmConfig(profile_algorithm,
                                       miopen_algorithm.scratch_size()),
-                      &profile_result)
-                  .ok();
+                      &profile_result);
         } else {
           miopen_launch_status =
               stream
-                  ->ThenConvolveBackwardFilterWithAlgorithm(
+                  ->ConvolveBackwardFilterWithAlgorithm(
                       input_desc, input_ptr, output_desc, out_backprop_ptr,
                       conv_desc, filter_desc, &filter_backprop_ptr,
                       &scratch_allocator,
                       AlgorithmConfig(profile_algorithm,
                                       miopen_algorithm.scratch_size()),
-                      &profile_result)
-                  .ok();
+                      &profile_result);
         }
-        if (miopen_launch_status && profile_result.is_valid()) {
-=======
-        auto miopen_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
-            input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-            filter_desc, &filter_backprop_ptr, &scratch_allocator,
-            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
-            &profile_result);
-
         if (miopen_launch_status.ok() && profile_result.is_valid()) {
->>>>>>> upstream/master
           results.emplace_back();
           auto& result = results.back();
           result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -1191,31 +1179,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                                                  algorithm_config);
   }
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
-<<<<<<< HEAD
-  bool cudnn_launch_status = true;
-  if (TestMIOpenBFloat16Support<T>()) {
-    cudnn_launch_status = stream
-                              ->ThenConvolveBackwardFilterWithAlgorithm(
-                                  input_desc, bfloat16_input_ptr, output_desc,
-                                  bfloat16_out_backprop_ptr, conv_desc,
-                                  filter_desc, &bfloat16_filter_backprop_ptr,
-                                  &scratch_allocator, algorithm_config, nullptr)
-                              .ok();
-  } else {
-    cudnn_launch_status =
-        stream
-            ->ThenConvolveBackwardFilterWithAlgorithm(
-                input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-                filter_desc, &filter_backprop_ptr, &scratch_allocator,
-                algorithm_config, nullptr)
-            .ok();
-  }
-  if (!cudnn_launch_status) {
-    ctx->SetStatus(errors::Internal(
-        "DNN Backward Filter function launch failure : input shape(",
-        input.shape().DebugString(), ") filter shape(",
-        filter_shape.DebugString(), ")"));
-=======
   auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
       input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
       filter_desc, &filter_backprop_ptr, &scratch_allocator, algorithm_config,
@@ -1223,7 +1186,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
->>>>>>> upstream/master
     return;
   }
 
