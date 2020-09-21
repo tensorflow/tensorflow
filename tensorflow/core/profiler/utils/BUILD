@@ -313,9 +313,6 @@ cc_library(
 tf_cc_test(
     name = "group_events_test",
     srcs = ["group_events_test.cc"],
-    tags = [
-        "no_oss",  # b/169042294
-    ],
     deps = [
         ":group_events",
         ":tf_xplane_visitor",
