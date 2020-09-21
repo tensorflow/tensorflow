@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_enable_mlir_bridge", "tf_gen_op_wrapper_py")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
 
 # buildifier: disable=same-origin-load
@@ -416,6 +419,7 @@ cc_library(
     name = "cost_analyzer_lib",
     srcs = ["grappler/cost_analyzer.cc"],
     hdrs = ["grappler/cost_analyzer.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
@@ -530,6 +534,7 @@ tf_python_pybind_extension(
 # Necessary for the pywrap inclusion below.
 tf_pybind_cc_library_wrapper(
     name = "tfcompile_headers_lib",
+    compatible_with = [],
     deps = [
         "//tensorflow/compiler/aot:tfcompile_lib",
     ],
@@ -5929,6 +5934,7 @@ tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
     hdrs = ["client/tf_session_helper.h"],
+    compatible_with = [],
     deps = [
         ":construction_fails_op",
         ":ndarray_tensor",

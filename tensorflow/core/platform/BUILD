@@ -55,6 +55,9 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
@@ -202,6 +205,7 @@ cc_library(
 cc_library(
     name = "cuda",
     hdrs = ["cuda.h"],
+    compatible_with = [],
     deps = [
         ":platform",
         "//tensorflow/stream_executor/cuda:cuda_activation_header",

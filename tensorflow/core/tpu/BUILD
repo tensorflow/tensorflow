@@ -1,5 +1,6 @@
 # Description: Utilities for TPU Operations
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_windows",

@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -5,10 +6,17 @@ load(
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
     "tf_cc_test",
 )
 
@@ -152,6 +160,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "dispatcher_cc_grpc_proto",
     srcs = [":dispatcher_proto"],
+    compatible_with = get_compatible_with_cloud(),
     generate_mocks = True,
     grpc_only = True,
     deps = [":dispatcher_proto_cc"],
@@ -422,6 +431,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "worker_cc_grpc_proto",
     srcs = [":worker_proto"],
+    compatible_with = get_compatible_with_cloud(),
     generate_mocks = True,
     grpc_only = True,
     deps = [":worker_proto_cc"],

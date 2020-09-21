@@ -1,6 +1,8 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_tpu",
     "tf_cc_binary",
     "tf_cc_test",
 )
@@ -50,13 +52,15 @@ cc_library(
     srcs = ["grpc_service_main.cc"],
     deps = [
         ":grpc_service",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings:str_format",
         tf_grpc_cc_dependency(),
-    ],
+    ] + if_tpu(
+        if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
+        if_true = [],
+    ),
 )
 
 tf_cc_binary(

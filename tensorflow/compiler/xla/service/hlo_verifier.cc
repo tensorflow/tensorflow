@@ -1160,6 +1160,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCopyDone:
       case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
+      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
