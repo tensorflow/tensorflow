@@ -1,6 +1,7 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -9,6 +10,11 @@ load(
     "tf_custom_op_library",
     "tf_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 package(

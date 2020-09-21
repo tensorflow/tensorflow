@@ -1,5 +1,7 @@
 # Description: StreamExecutor Interface for TPUs
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = ["//tensorflow/core/tpu:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
@@ -138,8 +140,10 @@ cc_library(
     ],
     deps = [
         ":c_api_conversions",
+        ":c_api_decl",
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_topology_external",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",

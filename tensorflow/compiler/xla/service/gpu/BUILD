@@ -26,6 +26,11 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 
@@ -61,6 +66,7 @@ cc_library(
     name = "gpu_executable_run_options",
     srcs = ["gpu_executable_run_options.cc"],
     hdrs = ["gpu_executable_run_options.h"],
+    compatible_with = get_compatible_with_cloud(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -434,6 +440,7 @@ tf_cuda_library(
         ["dummy_all_reduce_thunk.cc"],
     ),
     hdrs = ["nccl_all_reduce_thunk.h"],
+    compatible_with = [],
     deps = [
         ":buffer_allocations",
         ":hlo_execution_profiler",
@@ -470,6 +477,7 @@ cc_library(
     hdrs = [
         "gpu_debug_info_manager.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1374,6 +1382,7 @@ cc_library(
 cc_library(
     name = "xfeed_queue",
     hdrs = ["xfeed_queue.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
@@ -1384,6 +1393,7 @@ cc_library(
     name = "infeed_manager",
     srcs = ["infeed_manager.cc"],
     hdrs = ["infeed_manager.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:shape_tree",
@@ -1398,6 +1408,7 @@ cc_library(
     name = "outfeed_manager",
     srcs = ["outfeed_manager.cc"],
     hdrs = ["outfeed_manager.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:literal",

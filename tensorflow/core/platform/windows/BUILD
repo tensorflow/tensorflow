@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tensorflow:tensorflow.bzl",
