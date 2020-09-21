@@ -16,7 +16,8 @@ limitations under the License.
 // This is the operation definition file for TensorFlow.
 //
 // This file contains TensorFlow ops whose definitions are programmatically
-// generated from the TensorFlow codebase. The generated fields for an op
+// generated from the TensorFlow codebase from the ApiDef protos under
+// tensorflow/core/api_def/base_api. The generated fields for an op
 // includes name, summary, description, traits, arguments, results, derived
 // attributes. Therefore, modifications to these fields will **not** be
 // respected upon subsequent refreshes. However, additional fields after those
