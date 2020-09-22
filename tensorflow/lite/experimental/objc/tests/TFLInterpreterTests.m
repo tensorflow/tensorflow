@@ -50,6 +50,7 @@ static const NSUInteger kInvalidOutputTensorIndex = 1U;
 
 /** Accuracy used in comparing floating numbers. */
 static const float kTestAccuracy = 1E-5F;
+
 /**
  * Unit tests for TFLInterpreter.
  */
@@ -349,25 +350,6 @@ static const float kTestAccuracy = 1E-5F;
   XCTAssertNil(error);
   XCTAssertFalse([outputTensor copyData:data error:&error]);
   XCTAssertEqual(error.code, TFLInterpreterErrorCodeCopyDataToOutputTensorNotAllowed);
-}
-
-- (void)testNilCDelegate {
-  // Creates the interpreter options.
-  TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
-
-  // Creates the interpreter.
-  NSError *error;
-  TFLDelegate *delegate = [[TFLDelegate alloc] init];  // Base delegate's cDelegate is nil.
-  TFLInterpreter *customInterpreter = [[TFLInterpreter alloc] initWithModelPath:self.floatModelPath
-                                                                        options:options
-                                                                      delegates:@[ delegate ]
-                                                                          error:&error];
-  XCTAssertNil(error);
-  XCTAssertNotNil(customInterpreter);
-
-  // Allocates memory for tensors.
-  XCTAssertTrue([customInterpreter allocateTensorsWithError:&error]);
-  XCTAssertNil(error);
 }
 
 @end

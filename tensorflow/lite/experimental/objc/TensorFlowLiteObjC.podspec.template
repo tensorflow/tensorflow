@@ -40,32 +40,16 @@ Pod::Spec.new do |s|
       tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
     ]
     core.exclude_files = [
-      objc_dir + '{apis,sources}/TFL{Metal,CoreML}Delegate.{h,m}',
+      objc_dir + '{apis,sources}/TFLMetalDelegate.{h,m}',
     ]
     core.dependency 'TensorFlowLiteC', "#{s.version}"
 
     core.test_spec 'Tests' do |ts|
       ts.source_files = objc_dir + 'tests/*.m'
-      ts.exclude_files = objc_dir + 'tests/TFL{Metal,CoreML}DelegateTests.m'
+      ts.exclude_files = objc_dir + 'tests/TFLMetalDelegateTests.m'
       ts.resources = [
         tfl_dir + 'testdata/add.bin',
         tfl_dir + 'testdata/add_quantized.bin',
-      ]
-    end
-  end
-
-  s.subspec 'CoreML' do |coreml|
-    coreml.source_files = [
-      objc_dir + '{apis,sources}/TFLCoreMLDelegate.{h,m}',
-    ]
-    coreml.ios.deployment_target = '12.0'
-    coreml.dependency 'TensorFlowLiteC/CoreML', "#{s.version}"
-    coreml.dependency 'TensorFlowLiteObjC/Core', "#{s.version}"
-
-    coreml.test_spec 'Tests' do |ts|
-      ts.source_files = objc_dir + 'tests/TFLCoreMLDelegateTests.m'
-      ts.resources = [
-        tfl_dir + 'testdata/add.bin',
       ]
     end
   end

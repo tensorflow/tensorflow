@@ -129,10 +129,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
       }
 
       for (TFLDelegate *delegate in delegates) {
-        if (delegate.cDelegate != nullptr) {
-          TfLiteInterpreterOptionsAddDelegate(
-              cOptions, reinterpret_cast<TfLiteDelegate *>(delegate.cDelegate));
-        }
+        TfLiteInterpreterOptionsAddDelegate(cOptions,
+                                            reinterpret_cast<TfLiteDelegate *>(delegate.cDelegate));
       }
 
       _interpreter = TfLiteInterpreterCreate(model, cOptions);
