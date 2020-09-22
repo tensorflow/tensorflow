@@ -67,6 +67,10 @@ TfLiteType FlexModelTest::GetType(int tensor_index) {
   return interpreter_->tensor(tensor_index)->type;
 }
 
+bool FlexModelTest::IsDynamicTensor(int tensor_index) {
+  return interpreter_->tensor(tensor_index)->allocation_type == kTfLiteDynamic;
+}
+
 void FlexModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
                                const std::vector<int>& outputs, TfLiteType type,
                                const std::vector<int>& dims) {
