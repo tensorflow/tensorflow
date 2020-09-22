@@ -355,7 +355,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "parallel_batch",
         "shuffle_and_repeat_fusion",
         "map_vectorization",
-        "inject_prefetch",
+        "autotune_buffer_sizes",
         "make_sloppy",
         "latency_all_edges",
         "slack",
@@ -403,7 +403,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "parallel_batch",
         "shuffle_and_repeat_fusion",
         "map_vectorization",
-        "inject_prefetch",
+        "autotune_buffer_sizes",
         "make_sloppy",
         "latency_all_edges",
         "slack",
@@ -435,7 +435,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.autotune_cpu_budget = 1000
     options.experimental_optimization.autotune_ram_budget = 999999999
     options.experimental_optimization.autotune_buffers = True
-    self.assertIn("inject_prefetch", options._graph_rewrites().enabled)
+    self.assertIn("autotune_buffer_sizes", options._graph_rewrites().enabled)
     autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,

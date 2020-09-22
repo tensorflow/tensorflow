@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/optimizers/data/inject_prefetch.h"
+#include "tensorflow/core/grappler/optimizers/data/autotune_buffer_sizes.h"
 
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -31,6 +31,7 @@ namespace grappler {
 namespace {
 
 constexpr char kLegacyAutotune[] = "legacy_autotune";
+constexpr char kBufferSizeMin[] = "buffer_size_min";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
 constexpr std::array<const char*, 7> kAsyncDatasetOps = {
@@ -42,15 +43,49 @@ constexpr std::array<const char*, 7> kAsyncDatasetOps = {
 
 }  // namespace
 
-Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
-                                               const GrapplerItem& item,
-                                               GraphDef* output,
-                                               OptimizationStats* stats) {
+Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
+                                                    const GrapplerItem& item,
+                                                    GraphDef* output,
+                                                    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
 
+  absl::flat_hash_set<string> already_prefetched;
+  // 1) Collect about all existing `PrefetchDataset` nodes, replacing
+  // `prefetch(N)` with `prefetch(AUTOTUNE, buffer_size_min=N)` for all N !=-1.
+  for (NodeDef& node : *(output->mutable_node())) {
+    if (node.op() == kPrefetchDataset) {
+      NodeDef* buffer_size_node = graph.GetNode(node.input(1));
+      // We only consider to rewrite if `buffer_size` is constant.
+      if (buffer_size_node->op() == "Const") {
+        int64 initial_buffer_size =
+            buffer_size_node->attr().at("value").tensor().int64_val(0);
+        if (initial_buffer_size != data::model::kAutotune) {
+          buffer_size_node->mutable_attr()
+              ->at("value")
+              .mutable_tensor()
+              ->set_int64_val(0, data::model::kAutotune);
+          node.mutable_attr()->at(kBufferSizeMin).set_i(initial_buffer_size);
+        }
+      } else {
+        return errors::FailedPrecondition(
+            "The autotune_buffer_sizes rewrite does not currently support "
+            "non-constant buffer_size input.");
+      }
+      NodeDef* prefetched_node = graph_utils::GetInputNode(node, graph);
+      if (prefetched_node) {
+        already_prefetched.insert(prefetched_node->name());
+      }
+    }
+  }
+
   std::vector<const NodeDef*> async_datasets;
+  // 2) Insert `prefetch(AUTOTUNE)` after all asynchronous transformations that
+  // are not followed by a `prefetch` yet.
   for (const NodeDef& node : item.graph.node()) {
+    if (already_prefetched.find(node.name()) != already_prefetched.end()) {
+      continue;
+    }
     for (const auto& async_dataset_op : kAsyncDatasetOps) {
       if (node.op() == async_dataset_op) {
         async_datasets.push_back(&node);
@@ -75,7 +110,6 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
     *prefetch_node.mutable_input()->Add() = async_dataset_node->name();
     // `buffer_size` input
     *prefetch_node.mutable_input()->Add() = autotune_value->name();
-
     for (const auto& attr_name : {"output_types", "output_shapes"}) {
       graph_utils::CopyAttribute(attr_name, *async_dataset_node,
                                  &prefetch_node);
@@ -87,6 +121,8 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   for (NodeDef& node : *output->mutable_node()) {
+    // 3) Switch from using legacy algorithm to using performance model
+    // based algorithm for autotuning of all `prefetch` nodes.
     if (node.op() == kPrefetchDataset) {
       (*node.mutable_attr())[kLegacyAutotune].set_b(false);
       stats->num_changes++;
@@ -96,12 +132,13 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void InjectPrefetch::Feedback(Cluster* cluster, const GrapplerItem& item,
-                              const GraphDef& optimize_output, double result) {
+void AutotuneBufferSizes::Feedback(Cluster* cluster, const GrapplerItem& item,
+                                   const GraphDef& optimize_output,
+                                   double result) {
   // no-op
 }
 
-REGISTER_GRAPH_OPTIMIZER_AS(InjectPrefetch, "inject_prefetch");
+REGISTER_GRAPH_OPTIMIZER_AS(AutotuneBufferSizes, "autotune_buffer_sizes");
 
 }  // namespace grappler
 }  // namespace tensorflow
