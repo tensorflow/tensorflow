@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator_range.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -35,12 +36,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -64,7 +67,7 @@ createLegalizeTFControlFlowPass() {
 
 namespace {
 
-void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
+void Detuple(Value tuple, ValueRange replace, OpBuilder* builder) {
   // De-tuple the results of the xla hlo if result.
   for (auto result_it : llvm::enumerate(replace)) {
     auto get_tuple_value = builder->create<mhlo::GetTupleElementOp>(
@@ -179,6 +182,122 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
   Detuple(while_op.getResult(), op.getResults(), &builder);
   op.erase();
 }
+
+// Replaces all block arguments of a block with a single block arg of Tuple
+// type `tuple_type`. Single block arguments are removed and remapped to
+// get_tuple_element(tuple_arg, index).
+void ReplaceBlockArgs(Block* block, Type tuple_type, OpBuilder* builder) {
+  auto tuple_arg = block->addArgument(tuple_type);
+  Detuple(tuple_arg, block->getArguments().drop_back(1), builder);
+  for (int i = block->getNumArguments() - 2; i >= 0; --i)
+    block->eraseArgument(i);
+}
+
+// Finds and replaces implicitly captured value uses with tuple block argument.
+// get_tuple_element's are created to extract specific values. Values from
+// get_tuple_element's are returned in the order of `implicit_inputs`.
+llvm::SmallVector<Value, 4> ReplaceImplicitInputs(
+    Block* block, int offset, ArrayRef<Value> implicit_inputs,
+    OpBuilder* builder) {
+  llvm::SmallVector<Value, 4> implicit_input_elements;
+  implicit_input_elements.reserve(implicit_inputs.size());
+
+  Region* region = block->getParent();
+  assert(block->getNumArguments() == 1);
+
+  BlockArgument tuple_arg = block->getArgument(0);
+  for (auto& implicit_input : llvm::enumerate(implicit_inputs)) {
+    Value implicit_input_value = implicit_input.value();
+    auto get_tuple_element = builder->create<mhlo::GetTupleElementOp>(
+        implicit_input_value.getLoc(), tuple_arg,
+        implicit_input.index() + offset);
+    implicit_input_elements.emplace_back(get_tuple_element.getResult());
+    for (auto& use :
+         llvm::make_early_inc_range(implicit_input_value.getUses())) {
+      if (!region->isAncestor(use.getOwner()->getParentRegion())) continue;
+      use.set(get_tuple_element.getResult());
+    }
+  }
+
+  return implicit_input_elements;
+}
+
+// Replaces block terminator (tf.Yield) with `mhlo.return`. Additional results
+// can be returned if `extra_results` is not empty. If `tuple_return` is
+// set, a tuple of the return values will be set as the terminator operand.
+void ReplaceTerminator(Block* block, ArrayRef<Value> extra_results,
+                       OpBuilder* builder, bool tuple_return = true) {
+  Operation* terminator = block->getTerminator();
+  assert(isa<TF::YieldOp>(terminator));
+  Location loc = terminator->getLoc();
+
+  builder->setInsertionPoint(terminator);
+  auto results = llvm::to_vector<4>(terminator->getOperands());
+  results.append(extra_results.begin(), extra_results.end());
+  if (tuple_return) {
+    auto tuple_results = builder->create<mhlo::TupleOp>(loc, results);
+    builder->create<mhlo::ReturnOp>(loc, tuple_results.getResult());
+  } else {
+    builder->create<mhlo::ReturnOp>(loc, results);
+  }
+
+  terminator->erase();
+}
+
+void LowerWhileRegion(TF::WhileRegionOp op) {
+  Location loc = op.getLoc();
+  OpBuilder builder(op);
+
+  // XLA prefers tuple arguments for control flow due to XLA not supporting
+  // multiple return values.
+  SmallVector<Value, 3> inputs(op.input());
+  const int inputs_size = inputs.size();
+  llvm::SetVector<Value> implicit_inputs;
+  getUsedValuesDefinedAbove(op.getOperation()->getRegions(), implicit_inputs);
+  inputs.append(implicit_inputs.begin(), implicit_inputs.end());
+
+  builder.setInsertionPoint(op);
+  Value tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
+
+  // Create the new while op with tuple inputs. Implicit inputs are also
+  // returned.
+  auto while_result_types = llvm::to_vector<4>(op.getResultTypes());
+  while_result_types.reserve(while_result_types.size() +
+                             implicit_inputs.size());
+  for (const auto& implicit_input : implicit_inputs)
+    while_result_types.emplace_back(implicit_input.getType());
+  auto while_op = builder.create<mhlo::WhileOp>(
+      loc, builder.getTupleType(while_result_types), tuple_input);
+
+  // Rewrite cond and associated block arguments and terminator.
+  Region& cond = while_op.cond();
+  cond.takeBody(op.cond());
+  Block& cond_block = cond.front();
+  builder.setInsertionPointToStart(&cond_block);
+  ReplaceBlockArgs(&cond_block, tuple_input.getType(), &builder);
+  ReplaceImplicitInputs(&cond_block, inputs_size, implicit_inputs.getArrayRef(),
+                        &builder);
+  // Cond always returns a single result of bool type.
+  ReplaceTerminator(&cond_block, /*extra_results=*/{}, &builder,
+                    /*tuple_return=*/false);
+
+  // Rewrite body and associated block arguments and terminator.
+  Region& body = while_op.body();
+  body.takeBody(op.body());
+  Block& body_block = body.front();
+  builder.setInsertionPointToStart(&body_block);
+  ReplaceBlockArgs(&body_block, tuple_input.getType(), &builder);
+  // Capture implicit inputs that were added as a tuple block arguments. These
+  // are to be returned by the body in addition to explicit inputs.
+  auto implicit_input_elements = ReplaceImplicitInputs(
+      &body_block, inputs_size, implicit_inputs.getArrayRef(), &builder);
+  ReplaceTerminator(&body_block, implicit_input_elements, &builder);
+
+  // De-tuple the results of the xla hlo while.
+  builder.setInsertionPoint(op);
+  Detuple(while_op.getResult(), op.getResults(), &builder);
+  op.erase();
+}
 }  // namespace
 
 void LegalizeTFControlFlow::runOnOperation() {
@@ -187,6 +306,10 @@ void LegalizeTFControlFlow::runOnOperation() {
   module.walk([&](Operation* op) {
     if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
       LowerWhile(while_op, module);
+      return;
+    }
+    if (auto while_region_op = dyn_cast<TF::WhileRegionOp>(op)) {
+      LowerWhileRegion(while_region_op);
       return;
     }
     if (auto if_op = dyn_cast<TF::IfOp>(op)) {
