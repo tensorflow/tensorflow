@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -511,6 +512,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
     return Status::OK();
   }
   PassManager pm(func_.getContext());
+  ::tensorflow::SetCrashReproducer(pm);
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(CreateBreakUpIslandsPass());
 

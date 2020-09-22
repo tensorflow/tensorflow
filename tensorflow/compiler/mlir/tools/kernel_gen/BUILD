@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla:debug_options_flags",
