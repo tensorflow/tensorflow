@@ -1,3 +1,7 @@
+# Release 2.2.1
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.2.0
 
 TensorFlow 2.2 discontinues support for Python 2, [previously announced](https://groups.google.com/a/tensorflow.org/d/msg/announce/gVwS5RC8mds/dCt1ka2XAAAJ) as following [Python 2's EOL on January 1, 2020](https://www.python.org/dev/peps/pep-0373/#update).
