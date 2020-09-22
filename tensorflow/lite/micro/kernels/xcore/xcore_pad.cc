@@ -33,7 +33,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   TFLITE_DCHECK(length > 0); 
 
   op->bytes_per_pixel = (size_t)get_named_uint32_custom_option(context, buffer, length, "bytes_per_pixel");
-  op->pad_value = get_named_uint32_custom_option(context, buffer, length, "pad_value");
+  op->pad_value = get_named_uint32_custom_option(context, buffer, length, "pad_values");
 
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
   auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
