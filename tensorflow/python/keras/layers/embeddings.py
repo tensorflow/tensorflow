@@ -188,7 +188,7 @@ class Embedding(Layer):
 
   def call(self, inputs):
     dtype = K.dtype(inputs)
-    if dtype != 'int32' and dtype != 'int64':
+    if dtype != 'int32' or dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
     if isinstance(self.embeddings, sharded_variable.ShardedVariable):
       out = embedding_ops.embedding_lookup_v2(self.embeddings.variables, inputs)
