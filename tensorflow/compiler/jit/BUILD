@@ -431,6 +431,7 @@ cc_library(
         ":xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:core_cpu_internal",
