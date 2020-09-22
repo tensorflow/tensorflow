@@ -86,14 +86,14 @@ inline void Logistic(int32_t input_multiplier, int32_t input_left_shift,
     // We divide by 2 power of 9, because
     // we need to divide by 2 in power of 7 for
     // the input conversion + 1/4 from the scale above.
-    uint32_t uh = abs_input_data >> 9;
+    uint32_t u_table = abs_input_data >> 9;
 
     uint32_t result;
-    if (uh >= 255) {
+    if (u_table >= 255) {
       result = 0xfffe << 9;
     } else {
-      uint32_t ua = sigmoid_table_uint16[uh];
-      uint32_t ub = sigmoid_table_uint16[uh + 1];
+      uint32_t ua = sigmoid_table_uint16[u_table];
+      uint32_t ub = sigmoid_table_uint16[u_table + 1];
       uint32_t ut = abs_input_data & 0x1ff;
 
       // Interpolation is done using the fractional bit.

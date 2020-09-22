@@ -437,14 +437,16 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
     if (!param_scale_pot) {
       // Calculate multiplier to change input scale to 1/(3*4096)
       // as required by the table lookup.
-      // In this scaling +/-2^17 represents +/-10.7
+      // The number 3.0 in the multiplier comes from here, 
+      // because the interval is [-10.7, 10.7] instead of [-8, 8].
+      // So, in this scaling +/-2^17 represents +/-10.7.
 
       double multiplier = input->params.scale * 4096.0 * 3.0;
       data->input_left_shift = 0;
 
       while (multiplier <= 32767.0 / 2.0 && data->input_left_shift <= 30) {
-        data->input_left_shift++;
-        multiplier = multiplier * 2.0;
+         data->input_left_shift++;
+         multiplier = multiplier * 2.0;
       }
 
       data->input_multiplier = static_cast<int32_t>(multiplier);
