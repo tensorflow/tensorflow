@@ -11,10 +11,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load(
-    "//tensorflow/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 
 package(
     default_visibility = [":friends"],
@@ -123,7 +119,7 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ] + if_gpu_is_configured([
+    ] + if_cuda_is_configured([
         "//tensorflow/core/kernels/mlir_generated:abs_kernels",
         "//tensorflow/core/kernels/mlir_generated:ceil_kernels",
         "//tensorflow/core/kernels/mlir_generated:cos_kernels",
