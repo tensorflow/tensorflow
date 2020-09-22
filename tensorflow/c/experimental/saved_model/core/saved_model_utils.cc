@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/str_split.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
@@ -224,17 +225,17 @@ Status FlattenSignature(const StructuredValue& signature,
   }
 }
 
-const SavedObject* FindNodeAtPath(StringPiece path,
-                                  const SavedObjectGraph& object_graph,
-                                  int* node_id) {
+absl::optional<int> FindNodeAtPath(StringPiece path,
+                                   const SavedObjectGraph& object_graph) {
   const auto& nodes = object_graph.nodes();
   if (nodes.empty()) {
-    return nullptr;
+    return absl::nullopt;
   }
 
   // Starting from the root, iterate through the saved object graph, matching
   // object names as we go.
-  const SavedObject* current_node = &nodes.Get(0);
+  int node_id = 0;
+  const SavedObject* current_node = &nodes.Get(node_id);
 
   for (absl::string_view object_name : absl::StrSplit(path, '.')) {
     auto child_node_iter = std::find_if(
@@ -244,15 +245,14 @@ const SavedObject* FindNodeAtPath(StringPiece path,
           return object_name == obj.local_name();
         });
     if (child_node_iter == current_node->children().end()) {
-      return nullptr;
+      return absl::nullopt;
     }
-    if (node_id) {
-      *node_id = child_node_iter->node_id();
-    }
-    current_node = &nodes.Get(child_node_iter->node_id());
+
+    node_id = child_node_iter->node_id();
+    current_node = &nodes.Get(node_id);
   }
 
-  return current_node;
+  return node_id;
 }
 
 std::unordered_map<StringPiece, const AttrValueMap*, StringPieceHasher>

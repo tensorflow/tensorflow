@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/asset.h"
@@ -75,14 +76,11 @@ Status LoadTFConcreteFunction(
 Status FlattenSignature(const StructuredValue& signature,
                         std::vector<const TensorSpecProto*>* flattened_specs);
 
-// Find the SavedObject in `object_graph` at location `path`. `path` must be
+// Find the node id in `object_graph` at location `path`. `path` must be
 // a dot-delimited string of object names relative to the root object. If no
-// object is found, returns nullptr. Callers must ensure `object_graph`
-// outlives the returned pointer. If not `nullptr`, `node_id` will contain the
-// index of the returned object in the `SavedObjectGraph.nodes` array.
-const SavedObject* FindNodeAtPath(StringPiece path,
-                                  const SavedObjectGraph& object_graph,
-                                  int* node_id = nullptr);
+// object is found, returns absl::nullopt.
+absl::optional<int> FindNodeAtPath(StringPiece path,
+                                   const SavedObjectGraph& object_graph);
 
 // Maps each node in `graphdef` to its corresponding Attribute Map.
 // Callers must ensure that `graphdef` outlives the returned map.

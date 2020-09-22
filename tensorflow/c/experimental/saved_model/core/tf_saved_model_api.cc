@@ -293,20 +293,21 @@ Status RestoreCheckpoint(SavedModelV2Bundle* bundle,
 
 Status TFSavedModelAPI::GetFunction(const std::string& function_path,
                                     ConcreteFunction** function) {
-  const SavedObject* object =
+  absl::optional<int> node =
       internal::FindNodeAtPath(function_path, bundle_.saved_object_graph());
-  if (object == nullptr) {
+  if (!node.has_value()) {
     return errors::NotFound("No saved object found at path ", function_path);
   }
 
-  if (object->kind_case() == SavedObject::kBareConcreteFunction) {
+  const SavedObject& object = bundle_.saved_object_graph().nodes(*node);
+  if (object.kind_case() == SavedObject::kBareConcreteFunction) {
     *function =
         concrete_functions_
-            .at(object->bare_concrete_function().concrete_function_name())
+            .at(object.bare_concrete_function().concrete_function_name())
             .get();
-  } else if (object->kind_case() == SavedObject::kFunction) {
+  } else if (object.kind_case() == SavedObject::kFunction) {
     *function =
-        concrete_functions_.at(object->function().concrete_functions(0)).get();
+        concrete_functions_.at(object.function().concrete_functions(0)).get();
   } else {
     return errors::InvalidArgument(function_path,
                                    " is not a path to a Function.");
@@ -333,15 +334,16 @@ std::vector<ConcreteFunction*> TFSavedModelAPI::ListFunctions() {
 
 Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
                                     Variable** variable) {
-  int node_id;
-  const SavedObject* object = internal::FindNodeAtPath(
-      variable_path, bundle_.saved_object_graph(), &node_id);
-  if (object == nullptr) {
+  absl::optional<int> node =
+      internal::FindNodeAtPath(variable_path, bundle_.saved_object_graph());
+  if (!node.has_value()) {
     return errors::NotFound("No saved object found at path ", variable_path);
   }
 
-  if (object->kind_case() == SavedObject::kVariable) {
-    auto iter = revived_objects_.find(node_id);
+  const SavedObject& object = bundle_.saved_object_graph().nodes(*node);
+
+  if (object.kind_case() == SavedObject::kVariable) {
+    auto iter = revived_objects_.find(*node);
     if (iter == revived_objects_.end()) {
       return errors::Internal("Variable ", variable_path,
                               " was not properly revived.");
@@ -352,7 +354,7 @@ Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
 
   *variable = nullptr;
   return errors::InvalidArgument(
-      variable_path, " is not a path to a Variable (kind=", object->kind_case(),
+      variable_path, " is not a path to a Variable (kind=", object.kind_case(),
       ")");
 }
 
