@@ -140,7 +140,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                bool async, const bool lazy_copy_function_remote_inputs,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
-               const CustomKernelCreator* custom_kernel_creator,
                DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   void Release() override { Unref(); }
@@ -495,8 +494,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                  const FunctionLibraryDefinition* lib_def,
                  const OptimizerOptions& optimizer_options,
                  thread::ThreadPool* thread_pool = nullptr,
-                 DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-                 const CustomKernelCreator* custom_kernel_creator = nullptr);
+                 DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
 
@@ -569,8 +567,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-
-  const CustomKernelCreator* const custom_kernel_creator_;
 
   // EagerContext owns the DistributedFunctionLibraryRuntime(
   // EagerClusterFunctionLibraryRuntime) if using EagerService for remote
