@@ -14,7 +14,11 @@
 
 #import "ViewController.h"
 
+#if COCOAPODS
+@import TFLTensorFlowLite;
+#else
 #import "TFLTensorFlowLite.h"
+#endif
 
 NS_ASSUME_NONNULL_BEGIN
 

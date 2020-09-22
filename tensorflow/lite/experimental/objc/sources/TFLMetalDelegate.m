@@ -14,7 +14,11 @@
 
 #import "tensorflow/lite/experimental/objc/apis/TFLMetalDelegate.h"
 
+#ifdef COCOAPODS
+@import TensorFlowLiteCMetal;
+#else
 #include "tensorflow/lite/delegates/gpu/metal_delegate.h"
+#endif
 
 NS_ASSUME_NONNULL_BEGIN
 

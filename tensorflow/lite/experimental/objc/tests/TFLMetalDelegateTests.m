@@ -12,8 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifdef COCOAPODS
+@import TFLTensorFlowLite;
+#else
 #import "tensorflow/lite/experimental/objc/apis/TFLMetalDelegate.h"
 #import "tensorflow/lite/experimental/objc/apis/TFLTensorFlowLite.h"
+#endif
 
 #import <Metal/MTLDevice.h>
 #import <Metal/Metal.h>
