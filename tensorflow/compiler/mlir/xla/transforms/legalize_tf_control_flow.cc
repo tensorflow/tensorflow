@@ -105,7 +105,7 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
   }
 }
 
-void LowerIf(TF::IfOp op, ModuleOp module) {
+void LowerIf(TF::IfOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
@@ -130,7 +130,7 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   op.erase();
 }
 
-void LowerCase(TF::CaseOp op, ModuleOp module) {
+void LowerCase(TF::CaseOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
@@ -158,7 +158,7 @@ void LowerCase(TF::CaseOp op, ModuleOp module) {
   op.erase();
 }
 
-void LowerWhile(TF::WhileOp op, ModuleOp module) {
+void LowerWhile(TF::WhileOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
@@ -301,11 +301,9 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 }  // namespace
 
 void LegalizeTFControlFlow::runOnOperation() {
-  auto module = getOperation();
-
-  module.walk([&](Operation* op) {
+  getOperation().walk([&](Operation* op) {
     if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-      LowerWhile(while_op, module);
+      LowerWhile(while_op);
       return;
     }
     if (auto while_region_op = dyn_cast<TF::WhileRegionOp>(op)) {
@@ -313,11 +311,11 @@ void LegalizeTFControlFlow::runOnOperation() {
       return;
     }
     if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-      LowerIf(if_op, module);
+      LowerIf(if_op);
       return;
     }
     if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
-      LowerCase(case_op, module);
+      LowerCase(case_op);
       return;
     }
   });
