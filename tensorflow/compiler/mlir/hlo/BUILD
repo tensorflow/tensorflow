@@ -59,7 +59,7 @@ filegroup(
 
 gentbl(
     name = "MhloPassIncGen",
-    strip_include_prefix = "include/mlir-hlo/Dialect/mhlo/transforms/",
+    strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-pass-decls -name MHLO",
@@ -75,7 +75,7 @@ gentbl(
 
 gentbl(
     name = "LmhloPassIncGen",
-    strip_include_prefix = "include/mlir-hlo/Dialect/mhlo/transforms/",
+    strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-pass-decls -name LMHLO",
@@ -326,10 +326,13 @@ cc_library(
 
 cc_library(
     name = "sink_constants_to_control_flow",
-    srcs = ["lib/Dialect/mhlo/transforms/sink_constants_to_control_flow.cc"],
+    srcs = [
+        "lib/Dialect/mhlo/transforms/sink_constants_to_control_flow.cc",
+    ],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
     deps = [
         ":hlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -766,6 +769,20 @@ gentbl(
 )
 
 cc_library(
+    name = "pass_details",
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/PassDetail.h",
+    ],
+    visibility = [
+        "//visibility:private",  # This target is a private detail of pass implementations
+    ],
+    deps = [
+        ":MhloPassIncGen",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "test_passes",
     srcs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
@@ -782,6 +799,7 @@ cc_library(
         ":lhlo",
         ":lhlo_legalize_to_llvm",  # build-cleaner: keep
         ":materialize_broadcasts",  # build-cleaner: keep
+        ":pass_details",
         ":unfuse_batch_norm",  # build-cleaner: keep
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
