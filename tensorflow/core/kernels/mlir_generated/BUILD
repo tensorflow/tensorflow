@@ -17,7 +17,10 @@ load(
 )
 
 package(
-    default_visibility = ["//tensorflow/core/kernels:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
