@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 
 #include <algorithm>
 
@@ -67,12 +67,12 @@ PrimitiveType GetUniqueOutputTypeOfFusion(const HloInstruction& instr) {
   return first_output_type;
 }
 
-class HorizontalFusionImpl {
+class HorizontalLoopFusionImpl {
  public:
-  explicit HorizontalFusionImpl(HloComputation* computation)
+  explicit HorizontalLoopFusionImpl(HloComputation* computation)
       : computation_(computation) {}
 
-  ~HorizontalFusionImpl() {}
+  ~HorizontalLoopFusionImpl() {}
 
   StatusOr<bool> Run();
 
@@ -114,7 +114,7 @@ class HorizontalFusionImpl {
   };
 
   HloComputation* computation_;
-};  // HorizontalFusionImpl
+};  // HorizontalLoopFusionImpl
 
 bool IsFusionSupported(const HloInstruction& instr) {
   // Support only kLoop fusion now.
@@ -203,7 +203,7 @@ bool HasOnlyRowMajorLayout(const HloInstruction& fusion_instr) {
   return true;
 }
 
-void HorizontalFusionImpl::FusionCandidates::Initialize(
+void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
     HloInstruction* consumer) {
   // First, find out all fusion instructions. We will filter out
   // unsupported/non-profitable cases below.
@@ -257,7 +257,7 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
 
 // Gets a next span of fusion instructions to be fused.
 absl::Span<HloInstruction*>
-HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
+HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   if (pos_ >= fusion_instrs_.size()) {
     return absl::Span<HloInstruction*>();
   }
@@ -315,7 +315,7 @@ HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   return absl::MakeSpan(fusion_instrs_).subspan(left, right - left);
 }
 
-Status HorizontalFusionImpl::CreateFusedComputation(
+Status HorizontalLoopFusionImpl::CreateFusedComputation(
     absl::Span<HloInstruction*> fused_fusion_instrs,
     std::unique_ptr<HloComputation>* uniq_computation,
     std::vector<HloInstruction*>* bound_operands) {
@@ -423,7 +423,7 @@ Status HorizontalFusionImpl::CreateFusedComputation(
   return Status::OK();
 }
 
-Status HorizontalFusionImpl::Fuse(
+Status HorizontalLoopFusionImpl::Fuse(
     absl::Span<HloInstruction*> fused_fusion_instrs) {
   // Fuse fused_fusion_instrs and replace them with the new fused computation.
   std::unique_ptr<HloComputation> uniq_computation;
@@ -465,7 +465,7 @@ Status HorizontalFusionImpl::Fuse(
   return Status::OK();
 }
 
-StatusOr<bool> HorizontalFusionImpl::Run() {
+StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
 
@@ -474,7 +474,7 @@ StatusOr<bool> HorizontalFusionImpl::Run() {
       computation_->MakeInstructionPostOrder();
   for (size_t i = 0; i < def_to_use_order.size(); ++i) {
     auto consumer = def_to_use_order[i];
-    HorizontalFusionImpl::FusionCandidates fusion_candidates(consumer);
+    HorizontalLoopFusionImpl::FusionCandidates fusion_candidates(consumer);
     while (true) {
       auto fusions = fusion_candidates.GetNextSpanOfFusions();
       if (fusions.empty()) {
@@ -494,13 +494,13 @@ StatusOr<bool> HorizontalFusionImpl::Run() {
 
 }  // namespace
 
-StatusOr<bool> GpuHorizontalFusion::RunOnComputation(
+StatusOr<bool> GpuHorizontalLoopFusion::RunOnComputation(
     HloComputation* computation) {
-  HorizontalFusionImpl horizontal_fusion_impl(computation);
+  HorizontalLoopFusionImpl horizontal_fusion_impl(computation);
   return horizontal_fusion_impl.Run();
 }
 
-StatusOr<bool> GpuHorizontalFusion::Run(HloModule* module) {
+StatusOr<bool> GpuHorizontalLoopFusion::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "Run horizontal fusion.";
   for (auto* comp : module->MakeNonfusionComputations()) {
