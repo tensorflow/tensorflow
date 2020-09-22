@@ -142,7 +142,7 @@ Below are the accuracy results for some models that benefit from this mode.
       <th>Accuracy (int16 activations) </th>
     </tr> <tr><td>Wav2letter</td><td>WER</td><td>6.7%</td><td>7.7%</td>
       <td>7.2%</td></tr>
-    <tr><td>DeepSpeech 0.51 (unrolled)</td><td>CER</td><td>6.13%</td><td>43.67%</td>
+    <tr><td>DeepSpeech 0.5.1 (unrolled)</td><td>CER</td><td>6.13%</td><td>43.67%</td>
       <td>6.52%</td></tr>
     <tr><td>YoloV3</td><td>mAP(IOU=0.5)</td><td>0.577</td><td>0.563</td>
       <td>0.574</td></tr>
