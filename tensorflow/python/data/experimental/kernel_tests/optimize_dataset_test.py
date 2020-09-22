@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import warnings
 
 from absl.testing import parameterized
@@ -213,16 +212,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                          _disable_intra_op_parallelism_test_combinations()))
   def testOptimizationDisableIntraOpParallelism(self, dataset_fn,
                                                 expected_output):
-    os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "disable_intra_op_parallelism"
-    os.environ["TF_JOB_NAME"] = "test_job"
-
     dataset = dataset_fn()
     dataset = dataset.apply(testing.assert_next(["MaxIntraOpParallelism"]))
 
     self.assertDatasetProduces(dataset, expected_output=expected_output)
-
-    del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
-    del os.environ["TF_JOB_NAME"]
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptimizationThreadPoolDataset(self):
