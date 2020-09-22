@@ -676,7 +676,8 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
   std::string src_format = context->src_format;
   std::string dst_format = context->dst_format;
   // Update the format from 4D to 5D layout if necessary.
-  if (rank == 5) {
+  bool allow_5d = rank == 5 && (src_format == "NHWC" || src_format == "NCHW");
+  if (allow_5d) {
     std::string src_format_3d = src_format == "NHWC" ? "NDHWC" : "NCDHW";
     std::string dst_format_3d = dst_format == "NHWC" ? "NDHWC" : "NCDHW";
     context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
@@ -684,7 +685,7 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
   }
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, rank)) {
     // Change back to the original layout due to early exit.
-    if (rank == 5) {
+    if (allow_5d) {
       context->AssignDeviceAndDataFormats(context->target_device, src_format,
                                           dst_format);
     }
@@ -697,7 +698,7 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   // Change back the format from 5D to 4D layout.
-  if (rank == 5) {
+  if (allow_5d) {
     context->AssignDeviceAndDataFormats(context->target_device, src_format,
                                         dst_format);
   }
@@ -909,7 +910,8 @@ Status FusedBatchNormGradTransposer::TransposeNode(
   std::string src_format = context->src_format;
   std::string dst_format = context->dst_format;
   // Update the format from 4D to 5D layout if necessary.
-  if (rank == 5) {
+  bool allow_5d = rank == 5 && (src_format == "NHWC" || src_format == "NCHW");
+  if (allow_5d) {
     std::string src_format_3d = src_format == "NHWC" ? "NDHWC" : "NCDHW";
     std::string dst_format_3d = dst_format == "NHWC" ? "NDHWC" : "NCDHW";
     context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
@@ -918,7 +920,7 @@ Status FusedBatchNormGradTransposer::TransposeNode(
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, rank) ||
       !IsTraining(*node)) {
     // Change back to the original layout due to early exit.
-    if (rank == 5) {
+    if (allow_5d) {
       context->AssignDeviceAndDataFormats(context->target_device, src_format,
                                           dst_format);
     }
@@ -932,7 +934,7 @@ Status FusedBatchNormGradTransposer::TransposeNode(
       UpdateFaninEdgesWithOp(context, {0, 1}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   // Change back the format from 5D to 4D layout.
-  if (rank == 5) {
+  if (allow_5d) {
     context->AssignDeviceAndDataFormats(context->target_device, src_format,
                                         dst_format);
   }
