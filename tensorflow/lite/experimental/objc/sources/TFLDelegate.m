@@ -1,4 +1,4 @@
-// Copyright 2019 Google Inc. All rights reserved.
+// Copyright 2020 Google Inc. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#import <Foundation/Foundation.h>
-
-#import "TFLDelegate.h"
-#import "TFLInterpreter.h"
-#import "TFLInterpreterOptions.h"
-#import "TFLQuantizationParameters.h"
-#import "TFLTensor.h"
+#import "tensorflow/lite/experimental/objc/apis/TFLDelegate.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-/**
- * A string describing the semantic versioning information for the TensorFlow Lite runtime. Is an
- * empty string if the version could not be determined.
- */
-FOUNDATION_EXPORT NSString *const TFLVersion;
+@implementation TFLDelegate
+@end
 
 NS_ASSUME_NONNULL_END
