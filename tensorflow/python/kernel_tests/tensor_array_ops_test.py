@@ -617,7 +617,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(
           r"TensorArray foo_.*: Could not write to TensorArray index 2 because "
           r"it has already been written to."):
-        w1.flow.eval()
+        self.evaluate(w1.flow)
 
       # Using differing shapes causes an exception
       wb0_grad = ta_grad.write(1, c(1.0))
@@ -626,7 +626,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(
           r"Could not aggregate to TensorArray index 1 because the "
           r"existing shape is \[\] but the new input shape is \[1\]"):
-        wb1_grad.flow.eval()
+        self.evaluate(wb1_grad.flow)
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
   @test_util.run_v1_only("v2 does not support TensorArray.grad.")

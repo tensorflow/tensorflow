@@ -8,7 +8,7 @@
 #  --tag "gcr.io/tensorflow-testing/nosla-cuda11.0-cudnn8-ubuntu18.04-manylinux2010-multipython" .
 # $ docker push gcr.io/tensorflow-testing/nosla-cuda11.0-cudnn8-ubuntu18.04-manylinux2010-multipython
 
-FROM nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04-rc as devtoolset
+FROM nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04 as devtoolset
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
@@ -35,7 +35,7 @@ RUN /build_devtoolset.sh devtoolset-7 /dt7
 RUN /build_devtoolset.sh devtoolset-8 /dt8
 
 # TODO(klimek): Split up into two different docker images.
-FROM nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04-rc
+FROM nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04
 COPY --from=devtoolset /dt7 /dt7
 COPY --from=devtoolset /dt8 /dt8
 

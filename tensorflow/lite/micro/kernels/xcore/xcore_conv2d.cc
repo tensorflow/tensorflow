@@ -57,8 +57,8 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_shallow_thread_worker(void *context) {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   Conv2DShallowOpData *op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(Conv2DShallowOpData),
-                                    reinterpret_cast<void **>(&op));
+  op = reinterpret_cast<Conv2DShallowOpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(Conv2DShallowOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -71,11 +71,11 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
                        &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(context,
-                                    sizeof(nn_conv2d_shallowin_job_t) *
-                                        op->execution_plan.changrps.GetSize() *
-                                        op->execution_plan.regions.GetSize(),
-                                    reinterpret_cast<void **>(&op->jobs));
+  op->jobs = reinterpret_cast<nn_conv2d_shallowin_job_t *>(
+      context->AllocatePersistentBuffer(
+          context, sizeof(nn_conv2d_shallowin_job_t) *
+                       op->execution_plan.changrps.GetSize() *
+                       op->execution_plan.regions.GetSize()));
 
   return op;
 }
@@ -251,8 +251,8 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_deep_thread_worker(void *context) {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   Conv2DDeepOpData *op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(Conv2DDeepOpData),
-                                    reinterpret_cast<void **>(&op));
+  op = reinterpret_cast<Conv2DDeepOpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(Conv2DDeepOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -265,11 +265,11 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
                        &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(context,
-                                    sizeof(nn_conv2d_deep_job_t) *
-                                        op->execution_plan.changrps.GetSize() *
-                                        op->execution_plan.regions.GetSize(),
-                                    reinterpret_cast<void **>(&op->jobs));
+  op->jobs = reinterpret_cast<nn_conv2d_deep_job_t *>(
+      context->AllocatePersistentBuffer(
+          context, sizeof(nn_conv2d_deep_job_t) *
+                       op->execution_plan.changrps.GetSize() *
+                       op->execution_plan.regions.GetSize()));
 
   return op;
 }
@@ -443,8 +443,8 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_1x1_thread_worker(void *context) {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   Conv2D1x1OpData *op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(Conv2D1x1OpData),
-                                    reinterpret_cast<void **>(&op));
+  op = reinterpret_cast<Conv2D1x1OpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(Conv2D1x1OpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -457,11 +457,11 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
                        &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(context,
-                                    sizeof(nn_conv2d_shallowin_job_t) *
-                                        op->execution_plan.changrps.GetSize() *
-                                        op->execution_plan.regions.GetSize(),
-                                    reinterpret_cast<void **>(&op->jobs));
+  op->jobs =
+      reinterpret_cast<nn_conv2d_1x1_job_t *>(context->AllocatePersistentBuffer(
+          context, sizeof(nn_conv2d_1x1_job_t) *
+                       op->execution_plan.changrps.GetSize() *
+                       op->execution_plan.regions.GetSize()));
 
   return op;
 }
@@ -628,8 +628,9 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_depthwise_thread_worker(void *context) {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   Conv2DDepthwiseOpData *op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(Conv2DDepthwiseOpData),
-                                    reinterpret_cast<void **>(&op));
+  op = reinterpret_cast<Conv2DDepthwiseOpData *>(
+      context->AllocatePersistentBuffer(context,
+                                        sizeof(Conv2DDepthwiseOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -642,11 +643,11 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
                        &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(context,
-                                    sizeof(nn_conv2d_depthwise_job_t) *
-                                        op->execution_plan.changrps.GetSize() *
-                                        op->execution_plan.regions.GetSize(),
-                                    reinterpret_cast<void **>(&op->jobs));
+  op->jobs = reinterpret_cast<nn_conv2d_depthwise_job_t *>(
+      context->AllocatePersistentBuffer(
+          context, sizeof(nn_conv2d_depthwise_job_t) *
+                       op->execution_plan.changrps.GetSize() *
+                       op->execution_plan.regions.GetSize()));
 
   return op;
 }

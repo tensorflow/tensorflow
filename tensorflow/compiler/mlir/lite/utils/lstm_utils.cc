@@ -134,7 +134,7 @@ Value SliceRankedTensor(OpBuilder* builder, Value input,
   // the input tensor's dimensions, return 0-valued tensor of the requested
   // shape.
   ArrayRef<int64_t> input_shape = GetRankedTensorShape(input);
-  for (int i = 0; i < input_shape.size(); i++) {
+  for (int i = 0, end = input_shape.size(); i < end; i++) {
     if (begin_values[i] < 0 ||
         (begin_values[i] + size_values[i] > input_shape[i])) {
       return CreateF32SplatConst(builder, size_shape, 0, location);

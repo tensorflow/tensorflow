@@ -198,6 +198,11 @@ class XlaOpRegistry {
                                      /*op_def=*/nullptr, result);
   }
 
+  // Return names of arguments for a given op which are supposed to be
+  // constants.
+  static const std::unordered_set<std::string>*
+  CompileTimeConstantInputArgNames(const string& op);
+
   // Returns true if `op` is a "metadata" op, one that only looks at the shapes
   // of its operands and not their values.
   static bool IsMetadataOp(const string& op);

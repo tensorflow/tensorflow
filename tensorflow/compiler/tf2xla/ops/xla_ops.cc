@@ -291,6 +291,16 @@ dimension_numbers: a serialized xla::DotDimensionNumbers proto.
 precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
+REGISTER_OP("XlaSetBound")
+    .Input("input: int32")
+    .Input("bound: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(
+        R"doc(Set a bound for the given input value as a hint to Xla compiler,
+        returns the same value.
+)doc");
+
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
     .Input("start_indices: Tindices")
@@ -441,7 +451,8 @@ REGISTER_OP("XlaReduce")
         auto dim_in_range = [rank](int64 dim) {
           return dim >= 0 && dim < rank;
         };
-        if (rank < dimensions_to_reduce.size() ||
+        const int dimensions_to_reduce_size = dimensions_to_reduce.size();
+        if (rank < dimensions_to_reduce_size ||
             dims_set.size() != dimensions_to_reduce.size() ||
             !absl::c_all_of(dimensions_to_reduce, dim_in_range)) {
           return errors::InvalidArgument(

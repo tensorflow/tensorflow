@@ -49,12 +49,14 @@ SECTIONS {
         .text? : { *('.text$crt*') }
         * (TEXT): {}
         * (LIT): {}
-    } > SRAM
+        * (DATA): {}
+        * (BSS): {}
+    } > PSRAM
 
     GROUP BLOCK(4): {
        .Zdata? : {}
        .stack ALIGN(4) SIZE(DEFINED _STACKSIZE?_STACKSIZE:32K): {}
-       .heap? ALIGN(4) SIZE(DEFINED _HEAPSIZE?_HEAPSIZE:8K): {}
+       .heap? ALIGN(4) SIZE(DEFINED _HEAPSIZE?_HEAPSIZE:24K): {}
     } > DCCM
         
     GROUP BLOCK(4): {
@@ -64,18 +66,6 @@ SECTIONS {
     GROUP BLOCK(4): {
         .Ydata? : {}
     } > YCCM
-
-    GROUP BLOCK(4): {
-    /* _SDA_BASE_ computed implicitly */
-        .sdata?: {}
-        .sbss?: {}
-        * (DATA): {}
-        * (BSS): {}
-    } > PSRAM
-
-    GROUP BLOCK(4): {
-        .rodata_in_data? : {}
-    } > PSRAM
 
     GROUP BLOCK(4): {
         .debug_log? : {}

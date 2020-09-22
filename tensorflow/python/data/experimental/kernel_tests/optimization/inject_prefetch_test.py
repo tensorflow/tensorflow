@@ -37,7 +37,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testParallelMap(self):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
-        testing.assert_next(["ParallelMapV2", "Prefetch", "FiniteTake"]))
+        testing.assert_next(["ParallelMap", "Prefetch", "FiniteTake"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.take(50)
@@ -61,7 +61,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testParallelInterleave(self):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
-        testing.assert_next(["ParallelInterleaveV4", "Prefetch", "FiniteTake"]))
+        testing.assert_next(["ParallelInterleave", "Prefetch", "FiniteTake"]))
     dataset = dataset.interleave(
         lambda x: dataset_ops.Dataset.from_tensors(x + 1),
         num_parallel_calls=dataset_ops.AUTOTUNE)
@@ -74,7 +74,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
         testing.assert_next([
-            "ParallelMapV2", "Prefetch", "ParallelInterleaveV4", "Prefetch",
+            "ParallelMap", "Prefetch", "ParallelInterleave", "Prefetch",
             "MapAndBatch", "Prefetch", "FiniteTake"
         ]))
     dataset = dataset.map(

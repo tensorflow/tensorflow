@@ -74,7 +74,7 @@ class RendezvousInterface {
     friend class Rendezvous;
     friend class SendOp;
     friend class RecvOp;
-    string buf_;
+    std::string buf_;
   };
 
   // The caller is a tensor producer and it sends a message (a tensor
@@ -169,9 +169,11 @@ class Rendezvous : public RendezvousInterface, public core::RefCounted {
   // Constructs a rendezvous key for the tensor of "name" sent from
   // "src_device" to "dst_device". The tensor is generated in the frame
   // and iteration specified by "frame_iter".
-  static string CreateKey(const string& src_device, uint64 src_incarnation,
-                          const string& dst_device, const string& name,
-                          const FrameAndIter& frame_iter);
+  static std::string CreateKey(const std::string& src_device,
+                               uint64 src_incarnation,
+                               const std::string& dst_device,
+                               const std::string& name,
+                               const FrameAndIter& frame_iter);
 
   static Status ParseKey(StringPiece key, ParsedKey* out);
 };

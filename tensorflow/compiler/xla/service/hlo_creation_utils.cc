@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -91,16 +92,17 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 
 StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(Shape convolve_shape,
                       ShapeInference::InferConvolveShape(
-                          lhs->shape(), rhs->shape(), feature_group_count, 1,
-                          window, dimension_numbers));
+                          lhs->shape(), rhs->shape(), feature_group_count,
+                          batch_group_count, window, dimension_numbers));
   return computation->AddInstruction(HloInstruction::CreateConvolve(
-      convolve_shape, lhs, rhs, feature_group_count, 1, window,
+      convolve_shape, lhs, rhs, feature_group_count, batch_group_count, window,
       dimension_numbers, precision_config));
 }
 
@@ -258,6 +260,11 @@ HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
   CHECK_NE(hlo->shape().element_type(), type);
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
+  // PRED are stored as one byte, PRED have a BitWidth of 1, avoid this problem
+  // by using a convert instead of bitcast convert.
+  if (type == PRED || hlo->shape().element_type() == PRED) {
+    return MakeConvertToHlo(hlo, type);
+  }
   hlo = hlo->parent()->AddInstruction(
       HloInstruction::CreateBitcastConvert(shape, hlo));
   CHECK_EQ(hlo->shape().element_type(), type);

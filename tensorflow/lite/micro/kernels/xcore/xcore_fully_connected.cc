@@ -16,8 +16,6 @@ namespace fully_connected {
 
 struct FullyConnectedOpData {
   ExecutionPlan execution_plan;
-  nn_fully_connected_plan_t plan;
-  nn_fully_connected_job_t* jobs;
   int stack_scratch_index;
   size_t stack_size;
   int weights_scratch_index;
@@ -25,26 +23,27 @@ struct FullyConnectedOpData {
 };
 
 struct FullyConnectedThreadData {
-  int16_t* Y;
+  int8_t* Y;
   const nn_tensor_t* X;
   const nn_tensor_t* W;
   const nn_bso_block_t* BSO;
-  nn_fully_connected_plan_t* plan;
-  nn_fully_connected_job_t* job;
+  channel_count_t C_in;
+  channel_count_t C_out_start;
+  channel_count_t C_out_end;
 };
 
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void fully_connected_thread_worker(void* context) {
   FullyConnectedThreadData* td = (FullyConnectedThreadData*)context;
-  fully_connected_16(td->Y, td->W, td->X, td->BSO, td->plan, td->job);
+  fully_connected_8(td->Y, td->W, td->X, td->BSO, td->C_in, td->C_out_start,
+                    td->C_out_end);
 }
 }
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+void* Init_8(TfLiteContext* context, const char* buffer, size_t length) {
   FullyConnectedOpData* op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(FullyConnectedOpData),
-                                    reinterpret_cast<void**>(&op));
-  op->jobs = nullptr;
+  op = reinterpret_cast<FullyConnectedOpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(FullyConnectedOpData)));
   op->stack_scratch_index = -1;
   op->stack_size = 0;
   op->weights_scratch_index = -1;
@@ -53,16 +52,10 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(buffer != nullptr);
   parse_custom_options(context, buffer, length, &op->execution_plan);
 
-  // allocate the jobs
-  context->AllocatePersistentBuffer(
-      context,
-      sizeof(nn_fully_connected_job_t) * op->execution_plan.changrps.GetSize(),
-      reinterpret_cast<void**>(&op->jobs));
-
   return op;
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus Prepare_8(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -82,34 +75,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       &op->stack_scratch_index));
 
   // allocate scratch buffers for weights and biases (if necessary)
-  if (IS_NOT_RAM(weights)) {
+  if (IS_NOT_RAM(weights->data.int8)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetWeightsScratchSize(),
         &op->weights_scratch_index));
   }
-  if (IS_NOT_RAM(bso)) {
+  if (IS_NOT_RAM(bso->data.i16)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetBiasScratchSize(),
         &op->bias_scratch_index));
   }
 
-  // set job parameters
-  size_t n_jobs = op->execution_plan.changrps.GetSize();
-  nn_fully_connected_job_params_t job_params[n_jobs];
-
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
-    const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
-    job_params[i_cg] = {(uint32_t)changrp.start, (channel_count_t)changrp.size};
-  }
-
-  // initialize the kernel
-  fully_connected_init(&op->plan, op->jobs, C_in, C_out, &job_params[0],
-                       n_jobs);
-
   return kTfLiteOk;
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* weights = GetInput(context, node, 1);
   const TfLiteTensor* bso = GetInput(context, node, 2);
@@ -117,6 +97,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   FullyConnectedOpData* op =
       reinterpret_cast<FullyConnectedOpData*>(node->user_data);
+
+  int32_t C_in = weights->dims->data[1];
+
   Dispatcher* dispatcher = GetDispatcher();
 
   // initialize the dispatcher
@@ -131,16 +114,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int n_th = op->execution_plan.GetNumThreads();
   FullyConnectedThreadData thread_data[n_th];
 
-  // load weights & bias scratch buffers (if necessary)
+  // load weights & bias scratch buffers(if necessary)
   size_t weights_load_offset = 0;
   size_t biases_load_offset = 0;
   size_t weights_fetch_size;
-  // int8_t* tW[n_th];
-  // int16_t* tBSO[n_th];
-  // std::memset(tW, 0, n_th * sizeof(int8_t*));
-  // std::memset(tBSO, 0, n_th * sizeof(int16_t*));
-  int8_t *sW, *tW;
-  int16_t *sBSO, *tBSO;
+  int8_t *sW, *tW;  // sW points to the head of the weights scratch space, tW
+                    // points to the head of the fetched weights which equals sW
+                    // for the first fetch but not for subsequent fetches
+  int16_t *sBSO,
+      *tBSO;  // sBSO points to the head of the BSO scratch space, tBSO
+              // points to the head of the fetched BSO which equals sBSO for
+              // the first fetch but not for subsequent fetches
 
   if (op->weights_scratch_index >= 0) {
     sW = static_cast<int8_t*>(
@@ -162,8 +146,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
     const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
 
-    // offset into the temp W and BSO pointers based on how many bytes we have
-    // loaded since the last JoinTasks
+    // offset into the temp W and BSO pointers based on how many bytes we
+    // have loaded since the last JoinTasks
     tW = sW + weights_load_offset;
     tBSO = sBSO + biases_load_offset;
 
@@ -174,14 +158,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     biases_load_offset += dispatcher->FetchBiases(
         &tBSO, bso->data.i16, op->execution_plan.GetBiasScratchSize(), changrp);
 
-    thread_data[i_th].Y = output->data.i16;
+    thread_data[i_th].Y = &output->data.int8[changrp.start];
     thread_data[i_th].X = input->data.int8;
     thread_data[i_th].W = tW;
     thread_data[i_th].BSO = (const nn_bso_block_t*)tBSO;
-    thread_data[i_th].plan = &op->plan;
-    op->jobs[i_cg].stride.start.W = 0;
-    op->jobs[i_cg].stride.start.BSO = 0;
-    thread_data[i_th].job = &op->jobs[i_cg];
+    thread_data[i_th].C_in = C_in;
+    thread_data[i_th].C_out_start = 0;
+    thread_data[i_th].C_out_end = thread_data[i_th].C_out_start + changrp.size;
     dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[i_th]));
 
     i_th++;
@@ -200,10 +183,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace fully_connected
 
-TfLiteRegistration* Register_FullyConnected_16() {
-  static TfLiteRegistration r = {fully_connected::Init, nullptr,
-                                 fully_connected::Prepare,
-                                 fully_connected::Eval};
+TfLiteRegistration* Register_FullyConnected_8() {
+  static TfLiteRegistration r = {fully_connected::Init_8, nullptr,
+                                 fully_connected::Prepare_8,
+                                 fully_connected::Eval_8};
   return &r;
 }
 

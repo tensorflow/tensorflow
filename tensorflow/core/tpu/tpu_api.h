@@ -17,11 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_TPU_API_H_
 
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_execute_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/core/tpu/tpu_config_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/core/tpu/tpu_executor_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 
 namespace tensorflow {
@@ -35,7 +36,9 @@ TfTpu_MeshStateApiFn* MeshStateApiFn();
 
 TfTpu_CompileApiFn* CompileApiFn();
 
-TfTpu_ExecutorApiFn* ExecutorApiFn();
+TfTpu_ExecuteApiFn* ExecuteApiFn();
+
+TfTpu_TpuProgramApiFn* TpuProgramApiFn();
 
 TfTpu_NodeContextApiFn* NodeContextApiFn();
 

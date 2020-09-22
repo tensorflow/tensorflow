@@ -25,23 +25,8 @@ limitations under the License.
 
 namespace xla {
 namespace mlir_gpu {
-namespace {
 
-using ::mlir::MLIRContext;
-using ::mlir::LLVM::LLVMDialect;
-
-int64 ConfigureLLVMModuleAndGetPointerSize(MLIRContext* context) {
-  LLVMDialect* dialect = context->getRegisteredDialect<LLVMDialect>();
-  llvm::Module& module = dialect->getLLVMModule();
-  module.setTargetTriple(gpu::nvptx::kTargetTriple);
-  module.setDataLayout(gpu::nvptx::kDataLayout);
-  return module.getDataLayout().getPointerSize();
-}
-
-}  // namespace
-
-MlirCompiler::MlirCompiler()
-    : pointer_size_(ConfigureLLVMModuleAndGetPointerSize(&context_)) {}
+MlirCompiler::MlirCompiler() : data_layout_("") {}
 
 se::Platform::Id MlirCompiler::PlatformId() const {
   return stream_executor::cuda::kCudaPlatformId;

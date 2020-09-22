@@ -27,6 +27,7 @@ update_bazel_linux
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
+export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.8)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 

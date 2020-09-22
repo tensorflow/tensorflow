@@ -104,4 +104,17 @@ REGISTER_OP("CollectiveBcastRecv")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ExplicitShape);
 
+REGISTER_OP("CollectiveReduceV2")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("T: {float, float16, float64, int32, int64}")
+    .Input("group_size: int32")
+    .Input("group_key: int32")
+    .Input("instance_key: int32")
+    .Attr("merge_op: {'Min', 'Max', 'Mul', 'Add'}")
+    .Attr("final_op: {'Id', 'Div'}")
+    .Attr("communication_hint: string = 'auto'")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 }  // namespace tensorflow

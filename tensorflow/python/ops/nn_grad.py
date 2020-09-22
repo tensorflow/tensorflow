@@ -688,6 +688,7 @@ def _MaxPoolGrad(op, grad):
       op.get_attr("ksize"),
       op.get_attr("strides"),
       padding=op.get_attr("padding"),
+      explicit_paddings=op.get_attr("explicit_paddings"),
       data_format=op.get_attr("data_format"))
 
 
@@ -1142,3 +1143,48 @@ def _NthElementGrad(op, grad):
   num_selected = array_ops.expand_dims(math_ops.reduce_sum(indicators, -1), -1)
 
   return [math_ops.divide(indicators, num_selected) * grad, None]
+
+
+def _MeanAggregator(inputs, segments):
+  """Replaces each segment with its mean along the last axis.
+
+  Specifically, each value in the `inputs` tensor gets replaced by the mean
+  value computed from the values that belong to the same segment.
+
+  Args:
+   inputs: A 2-tensor. Aggregation is done over dimension 1.
+   segments: A 2-tensor, same shape as `input`.
+
+  Returns:
+    The result, same shape and type as `inputs`.
+  """
+  result = []
+  for inputs_i, segments_i in zip(
+      array_ops.split(inputs, inputs.shape[0]),
+      array_ops.split(segments, segments.shape[0])):
+    # Note that we do not use tf.math.segment_mean, as it has no TPU support.
+    means_i = math_ops.unsorted_segment_mean(
+        inputs_i, segments_i, num_segments=math_ops.reduce_max(segments_i) + 1)
+    result.append(
+        array_ops.reshape(array_ops.gather(means_i, segments_i), [-1]))
+  return array_ops.stack(result, axis=0)
+
+
+# We have to register the gradients for these ops so that tensorflow will know
+# how to differentiate them.
+@ops.RegisterGradient("IsotonicRegression")
+def _IsotonicRegressionGrad(op, grad_output, grad_segments):
+  """Gradient for the isotonic regression function.
+
+  Args:
+    op: The IsotonicRegression tensorflow op.
+    grad_output: Tensor of incoming gradients with respect to the output.
+    grad_segments: Tensor of incoming gradients with respect to the segments.
+
+  Returns:
+    A tensor, same size as `grad_output` with the gradient with respect to
+    the input.
+  """
+  del grad_segments  # Discrete, non-differentiable.
+  segments = op.outputs[1]
+  return _MeanAggregator(grad_output, segments)

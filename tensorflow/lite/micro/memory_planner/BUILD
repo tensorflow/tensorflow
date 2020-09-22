@@ -4,7 +4,6 @@ load(
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
-    "cc_library",
     "micro_copts",
 )
 
@@ -18,7 +17,6 @@ cc_library(
     hdrs = [
         "memory_planner.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -50,7 +48,6 @@ cc_library(
     hdrs = [
         "greedy_memory_planner.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":memory_planner",

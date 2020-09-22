@@ -22,6 +22,8 @@ import numpy as np
 
 import tensorflow as tf
 
+from tensorflow.python.keras.benchmarks import distribution_util
+
 
 class TimerCallBack(tf.keras.callbacks.Callback):
   """Callback for logging time in each epoch or batch."""
@@ -47,7 +49,7 @@ class TimerCallBack(tf.keras.callbacks.Callback):
 def measure_performance(model_fn,
                         x=None,
                         y=None,
-                        epoch=2,
+                        epochs=2,
                         batch_size=32,
                         run_iters=4,
                         optimizer=None,
@@ -62,8 +64,8 @@ def measure_performance(model_fn,
     model_fn: Model function to be benchmarked.
     x: Input data. See `x` in the `fit()` method of `keras.Model`.
     y: Target data. See `y` in the `fit()` method of `keras.Model`.
-    epoch: Integer. Number of epochs to train the model. If unspecified, `epoch`
-      will default to 2.
+    epochs: Integer. Number of epochs to train the model.
+      If unspecified, `epochs` will default to 2.
     batch_size: Integer. Number of samples per gradient update. If unspecified,
       `batch_size` will default to 32.
     run_iters: Integer. Number of iterations to run the performance measurement.
@@ -84,8 +86,8 @@ def measure_performance(model_fn,
 
   Returns:
     Performance summary, which contains build_time, compile_time,
-    startup_time, avg_epoch_time, wall_time, exp_per_sec, distribution_strategy,
-    epoch.
+    startup_time, avg_epoch_time, wall_time, exp_per_sec, epochs,
+    distribution_strategy.
 
   Raise:
     ValueError: If `x` is none or if `optimizer` is not provided or
@@ -106,21 +108,28 @@ def measure_performance(model_fn,
 
   build_time_list, compile_time_list, startup_time_list = [], [], []
   avg_epoch_time_list, wall_time_list, exp_per_sec_list = [], [], []
-  total_num_examples = epoch * num_examples
+  total_num_examples = epochs * num_examples
+
+  strategy = distribution_util.get_distribution_strategy(
+      distribution_strategy=distribution_strategy, num_gpus=num_gpus)
 
   for _ in range(run_iters):
     timer = timeit.default_timer
-    t0 = timer()
-    model = model_fn()
-    build_time = timer() - t0
+    start_time = timer()
+    # Init the distribution strategy scope for each iteration.
+    strategy_scope = distribution_util.get_strategy_scope(strategy)
+    with strategy_scope:
+      t0 = timer()
+      model = model_fn()
+      build_time = timer() - t0
 
-    t1 = timer()
-    model.compile(
-        optimizer=optimizer,
-        loss=loss,
-        metrics=metrics,
-    )
-    compile_time = timer() - t1
+      t1 = timer()
+      model.compile(
+          optimizer=optimizer,
+          loss=loss,
+          metrics=metrics,
+      )
+      compile_time = timer() - t1
     # Run one warm up epoch.
     model.fit(x=x, y=y, batch_size=batch_size, epochs=1)
     cbk = TimerCallBack()
@@ -129,7 +138,7 @@ def measure_performance(model_fn,
         x=x,
         y=y,
         batch_size=batch_size,
-        epochs=epoch,
+        epochs=epochs,
         callbacks=[cbk],
         verbose=verbose)
     end_time = timer()
@@ -138,18 +147,24 @@ def measure_performance(model_fn,
     compile_time_list.append(compile_time)
     startup_time_list.append(cbk.startup_time)
     avg_epoch_time_list.append(np.mean(cbk.times))
-    wall_time_list.append(end_time - t0)
+    wall_time_list.append(end_time - start_time)
     exp_per_sec_list.append(total_num_examples / (end_time - t2))
 
-  results = {
-      'build_time': np.mean(build_time_list),
-      'compile_time': np.mean(compile_time_list),
-      'startup_time': np.mean(startup_time_list),
-      'avg_epoch_time': np.mean(avg_epoch_time_list),
-      'wall_time': np.mean(wall_time_list),
-      'exp_per_sec': np.mean(exp_per_sec_list),
+  metrics = []
+  metrics.append({'name': 'build_time', 'value': np.mean(build_time_list)})
+  metrics.append({'name': 'compile_time', 'value': np.mean(compile_time_list)})
+  metrics.append({'name': 'startup_time', 'value': np.mean(startup_time_list)})
+  metrics.append({
+      'name': 'avg_epoch_time',
+      'value': np.mean(avg_epoch_time_list)
+  })
+  metrics.append({'name': 'exp_per_sec', 'value': np.mean(exp_per_sec_list)})
+  metrics.append({'name': 'epochs', 'value': epochs})
+
+  wall_time = np.mean(wall_time_list)
+  extras = {
       'distribution_strategy': distribution_strategy,
-      'epoch': epoch
+      'num_gpus': num_gpus
   }
 
-  return results
+  return metrics, wall_time, extras

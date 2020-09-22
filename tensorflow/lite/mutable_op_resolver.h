@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tflite {
 
-// Some versions of gcc doesn't support partial specialization in class scope,
+// Some versions of gcc don't support partial specialization in class scope,
 // so these are defined in a namescope.
 namespace op_resolver_hasher {
 template <typename V>

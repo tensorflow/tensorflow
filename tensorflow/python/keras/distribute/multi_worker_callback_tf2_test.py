@@ -24,10 +24,11 @@ import os
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.lib.io import file_io
@@ -37,9 +38,10 @@ from tensorflow.python.platform import test
 def checkpoint_exists(filepath):
   """Returns whether the checkpoint `filepath` refers to exists."""
   if filepath.endswith('.h5'):
-    return file_io.file_exists(filepath)
-  tf_saved_model_exists = file_io.file_exists(filepath)
-  tf_weights_only_checkpoint_exists = file_io.file_exists(filepath + '.index')
+    return file_io.file_exists_v2(filepath)
+  tf_saved_model_exists = file_io.file_exists_v2(filepath)
+  tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
+      filepath + '.index')
   return tf_saved_model_exists or tf_weights_only_checkpoint_exists
 
 
@@ -78,7 +80,7 @@ def _get_task_config():
 
 class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['eager'],
           file_format=['h5', 'tf'],
@@ -136,7 +138,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, file_format))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_model_checkpoint_works_with_same_file_path(self, mode):
 
     def proc_model_checkpoint_works_with_same_file_path(
@@ -145,7 +147,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       num_epoch = 2
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
 
       model.fit(
           x=train_ds,
@@ -153,7 +155,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           steps_per_epoch=steps,
           callbacks=[callbacks.ModelCheckpoint(filepath=saving_filepath)])
 
-      test_obj.assertTrue(file_io.file_exists(saving_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
     saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint')
 
@@ -162,7 +164,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, saving_filepath))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_backupandrestore_checkpoint_works_with_interruption(self, mode):
 
     class InterruptingCallback(callbacks.Callback):
@@ -185,7 +187,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       num_epoch = 4
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
       bar_dir = os.path.join(os.path.dirname(saving_filepath), 'backup')
 
       try:
@@ -204,8 +206,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
       multi_process_runner.barrier().wait()
       backup_filepath = os.path.join(bar_dir, 'checkpoint')
-      test_obj.assertTrue(file_io.file_exists(backup_filepath))
-      test_obj.assertTrue(file_io.file_exists(saving_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(backup_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
       model.fit(
           x=train_ds,
@@ -217,8 +219,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
               AssertCallback()
           ])
       multi_process_runner.barrier().wait()
-      test_obj.assertFalse(file_io.file_exists(backup_filepath))
-      test_obj.assertTrue(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(backup_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
     saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint')
 
@@ -227,7 +229,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, saving_filepath))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_saves_on_chief_but_not_otherwise(self, mode):
 
     def proc_tensorboard_saves_on_chief_but_not_otherwise(test_obj):
@@ -244,7 +246,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           'logfile_%s_%d' % (task_config['type'], task_config['index']))
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
 
       model.fit(
           x=train_ds,
@@ -257,14 +259,15 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # `file_io.list_directory()` since the directory may be created at this
       # point.
       test_obj.assertEqual(
-          bool(file_io.list_directory(saving_filepath)), test_base.is_chief())
+          bool(file_io.list_directory_v2(saving_filepath)),
+          test_base.is_chief())
 
     multi_process_runner.run(
         proc_tensorboard_saves_on_chief_but_not_otherwise,
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self,))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_can_still_save_to_temp_even_if_it_exists(self, mode):
 
     def proc_tensorboard_can_still_save_to_temp_even_if_it_exists(test_obj):
@@ -280,7 +283,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
       # Verifies that even if `saving_filepath_for_temp` exists, tensorboard
       # can still save to temporary directory.
-      test_obj.assertTrue(file_io.file_exists(saving_filepath_for_temp))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath_for_temp))
 
       model.fit(
           x=train_ds,
@@ -293,7 +296,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self,))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_works_with_same_file_path(self, mode):
 
     def proc_tensorboard_works_with_same_file_path(test_obj, saving_filepath):
@@ -301,7 +304,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       num_epoch = 2
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
 
       multi_process_runner.barrier().wait()
 
@@ -313,7 +316,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
       multi_process_runner.barrier().wait()
 
-      test_obj.assertTrue(file_io.list_directory(saving_filepath))
+      test_obj.assertTrue(file_io.list_directory_v2(saving_filepath))
 
     saving_filepath = os.path.join(self.get_temp_dir(), 'logfile')
 
@@ -322,7 +325,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, saving_filepath))
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @ds_combinations.generate(combinations.combine(mode=['eager']))
   def test_early_stopping(self, mode):
 
     def proc_early_stopping(test_obj):

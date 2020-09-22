@@ -50,7 +50,7 @@ def _test_combinations():
     ds = ds.map(lambda x: (x, x), num_parallel_calls=2)  # Not eliminated
     return ds.map(lambda x, y: (x, y))  # Eliminated
 
-  parallel_map_name = "ParallelMapV2"
+  parallel_map_name = "ParallelMap"
 
   cases = [
       ("Skip0", lambda ds: ds.skip(0), None),

@@ -10,6 +10,8 @@ message TfStatsDatabase {
   TfStatsTable with_idle = 4;
   // The table that excludes IDLE time.
   TfStatsTable without_idle = 5;
+  // The type of device used.
+  string device_type = 6;
   reserved 1, 2, 3;
 }
 
@@ -71,4 +73,7 @@ message TfStatsRecord {
   string bound_by = 17;
   // Whether this TF-op is eagerly executed.
   bool is_eager = 18;
+  // Fraction of kernel time that utilizes GPU TensorCore.
+  // It is 0.0 if this op does not run on a GPU device.
+  double gpu_tensorcore_utilization = 19;
 }

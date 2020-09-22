@@ -45,7 +45,7 @@ ENTRY main {
 )";
 
   CompileAndVerifyIr(hlo_string, R"(
-CHECK: @fusion(i8* align 64 dereferenceable(600) %alloc0, i8* align 16 dereferenceable(400) %alloc1, i8* align 64 dereferenceable(864) %temp_buf)
+CHECK: @fusion(i8* noalias align 64 dereferenceable(600) %alloc0, i8* noalias align 16 dereferenceable(400) %alloc1, i8* noalias align 64 dereferenceable(864) %temp_buf)
 )");
 }
 

@@ -98,6 +98,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
     const BufferAllocation::Slice& variance, float epsilon, int64 feature_index,
     const BufferAllocation::Slice& output)
     : Thunk(Thunk::Kind::kCudnnBatchNormForwardInference, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       operand_(operand),
       scale_(scale),
       offset_(offset),
@@ -106,7 +107,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
       epsilon_(epsilon),
       feature_index_(feature_index),
       output_(output) {
-  const auto* hlo = hlo_instruction();
+  const auto* hlo = hlo_instruction_;
   CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
   CHECK_EQ(hlo->custom_call_target(),
            kCudnnBatchNormForwardInferenceCallTarget);
@@ -130,7 +131,7 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(variance_));
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardInference(
-      hlo_instruction(), operand, output_base, scale, offset, mean, variance,
+      hlo_instruction_, operand, output_base, scale, offset, mean, variance,
       epsilon_, feature_index_, &stream));
 
   if (!stream.ok()) {
@@ -148,6 +149,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
     const BufferAllocation::Slice& output_inv_stddev,
     const BufferAllocation::Slice& output_tuple)
     : Thunk(Thunk::Kind::kCudnnBatchNormForwardTraining, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       operand_(operand),
       scale_(scale),
       offset_(offset),
@@ -157,7 +159,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
       output_mean_(output_mean),
       output_inv_stddev_(output_inv_stddev),
       output_tuple_(output_tuple) {
-  const auto* hlo = hlo_instruction();
+  const auto* hlo = hlo_instruction_;
   CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
   CHECK_EQ(hlo->custom_call_target(), kCudnnBatchNormForwardTrainingCallTarget);
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
@@ -183,7 +185,7 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       params.profiler->MakeScopedInstructionProfiler(profile_index());
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardTraining(
-      hlo_instruction(), operand, output_data, output_mean, output_inv_stddev,
+      hlo_instruction_, operand, output_data, output_mean, output_inv_stddev,
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       epsilon_, feature_index_, &stream));
@@ -214,6 +216,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
     const BufferAllocation::Slice& output_grad_offset,
     const BufferAllocation::Slice& output_tuple)
     : Thunk(Thunk::Kind::kCudnnBatchNormBackward, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       operand_(operand),
       scale_(scale),
       mean_(mean),
@@ -225,7 +228,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
       output_grad_scale_(output_grad_scale),
       output_grad_offset_(output_grad_offset),
       output_tuple_(output_tuple) {
-  const auto* hlo = hlo_instruction();
+  const auto* hlo = hlo_instruction_;
   CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
   CHECK_EQ(hlo->custom_call_target(), kCudnnBatchNormBackwardCallTarget);
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
@@ -253,7 +256,7 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
       params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::Stream* stream = params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormBackward(
-      hlo_instruction(), operand, output_grad_data, grad_output,
+      hlo_instruction_, operand, output_grad_data, grad_output,
       output_grad_scale, output_grad_offset,
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),

@@ -4,6 +4,8 @@
 #include <iostream>
 #include <vector>
 
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 namespace micro {
 namespace xcore {
@@ -97,6 +99,7 @@ ExtendedXCoreInterpreter::ExtendedXCoreInterpreter(
     bool use_current_thread, tflite::Profiler* profiler)
     : XCoreInterpreter(model, resolver, arena, arena_size, reporter,
                        use_current_thread, profiler),
+      model_(model),
       reporter_(reporter) {}
 
 ExtendedXCoreInterpreter::ExtendedXCoreInterpreter(
@@ -105,24 +108,17 @@ ExtendedXCoreInterpreter::ExtendedXCoreInterpreter(
     bool use_current_thread, tflite::Profiler* profiler)
     : XCoreInterpreter(model, resolver, allocator, reporter, use_current_thread,
                        profiler),
+      model_(model),
       reporter_(reporter) {}
 
 size_t ExtendedXCoreInterpreter::input_tensor_index(size_t input_index) {
-  const TfLiteTensor* inputtensor_p = input(input_index);
-  for (size_t i = 0; i < tensors_size(); i++) {
-    const TfLiteTensor* tensor_p = tensor(i);
-    if (tensor_p == inputtensor_p) return i;
-  }
-  return -1;
+  const SubGraph* subgraph = model_->subgraphs()->Get(0);
+  return subgraph->inputs()->Get(input_index);
 }
 
 size_t ExtendedXCoreInterpreter::output_tensor_index(size_t output_index) {
-  const TfLiteTensor* outputtensor_p = output(output_index);
-  for (size_t i = 0; i < tensors_size(); i++) {
-    const TfLiteTensor* tensor_p = tensor(i);
-    if (tensor_p == outputtensor_p) return i;
-  }
-  return -1;
+  const SubGraph* subgraph = model_->subgraphs()->Get(0);
+  return subgraph->outputs()->Get(output_index);
 }
 
 TfLiteStatus ExtendedXCoreInterpreter::Invoke(
@@ -178,30 +174,34 @@ TfLiteStatus ExtendedXCoreInterpreter::SetTensor(size_t tensor_index,
                                                  const int size,
                                                  const int* shape,
                                                  const int type) {
-  TfLiteTensor* tensor_p = tensor(tensor_index);
+  const SubGraph* subgraph = model_->subgraphs()->Get(0);
+  const Tensor* tensor_p = subgraph->tensors()->Get(tensor_index);
+
   if (tensor_p == nullptr) {
     return kTfLiteError;
   }
 
-  if (tensor_p->dims->size != size) {
-    reporter_->Report("tensor dims size %d != %d", tensor_p->dims->size, size);
+  if (tensor_p->shape()->Length() != size) {
+    reporter_->Report("tensor dims size %d != %d", tensor_p->shape()->Length(),
+                      size);
     return kTfLiteError;
   }
 
   for (int i = 0; i < size; i++) {
-    if (tensor_p->dims->data[i] != shape[i]) {
-      reporter_->Report("tensor dim %d != %d", tensor_p->dims->data[i],
+    if (tensor_p->shape()->Get(i) != shape[i]) {
+      reporter_->Report("tensor dim %d != %d", tensor_p->shape()->Get(i),
                         shape[i]);
       return kTfLiteError;
     }
   }
 
-  if (tensor_p->type != type) {
-    reporter_->Report("tensor type %d != %d", tensor_p->type, type);
+  TfLiteTensor* tf_tensor_p = tensor(tensor_index);
+  if (tf_tensor_p->type != type) {
+    reporter_->Report("tensor type %d != %d", tf_tensor_p->type, type);
     return kTfLiteError;
   }
 
-  std::memcpy(tensor_p->data.raw, value, tensor_p->bytes);
+  std::memcpy(tf_tensor_p->data.raw, value, tf_tensor_p->bytes);
   return kTfLiteOk;
 }
 
@@ -209,45 +209,52 @@ TfLiteStatus ExtendedXCoreInterpreter::GetTensor(size_t tensor_index,
                                                  void* value, const int size,
                                                  const int* shape,
                                                  const int type) {
-  TfLiteTensor* tensor_p = tensor(tensor_index);
+  const SubGraph* subgraph = model_->subgraphs()->Get(0);
+  const Tensor* tensor_p = subgraph->tensors()->Get(tensor_index);
+
   if (tensor_p == nullptr) {
     return kTfLiteError;
   }
 
-  if (tensor_p->dims->size != size) {
-    reporter_->Report("tensor dims size %d != %d", tensor_p->dims->size, size);
+  if (tensor_p->shape()->Length() != size) {
+    reporter_->Report("tensor dims size %d != %d", tensor_p->shape()->Length(),
+                      size);
     return kTfLiteError;
   }
 
   for (int i = 0; i < size; i++) {
-    if (tensor_p->dims->data[i] != shape[i]) {
-      reporter_->Report("tensor dim %d != %d", tensor_p->dims->data[i],
+    if (tensor_p->shape()->Get(i) != shape[i]) {
+      reporter_->Report("tensor dim %d != %d", tensor_p->shape()->Get(i),
                         shape[i]);
       return kTfLiteError;
     }
   }
 
-  if (tensor_p->type != type) {
-    reporter_->Report("tensor type %d != %d", tensor_p->type, type);
+  TfLiteTensor* tf_tensor_p = tensor(tensor_index);
+  if (tf_tensor_p->type != type) {
+    reporter_->Report("tensor type %d != %d", tf_tensor_p->type, type);
     return kTfLiteError;
   }
 
-  std::memcpy(value, tensor_p->data.raw, tensor_p->bytes);
+  std::memcpy(value, tf_tensor_p->data.raw, tf_tensor_p->bytes);
   return kTfLiteOk;
 }
 
 TfLiteStatus ExtendedXCoreInterpreter::GetTensorDetailsBufferSizes(
     size_t tensor_index, size_t* dims, size_t* scales, size_t* zero_points) {
-  TfLiteTensor* tensor_p = tensor(tensor_index);
+  const SubGraph* subgraph = model_->subgraphs()->Get(0);
+  const Tensor* tensor_p = subgraph->tensors()->Get(tensor_index);
+
   if (tensor_p == nullptr) {
     return kTfLiteError;
   }
-  *dims = tensor_p->dims->size;
-  TfLiteAffineQuantization* quantization_params =
-      static_cast<TfLiteAffineQuantization*>(tensor_p->quantization.params);
+
+  *dims = tensor_p->shape()->Length();
+  const tflite::QuantizationParameters* quantization_params =
+      tensor_p->quantization();
   if (quantization_params) {
-    *scales = quantization_params->scale->size;
-    *zero_points = quantization_params->zero_point->size;
+    *scales = quantization_params->scale()->Length();
+    *zero_points = quantization_params->zero_point()->Length();
   } else {
     *scales = 1;
     *zero_points = 1;
@@ -258,25 +265,27 @@ TfLiteStatus ExtendedXCoreInterpreter::GetTensorDetailsBufferSizes(
 TfLiteStatus ExtendedXCoreInterpreter::GetTensorDetails(
     size_t tensor_index, char* name, int name_len, int* shape, int* type,
     float* scale, int32_t* zero_point) {
-  TfLiteTensor* tensor_p = tensor(tensor_index);
+  const SubGraph* subgraph = model_->subgraphs()->Get(0);
+  const Tensor* tensor_p = subgraph->tensors()->Get(tensor_index);
+
   if (tensor_p == nullptr) {
     return kTfLiteError;
   }
 
-  if (tensor_p->name) std::strncpy(name, tensor_p->name, name_len);
+  if (tensor_p->name()) std::strncpy(name, tensor_p->name()->c_str(), name_len);
 
-  for (int i = 0; i < tensor_p->dims->size; i++) {
-    shape[i] = tensor_p->dims->data[i];
+  for (int i = 0; i < tensor_p->shape()->Length(); i++) {
+    shape[i] = tensor_p->shape()->Get(i);
   }
-  *type = tensor_p->type;
-  TfLiteAffineQuantization* quantization_params =
-      static_cast<TfLiteAffineQuantization*>(tensor_p->quantization.params);
+  ConvertTensorType(tensor_p->type(), (TfLiteType*)type, reporter_);
+  const tflite::QuantizationParameters* quantization_params =
+      tensor_p->quantization();
   if (quantization_params) {
-    for (int i = 0; i < quantization_params->scale->size; i++) {
-      scale[i] = quantization_params->scale->data[i];
+    for (int i = 0; i < quantization_params->scale()->Length(); i++) {
+      scale[i] = quantization_params->scale()->Get(i);
     }
-    for (int i = 0; i < quantization_params->zero_point->size; i++) {
-      zero_point[i] = quantization_params->zero_point->data[i];
+    for (int i = 0; i < quantization_params->zero_point()->Length(); i++) {
+      zero_point[i] = quantization_params->zero_point()->Get(i);
     }
   } else {
     *scale = 0.0;

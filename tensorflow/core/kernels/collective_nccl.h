@@ -29,7 +29,8 @@ class NcclBase : public CollectiveImplementationInterface {
   Status InitializeCollectiveParams(CollectiveParams* col_params) override;
 
   // Initializes the device objects and device localities.
-  Status InitializeCollectiveContext(CollectiveContext* col_ctx) override;
+  Status InitializeCollectiveContext(
+      std::shared_ptr<CollectiveContext> col_ctx) override;
 
   // Initialize nccl communicator key.
   Status InitializeCollectiveGroupRuntimeDetails(
@@ -40,7 +41,7 @@ class NcclBase : public CollectiveImplementationInterface {
 
   const CollectiveType type_;
   const string name_;
-  CollectiveContext* col_ctx_;          // Not owned
+  std::shared_ptr<CollectiveContext> col_ctx_;
   const CollectiveParams* col_params_;  // Not owned
 };
 

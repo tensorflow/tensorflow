@@ -145,6 +145,33 @@ std::string GetImageModifier(AccessType access) {
   }
 }
 
+std::string GetDefaultSamplers(const DeviceInfo& device_info) {
+  std::string result;
+  result +=
+      "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
+      "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
+  if (device_info.IsAdreno3xx()) {
+    // Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
+    // we can observe huge register overhead when compared to other modes.
+
+    // While using CLK_ADDRESS_NONE with out-of-range image coordinates is
+    // undefined in the OpenCL specification, we have observed that
+    // CLK_ADDRESS_NONE works like CLK_ADDRESS_CLAMP for out-of-range image
+    // coordinates for RGBA F16/F32 textures on Adreno3xx devices. Using
+    // CLK_ADDRESS_NONE is significantly faster than CLK_ADDRESS_CLAMP on Adreno
+    // 3xx.
+    result +=
+        "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
+        "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
+  } else {
+    result +=
+        "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
+        "CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;\n";
+  }
+
+  return result;
+}
+
 }  // namespace
 
 // Static
@@ -229,11 +256,10 @@ void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
   object_refs_[name] = {std::move(descriptor_ptr)};
 }
 
-void Arguments::AddObject(const std::string& name, AccessType access_type,
-                          GPUObjectPtr&& object,
+void Arguments::AddObject(const std::string& name,
                           GPUObjectDescriptorPtr&& descriptor_ptr) {
-  descriptor_ptr->SetAccess(access_type);
-  objects_[name] = {std::move(object), std::move(descriptor_ptr)};
+  descriptor_ptr->SetAccess(AccessType::READ);
+  objects_[name] = {nullptr, std::move(descriptor_ptr)};
 }
 
 void Arguments::AddGPUResources(const std::string& name,
@@ -483,6 +509,7 @@ absl::Status Arguments::TransformToCLCode(
   RETURN_IF_ERROR(ResolveSelectorsPass(linkables, code));
   ResolveArgsPass(device_info, code);
   *code = absl::Substitute(*code, GetListOfArgs());
+  *code = GetDefaultSamplers(device_info) + *code;
   return absl::OkStatus();
 }
 
@@ -690,7 +717,7 @@ std::string Arguments::AddActiveArgument(const std::string& arg_name,
 
 void Arguments::ResolveArgsPass(const DeviceInfo& device_info,
                                 std::string* code) {
-  bool use_f32_for_half_arguments = device_info.vendor == Vendor::POWERVR;
+  bool use_f32_for_half_arguments = device_info.IsPowerVR();
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
   while (next_position != std::string::npos) {
@@ -808,6 +835,15 @@ absl::Status Arguments::ResolveSelectorsPass(
       position = arg_pos + strlen(kArgsPrefix);
     }
     next_position = code->find(kArgsPrefix, position);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::AllocateObjects(CLContext* context) {
+  for (auto& t : objects_) {
+    RETURN_IF_ERROR(
+        t.second.descriptor->CreateGPUObject(context, &t.second.obj_ptr));
+    t.second.descriptor->Release();
   }
   return absl::OkStatus();
 }

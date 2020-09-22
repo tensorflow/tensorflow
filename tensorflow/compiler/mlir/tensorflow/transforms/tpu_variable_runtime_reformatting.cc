@@ -174,7 +174,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   metadata.ParseFromString(std::string(metadata_str.getValue()));
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while
   // operands.
@@ -264,7 +264,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
     tf_device::ReplicateOp replicate, ArrayRef<Value> new_inputs,
     const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
         devices) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   assert(new_inputs.size() == num_replicas);
 
   // As model parallelism is not yet supported, we assume that all ops are
@@ -351,7 +351,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   cond.setType(FunctionType::get(append_types(cond.getType().getInputs()),
                                  cond.getType().getResults(),
                                  cond.getContext()));
-  for (int64_t i = 0; i < state_vars.size(); ++i) {
+  for (int64_t i = 0, end = state_vars.size(); i < end; ++i) {
     int64_t arg_index = body.getNumArguments() - state_vars.size() + i;
     TF::VarHandleOp state_var = state_vars[i];
     auto device_attr = state_var.getAttr(kDeviceAttr);
@@ -365,16 +365,6 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
       while_op.getLoc(),
       append_types(llvm::to_vector<4>(while_op.getResultTypes())),
       new_while_operands, while_op.getAttrs());
-  if (new_while_op.output_shapes().size() != 0) {
-    auto new_output_shapes = llvm::to_vector<4>(new_while_op.output_shapes());
-    // VarHandleOp is a scalar shape resource.
-    for (int64_t i = 0; i < state_vars.size(); ++i) {
-      new_output_shapes.push_back(
-          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
-    }
-    new_while_op.setAttr("output_shapes",
-                         builder.getArrayAttr(new_output_shapes));
-  }
   while_op.replaceAllUsesWith(
       new_while_op.getResults().take_front(while_op.getNumResults()));
   while_op.erase();
@@ -433,7 +423,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 // Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
                        MLIRContext* context) {
-  int64_t num_replicas = replicate.n().getLimitedValue();
+  int64_t num_replicas = replicate.n();
   if (num_replicas == 1) return;
   tf_device::LaunchOp execute_launch;
   for (auto execute_launch_op :
@@ -462,9 +452,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
     return;
 
-  auto module = while_op.getParentOfType<ModuleOp>();
-  auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
-  auto cond = llvm::cast<FuncOp>(module.lookupSymbol(while_op.cond()));
+  FuncOp body = while_op.body_func();
+  FuncOp cond = while_op.cond_func();
 
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =
@@ -521,8 +510,7 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       replicate.GetNumReplicatedBlockArguments() - 1));
   builder.setInsertionPoint(execute_launch);
   auto reformat_op = builder.create<TF::TPUReshardVariablesOp>(
-      execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands,
-      llvm::ArrayRef<NamedAttribute>{});
+      execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), reformat_op,
                  execute_launch.device());
 
@@ -579,8 +567,7 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       default_state_key.getResult());
   // Unformat op.
   auto unformat_op = builder.create<TF::TPUReshardVariablesOp>(
-      while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands,
-      llvm::ArrayRef<NamedAttribute>{});
+      while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), unformat_op,
                  execute_launch.device());
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});

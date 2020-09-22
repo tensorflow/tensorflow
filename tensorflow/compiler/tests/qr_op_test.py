@@ -24,12 +24,18 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_without_tensor_float_32(
+    "XLA QR op calls matmul. Also, matmul used for verification. Also with "
+    'TensorFloat-32, mysterious "Unable to launch cuBLAS gemm" error '
+    "occasionally occurs")
+# TODO(b/165435566): Fix "Unable to launch cuBLAS gemm" error
 class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def AdjustedNorm(self, x):
@@ -73,7 +79,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
     with self.session() as sess:
       x_tf = array_ops.placeholder(dtype)
-      with self.test_scope():
+      with self.device_scope():
         q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices)
       q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
 

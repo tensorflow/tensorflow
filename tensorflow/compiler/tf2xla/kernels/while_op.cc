@@ -513,10 +513,26 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
         // Prepare dynamic dimensions for element shapes.
         std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
         for (int64 i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
-          // Set dynamic dimension size to 0 for initilization value.
           std::vector<xla::XlaOp> dynamic_dims;
+
           const xla::Shape& shape = list_shape.tuple_shapes(i);
-          for (int64 dim = 0; dim < shape.dimensions_size(); ++dim) {
+
+          // We already have the dynamic size of leading dimension outside of
+          // the while loop without initializing the TensorList inside the while
+          // loop.
+          if (shape.is_dynamic_dimension(0)) {
+            xla::XlaOp leading_dim_size = xla::GetDimensionSize(input, 0);
+            dynamic_dims.push_back(leading_dim_size);
+          } else {
+            int32 dim_size = shape.dimensions(0);
+            dynamic_dims.push_back(
+                xla::ConstantR0<int32>(ctx->builder(), dim_size));
+          }
+
+          // Set dynamic dimension size to 0 for element value. Inside the while
+          // loop, TensorlistSetItem will properly set the element shape's
+          // dynamic diemnsion.
+          for (int64 dim = 1; dim < shape.dimensions_size(); ++dim) {
             int32 dim_size = shape.dimensions(dim);
             if (shape.is_dynamic_dimension(dim)) {
               dim_size = 0;

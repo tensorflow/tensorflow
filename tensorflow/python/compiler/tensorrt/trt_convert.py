@@ -432,7 +432,7 @@ class TrtGraphConverter(object):
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
                input_graph_def=None,
-               nodes_blacklist=None,
+               nodes_denylist=None,
                session_config=None,
                max_batch_size=1,
                max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
@@ -452,7 +452,7 @@ class TrtGraphConverter(object):
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
-      nodes_blacklist: list of node names to prevent the converter from
+      nodes_denylist: list of node names to prevent the converter from
         touching.
       session_config: the ConfigProto used to create a Session. It's also used
         as a template to create a TRT-enabled ConfigProto for conversion. If not
@@ -497,7 +497,7 @@ class TrtGraphConverter(object):
     _check_trt_version_compatibility()
 
     self._input_graph_def = input_graph_def
-    self._nodes_blacklist = nodes_blacklist
+    self._nodes_denylist = nodes_denylist
 
     self._input_saved_model_dir = input_saved_model_dir
     self._converted = False
@@ -558,15 +558,15 @@ class TrtGraphConverter(object):
         graph_id=b"tf_graph")
     self._converted = True
 
-  def _add_nodes_blacklist(self):
-    if self._nodes_blacklist:
+  def _add_nodes_denylist(self):
+    if self._nodes_denylist:
       collection_def = self._grappler_meta_graph_def.collection_def["train_op"]
-      blacklist = collection_def.node_list.value
-      for i in self._nodes_blacklist:
+      denylist = collection_def.node_list.value
+      for i in self._nodes_denylist:
         if isinstance(i, ops.Tensor):
-          blacklist.append(_to_bytes(i.name))
+          denylist.append(_to_bytes(i.name))
         else:
-          blacklist.append(_to_bytes(i))
+          denylist.append(_to_bytes(i))
 
   def _convert_graph_def(self):
     """Convert the input GraphDef."""
@@ -575,7 +575,7 @@ class TrtGraphConverter(object):
       importer.import_graph_def(self._input_graph_def, name="")
     self._grappler_meta_graph_def = saver.export_meta_graph(
         graph_def=graph.as_graph_def(add_shapes=True), graph=graph)
-    self._add_nodes_blacklist()
+    self._add_nodes_denylist()
 
     self._run_conversion()
 
@@ -629,7 +629,7 @@ class TrtGraphConverter(object):
         self._grappler_meta_graph_def.collection_def[collection_key].CopyFrom(
             input_meta_graph_def.collection_def[collection_key])
 
-      self._add_nodes_blacklist()
+      self._add_nodes_denylist()
 
       # Copy other information.
       self._grappler_meta_graph_def.meta_info_def.CopyFrom(
@@ -1342,7 +1342,7 @@ def create_inference_graph(
       input_saved_model_tags=input_saved_model_tags,
       input_saved_model_signature_key=input_saved_model_signature_key,
       input_graph_def=input_graph_def,
-      nodes_blacklist=outputs,
+      nodes_denylist=outputs,
       session_config=session_config,
       max_batch_size=max_batch_size,
       max_workspace_size_bytes=max_workspace_size_bytes,

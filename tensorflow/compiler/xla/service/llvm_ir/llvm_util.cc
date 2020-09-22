@@ -415,9 +415,10 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-string IrName(string a) {
-  a.erase(std::remove(a.begin(), a.end(), '%'), a.end());
-  return a;
+string IrName(absl::string_view a) {
+  std::string s(a);
+  s.erase(std::remove(s.begin(), s.end(), '%'), s.end());
+  return s;
 }
 
 string IrName(absl::string_view a, absl::string_view b) {

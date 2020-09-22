@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -52,15 +53,14 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
       self.assertEqual(sp.dense_shape.dtype, dtypes.int64)
       self.assertEqual(sp.get_shape(), (4, 5))
 
-      with self.cached_session() as sess:
-        value = self.evaluate(sp)
-        self.assertAllEqual(indices, value.indices)
-        self.assertAllEqual(values, value.values)
-        self.assertAllEqual(shape, value.dense_shape)
-        sess_run_value = self.evaluate(sp)
-        self.assertAllEqual(sess_run_value.indices, value.indices)
-        self.assertAllEqual(sess_run_value.values, value.values)
-        self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
+      value = self.evaluate(sp)
+      self.assertAllEqual(indices, value.indices)
+      self.assertAllEqual(values, value.values)
+      self.assertAllEqual(shape, value.dense_shape)
+      sp_value = self.evaluate(sp)
+      self.assertAllEqual(sp_value.indices, value.indices)
+      self.assertAllEqual(sp_value.values, value.values)
+      self.assertAllEqual(sp_value.dense_shape, value.dense_shape)
 
   def testShape(self):
 
@@ -97,33 +97,43 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
       self.assertIn(dense.op, sp.consumers())
       self.assertIn(out.op, sp.consumers())
 
+  def testWithValues(self):
+    source = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1., 2], dense_shape=[3, 4])
+    new_tensor = source.with_values([5.0, 1.0])
+    self.assertAllEqual(new_tensor.indices, source.indices)
+    self.assertAllEqual(new_tensor.values, [5.0, 1.0])
+    self.assertAllEqual(new_tensor.dense_shape, source.dense_shape)
+
+    # ensure new value's shape is checked
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      source.with_values([[5.0, 1.0]])
+
 
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
 
   def test_convert_dense(self):
-    with self.cached_session():
-      value = [42, 43]
-      from_value = sparse_tensor.convert_to_tensor_or_sparse_tensor(
-          value)
-      self.assertAllEqual(value, self.evaluate(from_value))
+    value = [42, 43]
+    from_value = sparse_tensor.convert_to_tensor_or_sparse_tensor(
+        value)
+    self.assertAllEqual(value, self.evaluate(from_value))
 
-  @test_util.run_deprecated_v1
   def test_convert_sparse(self):
-    with self.cached_session():
-      indices = [[0, 1], [1, 0]]
-      values = [42, 43]
-      shape = [2, 2]
-      sparse_tensor_value = sparse_tensor.SparseTensorValue(
-          indices, values, shape)
-      st = sparse_tensor.SparseTensor.from_value(sparse_tensor_value)
-      from_value = sparse_tensor.convert_to_tensor_or_sparse_tensor(
-          sparse_tensor_value).eval()
-      from_tensor = sparse_tensor.convert_to_tensor_or_sparse_tensor(st).eval()
-      for convertee in [from_value, from_tensor]:
-        self.assertAllEqual(sparse_tensor_value.indices, convertee.indices)
-        self.assertAllEqual(sparse_tensor_value.values, convertee.values)
-        self.assertAllEqual(
-            sparse_tensor_value.dense_shape, convertee.dense_shape)
+    indices = [[0, 1], [1, 0]]
+    values = [42, 43]
+    shape = [2, 2]
+    sparse_tensor_value = sparse_tensor.SparseTensorValue(
+        indices, values, shape)
+    st = sparse_tensor.SparseTensor.from_value(sparse_tensor_value)
+    from_value = self.evaluate(
+        sparse_tensor.convert_to_tensor_or_sparse_tensor(sparse_tensor_value))
+    from_tensor = self.evaluate(
+        sparse_tensor.convert_to_tensor_or_sparse_tensor(st))
+    for convertee in [from_value, from_tensor]:
+      self.assertAllEqual(sparse_tensor_value.indices, convertee.indices)
+      self.assertAllEqual(sparse_tensor_value.values, convertee.values)
+      self.assertAllEqual(
+          sparse_tensor_value.dense_shape, convertee.dense_shape)
 
 
 class SparseTensorShapeTest(test_util.TensorFlowTestCase):

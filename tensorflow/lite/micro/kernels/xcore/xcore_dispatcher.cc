@@ -174,8 +174,8 @@ size_t Dispatcher::FetchWeights(int8_t **dest, int8_t const *src, size_t size,
       load_size = size;  // only one channel group so load everything
     else
       load_size = changrp.size * changrp_bytes;
-    memcpy((void *)*dest, (void *)&src[changrp.start * changrp_bytes],
-           load_size);
+    memload((void **)*dest, (void *)&src[changrp.start * changrp_bytes],
+            load_size);
     return load_size;
   }
 }

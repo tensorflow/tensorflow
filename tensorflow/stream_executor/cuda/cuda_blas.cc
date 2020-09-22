@@ -49,7 +49,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/tf32_utils.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
@@ -400,7 +400,7 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   ScopedCublasMathMode math_mode{blas_};
 #if CUBLAS_VER_MAJOR >= 11
   if (math_type == CUBLAS_TF32_TENSOR_OP_MATH &&
-      tensorflow::tf32_execution_allowed()) {
+      tensorflow::tensor_float_32_execution_enabled()) {
 #else
   if (math_type == CUBLAS_TENSOR_OP_MATH) {
 #endif
@@ -1952,7 +1952,7 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
                 << " uses tensor ops, but tensor ops are not available in sm"
                 << cc_major << "X devices for float input types.";
         return false;
-      } else if (!tensorflow::tf32_execution_allowed()) {
+      } else if (!tensorflow::tensor_float_32_execution_enabled()) {
         VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
                 << algorithm
                 << " uses tensor ops, but tensor ops are disabled for fp32"
@@ -2294,10 +2294,11 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
 #if CUBLAS_VER_MAJOR >= 11
     } else if (data_type == CUDA_R_32F) {
       // DoBlassInternalImpl will switch math_type back to CUBLAS_DEFAULT_MATH
-      // if TF32 is disabled.
+      // if TensorFloat-32 is disabled.
       math_type = CUBLAS_TF32_TENSOR_OP_MATH;
-      algo = tensorflow::tf32_execution_allowed() ? CUBLAS_GEMM_DFALT_TENSOR_OP
-                                                  : CUBLAS_GEMM_DFALT;
+      algo = tensorflow::tensor_float_32_execution_enabled()
+                 ? CUBLAS_GEMM_DFALT_TENSOR_OP
+                 : CUBLAS_GEMM_DFALT;
 #endif
     } else {
       math_type = CUBLAS_DEFAULT_MATH;

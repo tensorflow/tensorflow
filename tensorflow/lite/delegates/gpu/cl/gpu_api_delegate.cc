@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/model_transformations.h"
 
 namespace tflite {
 namespace gpu {
@@ -97,8 +97,8 @@ class Delegate {
     // Apply general transformations on the graph.
     NullTransformationReporter reporter;
     ModelTransformer transformer(&graph, &reporter);
-    if (!ApplyGeneralTransformations(&transformer)) {
-      return absl::InternalError("Graph general transformations failed");
+    if (!ApplyModelTransformations(&transformer)) {
+      return absl::InternalError("Graph transformations failed");
     }
 
     InferenceEnvironmentOptions env_options;

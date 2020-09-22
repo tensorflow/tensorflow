@@ -38,9 +38,14 @@ TfTpu_CompileApiFn* CompileApiFn() {
   return &compile_api_fn;
 }
 
-TfTpu_ExecutorApiFn* ExecutorApiFn() {
-  static TfTpu_ExecutorApiFn executor_api_fn;
-  return &executor_api_fn;
+TfTpu_ExecuteApiFn* ExecuteApiFn() {
+  static TfTpu_ExecuteApiFn execute_api_fn;
+  return &execute_api_fn;
+}
+
+TfTpu_TpuProgramApiFn* TpuProgramApiFn() {
+  static TfTpu_TpuProgramApiFn tpu_program_api_fn;
+  return &tpu_program_api_fn;
 }
 
 TfTpu_NodeContextApiFn* NodeContextApiFn() {

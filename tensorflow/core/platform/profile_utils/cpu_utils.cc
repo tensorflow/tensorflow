@@ -58,8 +58,12 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
   GetCpuUtilsHelperSingletonInstance().ResetClockCycle();
 }
 
-/* static */ void CpuUtils::EnableClockCycleProfiling(const bool enable) {
-  GetCpuUtilsHelperSingletonInstance().EnableClockCycleProfiling(enable);
+/* static */ void CpuUtils::EnableClockCycleProfiling() {
+  GetCpuUtilsHelperSingletonInstance().EnableClockCycleProfiling();
+}
+
+/* static */ void CpuUtils::DisableClockCycleProfiling() {
+  GetCpuUtilsHelperSingletonInstance().DisableClockCycleProfiling();
 }
 
 /* static */ std::chrono::duration<double> CpuUtils::ConvertClockCycleToTime(

@@ -661,9 +661,9 @@ class BufferAssigner {
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
-  void AssignBuffersFromHeapSimulator(const HeapSimulator::Result& result,
-                                      BufferAssignment* assignment,
-                                      LogicalBuffer::Color color);
+  void AssignBuffersFromHeapSimulator(
+      const HeapSimulator::Result<HloValue>& result,
+      BufferAssignment* assignment, LogicalBuffer::Color color);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.

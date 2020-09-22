@@ -25,25 +25,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class ReLU : public ElementwiseOperation {
- public:
-  // Move only
-  ReLU(ReLU&& operation);
-  ReLU& operator=(ReLU&& operation);
-  ReLU(const ReLU&) = delete;
-  ReLU& operator=(const ReLU&) = delete;
-
-  friend ReLU CreateReLU(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const ReLUAttributes& attr);
-
- private:
-  ReLU(const OperationDef& definition, const ReLUAttributes& attr,
-       CalculationsPrecision scalar_precision);
-};
-
-ReLU CreateReLU(const CreationContext& creation_context,
-                const OperationDef& definition, const ReLUAttributes& attr);
+GPUOperation CreateReLU(const OperationDef& definition,
+                        const ReLUAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

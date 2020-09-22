@@ -298,7 +298,6 @@ void HardSwishFree(TfLiteContext* context, void* buffer) {
   delete static_cast<HardSwishData*>(buffer);
 }
 
-
 TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(GenericPrepare(context, node));
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -865,12 +864,10 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       TanhParams params;
       params.input_left_shift = data->input_left_shift;
       if (kernel_type == kReference || (data->input_multiplier > 0)) {
-        const int size =
-            MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
-
         reference_integer_ops::Tanh(
-            data->input_multiplier, data->input_left_shift, size,
-            GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
+            data->input_multiplier, data->input_left_shift,
+            GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Tanh(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
@@ -1313,6 +1310,20 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus EluPrepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  // Use LUT to handle quantized elu path.
+  if (input->type == kTfLiteInt8) {
+    PopulateLookupTable<int8_t>(data, input, output, [](float value) {
+      return value < 0.0 ? std::exp(value) - 1.0f : value;
+    });
+  }
+  return GenericPrepare(context, node);
+}
+
 TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -1322,10 +1333,15 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
                          GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
+    case kTfLiteInt8: {
+      OpData* data = reinterpret_cast<OpData*>(node->user_data);
+      EvalUsingLookupTable(data, input, output);
+      return kTfLiteOk;
+    } break;
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Only float32 is supported currently, got %s.",
-                         TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(
+          context, "Only float32 and int8 is supported currently, got %s.",
+          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -1333,9 +1349,8 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_ELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 activations::GenericPrepare,
-                                 activations::EluEval};
+  static TfLiteRegistration r = {activations::Init, activations::Free,
+                                 activations::EluPrepare, activations::EluEval};
   return &r;
 }
 

@@ -289,7 +289,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   auto one_with_sign = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign,
                                                     {one, input}, {type}, b_);
   return FPCast(Select(FCmpULT(abs_value, max_value), fast_tanh, one_with_sign),
-                value->getType());
+                value->getType(), "tanh");
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(

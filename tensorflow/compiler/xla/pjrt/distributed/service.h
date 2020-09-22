@@ -50,8 +50,6 @@ class DistributedRuntimeServiceImpl final
                              KeyValueSetResponse* response) override;
 
  private:
-  const absl::Duration kConnectTimeout = absl::Seconds(120);
-
   absl::Mutex mu_;
   enum class State { kInitializing, kRunning };
   State state_ ABSL_GUARDED_BY(mu_) = State::kInitializing;

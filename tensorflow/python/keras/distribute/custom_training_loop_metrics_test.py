@@ -22,19 +22,22 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import metrics
+from tensorflow.python.platform import test
 
 
 class KerasMetricsTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies,
+          distribution=strategy_combinations.all_strategies +
+          strategy_combinations.multiworker_strategies,
           mode=["eager"]
       ))
   def test_multiple_keras_metrics_experimental_run(self, distribution):
@@ -56,9 +59,10 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
                      loss_metric_2.result().numpy())
     self.assertEqual(loss_metric.result().numpy(), 5.0)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies,
+          distribution=strategy_combinations.all_strategies+
+          strategy_combinations.multiworker_strategies,
           mode=["eager"]
       ))
   def test_update_keras_metric_declared_in_strategy_scope(self, distribution):
@@ -79,7 +83,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
     # of 10 resulting in mean of 4.5.
     self.assertEqual(metric.result().numpy(), 4.5)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
@@ -98,4 +102,4 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  test.main()
+  multi_process_runner.test_main()

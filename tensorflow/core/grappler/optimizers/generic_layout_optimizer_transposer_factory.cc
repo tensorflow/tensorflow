@@ -43,6 +43,17 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
     return GetOrCreateIfNotFound<Conv2DBackpropInputTransposer>(
         "Conv2DBackpropInput");
   }
+  if (IsConv3D(node)) {
+    return GetOrCreateIfNotFound<Conv3DTransposer>("Conv3D");
+  }
+  if (IsConv3DBackpropInputV2(node)) {
+    return GetOrCreateIfNotFound<Conv3DBackpropInputTransposer>(
+        "Conv3DBackpropInput");
+  }
+  if (IsConv3DBackpropFilterV2(node)) {
+    return GetOrCreateIfNotFound<Conv3DBackpropFilterTransposer>(
+        "Conv3DBackpropFilter");
+  }
   if (IsFusedBatchNormEx(node)) {
     return GetOrCreateIfNotFound<FusedBatchNormExTransposer>(
         "FusedBatchNormEx");

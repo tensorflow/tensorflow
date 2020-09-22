@@ -74,6 +74,39 @@ class HexagonDelegate : public SimpleDelegateInterface {
     return options;
   }
 
+  bool VerifyDelegate() {
+    auto* hexagon_nn = HexagonNNImplementation();
+    if (hexagon_nn == nullptr) {
+      return false;
+    }
+    if (hexagon_nn->hexagon_nn_version != nullptr &&
+        hexagon_nn->hexagon_nn_hexagon_interface_version) {
+      int hexagon_nn_version = -1;
+      int hexagon_interface_version =
+          hexagon_nn->hexagon_nn_hexagon_interface_version();
+      if (hexagon_nn->hexagon_nn_version(&hexagon_nn_version) != 0) {
+        TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING,
+                        "Failed to fetch Hexagon NN version. This might be "
+                        "because you're using incompatible versions of "
+                        "libhexagon_interface and libhexagon_nn_skel. "
+                        "You must use compatible versions. "
+                        "Refer to Tensorflow Lite Hexagon Delegate Guide.");
+        return false;
+      }
+      if (hexagon_nn_version != hexagon_interface_version) {
+        TFLITE_LOG_PROD(
+            tflite::TFLITE_LOG_WARNING,
+            "Incompatible versions between interface library and "
+            "libhexagon_skel %d vs %d. You must use compatible versions. "
+            "Refer to Tensorflow Lite Hexagon Delegate Guide.",
+            hexagon_interface_version, hexagon_nn_version);
+        return false;
+      }
+    }
+    return hexagon_nn->hexagon_nn_is_device_supported &&
+           hexagon_nn->hexagon_nn_is_device_supported();
+  }
+
  private:
   TfLiteHexagonDelegateOptions params_;
 };
@@ -83,9 +116,20 @@ class HexagonDelegate : public SimpleDelegateInterface {
 
 TfLiteDelegate* TfLiteHexagonDelegateCreate(
     const TfLiteHexagonDelegateOptions* options) {
-  // return tflite::CreateDelegate(options);
-  return tflite::TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::make_unique<tflite::HexagonDelegate>(options));
+  auto hexagon_delegate_interface =
+      std::make_unique<tflite::HexagonDelegate>(options);
+  if (!hexagon_delegate_interface->VerifyDelegate()) {
+    TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                         "Hexagon Delegate is not supported.\n");
+    return nullptr;
+  }
+  auto* initialized_delegate =
+      tflite::TfLiteDelegateFactory::CreateSimpleDelegate(
+          std::move(hexagon_delegate_interface));
+  if (options->enable_dynamic_batch_size) {
+    initialized_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  }
+  return initialized_delegate;
 }
 
 TfLiteHexagonDelegateOptions TfLiteHexagonDelegateOptionsDefault() {

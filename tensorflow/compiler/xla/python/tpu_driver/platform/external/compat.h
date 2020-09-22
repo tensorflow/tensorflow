@@ -35,7 +35,13 @@ class Thread {
 
 class TraceMe {
  public:
-  explicit TraceMe(absl::string_view tag, int level = 1) {}
+  explicit TraceMe(absl::string_view name, int level = 1) {}
+  explicit TraceMe(std::string&& name, int level = 1) = delete;
+  explicit TraceMe(const std::string& name, int level = 1) = delete;
+  explicit TraceMe(const char* raw, int level = 1)
+      : TraceMe(absl::string_view(raw), level) {}
+  template <typename NameGeneratorT>
+  explicit TraceMe(NameGeneratorT name_generator, int level = 1) {}
   ~TraceMe() {}
 };
 
