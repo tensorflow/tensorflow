@@ -38,8 +38,8 @@ void swmem_setup();
 #else
 #include <xcore/chanend.h>
 void swmem_setup(chanend_t ctrl_swmem_c);
-#endif // USE_QSPI_SWMEM_DEV
-#endif // USE_SWMEM
+#endif  // USE_QSPI_SWMEM_DEV
+#endif  // USE_SWMEM
 
 void swmem_handler(void *ignored);
 void swmem_teardown();
@@ -53,7 +53,7 @@ void swmem_teardown();
 
 #endif  // XCORE
 
-void memload(void **dest, void *src, size_t size);
+void memload(void *dest, void *src, size_t size);
 
 #ifdef __cplusplus
 }

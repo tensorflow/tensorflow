@@ -186,7 +186,7 @@ size_t Dispatcher::FetchBiases(int16_t **dest, int16_t const *src, size_t size,
     *dest = (int16_t *)&src[changrp.index * bso_changrp_len];
     return 0;
   } else {
-    memload((void **)dest, (void *)&src[changrp.index * bso_changrp_len], size);
+    memload((void *)*dest, (void *)&src[changrp.index * bso_changrp_len], size);
     return size;
   }
 }
