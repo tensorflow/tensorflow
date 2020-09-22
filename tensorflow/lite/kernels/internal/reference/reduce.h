@@ -132,6 +132,11 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
                           bool keep_dims, int* temp_index, int* resolved_axis,
                           T init_value,
                           T reducer(const T current, const T in)) {
+  // Return early when input shape has zero dim.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
+  }
+
   // Reset output data.
   if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
                                output_data)) {
