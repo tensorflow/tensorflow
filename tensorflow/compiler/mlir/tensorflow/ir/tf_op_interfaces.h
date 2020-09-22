@@ -15,6 +15,8 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OP_INTERFACES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OP_INTERFACES_H_
+
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
@@ -27,10 +29,14 @@ namespace TF {
 //===----------------------------------------------------------------------===//
 
 struct ContractionFusion {
-  ContractionFusion(StringRef output_kernel, ArrayRef<int> additional_arguments)
+  explicit ContractionFusion(
+      StringRef output_kernel, ArrayRef<int> additional_arguments = {},
+      ArrayRef<NamedAttribute> additional_attributes = {})
       : output_kernel(output_kernel.str()),
         additional_arguments(additional_arguments.begin(),
-                             additional_arguments.end()) {}
+                             additional_arguments.end()),
+        additional_attributes(additional_attributes.begin(),
+                              additional_attributes.end()) {}
 
   // Name of the output kernel implementing the contraction fusion.
   std::string output_kernel;
@@ -38,6 +44,9 @@ struct ContractionFusion {
   // Indices of additional arguments that will be forwarded to the fused
   // operation (e.g. forward bias vector if fusing BiasAdd operation).
   SmallVector<int, 4> additional_arguments;
+
+  // Add additional attributes to the fused node.
+  SmallVector<NamedAttribute, 4> additional_attributes;
 };
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"

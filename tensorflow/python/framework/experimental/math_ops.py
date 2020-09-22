@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental impl for gen_*_ops.py using unified APIs, for testing only."""
+"""Experimental impl for gen_math_ops.py using unified APIs, for testing."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,3 +29,10 @@ def add(a, b, name=None):
   tape = tape_stack.get_default()
   grad_registry = gradient_registry.get_global_registry()
   return _math_ops.add(ctx, a, b, name, tape, grad_registry)
+
+
+def mat_mul(a, b, name=None):
+  ctx = context.get_default()
+  tape = tape_stack.get_default()
+  grad_registry = gradient_registry.get_global_registry()
+  return _math_ops.mat_mul(ctx, a, b, name, tape, grad_registry)

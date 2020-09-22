@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -30,6 +31,7 @@ from tensorflow.python.framework import test_util
 # Need array_grad to register gradient for Identity.
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gradient_checker_v2 as gradient_checker
 from tensorflow.python.ops import math_ops
 # Need sparse_grad to register gradient for SparseToDense.
@@ -232,6 +234,58 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual([[0], [1], [2], [3], [4]], result.indices)
     self.assertAllEqual([b'a', b'b', b'a', b'b', b'a'], result.values)
     self.assertAllEqual([5], result.dense_shape)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RawOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  def testSparseFillEmptyRowsGrad(self):
+    reverse_index_map = [2, 1]
+    grad_values = [0, 1, 2, 3]
+    d_values, d_default_value = self.evaluate(
+        gen_sparse_ops.SparseFillEmptyRowsGrad(
+            reverse_index_map=reverse_index_map, grad_values=grad_values))
+    self.assertAllEqual([2, 1], d_values)
+    self.assertEqual(3, d_default_value)
+
+  def testSparseFillEmptyRowsGradNegativeIndexMapValue(self):
+    reverse_index_map = [2, -1]
+    grad_values = [0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r'Elements in reverse index must be in \[0, 4\)'):
+      self.evaluate(
+          gen_sparse_ops.SparseFillEmptyRowsGrad(
+              reverse_index_map=reverse_index_map, grad_values=grad_values))
+
+  def testSparseFillEmptyRowsGradLargeIndexMapValue(self):
+    reverse_index_map = [2, 10]
+    grad_values = [0, 1, 2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r'Elements in reverse index must be in \[0, 4\)'):
+      self.evaluate(
+          gen_sparse_ops.SparseFillEmptyRowsGrad(
+              reverse_index_map=reverse_index_map, grad_values=grad_values))
+
+  def testSparseFillEmptyRowsGradMatrix(self):
+    reverse_index_map = [0, 1]
+    grad_values = [[0, 1], [2, 3]]
+    # Note: Eager mode and graph mode throw different errors here. Graph mode
+    # will fail with a ValueError from the shape checking logic, while Eager
+    # will fail with an InvalidArgumentError from the kernel itself.
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r'grad_values must be a vector'):
+        self.evaluate(
+            gen_sparse_ops.SparseFillEmptyRowsGrad(
+                reverse_index_map=reverse_index_map, grad_values=grad_values))
+    else:
+      with self.assertRaisesRegex(ValueError,
+                                  r'Shape must be rank 1 but is rank 2'):
+        self.evaluate(
+            gen_sparse_ops.SparseFillEmptyRowsGrad(
+                reverse_index_map=reverse_index_map, grad_values=grad_values))
 
 
 if __name__ == '__main__':

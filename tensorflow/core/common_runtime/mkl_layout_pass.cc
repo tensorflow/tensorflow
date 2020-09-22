@@ -1739,7 +1739,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"BiasAdd", "Relu6"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Elu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add"} ||
-            fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"});
+            fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"} ||
+            fused_ops == std::vector<string>{"LeakyRelu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "LeakyRelu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "Add", "LeakyRelu"});
   }
 
   static bool FusedDepthwiseConv2DRewrite(const Node* n) {
@@ -2716,6 +2721,7 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
   float epsilon;
   std::vector<string> fused_ops;
   DataType Tpaddings;
+  float leakyrelu_alpha;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "T", &T));
@@ -2726,6 +2732,8 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
   TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "fused_ops", &fused_ops));
   TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "epsilon", &epsilon));
+  TF_CHECK_OK(
+      GetNodeAttr(fused_conv2d->def(), "leakyrelu_alpha", &leakyrelu_alpha));
   TF_CHECK_OK(GetNodeAttr(pad->def(), "Tpaddings", &Tpaddings));
 
   // Add attributes to new node.
@@ -2738,6 +2746,7 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
   nb->Attr("epsilon", epsilon);
   nb->Attr("Tpaddings", Tpaddings);
   nb->Attr("fused_ops", fused_ops);
+  nb->Attr("leakyrelu_alpha", leakyrelu_alpha);
 }
 
 void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
@@ -2906,6 +2915,7 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   std::vector<int32> strides;
   std::vector<int32> dilations;
   std::vector<string> fused_ops;
+  float leakyrelu_alpha;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
@@ -2916,6 +2926,8 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "fused_ops", &fused_ops));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
+  TF_CHECK_OK(
+      GetNodeAttr(orig_node->def(), "leakyrelu_alpha", &leakyrelu_alpha));
 
   Node* filter_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &filter_node));
@@ -2930,6 +2942,7 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   nb->Attr("dilations", dilations);
   nb->Attr("fused_ops", fused_ops);
   nb->Attr("epsilon", epsilon);
+  nb->Attr("leakyrelu_alpha", leakyrelu_alpha);
 }
 
 void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,

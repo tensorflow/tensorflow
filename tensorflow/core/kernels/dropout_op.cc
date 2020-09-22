@@ -135,8 +135,8 @@ class DropoutOp : public OpKernel {
       auto rng_flat = rng_data.flat<float>();
 
       functor::FillPhiloxRandom<Device, Distribution>()(
-          ctx, ctx->eigen_device<Device>(), gen, rng_flat.data(),
-          rng_flat.size(), dist);
+          ctx, ctx->eigen_device<Device>(), /*key=*/nullptr,
+	  /*counter=*/nullptr, gen, rng_flat.data(), rng_flat.size(), dist);
       ApplyDropout<Device, T>()(ctx->eigen_device<Device>(),
                                 output->flat<T>().data(),
                                 mask->flat<uint8>().data(),

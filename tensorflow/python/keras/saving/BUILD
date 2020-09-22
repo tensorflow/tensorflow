@@ -56,6 +56,7 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",

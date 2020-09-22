@@ -9,7 +9,6 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
-    "tf_sycl_tests_tags",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -742,7 +741,8 @@ def tf_gen_op_wrapper_cc(
         deps = None,
         include_internal_ops = 0,
         # ApiDefs will be loaded in the order specified in this list.
-        api_def_srcs = []):
+        api_def_srcs = [],
+        compatible_with = []):
     # Construct an op generator binary for these ops.
     tool = out_ops_file + "_gen_cc"
     if deps == None:
@@ -784,6 +784,7 @@ def tf_gen_op_wrapper_cc(
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
+        compatible_with = compatible_with,
     )
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -833,7 +834,8 @@ def tf_gen_op_wrappers_cc(
         # ApiDefs will be loaded in the order specified in this list.
         api_def_srcs = [],
         # Any extra dependencies that the wrapper generator might need.
-        extra_gen_deps = []):
+        extra_gen_deps = [],
+        compatible_with = []):
     subsrcs = other_srcs[:]
     subhdrs = other_hdrs[:]
     internalsrcs = other_srcs_internal[:]
@@ -847,6 +849,7 @@ def tf_gen_op_wrappers_cc(
             op_gen = op_gen,
             pkg = pkg,
             deps = [pkg + ":" + n + "_op_lib"] + extra_gen_deps,
+            compatible_with = compatible_with,
         )
         subsrcs += ["ops/" + n + ".cc"]
         subhdrs += ["ops/" + n + ".h"]
@@ -869,6 +872,7 @@ def tf_gen_op_wrappers_cc(
         copts = tf_copts(),
         alwayslink = 1,
         visibility = visibility,
+        compatible_with = compatible_with,
     )
     cc_library(
         name = name + "_internal",
@@ -886,6 +890,7 @@ def tf_gen_op_wrappers_cc(
         copts = tf_copts(),
         alwayslink = 1,
         visibility = [clean_dep("//tensorflow:internal")],
+        compatible_with = compatible_with,
     )
 
 # Generates a Python library target wrapping the ops registered in "deps".
@@ -1741,11 +1746,15 @@ _transitive_parameters_library = rule(
 #   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
-    _transitive_hdrs(name = name + "_gather", deps = deps)
+    _transitive_hdrs(
+        name = name + "_gather",
+        deps = deps,
+        compatible_with = compatible_with,
+    )
     _transitive_parameters_library(
         name = name + "_gathered_parameters",
-        compatible_with = compatible_with,
         original_deps = deps,
+        compatible_with = compatible_with,
     )
     cc_library(
         name = name,
@@ -1892,6 +1901,10 @@ register_extension_info(
     extension_name = "tf_custom_op_library",
     label_regex_for_dep = "{extension_name}",
 )
+
+# Placeholder to use until bazel supports py_strict_binary.
+def py_strict_binary(name, **kwargs):
+    native.py_binary(name = name, **kwargs)
 
 # Placeholder to use until bazel supports py_strict_library.
 def py_strict_library(name, **kwargs):
@@ -2175,6 +2188,10 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def pytype_library(**kwargs):
+    # Types not enforced in OSS.
+    native.py_library(**kwargs)
+
 def tf_py_test(
         name,
         srcs,
@@ -2346,44 +2363,6 @@ register_extension_info(
     label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
-def sycl_py_test(
-        name,
-        srcs,
-        size = "medium",
-        data = [],
-        main = None,
-        args = [],
-        shard_count = 1,
-        kernels = [],
-        tags = [],
-        flaky = 0,
-        xla_enabled = False,
-        grpc_enabled = False,
-        **kwargs):
-    test_tags = tags + tf_sycl_tests_tags()
-    if "additional_deps" in kwargs:
-        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
-    tf_py_test(
-        name = name,
-        size = size,
-        srcs = srcs,
-        args = args,
-        data = data,
-        flaky = flaky,
-        grpc_enabled = grpc_enabled,
-        kernels = kernels,
-        main = main,
-        shard_count = shard_count,
-        tags = test_tags,
-        xla_enabled = xla_enabled,
-        **kwargs
-    )
-
-register_extension_info(
-    extension_name = "sycl_py_test",
-    label_regex_map = {"deps": "deps:{extension_name}"},
-)
-
 def py_tests(
         name,
         srcs,
@@ -2490,13 +2469,13 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         srcs = srcs + protodeps + [clean_dep("//tensorflow/tools/proto_text:placeholder.txt")],
         outs = out_hdrs + out_srcs,
         visibility = visibility,
-        compatible_with = compatible_with,
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
         exec_tools = [
             clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions"),
         ],
+        compatible_with = compatible_with,
     )
 
     native.filegroup(
@@ -2507,6 +2486,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
     )
 
     cc_library(
+        compatible_with = compatible_with,
         name = name,
         srcs = out_srcs,
         hdrs = out_hdrs,
@@ -2935,8 +2915,11 @@ def tf_grpc_cc_dependency():
 def get_compatible_with_portable():
     return []
 
+def get_compatible_with_cloud():
+    return []
+
 def filegroup(**kwargs):
-    return native.filegroup(**kwargs)
+    native.filegroup(**kwargs)
 
 def genrule(**kwargs):
-    return native.genrule(**kwargs)
+    native.genrule(**kwargs)

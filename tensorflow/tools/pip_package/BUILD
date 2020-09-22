@@ -36,6 +36,7 @@ transitive_hdrs(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/c/experimental/filesystem:modular_filesystem",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.
@@ -145,8 +146,11 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tpu",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
+    "//tensorflow/tools/common:public_api",
+    "//tensorflow/tools/common:test_module1",
+    "//tensorflow/tools/common:traverse",
+    "//tensorflow/python/distribute:parameter_server_strategy_v2",
     "//tensorflow/python/distribute/client:client",
-    "//tensorflow/python/distribute/client:parameter_server_client",
     "//tensorflow/python/distribute/client:remote_eager_lib",
     "//tensorflow/python/distribute/client:metric_utils",
 ]
@@ -199,7 +203,6 @@ filegroup(
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
-        "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",

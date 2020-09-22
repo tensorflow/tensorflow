@@ -480,8 +480,9 @@ class RingGathererTest : public ::testing::Test {
       RingGatherer* gatherer = new RingGatherer;
       core::ScopedUnref unref(gatherer);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, &input_tensor_, output_tensor_ptr);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, &input_tensor_, output_tensor_ptr);
       TF_CHECK_OK(gatherer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-gather.

@@ -627,7 +627,8 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
       }
       currDstDim++;
     }
-    if (currSrcDim != srcShape.size()) isExpandingOrCollapsing = false;
+    if (currSrcDim != srcShape.size() || currDstDim != dstShape.size())
+      isExpandingOrCollapsing = false;
 
     if (!isExpandingOrCollapsing) {
       auto getIdentityExprs = [&rewriter](int n) {

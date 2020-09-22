@@ -82,6 +82,7 @@ tf_cuda_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/nccl:collective_communicator",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",

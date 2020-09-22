@@ -57,6 +57,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   GraphDef graph_def;
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def));
+  StripDevicePlacement(graph_def.mutable_library());
 
   DataServiceDispatcherClient client(address, protocol);
   int64 dataset_id;
@@ -64,7 +65,9 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
                [&]() { return client.RegisterDataset(graph_def, dataset_id); },
-               /*description=*/"register dataset", deadline_micros));
+               /*description=*/
+               strings::StrCat("register dataset with dispatcher at ", address),
+               deadline_micros));
 
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));

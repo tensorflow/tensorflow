@@ -39,7 +39,7 @@ def TFL_Dialect : Dialect {
       represented using zero-dimensional tensors);
   }];
 
-  let cppNamespace = "TFL";
+  let cppNamespace = "::mlir::TFL";
 }
 
 //===----------------------------------------------------------------------===//
@@ -720,14 +720,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$output
   );
 
   let hasOptions = 1;

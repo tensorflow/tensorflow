@@ -1954,7 +1954,7 @@ class UninitializedVariable(BaseResourceVariable):
           unique_id = shared_name
         else:
           unique_id = "%s_%d" % (handle_name, ops.uid())
-          shared_name = context.shared_name(unique_id)
+          shared_name = context.shared_name()
         handle = _variable_handle_from_shape_and_dtype(
             shape=shape,
             dtype=dtype,

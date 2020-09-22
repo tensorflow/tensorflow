@@ -154,7 +154,7 @@ class TrtConversionParams(
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
     max_batch_size: max size for the input batch. This parameter is only
-      effective when is_dynamic_op=False which is not supported in TF 2.0.
+      effective when use_implicit_batch is true.
     allow_build_at_runtime: whether to build TensorRT engines during runtime.
       If no TensorRT engine can be found in cache that can handle the given
       inputs during runtime, then a new TensorRT engine is built at runtime if
@@ -341,9 +341,8 @@ def get_tensorrt_rewriter_config(conversion_params,
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
     optimizer.parameter_map[
         "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
-    if not is_v2:
-      optimizer.parameter_map[
-          "max_batch_size"].i = conversion_params.max_batch_size
+    optimizer.parameter_map[
+        "max_batch_size"].i = conversion_params.max_batch_size
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)

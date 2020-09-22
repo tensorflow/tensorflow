@@ -603,6 +603,9 @@ tf_py_test(
     size = "medium",
     srcs = ["string_lookup_test.py"],
     python_version = "PY3",
+    tags = [
+        "notsan",  #b/168758821
+    ],
     deps = [
         ":preprocessing_test_utils",
         ":string_lookup",

@@ -30,6 +30,9 @@ template <typename T>
 class OperationPass;
 class Pass;
 
+// Transforms unranked HLO operations to ranked ones where possible.
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
+
 namespace mhlo {
 
 /// Lowers HLO control flow ops to the Standard dialect.
@@ -51,9 +54,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
-
-// Transforms unranked HLO operations to ranked ones where possible.
-std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.

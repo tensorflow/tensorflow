@@ -27,12 +27,12 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 # Avoid breaking users who directly import this symbol from this file.

@@ -522,6 +522,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/nccl:collective_communicator",
     ],
 )
 

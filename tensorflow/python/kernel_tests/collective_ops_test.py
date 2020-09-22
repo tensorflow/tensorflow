@@ -81,6 +81,47 @@ class CollectiveOpsTest(test.TestCase):
       self.assertAllClose(result, [2.], rtol=1e-5, atol=1e-5)
 
   @test_util.run_v2_only
+  def testGatherV2(self):
+    self._setup_context()
+
+    @def_function.function
+    def single_all_gather(in_value, group_size, group_key, instance_key):
+      return gen_collective_ops.collective_gather_v2(
+          in_value,
+          group_size,
+          group_key,
+          instance_key,
+          communication_hint='auto')
+
+    @def_function.function
+    def run_all_gather_1cpu():
+      with ops.device('/device:CPU:0'):
+        in_value = constant_op.constant([1.])
+        group_size = constant_op.constant(1)
+        group_key = constant_op.constant(1)
+        instance_key = constant_op.constant(1)
+        return single_all_gather(in_value, group_size, group_key, instance_key)
+
+    @def_function.function
+    def run_all_gather_2cpus():
+      in_value = constant_op.constant([1.])
+      group_size = constant_op.constant(2)
+      group_key = constant_op.constant(2)
+      instance_key = constant_op.constant(2)
+      collectives = []
+      with ops.device('/device:CPU:0'):
+        collectives.append(single_all_gather(in_value, group_size, group_key,
+                                             instance_key))
+      with ops.device('/device:CPU:1'):
+        collectives.append(single_all_gather(in_value, group_size, group_key,
+                                             instance_key))
+      return collectives
+
+    self.assertAllClose(run_all_gather_1cpu(), [1.], rtol=1e-5, atol=1e-5)
+    for result in run_all_gather_2cpus():
+      self.assertAllClose(result, [1., 1.], rtol=1e-5, atol=1e-5)
+
+  @test_util.run_v2_only
   def testInstanceKeyScopedUnderGroupKey(self):
     self._setup_context()
 

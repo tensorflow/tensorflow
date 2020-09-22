@@ -93,6 +93,10 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:

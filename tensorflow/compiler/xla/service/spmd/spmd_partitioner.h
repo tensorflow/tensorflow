@@ -407,10 +407,11 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandlePartitionId(HloInstruction* hlo) override;
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
-  Status HandleDotHelper(
-      HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
-      const std::function<StatusOr<HloInstruction*>(
-          HloInstruction*, HloInstruction*, SpmdBuilder*)>& create_sharded_dot);
+  Status HandleDotHelper(HloInstruction* hlo,
+                         const DotConvDimsMapping& dims_mapping,
+                         const std::function<StatusOr<HloInstruction*>(
+                             HloInstruction*, HloInstruction*, SpmdBuilder*,
+                             const Window& conv_window)>& create_sharded_dot);
 
   // Common handle for elementwise HLOs.
   Status HandleElementwise(HloInstruction* hlo);

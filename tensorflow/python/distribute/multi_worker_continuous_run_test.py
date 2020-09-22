@@ -40,6 +40,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 
 
+# TODO(b/151232436): This test doesn't work with check health enabled because it
+# relies on barrier around creating strategies. Check health performs
+# communications inside strategy constructor, which makes the barrier
+# ineffective.
+CollectiveAllReduceExtended = (
+    collective_all_reduce_strategy.CollectiveAllReduceExtended)
+CollectiveAllReduceExtended._enable_check_health = False
+
+
 NUM_WORKERS = 5
 
 

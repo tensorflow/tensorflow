@@ -56,6 +56,10 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
+CollectiveAllReduceExtended = (
+    collective_all_reduce_strategy.CollectiveAllReduceExtended)
+
+
 def create_test_objects(cluster_spec=None,
                         task_type=None,
                         task_id=None,
@@ -430,13 +434,21 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testEnableCollectiveOps(self):
+    # We cannot enable check health with this test because it mocks
+    # enable_collective_ops.
+    CollectiveAllReduceExtended._enable_check_health = False
     strategy, mock_called = self._get_strategy_with_mocked_methods()
+    CollectiveAllReduceExtended._enable_check_health = True
     self.assertTrue(strategy.extended._std_server_started)
     self.assertTrue(mock_called[0])
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testEnableCollectiveOpsAndClusterResolver(self):
+    # We cannot enable check health with this test because it mocks
+    # enable_collective_ops.
+    CollectiveAllReduceExtended._enable_check_health = False
     strategy, _ = self._get_strategy_with_mocked_methods()
+    CollectiveAllReduceExtended._enable_check_health = True
     self.assertEqual(strategy.cluster_resolver.task_type, 'worker')
     self.assertEqual(strategy.cluster_resolver.task_id, 1)
 

@@ -16,9 +16,14 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/group_events.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -29,6 +34,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::testing::UnorderedElementsAre;
 
 TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   constexpr int64 kStepNum = 123;
@@ -561,6 +568,88 @@ TEST(GroupEventsTest, WorkerTest) {
               }
             });
       });
+}
+
+absl::flat_hash_set<int64> ParseGroupIds(absl::string_view selected_group_ids) {
+  absl::flat_hash_set<int64> group_ids;
+  std::vector<absl::string_view> strs = absl::StrSplit(selected_group_ids, '=');
+  std::vector<absl::string_view> group_id_strs = absl::StrSplit(strs[1], ',');
+  for (absl::string_view group_id_str : group_id_strs) {
+    int64 group_id;
+    if (absl::SimpleAtoi(group_id_str, &group_id)) group_ids.insert(group_id);
+  }
+  return group_ids;
+}
+
+TEST(GroupEventsTest, BatchingSessionTest) {
+  constexpr absl::string_view kSchedule = "Schedule";
+  constexpr int64 kBatchContextType =
+      static_cast<int64>(ContextType::kSharedBatchScheduler);
+  constexpr int64 kBatchContextId = 123;
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(2);
+  auto request_thread = plane.GetOrCreateLine(0);
+  // First request.
+  CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSessionRun, 0,
+               100);
+  CreateXEvent(&plane, &request_thread, kSchedule, 0, 100,
+               {{StatType::kProducerType, kBatchContextType},
+                {StatType::kProducerId, kBatchContextId}});
+  // Second request.
+  CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSessionRun, 200,
+               100);
+  CreateXEvent(&plane, &request_thread, kSchedule, 200, 100,
+               {{StatType::kProducerType, kBatchContextType},
+                {StatType::kProducerId, kBatchContextId}});
+  auto batch_thread = plane.GetOrCreateLine(1);
+  CreateXEvent(&plane, &batch_thread, HostEventType::kProcessBatch, 200, 100,
+               {{StatType::kConsumerType, kBatchContextType},
+                {StatType::kConsumerId, kBatchContextId}});
+
+  GroupMetadataMap group_metadata_map;
+  GroupTfEvents(&raw_space, &group_metadata_map);
+  EXPECT_EQ(group_metadata_map.size(), 3);
+  // Check that the ProcessBatch group has two BatchingSessionRun groups as
+  // parents.
+  EXPECT_EQ(group_metadata_map[0].parents.size(), 2);
+  // Check that the BatchingSessionRun groups have one ProcessBatch group as a
+  // child.
+  EXPECT_EQ(group_metadata_map[1].children.size(), 1);
+  EXPECT_EQ(group_metadata_map[2].children.size(), 1);
+  // Chech that the events have the selected_group_ids stat set.
+  uint64 num_checked = 0;
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
+              EXPECT_TRUE(group_id.has_value());
+              absl::string_view selected_group_ids;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kSelectedGroupIds)) {
+                selected_group_ids = stat->StrOrRefValue();
+              }
+              if (line.Id() == 0) {
+                if (event.Type() == HostEventType::kBatchingSessionRun) {
+                  EXPECT_THAT(ParseGroupIds(selected_group_ids),
+                              UnorderedElementsAre(*group_id, 0));
+                  ++num_checked;
+                }
+              } else if (line.Id() == 1) {
+                EXPECT_THAT(ParseGroupIds(selected_group_ids),
+                            UnorderedElementsAre(0, 1, 2));
+                ++num_checked;
+              }
+            });
+      });
+  EXPECT_EQ(num_checked, 3);
 }
 
 }  // namespace

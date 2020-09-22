@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace {

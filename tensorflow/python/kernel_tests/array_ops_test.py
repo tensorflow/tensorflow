@@ -1403,6 +1403,34 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       check_dtypes(dtypes.int64, dtypes.int32)
       check_dtypes(dtypes.int64, dtypes.int64)
 
+  def testOutputDtype(self):
+
+    def check_output_dtype(output_dtype):
+      res = self.evaluate(
+          array_ops.sequence_mask(
+              constant_op.constant([1, 3, 2], dtype=dtypes.int32),
+              constant_op.constant(5, dtype=dtypes.int32),
+              dtype=output_dtype))
+      self.assertAllEqual(
+          res,
+          self.evaluate(
+              math_ops.cast([[True, False, False, False, False],
+                             [True, True, True, False, False],
+                             [True, True, False, False, False]], output_dtype)))
+
+    check_output_dtype(dtypes.bool)
+    check_output_dtype("bool")
+    check_output_dtype(np.bool)
+    check_output_dtype(dtypes.int32)
+    check_output_dtype("int32")
+    check_output_dtype(np.int32)
+    check_output_dtype(dtypes.float32)
+    check_output_dtype("float32")
+    check_output_dtype(np.float32)
+    check_output_dtype(dtypes.int64)
+    check_output_dtype("float64")
+    check_output_dtype(np.float64)
+
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
