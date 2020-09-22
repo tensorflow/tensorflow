@@ -257,9 +257,8 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
-  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
   std::shared_ptr<const DatasetDef> dataset_def;
-  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   *response->mutable_dataset_def() = *dataset_def;
   return Status::OK();
 }
@@ -298,9 +297,8 @@ Status DataServiceDispatcherImpl::MakeSplitProvider(
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
-  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
   std::shared_ptr<const DatasetDef> dataset_def;
-  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> standalone_dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
@@ -453,6 +451,11 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
         actual, ">");
   }
   if (job->dataset_id != dataset_id) {
+    std::shared_ptr<const DatasetDef> job_dataset_def;
+    TF_RETURN_IF_ERROR(GetDatasetDef(job->dataset_id, job_dataset_def));
+    std::shared_ptr<const DatasetDef> dataset_def;
+    TF_RETURN_IF_ERROR(GetDatasetDef(dataset_id, dataset_def));
+    Status s = CheckGraphsEqual(job_dataset_def->graph(), dataset_def->graph());
     return errors::FailedPrecondition(
         "Tried to create a job with name ", job_name, " for dataset ",
         dataset_id,
@@ -460,7 +463,8 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
         job->dataset_id,
         ". This either means that you are distributing two different datasets "
         "under the same job_name, or that your dataset is being constructed "
-        "non-deterministically.");
+        "non-deterministically. Comparing the datasets results in: ",
+        s);
   }
   return Status::OK();
 }
@@ -730,6 +734,21 @@ Status DataServiceDispatcherImpl::GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     DCHECK(job->finished);
   }
   return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    int64 dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  return GetDatasetDef(*dataset, dataset_def);
+}
+
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
+  return dataset_store_->Get(key, dataset_def);
 }
 
 }  // namespace data

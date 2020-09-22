@@ -501,6 +501,22 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertCountEqual(list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testSharedJobNameDifferentDatasets(self):
+    dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+
+    def make_ds(num_elements):
+      return dataset_ops.Dataset.range(num_elements)
+
+    ds1 = _make_distributed_dataset(
+        make_ds(num_elements=10), dispatcher, job_name="job_name")
+    ds2 = _make_distributed_dataset(
+        make_ds(num_elements=11), dispatcher, job_name="job_name")
+    iter(ds1)
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "AttrValues are different"):
+      iter(ds2)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDifferentJobNames(self):
     dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
     num_elements = 10
