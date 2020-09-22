@@ -8775,6 +8775,14 @@ func PrefetchDatasetLegacyAutotune(value bool) PrefetchDatasetAttr {
 	}
 }
 
+// PrefetchDatasetBufferSizeMin sets the optional buffer_size_min attribute to value.
+// If not specified, defaults to 0
+func PrefetchDatasetBufferSizeMin(value int64) PrefetchDatasetAttr {
+	return func(m optionalAttr) {
+		m["buffer_size_min"] = value
+	}
+}
+
 // Creates a dataset that asynchronously prefetches elements from `input_dataset`.
 //
 // Arguments:
