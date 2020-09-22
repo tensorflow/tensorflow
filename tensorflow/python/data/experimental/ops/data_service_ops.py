@@ -322,8 +322,6 @@ def distribute(processing_mode,
   started first so that tf.data workers can register to it.
 
   >>> dispatcher = tf.data.experimental.service.DispatchServer()
-  >>> print(dispatcher.target) # prints grpc://localhost:<port>
-
   >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker1 = tf.data.experimental.service.WorkerServer(
   ...           dispatcher_address=dispatcher_address)
