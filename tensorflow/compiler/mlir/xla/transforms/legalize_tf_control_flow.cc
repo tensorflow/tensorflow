@@ -114,7 +114,7 @@ void LowerIf(TF::IfOp op) {
   SmallVector<Value, 3> inputs(op.input());
   auto tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
-  // Create the new if op with tuple inputs.
+  // Create the new `mhlo.if` op with tuple inputs.
   auto result_type = builder.getTupleType(op.getResultTypes());
   auto if_op = builder.create<mhlo::IfOp>(loc, result_type, op.cond(),
                                           tuple_input, tuple_input);
@@ -125,7 +125,7 @@ void LowerIf(TF::IfOp op) {
   ImportXlaRegion(op.then_function(), &if_op.true_branch(), loc);
   ImportXlaRegion(op.else_function(), &if_op.false_branch(), loc);
 
-  // De-tuple the results of the xla hlo if result.
+  // De-tuple the results of the `mhlo.if`.
   Detuple(if_op.getResult(), op.getResults(), &builder);
   op.erase();
 }
@@ -142,7 +142,7 @@ void LowerCase(TF::CaseOp op) {
   // Create replica of input tuple for each branch
   SmallVector<Value, 4> n_tuple_inputs(op.num_branches(), tuple_input);
 
-  // Create the new case op with tuple inputs.
+  // Create the new `mhlo.case` op with tuple inputs.
   auto case_op =
       builder.create<mhlo::CaseOp>(loc, op.getResultTypes(), op.branch_index(),
                                    n_tuple_inputs, op.branches().size());
@@ -168,7 +168,7 @@ void LowerWhile(TF::WhileOp op) {
   builder.setInsertionPoint(op);
   Value tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
-  // Create the new while op with tuple inputs.
+  // Create the new `mhlo.while` op with tuple inputs.
   auto while_op = builder.create<mhlo::WhileOp>(
       loc, builder.getTupleType(op.getResultTypes()), tuple_input);
 
@@ -178,7 +178,7 @@ void LowerWhile(TF::WhileOp op) {
   ImportXlaRegion(op.cond_function(), &while_op.cond(), loc,
                   /*tuple_return=*/false);
 
-  // De-tuple the results of the xla hlo while.
+  // De-tuple the results of the `mhlo.while`.
   Detuple(while_op.getResult(), op.getResults(), &builder);
   op.erase();
 }
@@ -193,7 +193,7 @@ void ReplaceBlockArgs(Block* block, Type tuple_type, OpBuilder* builder) {
     block->eraseArgument(i);
 }
 
-// Finds and replaces implicitly captured value uses with tuple block argument.
+// Replaces implicitly captured value uses with tuple block argument.
 // get_tuple_element's are created to extract specific values. Values from
 // get_tuple_element's are returned in the order of `implicit_inputs`.
 llvm::SmallVector<Value, 4> ReplaceImplicitInputs(
@@ -222,6 +222,25 @@ llvm::SmallVector<Value, 4> ReplaceImplicitInputs(
   return implicit_input_elements;
 }
 
+// Finds and replaces implicitly captured value uses with tuple block argument.
+// A tuple of implicitly captured values is also created and returned, for use
+// as an operand to the associated mhlo control flow op.
+Value TupleImplicitInputs(Region& region, Location loc, OpBuilder* builder) {
+  llvm::SetVector<Value> implicit_inputs;
+  getUsedValuesDefinedAbove(region, region, implicit_inputs);
+  llvm::ArrayRef<Value> implicit_inputs_ref = implicit_inputs.getArrayRef();
+  Value tuple_input = builder->create<mhlo::TupleOp>(loc, implicit_inputs_ref);
+  Block& block = region.front();
+  // `tf.CaseRegion`/`tf.IfRegion` are expected to have no block arguments and
+  // instead all inputs used by their branch regions are implicitly captured
+  // from above.
+  assert(block.getNumArguments() == 0);
+  block.addArgument(tuple_input.getType());
+  builder->setInsertionPointToStart(&block);
+  ReplaceImplicitInputs(&block, /*offset=*/0, implicit_inputs_ref, builder);
+  return tuple_input;
+}
+
 // Replaces block terminator (tf.Yield) with `mhlo.return`. Additional results
 // can be returned if `extra_results` is not empty. If `tuple_return` is
 // set, a tuple of the return values will be set as the terminator operand.
@@ -244,6 +263,33 @@ void ReplaceTerminator(Block* block, ArrayRef<Value> extra_results,
   terminator->erase();
 }
 
+void LowerIfRegion(TF::IfRegionOp op) {
+  Location loc = op.getLoc();
+  OpBuilder builder(op);
+
+  // Tuple implicit inputs per region and update terminators to return tuples.
+  builder.setInsertionPoint(op);
+  Value then_input = TupleImplicitInputs(op.then_branch(), loc, &builder);
+  ReplaceTerminator(&op.then_branch().front(), /*extra_results=*/{}, &builder);
+
+  builder.setInsertionPoint(op);
+  Value else_input = TupleImplicitInputs(op.else_branch(), loc, &builder);
+  ReplaceTerminator(&op.else_branch().front(), /*extra_results=*/{}, &builder);
+
+  // Create the new `mhlo.if` op with tuple inputs and take ownership of regions
+  // from `tf.IfRegion` op.
+  builder.setInsertionPoint(op);
+  auto result_type = builder.getTupleType(op.getResultTypes());
+  auto if_op = builder.create<mhlo::IfOp>(loc, result_type, op.cond(),
+                                          then_input, else_input);
+  if_op.true_branch().takeBody(op.then_branch());
+  if_op.false_branch().takeBody(op.else_branch());
+
+  // De-tuple the results of the `mhlo.if`.
+  Detuple(if_op.getResult(), op.getResults(), &builder);
+  op.erase();
+}
+
 void LowerWhileRegion(TF::WhileRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
@@ -259,7 +305,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   builder.setInsertionPoint(op);
   Value tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
-  // Create the new while op with tuple inputs. Implicit inputs are also
+  // Create the new `mhlo.while` op with tuple inputs. Implicit inputs are also
   // returned.
   auto while_result_types = llvm::to_vector<4>(op.getResultTypes());
   while_result_types.reserve(while_result_types.size() +
@@ -269,7 +315,8 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   auto while_op = builder.create<mhlo::WhileOp>(
       loc, builder.getTupleType(while_result_types), tuple_input);
 
-  // Rewrite cond and associated block arguments and terminator.
+  // Rewrite cond and associated block arguments and terminator. Ownership of
+  // cond region is transfered over from `tf.WhileRegion` to `mhlo.while`.
   Region& cond = while_op.cond();
   cond.takeBody(op.cond());
   Block& cond_block = cond.front();
@@ -281,7 +328,8 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   ReplaceTerminator(&cond_block, /*extra_results=*/{}, &builder,
                     /*tuple_return=*/false);
 
-  // Rewrite body and associated block arguments and terminator.
+  // Rewrite body and associated block arguments and terminator. Ownership of
+  // body region is transfered over from `tf.WhileRegion` to `mhlo.while`.
   Region& body = while_op.body();
   body.takeBody(op.body());
   Block& body_block = body.front();
@@ -293,7 +341,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
       &body_block, inputs_size, implicit_inputs.getArrayRef(), &builder);
   ReplaceTerminator(&body_block, implicit_input_elements, &builder);
 
-  // De-tuple the results of the xla hlo while.
+  // De-tuple the results of the `mhlo.while`.
   builder.setInsertionPoint(op);
   Detuple(while_op.getResult(), op.getResults(), &builder);
   op.erase();
@@ -312,6 +360,10 @@ void LegalizeTFControlFlow::runOnOperation() {
     }
     if (auto if_op = dyn_cast<TF::IfOp>(op)) {
       LowerIf(if_op);
+      return;
+    }
+    if (auto if_region_op = dyn_cast<TF::IfRegionOp>(op)) {
+      LowerIfRegion(if_region_op);
       return;
     }
     if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
