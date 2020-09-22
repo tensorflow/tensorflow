@@ -52,6 +52,8 @@ TfLiteRegistration* Register_MaxPool2D();
 TfLiteRegistration* Register_AvgPool2D();
 TfLiteRegistration* Register_AvgPool2D_Global();
 TfLiteRegistration* Register_Lookup_8();
+TfLiteRegistration* Register_BSign_8();
+TfLiteRegistration* Register_BConv2D_Bin_Out();
 
 // legacy operators
 TfLiteRegistration* Register_FullyConnected_16();
