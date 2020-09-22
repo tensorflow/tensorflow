@@ -706,7 +706,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom training logic.
     This method is called by `Model.make_train_function`.
 
-    This method should contain the mathemetical logic for one step of training.
+    This method should contain the mathematical logic for one step of training.
     This typically includes the forward pass, loss calculation, backpropagation,
     and metric updates.
 
@@ -878,7 +878,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             The model will not be trained on this data. Thus, note the fact
             that the validation loss of data provided using `validation_split`
             or `validation_data` is not affected by regularization layers like
-            noise and dropuout.
+            noise and dropout.
             `validation_data` will override `validation_split`.
             `validation_data` could be:
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
@@ -1131,7 +1131,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom evaluation logic.
     This method is called by `Model.make_test_function`.
 
-    This function should contain the mathemetical logic for one step of
+    This function should contain the mathematical logic for one step of
     evaluation.
     This typically includes the forward pass, loss calculation, and metrics
     updates.
@@ -1383,7 +1383,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom inference logic.
     This method is called by `Model.make_predict_function`.
 
-    This method should contain the mathemetical logic for one step of inference.
+    This method should contain the mathematical logic for one step of inference.
     This typically includes the forward pass.
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
@@ -1921,7 +1921,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This allows you to save the entirety of the state of a model
     in a single file.
 
-    Saved models can be reinstantiated via `keras.models.load_model`.
+    Saved models can be re-instantiated via `keras.models.load_model`.
     The model returned by `load_model` is a compiled model ready to be used
     (unless the saved model was never compiled in the first place).
 
