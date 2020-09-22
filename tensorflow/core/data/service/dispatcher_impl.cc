@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"

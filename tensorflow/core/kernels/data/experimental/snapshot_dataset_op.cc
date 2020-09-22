@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"

@@ -614,6 +614,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:hash_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
