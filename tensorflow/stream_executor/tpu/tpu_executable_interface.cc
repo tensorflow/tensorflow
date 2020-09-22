@@ -189,13 +189,12 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
           shape, alias_config, run_options->allocator(), &arguments, stream,
           run_options->run_options().host_to_device_stream()));
 
-  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
-
   // Address of the buffer in TPU memory that is being speculated.
   absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr;
   if (hlo_module_) {
-    for (const auto& [parameter, index] :
-         hlo_module_->CrossProgramPrefetches()) {
+    for (const auto& prefetch : hlo_module_->CrossProgramPrefetches()) {
+      const auto& parameter = prefetch.first;
+      const auto& index = prefetch.second;
       CHECK_LT(parameter, arguments.size());
       // Ensure the cross program prefetched buffer doesn't alias with any
       // program outputs. If the input and output aliased, the buffer could be
@@ -203,6 +202,7 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
       // data from fast memory instead of fresh data in large memory.
       auto it = arguments[parameter].MutableBuffers()->find({index});
       CHECK(it != arguments[parameter].MutableBuffers()->end());
+      CHECK(!it->second.AsDeviceMemoryBase().is_null());
       if (absl::c_none_of(result.Result().buffers(), [&](auto index_addr_pair) {
             return index_addr_pair.second.IsSameAs(
                 it->second.AsDeviceMemoryBase());
@@ -212,6 +212,11 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
       }
     }
   }
+
+  // MarkToBeReleasedArguments may std::move some elements of arguments, so it
+  // must run after the cross program prefetch address is calculated from the
+  // arguments.
+  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
 
   TF_RETURN_IF_ERROR(LoadProgramAndEnqueueToStream(
       *run_options, memory_bases, result.Result().root_buffer(),

@@ -35,11 +35,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
-#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
 namespace stream_executor {
+
+class Stream;
 
 // Structure used for device memory leak checking.
 struct AllocRecord {
@@ -862,32 +863,6 @@ DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T> *parent,
     return DeviceMemory<T>{};
   }
   return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count));
-}
-
-template <typename... Params, typename... Args>
-inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                                  const TypedKernel<Params...> &kernel,
-                                  Args... args) {
-  KernelInvocationChecker<std::tuple<Params...>,
-                          std::tuple<Args...>>::CheckAllStaticAssert();
-  if (ok()) {
-    // This is the core that allows type-safe kernel launching.
-    // Since the platforms take kernel arguments as tuples of (void *, size),
-    // we pack the variadic parameters passed as ...args into the desired
-    // tuple form and pass that packed form to the StreamExecutor::Launch()
-    // implementation.
-    KernelArgsArray<sizeof...(args)> kernel_args;
-    kernel.PackParams(&kernel_args, args...);
-    DCHECK(parent_ != nullptr);
-    bool ok =
-        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args)
-            .ok();
-    if (!ok) {
-      SetError();
-      LOG(WARNING) << "parent failed to launch kernel: " << &kernel;
-    }
-  }
-  return *this;
 }
 
 }  // namespace stream_executor

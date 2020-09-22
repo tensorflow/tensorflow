@@ -685,6 +685,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (True, False),                          # compile
       (True, False),                          # override_function
   ))
+  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
+                          'for function.')
   def testClone(self, input_signature, autograph, autograph_options, implements,
                 relax_shapes, compile_, override_function):
     original_py_function = lambda x: x
@@ -767,6 +769,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (None, 'foo.bar'),  # implements
       (None, True, False),  # relax_shapes
   ))
+  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
+                          'for function.')
   def test_pickle(self, input_signature, autograph, autograph_options,
                   implements, relax_shapes):
     """@function objects can be pickled and unpickled."""

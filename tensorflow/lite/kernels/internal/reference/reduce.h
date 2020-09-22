@@ -70,6 +70,9 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
     // eg: For num_dims=3, [0, 1, 2] is the same as [-3, -2, -1]  */
     int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
     TFLITE_DCHECK(current >= 0 && current < num_dims);
+    if (current < 0 || current >= num_dims) {
+      return false;
+    }
     bool is_dup = false;
     for (int j = 0; j < *out_num_axis; ++j) {
       if (out_axis[j] == current) {
@@ -186,11 +189,11 @@ inline bool Mean(const T* input_data, const int* input_dims,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
+  size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;
@@ -359,11 +362,11 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
+  size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;

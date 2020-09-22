@@ -106,9 +106,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         mins.push_back(FloatAttr::getValueAsDouble(*it++));
         maxs.push_back(FloatAttr::getValueAsDouble(*it));
       }
-      quant_type = quant::fakeQuantAttrsToType(
-          op.getLoc(), num_bits, op.axis()->getSExtValue(), mins, maxs,
-          narrow_range, expressed, is_signed);
+      quant_type =
+          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
+                                      maxs, narrow_range, expressed, is_signed);
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
@@ -119,7 +119,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       return failure();
     }
 
-    rewriter.setInsertionPointAfter(op);
+    rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);

@@ -51,6 +51,7 @@ from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -774,19 +775,19 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     def create_variables(table):
       """Create all variables."""
-      shape = (table.vocabulary_size, table.dim)
+      variable_shape = (table.vocabulary_size, table.dim)
 
       def getter(name, shape, dtype, initializer, trainable):
-        # TODO(bfontain): make CheckpointInitialValue a callable rather than
-        # something that inherits from tensor.
-        if not isinstance(initializer, base.CheckpointInitialValue):
-          initial_value = functools.partial(initializer, shape, dtype=dtype)
-        else:
-          initial_value = initializer
-
+        del shape
+        # _add_variable_with_custom_getter clears the shape sometimes, so we
+        # take the global shape from outside the getter.
+        initial_value = functools.partial(initializer, variable_shape,
+                                          dtype=dtype)
         return tf_variables.Variable(
             name=name,
             initial_value=initial_value,
+            shape=variable_shape,
+            dtype=dtype,
             trainable=trainable)
 
       def variable_creator(name, initializer, trainable=True):
@@ -796,7 +797,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         return self._add_variable_with_custom_getter(
             name=name,
             initializer=initializer,
-            shape=shape,
+            shape=variable_shape,
             dtype=dtypes.float32,
             getter=getter,
             trainable=trainable)
@@ -1393,13 +1394,64 @@ def _ragged_embedding_lookup_with_reduce(table, ragged, weights, combiner):
   return ragged_result
 
 
+@tf_export("tpu.experimental.embedding.serving_embedding_lookup")
 def cpu_embedding_lookup(inputs, weights, tables, feature_config):
-  """Uses CPU embedding lookup for embedding ids in features.
+  """Apply standard lookup ops with `tf.tpu.experimental.embedding` configs.
+
+  This function is a utility which allows using the
+  `tf.tpu.experimental.embedding` config objects with standard lookup functions.
+  This can be used when exporting a model which uses
+  `tf.tpu.experimental.embedding.TPUEmbedding` for serving on CPU. In particular
+  `tf.tpu.experimental.embedding.TPUEmbedding` only supports lookups on TPUs and
+  should not be part of your serving graph.
+
+  Note that TPU specific options (such as `max_sequence_length`) in the
+  configuration objects will be ignored.
+
+  In the following example we take take a trained model (see the documentation
+  for `tf.tpu.experimental.embedding.TPUEmbedding` for the context) and create a
+  saved model with a serving function that will perform the embedding lookup and
+  pass the results to your model:
+
+  ```python
+  model = model_fn(...)
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=1024,
+      optimizer=tf.tpu.experimental.embedding.SGD(0.1))
+  checkpoint = tf.train.Checkpoint(model=model, embedding=embedding)
+  checkpoint.restore(...)
+
+  @tf.function(input_signature=[{'feature_one': tf.TensorSpec(...),
+                                 'feature_two': tf.TensorSpec(...),
+                                 'feature_three': tf.TensorSpec(...)}])
+  def serve_tensors(embedding_featurese):
+    embedded_features = tf.tpu.experimental.embedding.serving_embedding_lookup(
+        embedding_features, None, embedding.embedding_tables,
+        feature_config)
+    return model(embedded_features)
+
+  model.embedding_api = embedding
+  tf.saved_model.save(model,
+                      export_dir=...,
+                      signatures={'serving_default': serve_tensors})
+
+  ```
+
+  NOTE: Its important to assign the embedding api object to a member of your
+  model as `tf.saved_model.save` only supports saving variables one `Trackable`
+  object. Since the model's weights are in `model` and the embedding table are
+  managed by `embedding`, we assign `embedding` to and attribute of `model` so
+  that tf.saved_model.save can find the embedding variables.
+
+  NOTE: The same `serve_tensors` function and `tf.saved_model.save` call will
+  work directly from training.
 
   Args:
     inputs: a nested structure of Tensors, SparseTensors or RaggedTensors.
     weights: a nested structure of Tensors, SparseTensors or RaggedTensors or
-      None for no weights.
+      None for no weights. If not None, structure must match that of inputs, but
+      entries are allowed to be None.
     tables: a dict of mapping TableConfig objects to Variables.
     feature_config: a nested structure of FeatureConfig objects with the same
       structure as inputs.
@@ -1490,10 +1542,8 @@ def extract_variable_info(kwargs):
     return (kwargs["name"], shape,
             kwargs["initial_value"].keywords.get("dtype", kwargs["dtype"]),
             kwargs["initial_value"].func)
-  elif isinstance(kwargs["initial_value"], base.CheckpointInitialValue):
-    return (kwargs["name"], kwargs["initial_value"].shape,
-            kwargs["initial_value"].dtype, kwargs["initial_value"])
-  elif "shape" not in kwargs or kwargs["shape"] is None:
+  elif "shape" not in kwargs or kwargs["shape"] is None or not callable(
+      kwargs["initial_value"]):
     raise ValueError(
         "Unable to extract initializer function and shape from {}. Please "
         "either pass a function that expects a shape and dtype as the "
@@ -1521,7 +1571,8 @@ def make_sharded_variable_creator(hosts):
     kwargs["skip_mirrored_creator"] = True
 
     num_hosts = len(hosts)
-    name, shape, dtype, initial_value = extract_variable_info(kwargs)
+    name, shape, dtype, unwrapped_initial_value = extract_variable_info(kwargs)
+    initial_value = kwargs["initial_value"]
     rows = shape[0]
     cols = shape[1]
     missing = rows % num_hosts
@@ -1529,26 +1580,23 @@ def make_sharded_variable_creator(hosts):
     partitions = ([rows // num_hosts + 1] * missing + [rows // num_hosts] *
                   (num_hosts - missing))
     variables = []
-    newkwargs = kwargs
-    newkwargs["dtype"] = dtype
-    # TODO(bfontain): Remove this check once we can pass position and shape of
-    # shards to CheckpointInitialValue.
-    if isinstance(initial_value, base.CheckpointInitialValue) and num_hosts > 1:
-      raise RuntimeError("Delayed restoration of variables not available when "
-                         "there are multiple TPU hosts, please ensure that the "
-                         "api object has been built before you restore.")
+    sharding_aware = "shard_info" in tf_inspect.getargspec(initial_value).args
 
+    # Keep track of offset for sharding aware initializers.
+    offset = 0
+    kwargs["dtype"] = dtype
     for i, p in enumerate(partitions):
       with ops.device(hosts[i]):
-        newkwargs["shape"] = (p, cols)
-        newkwargs["name"] = "{}_{}".format(name, i)
-        if isinstance(initial_value, base.CheckpointInitialValue):
-          # TODO(bfontain): Patch CheckpointInitialValue to take in account the
-          # position and shape of this shard.
-          newkwargs["initial_value"] = initial_value
+        kwargs["name"] = "{}_{}".format(name, i)
+        kwargs["shape"] = (p, cols)
+        if sharding_aware:
+          shard_info = base.ShardInfo(kwargs["shape"], (offset, 0))
+          kwargs["initial_value"] = functools.partial(
+              initial_value, shard_info=shard_info)
+          offset += p
         else:
-          newkwargs["initial_value"] = (
-              lambda: initial_value(newkwargs["shape"], dtype=dtype))
+          kwargs["initial_value"] = functools.partial(
+              unwrapped_initial_value, kwargs["shape"], dtype=dtype)
         variables.append(next_creator(*args, **kwargs))
     return TPUShardedVariable(variables, name=name)
   return sharded_variable_creator

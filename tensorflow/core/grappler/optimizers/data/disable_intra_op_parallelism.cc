@@ -89,8 +89,15 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   // `max_intra_op_parallelism` input
   *insert_node.mutable_input()->Add() = max_parallelism_value->name();
 
-  for (const auto& attr_name : {"output_types", "output_shapes"}) {
-    graph_utils::CopyAttribute(attr_name, *last_node, &insert_node);
+  // Set `output_types` and `output_shapes` attributes by copying the relevant
+  // attrs from the input node. If we fail to set the attributes, we abort the
+  // rewrite.
+  for (auto attr : {"output_shapes", "output_types"}) {
+    if (last_node->attr().find(attr) != last_node->attr().end()) {
+      graph_utils::CopyAttribute(attr, *last_node, &insert_node);
+    } else {
+      return Status::OK();
+    }
   }
 
   auto* added_node = graph.AddNode(std::move(insert_node));

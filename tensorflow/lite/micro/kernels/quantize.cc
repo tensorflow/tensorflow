@@ -50,7 +50,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   // TODO(b/128934713): Add support for fixed-point per-channel quantization.
   // Currently this only support affine per-layer quantization.
@@ -72,8 +74,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (((input->type == kTfLiteInt16 || input->type == kTfLiteInt8) &&
        output->type == kTfLiteInt8) ||
       (input->type == kTfLiteInt16 && output->type == kTfLiteInt16)) {
-    double effective_scale =
-        static_cast<double>(input->params.scale / output->params.scale);
+    double effective_scale = static_cast<double>(input->params.scale) /
+                             static_cast<double>(output->params.scale);
 
     QuantizeMultiplier(effective_scale, &data->output_multiplier,
                        &data->output_shift);

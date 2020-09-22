@@ -17,7 +17,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
-#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -70,16 +71,28 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
     case GATHER_COLLECTIVE:
       return "RingGather";
 
+    case PERMUTE_COLLECTIVE:
+      return "Permute";
+
     default:
       return "undef";
   }
 }
+
+string TaskNameFromDeviceName(const string& device_name) {
+  DeviceNameUtils::ParsedName parsed_device;
+  CHECK(DeviceNameUtils::ParseFullName(device_name, &parsed_device));
+  string task_name;
+  CHECK(DeviceNameUtils::GetTaskName(parsed_device, &task_name));
+  return task_name;
+}
 }  // namespace
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
-    const string& device, CollectiveParams* cp, const GroupRecCallback& done) {
-  VLOG(1) << "CompleteGroupLocal device=" << device << " cp: " << cp << ": "
-          << cp->ToString();
+    const DeviceAttributes& device, CollectiveParams* cp,
+    const GroupRecCallback& done) {
+  VLOG(1) << "CompleteGroupLocal device=" << device.name() << " cp: " << cp
+          << ": " << cp->ToString();
   std::vector<StatusCallback> to_be_called;
   GroupRec* gr = nullptr;
   Status status;
@@ -139,13 +152,13 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     // status.
     VLOG(2) << "gr device_type=" << gr->group.device_type
             << " cp device_type=" << cp->group.device_type
-            << " current device=" << device;
+            << " current device=" << device.name();
     if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (cp->group.device_type != gr->group.device_type) {
         gr->status = errors::Internal(
-            "Collective Op ", cp->name, " is assigned to device ", device,
-            " with type ", cp->group.device_type.type_string(),
+            "Collective Op ", cp->name, " is assigned to device ",
+            device.name(), " with type ", cp->group.device_type.type_string(),
             " and group_key ", cp->group.group_key, " but that group has type ",
             gr->group.device_type.type_string());
       } else if (cp->group.group_size != gr->group.group_size) {
@@ -157,37 +170,46 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     }
     if (gr->status.ok()) {
       // Insert device if not already present.
-      auto it = gr->device_set.find(device);
-      if (it == gr->device_set.end()) {
-        if (gr->device_set.size() == gr->group.group_size) {
+      auto it = gr->devices.find(device.name());
+      if (it == gr->devices.end()) {
+        if (gr->devices.size() == gr->group.group_size) {
           // The group is already full.
           gr->status = errors::Internal(
-              "Collective Op ", cp->name, " is assigned to device ", device,
-              " and group_key ", cp->group.group_key,
+              "Collective Op ", cp->name, " is assigned to device ",
+              device.name(), " and group_key ", cp->group.group_key,
               " but that group doesn't contain that device.");
         } else {
           // This is a new device that has not yet joined the group.
-          gr->device_set.insert(device);
-          gr->device_list.push_back(device);
-          DeviceNameUtils::ParsedName parsed_device;
-          DeviceNameUtils::ParseFullName(device, &parsed_device);
-          string task_name = strings::StrCat("/job:", parsed_device.job,
-                                             "/replica:", parsed_device.replica,
-                                             "/task:", parsed_device.task);
-          gr->task_set.insert(task_name);
-          gr->task_list.push_back(task_name);
-          gr->group.num_tasks = static_cast<int32>(gr->task_set.size());
+          gr->devices[device.name()] = device;
+          if (gr->devices.size() == gr->group.group_size) {
+            // The group is full after adding this device, calculate the number
+            // of tasks.
+            std::unordered_set<string> tasks;
+            for (const auto& item : gr->devices) {
+              tasks.insert(TaskNameFromDeviceName(item.first));
+            }
+            gr->group.num_tasks = static_cast<int32>(tasks.size());
+          }
           if (VLOG_IS_ON(1)) {
             string dev_buf;
-            for (const auto& d : gr->device_set) {
-              strings::StrAppend(&dev_buf, ",", d);
+            for (const auto& d : gr->devices) {
+              strings::StrAppend(&dev_buf, ",", d.first);
             }
             VLOG(1) << "CompleteGroupLocal group_key=" << gr->group.group_key
                     << " group_size=" << gr->group.group_size << " (current"
                     << " devices)=(" << dev_buf << ") (number of"
                     << " devices pending)="
-                    << (gr->group.group_size - gr->device_set.size());
+                    << (gr->group.group_size - gr->devices.size());
           }
+        }
+      } else {
+        // If the device already exists, check if the incarnation matches.
+        if (it->second.incarnation() != device.incarnation()) {
+          gr->status = errors::FailedPrecondition(
+              "Device ", device.name(),
+              " current incarnation doesn't match with one in the group. This "
+              "usually means this worker has restarted but the collective "
+              "leader hasn't, or this worker connects to a wrong cluster.");
         }
       }
     }
@@ -196,13 +218,13 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       cp->group.runtime_details = gr->group.runtime_details;
       // If the group is not yet complete, queue to wait for it.
       VLOG(2) << "group_size " << gr->group.group_size << " set size "
-              << gr->device_set.size() << " gr " << gr;
+              << gr->devices.size() << " gr " << gr;
 
-      if (gr->device_set.size() < gr->group.group_size) {
+      if (gr->devices.size() < gr->group.group_size) {
         gr->waiting.push_back(std::bind(done, std::placeholders::_1, gr));
         return;
       }
-      CHECK_EQ(gr->device_set.size(), gr->group.group_size);
+      CHECK_EQ(gr->devices.size(), gr->group.group_size);
     }
     // At this point, we either have a full group, or an error status.  Ensure
     // that all callbacks are invoked with the appropriate status.
@@ -476,15 +498,23 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
-    const StatusCallback& done) {
+    const StatusCallback& done) TF_NO_THREAD_SAFETY_ANALYSIS {
+  std::vector<DeviceAttributes> attributes;
   ir->shared.instance = cp->instance;
   {
     mutex_lock gl(gr->mu);
     ir->shared.group = gr->group;
-    ir->shared.instance.device_names.assign(gr->device_list.begin(),
-                                            gr->device_list.end());
-    ir->shared.instance.task_names.assign(gr->task_list.begin(),
-                                          gr->task_list.end());
+    ir->shared.instance.device_names.clear();
+    ir->shared.instance.task_names.clear();
+    ir->shared.instance.device_names.reserve(gr->devices.size());
+    ir->shared.instance.task_names.reserve(gr->devices.size());
+    attributes.reserve(gr->devices.size());
+    for (const auto& item : gr->devices) {
+      ir->shared.instance.device_names.push_back(item.first);
+      ir->shared.instance.task_names.push_back(
+          TaskNameFromDeviceName(item.first));
+      attributes.push_back(item.second);
+    }
     VLOG(2) << "Initialized names for instance: "
             << ir->shared.instance.ToString();
   }
@@ -502,6 +532,9 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
   // GetDeviceAttributesAsync will use those fields to launch RPCs.
   CompleteTaskIsLocal(task_name_, &ir->shared);
 
+  // TODO(b/151232436): clean up the following code since we no longer need to
+  // execute it in a callback.
+
   // Because the callback may execute in a different thread, we release
   // ir->out_mu here.  Before releasing, we mark it as unavailable for other
   // threads.
@@ -509,30 +542,24 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
   const auto device_names = ir->shared.instance.device_names;
   const auto task_names = ir->shared.instance.task_names;
   ir->out_mu.unlock();
-  std::vector<DeviceAttributes>* attributes = new std::vector<DeviceAttributes>;
-  // Suppress linter warning about access to shared without mutex because in
-  // principle the members are locked due to out_mu_available=false.
-  dev_resolver_->GetAllDeviceAttributesAsync(
-      ir->shared.instance.device_names,  // NOLINT
-      ir->shared.instance.task_names,    // NOLINT
-      attributes,
-      [this, gr, cp, ir, attributes, done](const Status& s)
-          TF_EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
-            // Then we recover the lock in the callback thread that will hold it
-            // through the rest of the call chain.  Signal the cv now, any
-            // waiting threads will wake only when out_mu is released later.
-            ir->out_mu.lock();
-            DCHECK(!ir->out_mu_available);
-            ir->out_mu_available = true;
-            ir->out_cv.notify_all();
-            if (s.ok()) {
-              CompleteDefaultRanking(gr, cp, ir, *attributes);
-              done(Status::OK());
-            } else {
-              done(s);
-            }
-            delete attributes;
-          });
+  auto complete_init = [this, gr, cp, ir, attributes, done](const Status& s)
+                           TF_EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
+                             // Then we recover the lock in the callback thread
+                             // that will hold it through the rest of the call
+                             // chain.  Signal the cv now, any waiting threads
+                             // will wake only when out_mu is released later.
+                             ir->out_mu.lock();
+                             DCHECK(!ir->out_mu_available);
+                             ir->out_mu_available = true;
+                             ir->out_cv.notify_all();
+                             if (s.ok()) {
+                               CompleteDefaultRanking(gr, cp, ir, attributes);
+                               done(Status::OK());
+                             } else {
+                               done(s);
+                             }
+                           };
+  complete_init(Status::OK());
 }
 
 // NOTE(ayushd): The DeviceLocality objects in attributes will have LocalLinks
@@ -682,15 +709,15 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
 }
 
 void CollectiveParamResolverLocal::CompleteParamsAsync(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    const StatusCallback& done) {
-  VLOG(1) << "CompleteParams local " << device << " for " << cp << ": "
+    const DeviceAttributes& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, const StatusCallback& done) {
+  VLOG(1) << "CompleteParams local " << device.name() << " for " << cp << ": "
           << cp->ToString();
   CompleteGroupLocal(
       device, cp,
       [this, device, cp, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
-          CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
+          CompleteInstanceLocal(device.name(), gr, cp, cp->is_source, done);
         } else {
           done(s);
         }

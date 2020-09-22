@@ -1,6 +1,7 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -9,6 +10,11 @@ load(
     "tf_custom_op_library",
     "tf_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 package(
@@ -377,6 +383,7 @@ tf_cuda_library(
         "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:get_compiler_ir",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -387,6 +394,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
+        "//tensorflow/core/platform:blocking_counter",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,

@@ -1,0 +1,20 @@
+path: "tensorflow.__internal__.test.combinations.TestCombination"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.test_combinations.TestCombination\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "context_managers"
+    argspec: "args=[\'self\', \'kwargs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "parameter_modifiers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "should_execute_combination"
+    argspec: "args=[\'self\', \'kwargs\'], varargs=None, keywords=None, defaults=None"
+  }
+}

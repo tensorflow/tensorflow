@@ -118,11 +118,6 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     PyErr_SetString(PyExc_ValueError, "Toco flags are invalid.");
     return nullptr;
   }
-  std::string input_contents_txt = ConvertArg(input_contents_txt_raw, &error);
-  if (error) {
-    PyErr_SetString(PyExc_ValueError, "Input GraphDef is invalid.");
-    return nullptr;
-  }
 
   // Use TOCO to produce new outputs.
   toco::ModelFlags model_flags;
@@ -153,10 +148,18 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   tensorflow::GraphDef graph_def;
-  if (!graph_def.ParseFromString(input_contents_txt)) {
-    PyErr_SetString(PyExc_ValueError,
-                    "Failed to convert GraphDef to Python String.");
-    return nullptr;
+  std::string input_contents_txt;
+  if (model_flags.saved_model_dir().empty()) {
+    input_contents_txt = ConvertArg(input_contents_txt_raw, &error);
+    if (error) {
+      PyErr_SetString(PyExc_ValueError, "Input GraphDef is invalid.");
+      return nullptr;
+    }
+    if (!graph_def.ParseFromString(input_contents_txt)) {
+      PyErr_SetString(PyExc_ValueError,
+                      "Failed to convert GraphDef to Python String.");
+      return nullptr;
+    }
   }
 
   auto& dump_options = *GraphVizDumpOptions::singleton();

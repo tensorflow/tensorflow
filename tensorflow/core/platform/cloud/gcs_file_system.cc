@@ -1294,6 +1294,9 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
     if (status.ok()) {
       old_content << read_chunk;
       offset += kReadAppendableFileBufferSize;
+    } else if (status.code() == error::NOT_FOUND) {
+      // New file, there is no existing content in it.
+      break;
     } else if (status.code() == error::OUT_OF_RANGE) {
       // Expected, this means we reached EOF.
       old_content << read_chunk;

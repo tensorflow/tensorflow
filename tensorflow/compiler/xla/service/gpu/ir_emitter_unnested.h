@@ -161,7 +161,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
-  Status EmitMlirSort(MlirEmitterInput input);
+  Status EmitSortFromMlir(MlirEmitterInput input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
@@ -179,9 +179,6 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
       KernelThunk* thunk, int unroll_factor);
-
-  // Emits LLVM global variables corresponding to constant instructions.
-  Status EmitConstantGlobals();
 
   Status Postprocess(HloInstruction* hlo) override;
 
@@ -372,6 +369,16 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   // ```
   //
+  // Moreover, a heuristic is implemented to divide the reduce instructions
+  // into groups for parallelization (see `DivideOutputInstructionsIntoGroups`
+  // for details about the heuristic.) Reduce instructions in the same group
+  // will run sequentially while different groups will run in parallel.
+  //
+  // we use raw block_id_y to select the reduce groups for execution without
+  // complicating the index calculation in the code generation of the reduce
+  // instructions. In other words, a block_id_y is assigned to a group and so
+  // different groups can be run in parallel.
+  //
   // output_instructions: Output instructions in the computation: instruction
   // itself if it's not a fusion, fusion root if fusion is not multi-output, and
   // elements of the fusion multi-output tuple otherwise.
@@ -404,11 +411,10 @@ class IrEmitterUnnested : public IrEmitter,
   // the process. `scatter` may be fused, scatter indices are taken from
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
   // expected to have the operand values in it already. If unique_indices
-  // is false, we will use an atomic update. Using false for unique_indices
-  // is safe only when it is guaranteed that there are no duplicate
-  // indices.
-  // When using unique_indices=true, it is the caller's responsibility to
-  // ensure there is no overlap.
+  // is false, we will use an atomic update. Using true for unique_indices
+  // behaves properly only when it is guaranteed that the indices to be
+  // updated do not overlap. The caller is responsible for ensuring this is
+  // the case.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
                      const llvm_ir::ElementGenerator& updates_gen);
@@ -518,6 +524,12 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<const ShapeIndex> reduction_output_shape_indices,
       absl::Span<HloComputation* const> reducers,
       const TilingKernelInfo& tiling_kernel_info);
+
+  // Emits code for reductions in the output_instructions.
+  void EmitIRForReduction(HloInstruction* unnested_hlo,
+                          absl::Span<HloInstruction* const> output_instructions,
+                          ReductionCodegenInfo* reduction_info,
+                          const Shape& input_shape);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.

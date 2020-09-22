@@ -29,12 +29,12 @@ import numpy as np
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
@@ -51,13 +51,13 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 
 
@@ -1009,7 +1009,7 @@ def standardize_weights(y,
       class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
       if sample_weight is not None:
         sample_weight = math_ops.cast(
-            ops.convert_to_tensor_v2(sample_weight), K.floatx())
+            ops.convert_to_tensor_v2_with_dispatch(sample_weight), K.floatx())
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1365,7 +1365,7 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor_v2(x)
+    x = ops.convert_to_tensor_v2_with_dispatch(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1391,7 +1391,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor_v2(target)
+      target = ops.convert_to_tensor_v2_with_dispatch(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:
@@ -1567,115 +1567,12 @@ def is_eager_dataset_or_iterator(data):
 
 
 # pylint: disable=protected-access
-def assert_not_batched(dataset):
-  """Asserts that `dataset` is not batched.
-
-  The algorithm used by this method is sound but not complete. In other words,
-  if the method fails to establish the assertion, it does not mean the dataset
-  is batched.
-
-  Example usage:
-  ```python
-  try:
-    assert_not_batched(dataset)
-    # safe to assume `dataset` it not batched here
-  expect ValueError:
-    # make no assumptions about `dataset`
-  ```
-
-  Args:
-    dataset: The dataset to analyze.
-
-  Raises:
-    ValueError: If the method cannot establish the assertion.
-  """
-  if isinstance(dataset, dataset_ops.DatasetV1Adapter):
-    return assert_not_batched(dataset._dataset)
+def get_dataset_graph_def(dataset):
+  if context.executing_eagerly():
+    graph_def_str = dataset._as_serialized_graph().numpy()
   else:
-    allowed_types = [
-        dataset_ops._OptionsDataset,
-        dataset_ops.ConcatenateDataset,
-        dataset_ops.CacheDataset,
-        dataset_ops.FilterDataset,
-        dataset_ops.MapDataset,
-        dataset_ops.ParallelMapDataset,
-        dataset_ops.PrefetchDataset,
-        dataset_ops.RangeDataset,
-        dataset_ops.RepeatDataset,
-        dataset_ops.ShuffleDataset,
-        dataset_ops.SkipDataset,
-        dataset_ops.SparseTensorSliceDataset,
-        dataset_ops.TakeDataset,
-        dataset_ops.TensorDataset,
-        dataset_ops.TensorSliceDataset,
-        dataset_ops.ZipDataset,
-        readers.FixedLengthRecordDatasetV2,
-        readers.TextLineDatasetV2,
-        readers.TFRecordDatasetV2,
-    ]
-    for ty in allowed_types:
-      if isinstance(dataset, ty):
-        for input_dataset in dataset._inputs():
-          assert_not_batched(input_dataset)
-        return
-    raise ValueError('Could not assert that dataset is not batched.')
-
-
-# pylint: disable=protected-access
-def assert_not_shuffled(dataset):
-  """Asserts that `dataset` is not shuffled.
-
-  The algorithm used by this method is sound but not complete. In other words,
-  if the method fails to establish the assertion, it does not mean the dataset
-  is shuffled.
-
-  Example usage:
-  ```python
-  try:
-    assert_not_shuffled(dataset)
-    # safe to assume `dataset` it not shuffled here
-  expect ValueError:
-    # make no assumptions about `dataset`
-  ```
-
-  Args:
-    dataset: The dataset to analyze.
-
-  Raises:
-    ValueError: If the method cannot establish the assertion.
-  """
-  if isinstance(dataset, dataset_ops.DatasetV1Adapter):
-    return assert_not_shuffled(dataset._dataset)
-  else:
-    allowed_types = [
-        dataset_ops._OptionsDataset,
-        dataset_ops.BatchDataset,
-        dataset_ops.ConcatenateDataset,
-        dataset_ops.CacheDataset,
-        dataset_ops.FilterDataset,
-        dataset_ops.MapDataset,
-        dataset_ops.PaddedBatchDataset,
-        dataset_ops.ParallelMapDataset,
-        dataset_ops.PrefetchDataset,
-        dataset_ops.RangeDataset,
-        dataset_ops.RepeatDataset,
-        dataset_ops.SkipDataset,
-        dataset_ops.SparseTensorSliceDataset,
-        dataset_ops.TakeDataset,
-        dataset_ops.TensorDataset,
-        dataset_ops.TensorSliceDataset,
-        dataset_ops.WindowDataset,
-        dataset_ops.ZipDataset,
-        readers.FixedLengthRecordDatasetV2,
-        readers.TextLineDatasetV2,
-        readers.TFRecordDatasetV2,
-    ]
-    for ty in allowed_types:
-      if isinstance(dataset, ty):
-        for input_dataset in dataset._inputs():
-          assert_not_shuffled(input_dataset)
-        return
-    raise ValueError('Could not assert that dataset is not shuffled.')
+    graph_def_str = K.get_value(dataset._as_serialized_graph())
+  return graph_pb2.GraphDef().FromString(graph_def_str)
 
 
 def verify_dataset_shuffled(x):
@@ -1684,18 +1581,22 @@ def verify_dataset_shuffled(x):
   Args:
     x: Dataset passed as an input to the model.
 
-  Raises:
-    ValueError: if the dataset is not already shuffled.
+  Returns:
+    boolean, whether the input dataset is shuffled or not.
   """
   assert isinstance(x, dataset_ops.DatasetV2)
-  try:
-    assert_not_shuffled(x)
-  except ValueError:
-    # Dataset may or may not be shuffled.
-    return
-  else:
-    logging.warning('Expected a shuffled dataset but input dataset `x` is '
-                    'not shuffled. Please invoke `shuffle()` on input dataset.')
+  graph_def = get_dataset_graph_def(x)
+  for node in graph_def.node:
+    if node.op.startswith('ShuffleDataset'):
+      return True
+  # Also check graph_def.library.function for ds.interleave or ds.flat_map
+  for function in graph_def.library.function:
+    for node in function.node_def:
+      if node.op.startswith('ShuffleDataset'):
+        return True
+  logging.warning('Expected a shuffled dataset but input dataset `x` is '
+                  'not shuffled. Please invoke `shuffle()` on input dataset.')
+  return False
 
 
 def is_dataset_or_iterator(data):

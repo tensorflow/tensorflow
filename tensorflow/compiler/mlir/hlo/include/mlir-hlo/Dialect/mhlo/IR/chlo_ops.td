@@ -37,7 +37,7 @@ include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLOClient_Dialect : Dialect {
   let name = "chlo";
-  let cppNamespace = "chlo";
+  let cppNamespace = "::mlir::chlo";
   let summary = [{
     Client HLO Ops
   }];
@@ -344,14 +344,16 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 //===----------------------------------------------------------------------===//
 
 class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-    Type TensorType>: HLOClient_Op<mnemonic,
-      !listconcat(traits, [InferFusibilityOpInterface])> {
+    Type TensorType> : HLOClient_Op<mnemonic, !listconcat(traits, [
+    InferFusibilityOpInterface, NoSideEffect, SameOperandsAndResultType])> {
   let arguments = (ins TensorType:$operand);
-  let results = (outs TensorType);
+  let results = (outs TensorType:$result);
+
+  let assemblyFormat = "$operand attr-dict `:` type($operand)";
 }
 
-def HLOClient_AcosOp: HLOClient_UnaryElementwiseOp<"acos",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
+    HLO_FpOrComplexTensor> {
   let summary = "Acos operator";
 
   let description = [{
@@ -364,7 +366,34 @@ def HLOClient_AcosOp: HLOClient_UnaryElementwiseOp<"acos",
   }];
 }
 
-def HLOClient_ConstantLikeOp: HLOClient_Op<"constant_like",
+def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Sinh operation";
+
+  let description = [{
+    Returns `Sinh(operand)` element-wise.
+
+    $$
+    \sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
+             = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
+    $$
+  }];
+}
+
+def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Tan operation";
+
+  let description = [{
+    Returns `Tan(operand)` element-wise.
+
+    $$
+    \tan(x) = \sin(x) / \cos(x)
+    $$
+  }];
+}
+
+def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
     [NoSideEffect, SameOperandsAndResultShape,
      InferTypeOpInterface,
      DeclareOpInterfaceMethods<InferShapedTypeOpInterface>,

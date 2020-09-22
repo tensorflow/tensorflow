@@ -213,7 +213,6 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
     RETURN_IF_ERROR(args_.TransformToCLCode(
         creation_context.device->info_,
         {{dst_tensors_names_[0], elementwise_code_}}, &code));
-    code = absl::Substitute(code, args_.GetListOfArgs());
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
         code, "main_function", *creation_context.context,
         *creation_context.device, &kernel_));

@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
@@ -144,8 +145,9 @@ bool IsResourceOutputShapesAttribute(const AttrValue& attr_value,
 
 void LoadImporterDialects(mlir::MLIRContext& context) {
   // Load dialects involved in the conversion
-  mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
-  context.getDialectRegistry().loadAll(&context);
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  registry.loadAll(&context);
 }
 
 // This class is used to generate new MLIR function name strings that are both
@@ -3567,6 +3569,7 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
   mlir::PassManager pm(module_->getContext());
+  SetCrashReproducer(pm);
   pm.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   pm.addPass(mlir::CreateExecutorDialectToFunctionalConversionPass());
   pm.addPass(
@@ -3653,6 +3656,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
   specs.graph_as_function = true;
+  for (const auto* control_ret_node : fbody->control_ret_nodes)
+    specs.control_outputs.push_back(control_ret_node->name());
   return GraphDefImporter::Convert(context, *fbody->graph, dummy_debug_info,
                                    flib_def, specs, name);
 }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdio.h>
 #include <time.h>
 
+#include <atomic>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -367,8 +368,14 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
     }
     tflite_api_dispatcher::Interpreter::TfLiteDelegatePtr delegate(
         xnnpack_create(&options), xnnpack_delete);
-    if (interpreter->ModifyGraphWithDelegate(std::move(delegate)) !=
-        kTfLiteOk) {
+    auto delegation_status =
+        interpreter->ModifyGraphWithDelegate(std::move(delegate));
+    // kTfLiteApplicationError occurs in cases where delegation fails but
+    // the runtime is invokable (eg. another delegate has already been applied).
+    // We don't throw an Exception in that case.
+    // TODO(b/166483905): Add support for multiple delegates when model allows.
+    if (delegation_status != kTfLiteOk &&
+        delegation_status != kTfLiteApplicationError) {
       ThrowException(env, kIllegalArgumentException,
                      "Internal error: Failed to apply XNNPACK delegate: %s",
                      error_reporter->CachedErrorMessage());
@@ -499,6 +506,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   if (error_reporter == nullptr) return;
 
   if (interpreter->Invoke() != kTfLiteOk) {
+    // TODO(b/168266570): Return InterruptedException.
     ThrowException(env, kIllegalArgumentException,
                    "Internal error: Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
@@ -603,6 +611,43 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resetVariableTensors(
     ThrowException(env, kIllegalArgumentException,
                    "Internal error: Failed to reset variable tensors: %s",
                    error_reporter->CachedErrorMessage());
+  }
+}
+
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_createCancellationFlag(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle) {
+  tflite_api_dispatcher::Interpreter* interpreter =
+      convertLongToInterpreter(env, interpreter_handle);
+  if (interpreter == nullptr) {
+    ThrowException(env, kIllegalArgumentException,
+                   "Internal error: Invalid handle to interpreter.");
+  }
+  std::atomic_bool* cancellation_flag = new std::atomic_bool(false);
+  interpreter->SetCancellationFunction(cancellation_flag, [](void* payload) {
+    std::atomic_bool* cancellation_flag =
+        reinterpret_cast<std::atomic_bool*>(payload);
+    return cancellation_flag->load() == true;
+  });
+  return reinterpret_cast<jlong>(cancellation_flag);
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_deleteCancellationFlag(
+    JNIEnv* env, jclass clazz, jlong flag_handle) {
+  std::atomic_bool* cancellation_flag =
+      reinterpret_cast<std::atomic_bool*>(flag_handle);
+  delete cancellation_flag;
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_setCancelled(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong flag_handle,
+    jboolean value) {
+  std::atomic_bool* cancellation_flag =
+      reinterpret_cast<std::atomic_bool*>(flag_handle);
+  if (cancellation_flag != nullptr) {
+    cancellation_flag->store(static_cast<bool>(value));
   }
 }
 

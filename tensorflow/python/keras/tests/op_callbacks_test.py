@@ -22,12 +22,12 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.ops import script_ops
+from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 

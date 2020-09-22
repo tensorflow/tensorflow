@@ -4,11 +4,17 @@
 
 licenses(["notice"])  # PSF
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "typing_extensions",
-    srcs = ["src_py3/typing_extensions.py"],
+    srcs = ["typing_extensions.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "license",
+    srcs = ["@astunparse_license"],
+    outs = ["LICENSE"],
+    cmd = "cp $< $@",
     visibility = ["//visibility:public"],
 )

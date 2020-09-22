@@ -41,26 +41,27 @@ constexpr const char kProtocol[] = "grpc+local";
 
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
-  TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", &mode));
+  TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", mode));
   EXPECT_EQ(mode, ProcessingMode::PARALLEL_EPOCHS);
 }
 
-TEST(DataService, ParseOneEpochProcessingMode) {
+TEST(DataService, ParseDistributedEpochProcessingMode) {
   ProcessingMode mode;
-  TF_ASSERT_OK(ParseProcessingMode("one_epoch", &mode));
-  EXPECT_EQ(mode, ProcessingMode::ONE_EPOCH);
+  TF_ASSERT_OK(ParseProcessingMode("distributed_epoch", mode));
+  EXPECT_EQ(mode, ProcessingMode::DISTRIBUTED_EPOCH);
 }
 
 TEST(DataService, ParseInvalidProcessingMode) {
   ProcessingMode mode;
-  Status s = ParseProcessingMode("invalid", &mode);
+  Status s = ParseProcessingMode("invalid", mode);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
 }
 
 TEST(DataService, ProcessingModeToString) {
   EXPECT_EQ("parallel_epochs",
             ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
-  EXPECT_EQ("one_epoch", ProcessingModeToString(ProcessingMode::ONE_EPOCH));
+  EXPECT_EQ("distributed_epoch",
+            ProcessingModeToString(ProcessingMode::DISTRIBUTED_EPOCH));
 }
 
 TEST(DataService, GetWorkers) {
@@ -69,7 +70,7 @@ TEST(DataService, GetWorkers) {
   DataServiceDispatcherClient dispatcher(cluster.DispatcherAddress(),
                                          kProtocol);
   std::vector<WorkerInfo> workers;
-  TF_EXPECT_OK(dispatcher.GetWorkers(&workers));
+  TF_EXPECT_OK(dispatcher.GetWorkers(workers));
   EXPECT_EQ(1, workers.size());
 }
 

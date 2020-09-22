@@ -63,6 +63,9 @@ absl::Status ObjectReader::ReadNonConstantTensor(
                 &fp_tensor_index) != kTfLiteOk) {
           return absl::InternalError("Could not add new tensor to graph");
         }
+        // `tflite_tensor` value could be invalid when the `context->tensors`
+        // is reallocated. Thus reassigning `tflite_tensor` with a fresh value.
+        tflite_tensor = &context->tensors[tensor_idx];
 
         // Remember this tensor for later.
         (*quant_conversion_map)[fp_tensor_index] = tensor_idx;
@@ -72,10 +75,8 @@ absl::Status ObjectReader::ReadNonConstantTensor(
         RETURN_IF_ERROR(
             ConvertTfLiteTensorToTensorRef(*fp_tflite_tensor, &value->tensor));
         value->tensor.ref = fp_tensor_index;
+        value->tensor.is_variable_input = tflite_tensor->is_variable;
         value->quant_params.emplace();
-        // tflite_tensor from the outer scope is invalidated due to calling
-        // CreateNewTensorWithDifferentType
-        tflite_tensor = &context->tensors[tensor_idx];
         RETURN_IF_ERROR(
             PopulateQuantParams(*tflite_tensor, &value->quant_params.value()));
         (*tensor_to_value)[fp_tensor_index] = value;
@@ -89,6 +90,7 @@ absl::Status ObjectReader::ReadNonConstantTensor(
       RETURN_IF_ERROR(
           ConvertTfLiteTensorToTensorRef(*tflite_tensor, &value->tensor));
       value->tensor.ref = tensor_idx;
+      value->tensor.is_variable_input = tflite_tensor->is_variable;
       (*tensor_to_value)[tensor_idx] = value;
     }
   }
@@ -157,6 +159,53 @@ absl::Status ObjectReader::AddInput(const Node* node, uint32_t idx) {
   Value* input;
   RETURN_IF_ERROR(ReadValue(idx, &input));
   return graph_->AddConsumer(node->id, input->id);
+}
+
+absl::Status ObjectReader::AddUpdate(const Node* node, uint32_t idx) {
+  if (node_->inputs->size <= idx) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Data id ", idx, " must be less than tflite node inputs size ",
+        node_->inputs->size));
+  }
+
+  int update_tensor_idx = node_->inputs->data[idx];
+  TfLiteTensor* update_tensor = context_->tensors + update_tensor_idx;
+  if (!update_tensor->is_variable) {
+    return absl::InvalidArgumentError(
+        "The tensor must be a variable tensor to update it in place");
+  }
+
+  Value* value;
+  RETURN_IF_ERROR(ReadValueByTensorIdx(update_tensor_idx, &value));
+  if (!value->tensor.is_variable_input) {
+    return absl::InternalError(
+        "Variable input tensor is not marked as variable");
+  }
+
+  // We cannot create a cycle in the graph. The way around this when a node
+  // updates a tensor in place would be to add a new value to the graph that
+  // points to the same tensor.
+  Value* updated_value = graph_->NewValue();
+  updated_value->tensor = value->tensor;
+  updated_value->quant_params = value->quant_params;
+  RETURN_IF_ERROR(graph_->SetProducer(node->id, updated_value->id));
+
+  // We also need to update the tensor_to_value arrays so that the nodes added
+  // after the current node will access the tensor with the updated value rather
+  // than the initial value.
+  if (quant_conversion_map_ != nullptr &&
+      quant_conversion_map_->find(update_tensor_idx) !=
+          quant_conversion_map_->end()) {
+    // If quantization conversion map exists, then the index provided is not the
+    // actual tensor idx. We need to find the float version of the tensor from
+    // the map.
+    tensor_to_value_->at(quant_conversion_map_->at(update_tensor_idx)) =
+        updated_value;
+  } else {
+    tensor_to_value_->at(update_tensor_idx) = updated_value;
+  }
+
+  return absl::OkStatus();
 }
 
 TfLiteTensor* ObjectReader::GetInputTensor(int index) const {

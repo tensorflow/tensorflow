@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -41,9 +42,12 @@ TfLiteRegistration AddOpRegistration() {
 
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
     // Set output size to input size
-    const TfLiteTensor* input1 = GetInput(context, node, 0);
-    const TfLiteTensor* input2 = GetInput(context, node, 1);
-    TfLiteTensor* output = GetOutput(context, node, 0);
+    const TfLiteTensor* input1;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input1));
+    const TfLiteTensor* input2;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &input2));
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
 
     TF_LITE_ENSURE_EQ(context, input1->dims->size, input2->dims->size);
     for (int i = 0; i < input1->dims->size; ++i) {
@@ -57,13 +61,16 @@ TfLiteRegistration AddOpRegistration() {
 
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
     // Copy input data to output data.
-    const TfLiteTensor* a0 = GetInput(context, node, 0);
+    const TfLiteTensor* a0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
     TF_LITE_ENSURE(context, a0);
     TF_LITE_ENSURE(context, a0->data.f);
-    const TfLiteTensor* a1 = GetInput(context, node, 1);
+    const TfLiteTensor* a1;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &a1));
     TF_LITE_ENSURE(context, a1);
     TF_LITE_ENSURE(context, a1->data.f);
-    TfLiteTensor* out = GetOutput(context, node, 0);
+    TfLiteTensor* out;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out));
     TF_LITE_ENSURE(context, out);
     TF_LITE_ENSURE(context, out->data.f);
     int num = a0->dims->data[0];
@@ -266,7 +273,8 @@ class TestDelegate : public ::testing::Test {
             a0 = GetInput(context, node, 0);
             a1 = a0;
           }
-          TfLiteTensor* out = GetOutput(context, node, 0);
+          TfLiteTensor* out;
+          TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out));
           int num = 1;
           for (int i = 0; i < a0->dims->size; ++i) {
             num *= a0->dims->data[i];
@@ -288,8 +296,10 @@ class TestDelegate : public ::testing::Test {
         reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
           // Shapes should already by propagated by the runtime, just need to
           // check.
-          const TfLiteTensor* input1 = GetInput(context, node, 0);
-          TfLiteTensor* output = GetOutput(context, node, 0);
+          const TfLiteTensor* input1;
+          TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input1));
+          TfLiteTensor* output;
+          TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
           const int input_dims_size = input1->dims->size;
           TF_LITE_ENSURE(context, output->dims->size == input_dims_size);
           for (int i = 0; i < input_dims_size; ++i) {
@@ -314,7 +324,8 @@ class TestDelegate : public ::testing::Test {
             input1 = GetInput(context, node, 0);
             input2 = input1;
           }
-          TfLiteTensor* output = GetOutput(context, node, 0);
+          TfLiteTensor* output;
+          TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
 
           TF_LITE_ENSURE_STATUS(context->ResizeTensor(
               context, output, TfLiteIntArrayCopy(input1->dims)));
@@ -524,6 +535,35 @@ TEST_F(TestDelegate, SecondDelegationInvokeFailure) {
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
+}
+
+// This test ensures that node indices in multi-delegate application are handled
+// correctly by the TFLite partitioning algorithm.
+TEST_F(TestDelegate, TwoDelegates_ExecutionPlanIndicesDifferent) {
+  // First delegate supports nodes 0, 1.
+  // After this delegation, the execution plan size is 2.
+  delegate_ = std::unique_ptr<SimpleDelegate>(
+      new SimpleDelegate({0, 1}, kTfLiteDelegateFlagsAllowDynamicTensors));
+  // Second delegate supports (original) node index 2.
+  // The execution plan has 2 nodes, so this verifies that the partitioning
+  // algorithm correctly refers to (original) node indices instead of execution
+  // plan indices.
+  delegate2_ = std::unique_ptr<SimpleDelegate>(
+      new SimpleDelegate({2}, kTfLiteDelegateFlagsNone));
+
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  // Verify Invoke works.
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 }
 
 TEST_F(TestDelegate, StaticDelegateMakesGraphImmutable) {
@@ -1139,11 +1179,14 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
 
     reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
       // Output 0 is dynamic
-      TfLiteTensor* output0 = GetOutput(context, node, 0);
+      TfLiteTensor* output0;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output0));
       SetTensorToDynamic(output0);
       // Output 1 has the same shape as input.
-      const TfLiteTensor* input = GetInput(context, node, 0);
-      TfLiteTensor* output1 = GetOutput(context, node, 1);
+      const TfLiteTensor* input;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+      TfLiteTensor* output1;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 1, &output1));
       TF_LITE_ENSURE_STATUS(context->ResizeTensor(
           context, output1, TfLiteIntArrayCopy(input->dims)));
       return kTfLiteOk;
@@ -1163,11 +1206,14 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
       // If tensors are resized, the runtime should propagate shapes
       // automatically if correct flag is set. Ensure values are correct.
       // Output 0 should be dynamic.
-      TfLiteTensor* output0 = GetOutput(context, node, 0);
+      TfLiteTensor* output0;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output0));
       TF_LITE_ENSURE(context, IsDynamicTensor(output0));
       // Output 1 has the same shape as input.
-      const TfLiteTensor* input = GetInput(context, node, 0);
-      TfLiteTensor* output1 = GetOutput(context, node, 1);
+      const TfLiteTensor* input;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+      TfLiteTensor* output1;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 1, &output1));
       TF_LITE_ENSURE(context, input->dims->size == output1->dims->size);
       TF_LITE_ENSURE(context, input->dims->data[0] == output1->dims->data[0]);
       return kTfLiteOk;

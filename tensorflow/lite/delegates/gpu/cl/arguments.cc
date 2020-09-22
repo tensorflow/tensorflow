@@ -256,13 +256,6 @@ void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
   object_refs_[name] = {std::move(descriptor_ptr)};
 }
 
-void Arguments::AddObject(const std::string& name, AccessType access_type,
-                          GPUObjectPtr&& object,
-                          GPUObjectDescriptorPtr&& descriptor_ptr) {
-  descriptor_ptr->SetAccess(access_type);
-  objects_[name] = {std::move(object), std::move(descriptor_ptr)};
-}
-
 void Arguments::AddObject(const std::string& name,
                           GPUObjectDescriptorPtr&& descriptor_ptr) {
   descriptor_ptr->SetAccess(AccessType::READ);

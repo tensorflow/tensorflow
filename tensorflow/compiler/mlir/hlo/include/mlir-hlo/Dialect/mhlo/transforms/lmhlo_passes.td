@@ -15,12 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LhloCopyRemovalPass : Pass<"lhlo-copy-removal", "FuncOp"> {
-  let summary = "Removes redundant LHLO copy operations.";
-  let constructor = "createLhloCopyRemovalPass()";
-}
-
-
 def LhloLegalizeToLinalgPass : Pass<"lhlo-legalize-to-linalg", "FuncOp"> {
   let summary = "Legalize from LHLO dialect to Linalg dialect.";
   let constructor = "createLegalizeLhloToLinalgPass()";

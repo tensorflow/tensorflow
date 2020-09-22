@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
@@ -208,6 +209,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_cuda(["@local_config_nccl//:nccl"]),
 )

@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
@@ -77,6 +78,7 @@ cc_library(
 cc_library(
     name = "direct_tpu_driver",
     srcs = ["direct_tpu_driver.cc"],
+    compatible_with = [],
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/strings:str_format",
@@ -111,6 +113,24 @@ cc_library(
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_service_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+    ] + external_deps(),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "pod_tpu_driver",
+    srcs = ["pod_tpu_driver.cc"],
+    deps = [
+        ":grpc_tpu_driver",
+        ":tpu_driver",
+        ":tpu_driver_proto_cc",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/compiler/xla/pjrt:semaphore",
+        "//tensorflow/compiler/xla/pjrt:worker_thread",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        tf_grpc_cc_dependency(),
     ] + external_deps(),
     alwayslink = 1,
 )

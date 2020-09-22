@@ -514,11 +514,6 @@ def global_policy():
   return _global_policy
 
 
-def policy_defaults_to_floatx():
-  """Returns True if `global_policy()` will use the current value of floatx."""
-  return _global_policy is None and base_layer_utils.v2_dtype_behavior_enabled()
-
-
 def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
   if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
     raise ValueError(
@@ -543,7 +538,12 @@ def set_policy(policy):
   passed to the layer constructor. If no global policy is set, layers will
   instead default to a Policy constructed from `tf.keras.backend.floatx()`.
 
-  See `keras.mixed_precision.experimental.Policy` for more information.
+  Only floating point policies can be set as the global policy, such as
+  `'float32'` and `'mixed_float16'`. Non-floating point policies such as
+  `'int32'` and `'complex64'` cannot be set as the global policy because most
+  layers do not support such policies.
+
+  See `tf.keras.mixed_precision.experimental.Policy` for more information.
 
   Args:
     policy: A Policy, or a string that will be converted to a Policy..
@@ -559,6 +559,12 @@ def set_policy(policy):
   is_mixed_policy = policy is not None and policy.should_cast_variables
   if is_mixed_policy:
     _check_if_mixed_precision_graph_rewrite_is_enabled(policy)
+  if (policy is not None and policy.compute_dtype is not None and
+      not dtypes.as_dtype(policy.compute_dtype).is_floating):
+    raise ValueError('set_policy can only be used to set the global policy to '
+                     'floating-point policies, such as "float32" and '
+                     '"mixed_float16", but got policy: %s'
+                     % (policy.name,))
   _global_policy = policy
   mixed_precision_global_state.using_mixed_precision_policy = is_mixed_policy
 

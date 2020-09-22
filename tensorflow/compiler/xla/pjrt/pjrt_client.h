@@ -695,7 +695,7 @@ struct ExecuteOptions {
   int32 launch_id = 0;
   // If non-null, an opaque context passed to an execution that may be used to
   // supply additional arguments to a derived class of PjRtExecutable.
-  ExecuteContext* context = nullptr;
+  const ExecuteContext* context = nullptr;
 };
 
 // Represents a compiled computation that can be executed given handles to

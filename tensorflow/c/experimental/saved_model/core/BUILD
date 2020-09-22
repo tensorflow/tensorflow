@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Experimental SavedModel C APIs for TensorFlow. See RFC
 # https://github.com/tensorflow/community/pull/207
 # Targets in this directory are pure C++ "Classes" underlying the C API types
@@ -62,6 +64,7 @@ cc_library(
         ":function_metadata",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:asset",
         "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
         "//tensorflow/c/experimental/saved_model/core/revived_types:tf_concrete_function",
         "//tensorflow/c/experimental/saved_model/core/revived_types:variable",
@@ -69,6 +72,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -138,7 +142,6 @@ cc_library(
         ":saved_model_api",
         ":saved_model_utils",
         ":signature_def_function",
-        "//tensorflow/c:tensor_interface",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/experimental/saved_model/core/ops:restore_ops",
@@ -148,10 +151,10 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/core/revived_types:variable",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/cc/saved_model:loader_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/eager:tensor_handle",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",

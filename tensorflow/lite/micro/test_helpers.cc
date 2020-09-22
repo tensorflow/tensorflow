@@ -107,8 +107,11 @@ class ModelBuilder {
 
   // Constructs the flatbuffer model using `builder_` and return a pointer to
   // it. The returned model has the same lifetime as `builder_`.
+  // Note the default value of 0 for num_subgraph_inputs means all tensor inputs
+  // are in subgraph input list.
   const Model* BuildModel(std::initializer_list<Tensor> inputs,
-                          std::initializer_list<Tensor> outputs);
+                          std::initializer_list<Tensor> outputs,
+                          size_t num_subgraph_inputs = 0);
 
  private:
   // Adds a tensor to the model.
@@ -179,7 +182,8 @@ void ModelBuilder::AddMetadata(const char* description_string,
 
 const Model* ModelBuilder::BuildModel(
     std::initializer_list<ModelBuilder::Tensor> inputs,
-    std::initializer_list<ModelBuilder::Tensor> outputs) {
+    std::initializer_list<ModelBuilder::Tensor> outputs,
+    size_t num_subgraph_inputs) {
   // Model schema requires an empty buffer at idx 0.
   size_t buffer_size = 1 + ModelBuilder::nbr_of_metadata_buffers_;
   flatbuffers::Offset<Buffer> buffers[kMaxMetadataBuffers];
@@ -193,10 +197,21 @@ const Model* ModelBuilder::BuildModel(
 
   // TFLM only supports single subgraph.
   constexpr size_t subgraphs_size = 1;
+
+  // Find out number of subgraph inputs.
+  if (num_subgraph_inputs == 0) {
+    // This is the default case.
+    num_subgraph_inputs = inputs.size();
+  } else {
+    // A non-zero value of num_subgraph_inputs means that some of
+    // the operator input tensors are not subgraph inputs.
+    TFLITE_DCHECK(num_subgraph_inputs < inputs.size());
+  }
+
   const flatbuffers::Offset<SubGraph> subgraphs[subgraphs_size] = {
       tflite::CreateSubGraph(
           *builder_, builder_->CreateVector(tensors_, next_tensor_id_),
-          builder_->CreateVector(inputs.begin(), inputs.size()),
+          builder_->CreateVector(inputs.begin(), num_subgraph_inputs),
           builder_->CreateVector(outputs.begin(), outputs.size()),
           builder_->CreateVector(operators_, next_operator_id_),
           builder_->CreateString("test_subgraph"))};
@@ -301,7 +316,8 @@ const Model* BuildSimpleModelWithBranch() {
 const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
                                            const int32_t* metadata_buffer,
                                            NodeConnection* node_conn,
-                                           int num_conns) {
+                                           int num_conns,
+                                           int num_subgraph_inputs) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* fb_builder = BuilderInstance();
 
@@ -323,8 +339,8 @@ const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
       "OfflineMemoryAllocation", metadata_buffer,
       number_of_tensors + tflite::testing::kOfflinePlannerHeaderSize);
 
-  return model_builder.BuildModel(node_conn[0].input,
-                                  node_conn[num_conns - 1].output);
+  return model_builder.BuildModel(
+      node_conn[0].input, node_conn[num_conns - 1].output, num_subgraph_inputs);
 }
 
 const Model* BuildSimpleMockModel() {
@@ -585,7 +601,8 @@ TfLiteStatus SimpleStatefulOp::Prepare(TfLiteContext* context,
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Make sure that the input is in uint8_t with at least 1 data entry.
-  const TfLiteTensor* input = tflite::GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   if (input->type != kTfLiteUInt8) return kTfLiteError;
   if (NumElements(input->dims) == 0) return kTfLiteError;
 
@@ -593,15 +610,21 @@ TfLiteStatus SimpleStatefulOp::Prepare(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, sizeof(uint8_t) * NumElements(input->dims),
       &data->sorting_buffer));
+  // We can interleave scratch / persistent buffer allocation.
+  data->invoke_count = reinterpret_cast<int*>(
+      context->AllocatePersistentBuffer(context, sizeof(int)));
+  *data->invoke_count = 0;
+
   return kTfLiteOk;
 }
 
 TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
                                       TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  data->invoke_count += 1;
+  *data->invoke_count += 1;
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   const uint8_t* input_data = GetTensorData<uint8_t>(input);
   int size = NumElements(input->dims);
 
@@ -620,13 +643,17 @@ TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
     }
   }
 
-  TfLiteTensor* median = GetOutput(context, node, kMedianTensor);
+  TfLiteTensor* median;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kMedianTensor, &median));
   uint8_t* median_data = GetTensorData<uint8_t>(median);
-  TfLiteTensor* invoke_count = GetOutput(context, node, kInvokeCount);
+  TfLiteTensor* invoke_count;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kInvokeCount, &invoke_count));
   int32_t* invoke_count_data = GetTensorData<int32_t>(invoke_count);
 
   median_data[0] = sorting_buffer[size / 2];
-  invoke_count_data[0] = data->invoke_count;
+  invoke_count_data[0] = *data->invoke_count;
   return kTfLiteOk;
 }
 
@@ -660,11 +687,14 @@ TfLiteStatus MockCustom::Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus MockCustom::Invoke(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = tflite::GetInput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   const int32_t* input_data = input->data.i32;
-  const TfLiteTensor* weight = tflite::GetInput(context, node, 1);
+  const TfLiteTensor* weight;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &weight));
   const uint8_t* weight_data = weight->data.uint8;
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   int32_t* output_data = output->data.i32;
   output_data[0] =
       0;  // Catch output tensor sharing memory with an input tensor
@@ -710,9 +740,10 @@ const Model* GetSimpleModelWithBranch() {
 const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          const int32_t* metadata_buffer,
                                          NodeConnection* node_conn,
-                                         int num_conns) {
+                                         int num_conns,
+                                         int num_subgraph_inputs) {
   const Model* model = BuildModelWithOfflinePlanning(
-      num_tensors, metadata_buffer, node_conn, num_conns);
+      num_tensors, metadata_buffer, node_conn, num_conns, num_subgraph_inputs);
   return model;
 }
 

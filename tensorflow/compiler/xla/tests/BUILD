@@ -6,7 +6,14 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "genrule")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -177,6 +184,7 @@ cc_library(
 tf_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
+    compatible_with = [],
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -239,6 +247,7 @@ cc_library(
     testonly = True,
     srcs = ["llvm_irgen_test_base.cc"],
     hdrs = ["llvm_irgen_test_base.h"],
+    compatible_with = [],
     deps = [
         ":codegen_test_base",
         ":filecheck",
@@ -266,6 +275,7 @@ cc_library(
     testonly = True,
     srcs = ["filecheck.cc"],
     hdrs = ["filecheck.h"],
+    compatible_with = [],
     data = [
         "@llvm-project//llvm:FileCheck",
     ],
@@ -380,12 +390,7 @@ xla_test(
     name = "conv_depthwise_backprop_filter_test",
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
-    # these backends do not natively handle batch group counts.
-    disabled_backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 6,
+    shard_count = 40,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -2681,6 +2686,7 @@ xla_test(
 xla_test(
     name = "cholesky_test",
     srcs = ["cholesky_test.cc"],
+    real_hardware_only = True,
     tags = [
         "no_rocm",
         "optonly",
@@ -2699,5 +2705,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ],
 )

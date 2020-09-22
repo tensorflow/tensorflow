@@ -39,12 +39,19 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
+
+
+# This will be resolved to a tmp directory by `start_dispatch_server`.
+TMP_WORK_DIR = "tmp_work_dir_placeholder"
+# `""` indicates not to use a work directory.
+NO_WORK_DIR = ""
 
 
 def _address_from_target(target):
@@ -67,9 +74,9 @@ def _make_distributed_dataset(dataset,
 
 def _all_cluster_configurations():
   with_work_dir = combinations.combine(
-      work_dir=None, fault_tolerant_mode=[True, False])
+      work_dir=TMP_WORK_DIR, fault_tolerant_mode=[True, False])
   without_work_dir = combinations.combine(
-      work_dir="", fault_tolerant_mode=False)
+      work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
   return with_work_dir + without_work_dir
 
 
@@ -100,23 +107,28 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def start_dispatch_server(self,
                             name="",
                             port=0,
-                            work_dir=None,
-                            fault_tolerant_mode=True):
+                            work_dir=TMP_WORK_DIR,
+                            fault_tolerant_mode=True,
+                            job_gc_check_interval_ms=None,
+                            job_gc_timeout_ms=None):
     # If a test starts multiple independent dispatch servers, it should give
     # them different `name` values.
     work_dir = os.path.join(self.get_temp_dir(), "work_dir_",
-                            name) if work_dir is None else work_dir
+                            name) if work_dir is TMP_WORK_DIR else work_dir
     return server_lib.DispatchServer(
-        port=port,
-        protocol=server_lib.DEFAULT_PROTOCOL,
-        work_dir=work_dir,
-        fault_tolerant_mode=fault_tolerant_mode)
+        server_lib.DispatcherConfig(
+            port=port,
+            work_dir=work_dir,
+            fault_tolerant_mode=fault_tolerant_mode,
+            job_gc_check_interval_ms=job_gc_check_interval_ms,
+            job_gc_timeout_ms=job_gc_timeout_ms))
 
   def start_worker_server(self, dispatcher, port=0):
     return server_lib.WorkerServer(
-        port=port,
-        dispatcher_address=_address_from_target(dispatcher.target),
-        protocol=server_lib.DEFAULT_PROTOCOL)
+        server_lib.WorkerConfig(
+            dispatcher_address=_address_from_target(dispatcher.target),
+            port=port,
+            heartbeat_interval_ms=200))
 
   def restart_dispatcher(self, dispatcher):
     """Stops `dispatcher` and returns a new dispatcher with the same port."""
@@ -124,8 +136,8 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dispatcher._stop()
     return self.start_dispatch_server(
         port=port,
-        work_dir=dispatcher._work_dir,
-        fault_tolerant_mode=dispatcher._fault_tolerant_mode)
+        work_dir=dispatcher._config.work_dir,
+        fault_tolerant_mode=dispatcher._config.fault_tolerant_mode)
 
   def restart_worker(self, worker, dispatcher, use_same_port=True):
     """Stops `worker` and returns a new worker."""
@@ -138,7 +150,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def start_cluster(self,
                     num_workers,
                     name="",
-                    work_dir=None,
+                    work_dir=TMP_WORK_DIR,
                     fault_tolerant_mode=True):
     """Creates and starts a tf.data service cluster."""
     dispatcher = self.start_dispatch_server(
@@ -362,10 +374,11 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     except:
       raise self.skipTest("Flakes in portpicker library do not represent "
                           "TensorFlow errors.")
-    dispatcher = server_lib.DispatchServer(port=dispatcher_port, start=False)
+    dispatcher = server_lib.DispatchServer(
+        server_lib.DispatcherConfig(port=dispatcher_port), start=False)
     worker = server_lib.WorkerServer(
-        port=0,
-        dispatcher_address=_address_from_target(dispatcher.target),
+        server_lib.WorkerConfig(
+            dispatcher_address=_address_from_target(dispatcher.target), port=0),
         start=False)
 
     def start_servers():
@@ -534,6 +547,47 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       results.append(elem.numpy())
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
 
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(job_name=[None, "test"])))
+  def testGcUnusedJob(self, job_name):
+    dispatcher = self.start_dispatch_server(
+        job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
+    worker = self.start_worker_server(dispatcher)  # pylint: disable=unused-variable
+    num_elements = 100
+    ds = _make_distributed_range_dataset(
+        num_elements, dispatcher, job_name=job_name)
+    it = iter(ds)
+    self.assertEqual(next(it).numpy(), 0)
+    self.assertEqual(worker._num_tasks(), 1)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDontGcUsedJob(self):
+    dispatcher = self.start_dispatch_server(
+        job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
+    worker = self.start_worker_server(dispatcher)  # pylint: disable=unused-variable
+    num_elements = 10
+    it1 = iter(
+        _make_distributed_range_dataset(
+            num_elements, dispatcher, job_name="test1"))
+    it2 = iter(
+        _make_distributed_range_dataset(
+            num_elements, dispatcher, job_name="test2"))
+    it3 = iter(  # this iterator keeps the task alive. pylint: disable=unused-variable
+        _make_distributed_range_dataset(
+            num_elements, dispatcher, job_name="test2"))
+    self.assertEqual(2, worker._num_tasks())
+    del it1
+    del it2
+    # Check that only the first job is gced. The second job will not be gced
+    # because there is still an outstanding iterator for it.
+    while worker._num_tasks() > 1:
+      time.sleep(0.1)
+    self.assertEqual(1, worker._num_tasks())
+
   @combinations.generate(test_base.eager_only_combinations())
   def testApplyDeterminismOption(self):
     elements = list(range(10))
@@ -591,6 +645,40 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.run_stateful(distribute_options.ExternalStatePolicy.FAIL)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochTensorSlices(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    vals = [5, 1, 2, 4]
+    ds = dataset_ops.Dataset.from_tensor_slices(vals)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(ds, vals, assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochRepeat(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_repeats = 5
+    num_elements = 20
+    ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(
+        ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochShuffleAndRepeat(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_repeats = 5
+    num_elements = 20
+    ds = dataset_ops.Dataset.range(num_elements).shuffle(num_elements).repeat(
+        num_repeats)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(
+        ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
+
   def testDistributeFromInterleave(self):
     dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
     ds = dataset_ops.Dataset.range(2)
@@ -600,10 +688,42 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       _make_distributed_dataset(dataset, dispatcher)
       return dataset
 
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError, r"The `.distribute\(...\)` dataset "
-        "transformation is not supported within tf.data functions"):
-      ds = ds.interleave(interleave_fn, cycle_length=2)
+    ds = ds.interleave(interleave_fn, cycle_length=2)
+    self.assertDatasetProduces(ds, [0, 0, 1, 1])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpoch(self):
+    dispatcher, workers = self.start_cluster(2)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch", service=dispatcher.target))
+    self.assertDatasetProduces(
+        ds, list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testChangeProcessingModeAfterRestart(self):
+    dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements = 100
+    range_dataset = dataset_ops.Dataset.range(num_elements)
+    ds = range_dataset.apply(
+        data_service_ops.distribute(
+            processing_mode="parallel_epochs",
+            service=dispatcher.target,
+            job_name="test"))
+    iterator = iter(ds)
+    for i in range(num_elements // 2):
+      self.assertEqual(i, next(iterator).numpy())
+    dispatcher = self.restart_dispatcher(dispatcher)
+    ds = range_dataset.apply(
+        data_service_ops.distribute(
+            processing_mode="distributed_epoch",
+            service=dispatcher.target,
+            job_name="test"))
+    with self.assertRaisesOpError("already an existing job with that name "
+                                  "using processing mode <parallel_epochs>"):
+      next(iter(ds)).numpy()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeNonStringAddresses(self):
@@ -753,6 +873,38 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       for _ in range(1, cluster_1_size):
         self.assertAllEqual(next(it).numpy(), element)
     self.assertEmpty(list(it))
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations()))
+  def testDistributeLargeGraph(self):
+    dispatcher, workers = self.start_cluster(  # to avoid gcing workers, pylint: disable=unused-variable
+        1,
+        work_dir=NO_WORK_DIR,
+        fault_tolerant_mode=False)
+    # Larger than default OSS grpc message size limit of 4MB.
+    tensor = array_ops.ones((2, 1000, 1000), dtype=dtypes.float32)
+    ds = dataset_ops.Dataset.from_tensors(tensor)
+    ds = _make_distributed_dataset(ds, dispatcher)
+    self.assertDatasetProduces(ds, [tensor])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(work_dir=[TMP_WORK_DIR, NO_WORK_DIR])))
+  def testDistributeLargeGraphThenRegisterWorker(self, work_dir):
+    dispatcher = self.start_dispatch_server(
+        work_dir=work_dir, fault_tolerant_mode=False)
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=_address_from_target(dispatcher.target), port=0),
+        start=False)
+    # Larger than default OSS grpc message size limit of 4MB.
+    tensor = array_ops.ones((2, 1000, 1000), dtype=dtypes.float32)
+    ds = dataset_ops.Dataset.from_tensors(tensor)
+    ds = _make_distributed_dataset(ds, dispatcher)
+    it = iter(ds)
+    worker.start()
+    self.assertAllEqual(next(it), tensor)
 
 
 if __name__ == "__main__":

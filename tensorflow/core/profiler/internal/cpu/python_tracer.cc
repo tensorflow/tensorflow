@@ -58,7 +58,7 @@ class PythonTracer : public ProfilerInterface {
 
 PythonTracer::~PythonTracer() {
   Stop().IgnoreError();
-  PythonHooks::GetSingleton()->Finalize();
+  PythonHooks::GetSingleton()->Finalize(nullptr);
 }
 
 Status PythonTracer::Start() {
@@ -76,7 +76,7 @@ Status PythonTracer::Stop() {
     return errors::Internal("TraceMeRecorder not started");
   }
   VLOG(1) << __FUNCTION__;
-  PythonHooks::GetSingleton()->Stop(options_);
+  PythonHooks::GetSingleton()->Stop();
   recording_ = false;
   return Status::OK();
 }
@@ -87,17 +87,14 @@ Status PythonTracer::CollectData(RunMetadata* run_metadata) {
   // in the wrong threads.
   // We had assumed HostTracer::Stop is called when ProfilerSession try to
   // serialize PythonTracer.
-  PythonHooks::GetSingleton()->Finalize();
+  VLOG(2) << "Collecting data to RunMetaData from PythonTracer.";
+  PythonHooks::GetSingleton()->Finalize(nullptr);
   return Status::OK();
 }
 
 Status PythonTracer::CollectData(XSpace* space) {
-  // This ProfilerInterface rely on HostTracer to serialize its trace.
-  // Make sure unpaired traceme don't get recorded, because it will end up
-  // in the wrong threads.
-  // We had assumed HostTracer::Stop is called when ProfilerSession try to
-  // serialize PythonTracer.
-  PythonHooks::GetSingleton()->Finalize();
+  VLOG(2) << "Collecting data to XSpace from PythonTracer.";
+  PythonHooks::GetSingleton()->Finalize(space);
   return Status::OK();
 }
 
@@ -107,8 +104,7 @@ Status PythonTracer::CollectData(XSpace* space) {
 std::unique_ptr<ProfilerInterface> CreatePythonTracer(
     const ProfileOptions& options) {
   PythonHooksOptions pyhooks_options;
-  pyhooks_options.enable_trace_python_function =
-      options.python_tracer_level() && options.host_tracer_level();
+  pyhooks_options.enable_trace_python_function = options.python_tracer_level();
   pyhooks_options.enable_python_traceme = options.host_tracer_level() != 0;
   return absl::make_unique<PythonTracer>(pyhooks_options);
 }

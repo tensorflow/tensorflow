@@ -164,6 +164,8 @@ py_test(
     tags = [
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
+        "noasan",  # b/168812578
+        "notsan",  # b/168812578
     ],
     deps = [
         ":lite",
@@ -211,11 +213,16 @@ py_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
-        ":lite_constants",
         ":op_hint",
         ":schema_py",
+        "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:error_interpolation",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:tf_optimizer",
-        "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/training:saver",
         "@absl_py//absl/logging",
         "@flatbuffers//:runtime_py",
         "@six_archive//:six",

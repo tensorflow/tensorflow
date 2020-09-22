@@ -25,17 +25,19 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import testing_utils
@@ -64,7 +66,7 @@ def create_test_objects(cluster_spec=None,
                         num_gpus=None):
   sess_config = config_pb2.ConfigProto()
   if num_gpus is None:
-    num_gpus = context.num_gpus()
+    num_gpus = len(tf_config.list_logical_devices('GPU'))
 
   if cluster_spec and task_type and task_id is not None:
     cluster_resolver = SimpleClusterResolver(
@@ -257,13 +259,13 @@ class DistributedCollectiveAllReduceStrategyTest(
     cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=0)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
   def testComplexModel(self, required_gpus):
     self._run_between_graph_clients(
         self._test_complex_model, self._cluster_spec, num_gpus=required_gpus)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
   @testing_utils.enable_v2_dtype_behavior
   def testMixedPrecision(self, required_gpus):
@@ -285,13 +287,13 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
     cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=0, has_chief=True)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
   def testComplexModel(self, required_gpus):
     self._run_between_graph_clients(
         self._test_complex_model, self._cluster_spec, num_gpus=required_gpus)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
   @testing_utils.enable_v2_dtype_behavior
   def testMixedPrecision(self, required_gpus):
@@ -310,12 +312,12 @@ class LocalCollectiveAllReduceStrategy(
     strategy_test_lib.TwoDeviceDistributionTestBase,
     parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(mode=['graph'], required_gpus=[2, 4]))
   def testComplexModel(self, required_gpus):
     self._test_complex_model(None, None, required_gpus)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(mode=['graph'], required_gpus=[2, 4]))
   @testing_utils.enable_v2_dtype_behavior
   def testMixedPrecision(self, required_gpus):
@@ -323,7 +325,7 @@ class LocalCollectiveAllReduceStrategy(
       self._test_mixed_precision(None, None, required_gpus)
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
         strategy=[
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
@@ -370,4 +372,4 @@ class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
-  combinations.main()
+  multi_process_runner.test_main()

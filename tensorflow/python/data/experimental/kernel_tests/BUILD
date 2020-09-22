@@ -329,6 +329,9 @@ tf_py_test(
     name = "map_and_batch_test",
     size = "medium",
     srcs = ["map_and_batch_test.py"],
+    tags = [
+        "nomsan",  # b/168906619
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -756,6 +759,7 @@ tf_py_test(
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
         "no_pip",
+        "notap",
     ],
     deps = [
         ":reader_dataset_ops_test_base",

@@ -114,7 +114,7 @@ class CustomDevice {
                                       const string& target_device_name,
                                       TensorHandle** result) = 0;
 
-  virtual Status Execute(EagerOperation* op, TensorHandle** retvals,
+  virtual Status Execute(const EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) = 0;
 };
 

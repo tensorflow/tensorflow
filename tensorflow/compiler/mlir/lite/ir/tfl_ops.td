@@ -39,7 +39,7 @@ def TFL_Dialect : Dialect {
       represented using zero-dimensional tensors);
   }];
 
-  let cppNamespace = "TFL";
+  let cppNamespace = "::mlir::TFL";
 }
 
 //===----------------------------------------------------------------------===//
@@ -720,14 +720,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$output
   );
 
   let hasOptions = 1;
@@ -2447,8 +2447,7 @@ def TFL_ReluOp: TFL_Op<"relu", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu operator";
 
   let description = [{
@@ -2476,8 +2475,7 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu6 operator";
 
   let description = [{
@@ -2505,8 +2503,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Relu1 operator";
 
   let description = [{

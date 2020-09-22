@@ -31,13 +31,11 @@ cc_library(
     srcs = [
         "micro_allocator.cc",
         "micro_interpreter.cc",
-        "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
     ],
     hdrs = [
         "micro_allocator.h",
         "micro_interpreter.h",
-        "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
     ],
     copts = micro_copts(),

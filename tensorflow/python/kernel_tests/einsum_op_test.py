@@ -35,6 +35,8 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_without_tensor_float_32(
+    'Tests einsum, which sometimes does a matmul with cuBLAS')
 class EinsumOpTest(test.TestCase):
 
   def _check(self, s, *input_shapes, **kwargs):
@@ -285,6 +287,8 @@ class EinsumOpTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32(
+    "Tests einsum's gradient, which sometimes does a matmul with cuBLAS")
 class EinsumGradTest(test.TestCase):
 
   def _check_gradient(self, s, *input_shapes):

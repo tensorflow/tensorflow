@@ -30,14 +30,30 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   const char split_a = split & 0x07;
   const char split_b = (split >> 3) & 0x07;
 
-  const std::string sa_string = fuzzed_data.ConsumeBytesAsString(split_a);
-  const std::string sb_string = fuzzed_data.ConsumeBytesAsString(split_b);
-  const std::string sc_string = fuzzed_data.ConsumeRemainingBytesAsString();
-  const char *sa = sa_string.c_str();
-  const char *sb = sb_string.c_str();
-  const char *sc = sc_string.c_str();
+  const std::string ss[3] = {
+      fuzzed_data.ConsumeBytesAsString(split_a),
+      fuzzed_data.ConsumeBytesAsString(split_b),
+      fuzzed_data.ConsumeRemainingBytesAsString(),
+  };
+  const std::string all = ss[0] + ss[1] + ss[2];
 
-  tensorflow::strings::Printf("%s %s %s", sa, sb, sc);
+  int n[4] = {-1, -1, -1, -1};
+  const std::string ret =
+      tensorflow::strings::Printf("%n%s%n%s%n%s%n", &n[0], ss[0].c_str(), &n[1],
+                                  ss[1].c_str(), &n[2], ss[2].c_str(), &n[3]);
+
+  int size_so_far = 0;
+  for (int i = 0; i < 3; i++) {
+    assert(n[i] >= 0);
+    assert(n[i] <= size_so_far);
+    size_so_far += ss[i].size();
+  }
+
+  assert(n[3] >= 0);
+  assert(n[3] <= size_so_far);
+  assert(n[3] <= all.size());
+  assert(n[3] <= size - 1);
+  assert(ret.size() == n[3]);
 
   return 0;
 }

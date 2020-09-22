@@ -20,11 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import models
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
@@ -239,7 +239,7 @@ class KerasInitializersTest(test.TestCase):
         model.get_config(), custom_objects={'my_initializer': my_initializer})
     self.assertEqual(model2.layers[1].kernel_initializer, my_initializer)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_load_external_variance_scaling_v2(self):
     external_serialized_json = {
         'class_name': 'VarianceScaling',

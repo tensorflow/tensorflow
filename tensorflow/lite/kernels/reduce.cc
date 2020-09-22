@@ -170,7 +170,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   TfLiteIntArrayFree(node->temporaries);
   node->temporaries = TfLiteIntArrayCreate(3);
   node->temporaries->data[0] = op_data->scratch_tensor_index;
-  TfLiteTensor* scratch_tensor = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* scratch_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/0, &scratch_tensor));
   scratch_tensor->type = kTfLiteInt32;
   scratch_tensor->allocation_type = kTfLiteArenaRw;
   TfLiteIntArray* index_size = TfLiteIntArrayCreate(1);
@@ -180,11 +182,15 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
 
   // Creates a temp tensor to store resolved axis given input data.
   node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
   resolved_axis->type = kTfLiteInt32;
   // Creates a temp tensor to store temp sums when calculating mean.
   node->temporaries->data[2] = op_data->scratch_tensor_index + 2;
-  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+  TfLiteTensor* temp_sum;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
   switch (op_context->input->type) {
     case kTfLiteFloat32:
       temp_sum->type = kTfLiteFloat32;
@@ -217,7 +223,9 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
   // Leaves work to Eval if axis is not constant; else resizes output.
   if (!IsConstantTensor(op_context.axis)) {
     SetTensorToDynamic(op_context.output);
@@ -233,7 +241,8 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus PrepareAny(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
-  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteBool);
   return PrepareSimple(context, node);
 }
@@ -254,7 +263,9 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(real_multiplier, &data->multiplier, &exponent);
     data->shift = exponent;
   }
-  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+  TfLiteTensor* temp_sum;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
   if (!IsConstantTensor(op_context.axis)) {
     SetTensorToDynamic(temp_sum);
     return kTfLiteOk;
@@ -343,9 +354,15 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   int num_axis = static_cast<int>(NumElements(op_context.axis));
-  TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
-  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+  TfLiteTensor* temp_index;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &temp_index));
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
+  TfLiteTensor* temp_sum;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context,
@@ -490,8 +507,12 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
                        OpContext* op_context, T init_value,
                        T reducer(const T current, const T in)) {
   int64_t num_axis = NumElements(op_context->axis);
-  TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  TfLiteTensor* temp_index;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &temp_index));
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context->output)) {
     TF_LITE_ENSURE_OK(context,
@@ -621,9 +642,15 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   if (need_rescale) {
     // Rescaling 8bit reduce sum.
     int num_axis = static_cast<int>(NumElements(op_context.axis));
-    TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
-    TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
-    TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+    TfLiteTensor* temp_index;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/0, &temp_index));
+    TfLiteTensor* resolved_axis;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
+    TfLiteTensor* temp_sum;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
     // Resize the output tensor if the output tensor is dynamic.
     if (IsDynamicTensor(op_context.output)) {
       TF_LITE_ENSURE_OK(context,

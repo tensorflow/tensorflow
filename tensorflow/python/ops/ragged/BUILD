@@ -2,17 +2,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
-    default_visibility = [
-        "//intelligence/datum/prensor:__pkg__",
-        "//learning/brain/contrib/text:__pkg__",
-        "//nlp/nlx/bert:__pkg__",
-        "//nlp/nlx/i18n/pangloss:__subpackages__",
-        "//nlp/nlx/infrastructure/multiscale:__subpackages__",
-        "//nlp/projects/atc/tf/ops:__pkg__",
-        "//research/graph/convolutions/model:__subpackages__",
-        "//research/socrates:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -478,6 +468,19 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "ragged_tensor_test_ops",
+    srcs = ["ragged_tensor_test_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:string_ops",
     ],
 )
 
@@ -1056,17 +1059,19 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":ragged",  # fixdeps: keep
+        ":ragged_dispatch",
         ":ragged_factory_ops",
         ":ragged_tensor",
+        ":ragged_tensor_test_ops",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:bitwise_ops",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
@@ -1293,6 +1298,35 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_tensor_supported_values_test",
+    srcs = ["ragged_tensor_supported_values_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_factory_ops",
+        ":ragged_tensor",
+        ":ragged_tensor_test_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:type_spec",
+        "//tensorflow/python:util",
         "@absl_py//absl/testing:parameterized",
     ],
 )

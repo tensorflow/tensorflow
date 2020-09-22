@@ -78,12 +78,6 @@ upper_tabs:
       - heading: "Convert a model"
       - title: "Overview"
         path: /lite/convert/
-      - title: "Python API"
-        path: /lite/convert/python_api
-      - title: "Command line"
-        path: /lite/convert/cmdline
-      - title: "Convert quantized models"
-        path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
       - title: "Add metadata"
@@ -98,7 +92,7 @@ upper_tabs:
         status: experimental
         path: /lite/guide/model_maker
 
-      - heading: "Inference"
+      - heading: "Run Inference"
       - title: "Overview"
         path: /lite/guide/inference
       - title: "Operator compatibility"
@@ -113,7 +107,7 @@ upper_tabs:
         path: /lite/guide/ops_version
         status: experimental
 
-      - heading: "Inference with metadata"
+      - heading: "Run Inference with metadata"
       - title: "Overview"
         path: /lite/inference_with_metadata/overview
       - title: "Generate model interfaces with codegen"
@@ -170,6 +164,9 @@ upper_tabs:
         path: /lite/performance/post_training_integer_quant
       - title: "Post-training float16 quantization"
         path: /lite/performance/post_training_float16_quant
+      - title: "Post-training integer quantization with int16 activations"
+        path: /lite/performance/post_training_integer_quant_16x8
+        status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
 
@@ -233,9 +230,7 @@ upper_tabs:
       - title: "API Reference"
         path: /lite/api_docs/
       - heading: "Python"
-      - title: "Overview"
-        status: external
-        path: /api_docs/python/tf/lite
+      - include: /lite/api_docs/python/tf/lite/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
       - heading: "C++"

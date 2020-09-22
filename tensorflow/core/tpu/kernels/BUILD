@@ -1,5 +1,6 @@
 # TPU Kernel Implementations
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
@@ -99,13 +100,22 @@ tf_kernel_library(
     name = "tpu_configuration_ops",
     srcs = ["tpu_configuration_ops.cc"],
     hdrs = ["tpu_configuration_ops.h"],
-    deps = [
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_util"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_util"],
+    }) + [
         ":tpu_compilation_cache_factory",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_local_lookup",
         ":tpu_compilation_cache_lookup",
+        ":tpu_compilation_cache_rpc_lookup",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
+        ":tpu_pod_state",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
@@ -116,6 +126,7 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_config_c_api",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = 1,
@@ -317,6 +328,7 @@ cc_library(
         ":tpu_mesh_state_interface",
         ":tpu_program_c_api_hdrs",
         ":tpu_program_group_interface",
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:compile_only_client",
@@ -446,6 +458,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -467,6 +480,7 @@ cc_library(
     deps = [
         ":tpu_util_c_api_hdrs",
         "//tensorflow/core/tpu:libtftpu_header",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = True,
@@ -494,17 +508,25 @@ cc_library(
     hdrs = ["tpu_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
-        ":tpu_program_group_interface",
+        ":tpu_util_c_api_hdrs",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/strings:str_format",
+        tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
+)
+
+# An alias for
+cc_library(
+    name = "tpu_compilation_cache_cc_proto",
+    deps = [":tpu_compilation_cache_proto_cc"],
 )
 
 cc_library(
@@ -515,8 +537,8 @@ cc_library(
         DEFAULT: [],
     }),
     deps = select({
-        WITH_TPU_SUPPORT: [":tpu_compilation_cache_proto_cc"],
-        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_proto_cc"],
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_proto_cc"],  # build_cleaner: keep
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],  # build_cleaner: keep
     }) + [
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_interface",
@@ -536,8 +558,16 @@ cc_library(
         DEFAULT: [],
     }),
     deps = [
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_cache_rpc_support_hdrs",
+        ":tpu_program_group",
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/tpu:tpu_config_c_api",
+        "//tensorflow/stream_executor/tpu:proto_helper",
     ],
 )
 
@@ -596,7 +626,7 @@ cc_library(
     }),
     deps = select({
         WITH_TPU_SUPPORT: [":tpu_compilation_cache_proto_cc"],
-        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_proto_cc"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],
     }) + [
         ":tpu_compilation_cache_common_proto_cc",
         tf_grpc_cc_dependency(),
@@ -613,27 +643,22 @@ cc_library(
     }),
     deps = select({
         WITH_TPU_SUPPORT: [
-            ":tpu_compilation_cache_rpc_support",
-            ":tpu_compilation_cache_proto_cc",
+            ":tpu_compilation_cache_rpc_support",  # build_cleaner: keep
+            ":tpu_compilation_cache_proto_cc",  # build_cleaner: keep
         ],
         DEFAULT: [
-            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support",
-            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_proto_cc",
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support",  # build_cleaner: keep
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto",  # build_cleaner: keep
         ],
     }) + [
         ":tpu_compilation_cache_common_proto_cc",
-        ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_grpc",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_rpc_support_hdrs",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
         "//tensorflow/core/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/platform:coding",
-        "//tensorflow/core:protos_all_cc",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -924,4 +949,24 @@ cc_library(
         "//tensorflow/core/tpu:tpu_configuration",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_pod_state",
+    srcs = ["tpu_pod_state.cc"],
+    hdrs = ["tpu_pod_state.h"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_util"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_util"],
+    }) + [
+        ":tpu_compilation_cache_service",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core:framework",
+    ],
 )

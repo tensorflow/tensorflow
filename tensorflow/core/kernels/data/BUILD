@@ -1,12 +1,18 @@
 # Description:
 #   OpKernels for tf.data
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_mobile",
     "tf_cc_test",
-    "tf_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -26,6 +32,7 @@ cc_library(
         ":map_dataset_op",
         ":name_utils",
         ":range_dataset_op",
+        ":split_utils",
         ":take_dataset_op",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu",
@@ -813,6 +820,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -896,6 +904,32 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "split_utils",
+    srcs = ["split_utils.cc"],
+    hdrs = ["split_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:iterator_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "split_utils_test",
+    size = "small",
+    srcs = ["split_utils_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":split_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+    ],
+)
+
 tf_kernel_library(
     name = "tensor_dataset_op",
     srcs = ["tensor_dataset_op.cc"],
@@ -928,6 +962,7 @@ tf_kernel_library(
     deps = [
         ":dataset_utils",
         ":name_utils",
+        ":split_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -1414,6 +1449,7 @@ filegroup(
         exclude = [
             "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
             "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
+            "model_dataset_op.*",  # not supported on mobile.
             "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
             "*test.cc",
             "*test.h",

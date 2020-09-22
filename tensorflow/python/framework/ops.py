@@ -595,12 +595,12 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
 
     In some cases, the inferred shape may have unknown dimensions. If
     the caller has additional information about the values of these
-    dimensions, `Tensor.set_shape()` can be used to augment the
-    inferred shape.
+    dimensions, `tf.ensure_shape` or `Tensor.set_shape()` can be used to augment
+    the inferred shape.
 
     >>> @tf.function
     ... def my_fun(a):
-    ...   a.set_shape([5, 5])
+    ...   a = tf.ensure_shape(a, [5, 5])
     ...   # the `print` executes during tracing.
     ...   print("Result shape: ", a.shape)
     ...   return a
@@ -617,6 +617,11 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
+
+    Note: It is recommended to use `tf.ensure_shape` instead of
+    `Tensor.set_shape`, because `tf.ensure_shape` provides better checking for
+    programming errors and can create guarantees for compiler
+    optimization.
 
     With eager execution this operates as a shape assertion.
     Here the shapes match:
@@ -1506,6 +1511,13 @@ def convert_to_tensor(value,
 
   if preferred_dtype is not None:
     preferred_dtype = dtypes.as_dtype(preferred_dtype)
+
+  # See below for the reason why it's `type(value)` and not just `value`.
+  # https://docs.python.org/3.8/reference/datamodel.html#special-lookup
+  overload = getattr(type(value), "__tf_tensor__", None)
+  if overload is not None:
+    return overload(value, dtype, name)
+
   for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
     # cast to preferred_dtype first.
@@ -2332,6 +2344,10 @@ class Operation(object):
 
   def __repr__(self):
     return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
+
+  def __tf_tensor__(self, dtype=None, name=None):
+    """Raises a helpful error."""
+    raise TypeError("can't convert Operation '{}' to Tensor".format(self.name))
 
   @property
   def outputs(self):
@@ -5160,42 +5176,6 @@ class Graph(object):
   def _global_distribute_strategy_scope(self, distribute_strategy_scope):
     self._thread_local.distribute_strategy_scope = (distribute_strategy_scope)
 
-  @property
-  def _auto_cast_variable_read_dtype(self):
-    """The dtype that instances of `AutoCastVariable` will be casted to.
-
-    This is None if `AutoCastVariables` should not be casted.
-
-    See `AutoCastVariable` for more information.
-
-    Returns:
-      The dtype that instances of `AutoCastVariable` will be casted to.
-    """
-    dtype = getattr(self._thread_local, "_auto_cast_variable_read_dtype", None)
-    if dtype is None:
-      self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
-    return dtype
-
-  @_auto_cast_variable_read_dtype.setter
-  def _auto_cast_variable_read_dtype(self, dtype):
-    self._thread_local._auto_cast_variable_read_dtype = dtype  # pylint: disable=protected-access
-
-  def _enable_auto_casting_variables(self, dtype):
-    """Returns a context manager to automatically cast AutoCastVariables.
-
-    If an AutoCastVariable `var` is used under this context manager, it will be
-    casted to `dtype` before being used.
-
-    See `AutoCastVariable` for more information.
-
-    Args:
-      dtype: The dtype that AutoCastVariables should be casted to.
-
-    Returns:
-      Context manager.
-    """
-    return enable_auto_cast_variables(dtype, graph=self)
-
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
 
@@ -5209,38 +5189,6 @@ class Graph(object):
     See the comment for self._group_lock for more info.
     """
     return self._group_lock.group(_SESSION_RUN_LOCK_GROUP)
-
-
-class enable_auto_cast_variables(object):
-  """Enables the autocasting of `AutoCastVariable`s.
-
-  Under this context manager, `AutoCastVariable`s will be cast to `dtype` if
-  `dtype` is floating-point. Otherwise, `AutoCastVariable`s will not be cast.
-  """
-
-  __slots__ = ["_dtype", "_graph", "_prev_read_dtype"]
-
-  def __init__(self, dtype, graph=None):
-    if dtype and not dtype.is_floating:
-      self._dtype = None
-    else:
-      self._dtype = dtype
-    if graph is None:
-      self._graph = get_default_graph()
-    else:
-      self._graph = graph
-
-  def __enter__(self):
-    # For performance, access `_thread_local` attr directly rather than
-    # @property wrappers.
-    graph_thread_local = self._graph._thread_local
-    self._prev_read_dtype = getattr(graph_thread_local,
-                                    "_auto_cast_variable_read_dtype", None)
-    graph_thread_local._auto_cast_variable_read_dtype = self._dtype
-
-  def __exit__(self, type_arg, value_arg, traceback_arg):
-    self._graph._thread_local._auto_cast_variable_read_dtype = (
-        self._prev_read_dtype)
 
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
@@ -6833,13 +6781,6 @@ def get_from_proto_function(collection_name):
     return None
 
 
-def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
-  """Produce a nice error if someone converts an Operation to a Tensor."""
-  raise TypeError(("Can't convert Operation '%s' to Tensor "
-                   "(target dtype=%r, name=%r, as_ref=%r)") %
-                  (op.name, dtype, name, as_ref))
-
-
 def _op_to_colocate_with(v, graph):
   """Operation object corresponding to v to use for colocation constraints."""
   if v is None:
@@ -6871,10 +6812,6 @@ def _op_to_colocate_with(v, graph):
 
 def _is_keras_symbolic_tensor(x):
   return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"
-
-
-tensor_conversion_registry.register_tensor_conversion_function(
-    Operation, _operation_conversion_error)
 
 
 # These symbols were originally defined in this module; import them for

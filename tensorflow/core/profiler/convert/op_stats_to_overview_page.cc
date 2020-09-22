@@ -154,6 +154,10 @@ OverviewPageRecommendation ComputeGenericRecommendation(
     const PrecisionStats& precision_stats) {
   OverviewPageRecommendation re;
   GenericRecommendation generic;
+  generic.set_device_collectives_bottleneck(
+      bottleneck.device_collectives_classification());
+  generic.set_device_collectives_statement(
+      bottleneck.device_collectives_statement());
   generic.set_kernel_launch_bottleneck(
       bottleneck.kernel_launch_classification());
   generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement());
@@ -234,7 +238,8 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   uint64 outside_compilation_device_op_time_ps = 0;
   for (const OpMetrics& metrics :
        op_stats.device_op_metrics_db().metrics_db()) {
-    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.name())) continue;
+    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.long_name()))
+      continue;
     outside_compilation_device_op_time_ps += metrics.self_time_ps();
   }
   uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;

@@ -110,6 +110,10 @@ class ConvertEmbeddedLookupFunc {
 class PrepareCompositeFunctionsPass
     : public PassWrapper<PrepareCompositeFunctionsPass,
                          OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TFL::TensorFlowLiteDialect>();
+  }
+
  public:
   explicit PrepareCompositeFunctionsPass() {}
 

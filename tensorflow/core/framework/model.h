@@ -77,7 +77,14 @@ struct Parameter {
   Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
             double max)
       : name(name),
-        value(state->value),
+        // Sometimes non-autotune nodes (with `autotune_=false`) may contain
+        // parameters (for example inputs of parallel interleave dataset which
+        // are not in the current cycle). To avoid unrealistic situation
+        // (say `buffer_size=-1` or `parallelism=-1`) in the optimization
+        // computation, if the state value is `kAutotune=-1` (just to indicate
+        // the `SharedState` is tunable), we initialize the parameter value to
+        // be the minimal value of the state.
+        value(state->value == kAutotune ? min : state->value),
         min(min),
         max(max),
         state(std::move(state)) {}
@@ -478,8 +485,12 @@ class Node {
 
   // Returns a vector of nodes of the subtree rooted in this node. The nodes are
   // either in breadth-first search or reverse breadth-first search order
-  // depending on the `order` argument. The root node itself is not collected.
-  NodeVector CollectNodes(TraversalOrder order) const
+  // depending on the `order` argument. The nodes are collected based on the
+  // results of the `collect_node` predicate: if the predicate returns `false`
+  // for a given node, then the subtree rooted in this node is excluded. The
+  // root node itself is not collected.
+  NodeVector CollectNodes(TraversalOrder order,
+                          bool collect_node(const std::shared_ptr<Node>)) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Collect tunable parameters for the node.

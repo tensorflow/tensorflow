@@ -145,9 +145,8 @@ cuda_py_tests(
     ],
     python_version = "PY3",
     tags = [
-        "no_cuda11",  # TODO(b/165611343): Need to address the failures.
         "no_cuda_on_cpu_tap",
-        "no_oss",
+        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
         "no_rocm",
         "no_windows",
         "nomac",

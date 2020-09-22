@@ -1,18 +1,26 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
-    "tf_kernel_library",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # TODO(rmlarsen): Remove ASAP.
 package_group(
@@ -61,6 +69,9 @@ exports_files([
     "resize_nearest_neighbor_op.cc",
     "resize_nearest_neighbor_op.h",
     "sample_distorted_bounding_box_op.cc",
+    "decode_image_op.cc",
+    "encode_jpeg_op.cc",
+    "encode_png_op.cc",
 ])
 
 # Private support libraries ---------------------------------------------------
@@ -238,7 +249,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda([
+    deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
     ]),
 )

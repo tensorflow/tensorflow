@@ -28,14 +28,14 @@ namespace data {
 
 namespace {
 constexpr const char kParallelEpochs[] = "parallel_epochs";
-constexpr const char kOneEpoch[] = "one_epoch";
+constexpr const char kDistributedEpoch[] = "distributed_epoch";
 }  // namespace
 
-Status ParseProcessingMode(const std::string& s, ProcessingMode* mode) {
+Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
   if (s == kParallelEpochs) {
-    *mode = ProcessingMode::PARALLEL_EPOCHS;
-  } else if (s == kOneEpoch) {
-    *mode = ProcessingMode::ONE_EPOCH;
+    mode = ProcessingMode::PARALLEL_EPOCHS;
+  } else if (s == kDistributedEpoch) {
+    mode = ProcessingMode::DISTRIBUTED_EPOCH;
   } else {
     return errors::InvalidArgument("Unrecognized processing mode: ", s);
   }
@@ -46,27 +46,34 @@ std::string ProcessingModeToString(ProcessingMode mode) {
   switch (mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
       return kParallelEpochs;
-    case ProcessingMode::ONE_EPOCH:
-      return kOneEpoch;
+    case ProcessingMode::DISTRIBUTED_EPOCH:
+      return kDistributedEpoch;
     default:
       DCHECK(false);
       return "Unknown";
   }
 }
 
-Status DataServiceDispatcherClient::RegisterWorker(
-    const std::string& worker_address, std::vector<TaskDef>& tasks) {
+Status DataServiceDispatcherClient::WorkerHeartbeat(
+    const std::string& worker_address, const std::vector<int64>& current_tasks,
+    std::vector<TaskDef>& new_tasks, std::vector<int64>& tasks_to_delete) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  RegisterWorkerRequest req;
+  WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
-  RegisterWorkerResponse resp;
-  grpc::ClientContext client_ctx;
-  grpc::Status status = stub_->RegisterWorker(&client_ctx, req, &resp);
-  if (!status.ok()) {
-    return grpc_util::WrapError("Failed to register worker", status);
+  for (int64 task : current_tasks) {
+    req.add_current_tasks(task);
   }
-  for (const auto& task : resp.tasks()) {
-    tasks.push_back(task);
+  WorkerHeartbeatResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to perform worker heartbeat", status);
+  }
+  for (const auto& task : resp.new_tasks()) {
+    new_tasks.push_back(task);
+  }
+  for (int64 task_to_delete : resp.tasks_to_delete()) {
+    tasks_to_delete.push_back(task_to_delete);
   }
   return Status::OK();
 }
@@ -104,8 +111,30 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
   return Status::OK();
 }
 
+Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
+                                             Tensor& split,
+                                             bool& end_of_splits) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetSplitRequest req;
+  req.set_job_id(job_id);
+  req.set_repetition(repetition);
+  GetSplitResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->GetSplit(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to get split", status);
+  }
+  end_of_splits = resp.end_of_splits();
+  if (!end_of_splits) {
+    if (!split.FromProto(resp.split())) {
+      return errors::Internal("Failed to parse split tensor proto");
+    }
+  }
+  return Status::OK();
+}
+
 Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
-                                                    int64* dataset_id) {
+                                                    int64& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset()->mutable_graph() = dataset;
@@ -115,13 +144,13 @@ Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to register dataset", status);
   }
-  *dataset_id = resp.dataset_id();
+  dataset_id = resp.dataset_id();
   return Status::OK();
 }
 
 Status DataServiceDispatcherClient::CreateJob(int64 dataset_id,
                                               ProcessingMode processing_mode,
-                                              int64* job_client_id) {
+                                              int64& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   CreateJobRequest req;
   req.set_dataset_id(dataset_id);
@@ -134,13 +163,13 @@ Status DataServiceDispatcherClient::CreateJob(int64 dataset_id,
         absl::StrCat("Failed to create job for dataset with id ", dataset_id),
         status);
   }
-  *job_client_id = resp.job_client_id();
+  job_client_id = resp.job_client_id();
   return Status::OK();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
-    const std::string& job_name, int job_name_index, int64* job_client_id) {
+    const std::string& job_name, int job_name_index, int64& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
@@ -156,7 +185,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
                      dataset_id),
         status);
   }
-  *job_client_id = resp.job_client_id();
+  job_client_id = resp.job_client_id();
   return Status::OK();
 }
 
@@ -176,8 +205,8 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
 }
 
 Status DataServiceDispatcherClient::GetTasks(int64 job_client_id,
-                                             std::vector<TaskInfo>* tasks,
-                                             bool* job_finished) {
+                                             std::vector<TaskInfo>& tasks,
+                                             bool& job_finished) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetTasksRequest req;
   req.set_job_client_id(job_client_id);
@@ -187,16 +216,16 @@ Status DataServiceDispatcherClient::GetTasks(int64 job_client_id,
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
-  tasks->clear();
+  tasks.clear();
   for (auto& task : resp.task_info()) {
-    tasks->push_back(task);
+    tasks.push_back(task);
   }
-  *job_finished = resp.job_finished();
+  job_finished = resp.job_finished();
   return Status::OK();
 }
 
 Status DataServiceDispatcherClient::GetWorkers(
-    std::vector<WorkerInfo>* workers) {
+    std::vector<WorkerInfo>& workers) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetWorkersRequest req;
   GetWorkersResponse resp;
@@ -205,9 +234,9 @@ Status DataServiceDispatcherClient::GetWorkers(
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get workers", s);
   }
-  workers->clear();
+  workers.clear();
   for (auto& worker : resp.workers()) {
-    workers->push_back(worker);
+    workers.push_back(worker);
   }
   return Status::OK();
 }
@@ -220,14 +249,16 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
-  auto channel = grpc::CreateChannel(address_, credentials);
+  grpc::ChannelArguments args;
+  args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  auto channel = grpc::CreateCustomChannel(address_, credentials, args);
   stub_ = DispatcherService::NewStub(channel);
   return Status::OK();
 }
 
 Status DataServiceWorkerClient::GetElement(int64 task_id,
-                                           CompressedElement* element,
-                                           bool* end_of_sequence) {
+                                           CompressedElement& element,
+                                           bool& end_of_sequence) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetElementRequest req;
   req.set_task_id(task_id);
@@ -237,9 +268,9 @@ Status DataServiceWorkerClient::GetElement(int64 task_id,
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get element", s);
   }
-  *end_of_sequence = resp.end_of_sequence();
-  if (!*end_of_sequence) {
-    *element = std::move(*resp.mutable_compressed_element());
+  end_of_sequence = resp.end_of_sequence();
+  if (!end_of_sequence) {
+    element = std::move(*resp.mutable_compressed_element());
   }
   return Status::OK();
 }
@@ -261,20 +292,20 @@ Status DataServiceWorkerClient::EnsureInitialized() {
 
 Status CreateDataServiceDispatcherClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceDispatcherClient>* out) {
+    std::unique_ptr<DataServiceDispatcherClient>& out) {
   auto client =
       absl::make_unique<DataServiceDispatcherClient>(address, protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
-  *out = std::move(client);
+  out = std::move(client);
   return Status::OK();
 }
 
 Status CreateDataServiceWorkerClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceWorkerClient>* out) {
+    std::unique_ptr<DataServiceWorkerClient>& out) {
   auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
-  *out = std::move(client);
+  out = std::move(client);
   return Status::OK();
 }
 }  // namespace data

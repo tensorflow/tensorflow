@@ -43,7 +43,6 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
-from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.layers import core as legacy_core
@@ -56,7 +55,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.util import nest
 
@@ -1135,7 +1133,7 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
-    x = ops.convert_to_tensor_v2(np.ones((10, 10)))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10)))
     layer = layers.Dense(
         10, activation=layers.ReLU(name='MyAct'), name='MyName3')
     layer(x)
@@ -1544,44 +1542,6 @@ class DTypeTest(keras_parameterized.TestCase):
 
     layer = IdentityLayerWithoutAutocast(dtype='float64')
     self.assertEqual(layer(self._const('float32')).dtype, 'float32')
-
-  @testing_utils.enable_v2_dtype_behavior
-  def test_dtype_warnings(self):
-    # Test a layer warns when it casts inputs.
-    layer = IdentityLayer()
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      self.assertRegex(
-          str(mock_warn.call_args),
-          ".*from dtype float64 to the layer's dtype of float32.*"
-          "The layer has dtype float32 because.*")
-
-    # Test a layer does not warn a second time
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      mock_warn.assert_not_called()
-
-    # Test a new layer can warn even if a different layer already warned
-    layer = IdentityLayer()
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      self.assertRegex(
-          str(mock_warn.call_args),
-          ".*from dtype float64 to the layer's dtype of float32.*"
-          "The layer has dtype float32 because.*")
-
-    # Test a layer does not warn if a dtype is passed
-    layer = IdentityLayer(dtype='float32')
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      mock_warn.assert_not_called()
-
-    # Test a layer does not warn if a Policy is set:
-    with policy.policy_scope('float32'):
-      layer = IdentityLayer()
-      with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-        layer(self._const('float64'))
-        mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
   def test_compute_output_signature(self):
