@@ -1222,7 +1222,6 @@ class LayoutOptimizerTest(test.TestCase):
         if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
-        print(node.name)
 
       # The reduce op Mean needs to dim map the input reduce index to NCDHW.
       # Then, the output needs to be tranposed back to NDHWC.
