@@ -163,6 +163,12 @@ Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
 }
 
 bool RegisterTpuPlatform() {
+  // Silently bail if the underlying TPU C API isn't initialized. This is useful
+  // for code that unconditionally calls RegisterTpuPlatform() but doesn't link
+  // in the underlying TPU library when not running on TPU.
+  if (!tpu::IsInitialized(tpu::ExecutorApiFn())) {
+    return true;
+  }
   static bool tpu_platform_registered = false;
   if (!tpu_platform_registered) {
     tpu_registered_platform = new TpuPlatform();

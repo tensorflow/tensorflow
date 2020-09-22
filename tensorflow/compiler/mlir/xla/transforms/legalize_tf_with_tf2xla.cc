@@ -198,6 +198,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ResizeBilinearOp>(),
     TypeID::get<TF::ResizeBilinearGradOp>(),
     TypeID::get<TF::ResizeNearestNeighborOp>(),
+    TypeID::get<TF::ResizeNearestNeighborGradOp>(),
     TypeID::get<TF::ReverseSequenceOp>(),
     TypeID::get<TF::RightShiftOp>(),
     TypeID::get<TF::RintOp>(),

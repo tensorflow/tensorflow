@@ -59,7 +59,6 @@ cc_library(
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
-        ":grpc",
         ":profiler_service_impl",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",

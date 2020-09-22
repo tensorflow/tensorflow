@@ -1834,6 +1834,7 @@ cuda_py_test(
     name = "constant_op_eager_test",
     size = "small",
     srcs = ["constant_op_eager_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3173,6 +3174,7 @@ cuda_py_test(
     srcs = ["rnn_cell_test.py"],
     shard_count = 15,
     tags = ["no_windows"],  # b/139739217
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3634,6 +3636,7 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

@@ -71,6 +71,9 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
     case GATHER_COLLECTIVE:
       return "RingGather";
 
+    case PERMUTE_COLLECTIVE:
+      return "Permute";
+
     default:
       return "undef";
   }

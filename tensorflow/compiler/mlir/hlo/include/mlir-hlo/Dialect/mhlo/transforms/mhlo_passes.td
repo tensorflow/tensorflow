@@ -88,7 +88,7 @@ def OptimizeMhloPass : Pass<"mhlo-test-optimize", "FuncOp"> {
 }
 
 
-def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow", "FuncOp"> {
+def SinkConstantsToControlFlowPass : FunctionPass<"mhlo-sink-constants-to-control-flow"> {
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
   let constructor = "createSinkConstantsToControlFlowPass()";
