@@ -38,7 +38,6 @@ tf_kernel_library(
         "cwise_op_gpu_base.h",
         "cwise_op_gpu_tanh.cc",
     ]),
-    tags = ["no_rocm"],
     deps = if_cuda_or_rocm([
         ":abs_kernels",
         ":tanh_kernels",
