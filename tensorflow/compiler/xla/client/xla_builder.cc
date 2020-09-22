@@ -132,10 +132,10 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
 
 namespace internal {
 
-XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
-                                    absl::Span<const XlaOp> operands,
-                                    absl::string_view fusion_kind,
-                                    const XlaComputation& fused_computation) {
+XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
+                            absl::Span<const XlaOp> operands,
+                            absl::string_view fusion_kind,
+                            const XlaComputation& fused_computation) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_fusion_kind(std::string(fusion_kind));
@@ -147,11 +147,6 @@ XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
     return builder->AddInstruction(std::move(instr), HloOpcode::kFusion,
                                    operands);
   });
-}
-
-HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
-  return &op.builder()
-              ->instructions_[op.builder()->handle_to_index_[op.handle_]];
 }
 
 }  // namespace internal

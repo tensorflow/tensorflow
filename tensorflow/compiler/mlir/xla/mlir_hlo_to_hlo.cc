@@ -1059,7 +1059,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp, 4> operands;
   for (auto operand : op.operands()) operands.push_back(values[operand]);
 
-  xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
+  xla::XlaOp fusion = xla::internal::XlaBuilderBuildFusion(
       ctx.builder, operands,
       absl::string_view(op.fusion_kind()->data(), op.fusion_kind()->size()),
       fused_computation);
@@ -1155,32 +1155,7 @@ LogicalResult ConvertToHloModule::Lower(
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaComputation* result) {
-  // See hlo_function_importer.cc for documentation about layouts in MHLO.
-  auto propagate_layouts = [](mlir::Operation* inst, xla::XlaOp xla_op) {
-    auto attr =
-        inst->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major");
-    if (!attr) return;
-
-    auto* v = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
-                  ->mutable_shape()
-                  ->mutable_layout()
-                  ->mutable_minor_to_major();
-    v->Clear();
-    for (const llvm::APInt& i : attr) {
-      *v->Add() = i.getZExtValue();
-    }
-  };
-
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder}))) {
-    if (inst->getNumResults() == 1) {
-      auto iter = value_lowering->find(inst->getResult(0));
-      if (iter == value_lowering->end()) {
-        inst->emitOpError(
-            "inst has a result, but it's not found in value_lowering");
-        return failure();
-      }
-      propagate_layouts(inst, iter->second);
-    }
     return success();
   }
 
@@ -1206,17 +1181,16 @@ LogicalResult ConvertToHloModule::Lower(
     if (failed(GetXlaOp(operand, value_map, &xla_operand, op)))
       return failure();
     value_map[op.getResult()] = xla_operand;
-    propagate_layouts(inst, xla_operand);
     return success();
   }
 
+  // TODO(jpienaar): This doesn't support layouts yet.
   if (matchPattern(inst, m_Constant(&const_attr))) {
     auto literal_or = CreateLiteralFromAttr(const_attr);
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
-    auto constant = xla::ConstantLiteral(builder, literal_or.ValueOrDie());
-    value_map[inst->getResult(0)] = constant;
-    propagate_layouts(inst, constant);
+    value_map[inst->getResult(0)] =
+        xla::ConstantLiteral(builder, literal_or.ValueOrDie());
     return success();
   }
 

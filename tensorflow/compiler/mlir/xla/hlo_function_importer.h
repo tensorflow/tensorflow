@@ -84,8 +84,6 @@ class HloFunctionImporter {
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
                                                mlir::OpBuilder* func_builder);
-  StatusOr<mlir::Operation*> ImportInstructionImpl(
-      HloInstruction* instruction, mlir::OpBuilder* func_builder);
 
   // Gets the MLIR operand values from an HLO Instruction.
   StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(
