@@ -239,7 +239,7 @@
             <activation>
                 <activeByDefault>true</activeByDefault>
                 <property>
-                    <name>!NEVERSETME</name>
+                    <name>
                 </property>
             </activation>
             <build>
@@ -300,7 +300,7 @@
                 <!-- https://blog.bintray.com/2015/09/17/publishing-your-maven-project-to-bintray/ -->
                 <repository>
                     <id>bintray</id>
-                    <url>https://api.bintray.com/maven/google/tensorflow/tensorflow/;publish=0</url>
+                    <url>https://api.bintray.com/maven/google/tensorflow/tensorflow/;publish=1</url>
                 </repository>
             </distributionManagement>
             <build>
