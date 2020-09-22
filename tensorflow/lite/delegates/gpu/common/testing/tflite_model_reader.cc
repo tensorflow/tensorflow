@@ -14,16 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/gpu/common/testing/tflite_model_reader.h"
 
+#include <stddef.h>
+
 #include <memory>
 
-#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/model_transformations.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
@@ -79,7 +81,6 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
   if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {
     return absl::InternalError("Unable to prepare TfLite interpreter.");
   }
-  interpreter->UseNNAPI(false);
   TfLiteDelegate delegate;
   delegate.data_ = graph;
   delegate.flags = kTfLiteDelegateFlagsNone;
@@ -94,8 +95,8 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
 
   NullTransformationReporter reporter;
   ModelTransformer transformer(graph, &reporter);
-  if (!ApplyGeneralTransformations(&transformer)) {
-    return absl::InternalError("Graph general transformations failed");
+  if (!ApplyModelTransformations(&transformer)) {
+    return absl::InternalError("Graph transformations failed");
   }
 
   return absl::OkStatus();

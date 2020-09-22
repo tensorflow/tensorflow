@@ -37,8 +37,8 @@ ATTRIBUTE_THREAD_FUNCTION void requantize_16_to_8_thread_worker(void* context) {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   RequantizeOpData* op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(RequantizeOpData),
-                                    reinterpret_cast<void**>(&op));
+  op = reinterpret_cast<RequantizeOpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(RequantizeOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -48,10 +48,10 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   parse_custom_options(context, buffer, length, &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(
-      context,
-      sizeof(nn_requantize_16_to_8_job_t) * op->execution_plan.GetNumThreads(),
-      reinterpret_cast<void**>(&op->jobs));
+  op->jobs = reinterpret_cast<nn_requantize_16_to_8_job_t*>(
+      context->AllocatePersistentBuffer(
+          context, sizeof(nn_requantize_16_to_8_job_t) *
+                       op->execution_plan.GetNumThreads()));
 
   return op;
 }

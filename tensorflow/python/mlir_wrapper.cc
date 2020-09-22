@@ -31,6 +31,17 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
           return output;
         });
 
+  m.def("ImportFunction", [](const std::string &functiondef,
+                             const std::string &functiondef_library,
+                             const std::string &pass_pipeline) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    std::string output = tensorflow::ImportFunction(
+        functiondef, functiondef_library, pass_pipeline, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    return output;
+  });
+
   m.def("ExperimentalConvertSavedModelToMlir",
         [](const std::string &saved_model_path,
            const std::string &exported_names, bool show_debug_info) {

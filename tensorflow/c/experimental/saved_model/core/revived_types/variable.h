@@ -37,6 +37,7 @@ class Variable : public TensorHandleConvertible {
   static Status CreateUninitialized(ImmediateExecutionContext* ctx,
                                     DataType dtype, TensorShape shape,
                                     absl::optional<std::string> name,
+                                    const char* raw_device_name,
                                     std::unique_ptr<Variable>* output);
 
   // The dtype of the underlying variable.

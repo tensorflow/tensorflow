@@ -60,8 +60,8 @@ ATTRIBUTE_THREAD_FUNCTION void maxpool_thread_worker(void* context) {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   MaxPoolOpData* op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(MaxPoolOpData),
-                                    reinterpret_cast<void**>(&op));
+  op = reinterpret_cast<MaxPoolOpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(MaxPoolOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -72,9 +72,10 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
                        &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(
-      context, sizeof(nn_pool2d_job_t) * op->execution_plan.regions.GetSize(),
-      reinterpret_cast<void**>(&op->jobs));
+  op->jobs =
+      reinterpret_cast<nn_pool2d_job_t*>(context->AllocatePersistentBuffer(
+          context,
+          sizeof(nn_pool2d_job_t) * op->execution_plan.regions.GetSize()));
 
   return op;
 }
@@ -187,8 +188,8 @@ ATTRIBUTE_THREAD_FUNCTION void avgpool_thread_worker(void* context) {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   AvgPoolOpData* op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(AvgPoolOpData),
-                                    reinterpret_cast<void**>(&op));
+  op = reinterpret_cast<AvgPoolOpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(AvgPoolOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -199,9 +200,10 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
                        &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(
-      context, sizeof(nn_pool2d_job_t) * op->execution_plan.regions.GetSize(),
-      reinterpret_cast<void**>(&op->jobs));
+  op->jobs =
+      reinterpret_cast<nn_pool2d_job_t*>(context->AllocatePersistentBuffer(
+          context,
+          sizeof(nn_pool2d_job_t) * op->execution_plan.regions.GetSize()));
 
   return op;
 }
@@ -294,6 +296,8 @@ namespace avgpool_global {
 struct AvgPoolGlobalOpData {
   ExecutionPlan execution_plan;
   int32_t bias;
+  int8_t scale;
+  uint16_t shift;
   nn_avgpool2d_global_plan_t plan;
   nn_avgpool2d_global_job_t* jobs;
   int stack_scratch_index;
@@ -305,19 +309,22 @@ struct AvgPoolGlobalThreadData {
   nn_avgpool2d_global_job_t* job;
   PoolingThreadData data;
   int32_t bias;
+  int8_t scale;
+  uint16_t shift;
 };
 
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void avgpool_global_thread_worker(void* context) {
   AvgPoolGlobalThreadData* td = (AvgPoolGlobalThreadData*)context;
-  avgpool2d_global(td->data.Y, td->data.X, td->bias, td->plan, td->job);
+  avgpool2d_global(td->data.Y, td->data.X, td->bias, td->scale, td->shift,
+                   td->plan, td->job);
 }
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   AvgPoolGlobalOpData* op = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(AvgPoolGlobalOpData),
-                                    reinterpret_cast<void**>(&op));
+  op = reinterpret_cast<AvgPoolGlobalOpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(AvgPoolGlobalOpData)));
   op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -327,10 +334,10 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   parse_custom_options(context, buffer, length, &op->execution_plan);
 
   // allocate the jobs
-  context->AllocatePersistentBuffer(
-      context,
-      sizeof(nn_avgpool2d_global_job_t) * op->execution_plan.changrps.GetSize(),
-      reinterpret_cast<void**>(&op->jobs));
+  op->jobs = reinterpret_cast<nn_avgpool2d_global_job_t*>(
+      context->AllocatePersistentBuffer(
+          context, sizeof(nn_avgpool2d_global_job_t) *
+                       op->execution_plan.changrps.GetSize()));
 
   return op;
 }
@@ -346,8 +353,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<AvgPoolGlobalOpData*>(node->user_data);
 
   op->bias = unpack<4, int32_t>(&bss->data.uint8[0]);
-  uint32_t shift = unpack<2, uint32_t>(&bss->data.uint8[5]);
-  uint32_t scale = unpack<1, uint32_t>(&bss->data.uint8[4]);
+  op->shift = unpack<2, uint16_t>(&bss->data.uint8[5]);
+  op->scale = unpack<1, int8_t>(&bss->data.uint8[4]);
+
+  TFLITE_DCHECK(op->scale > 0);
 
   // setup kernel parameters
   nn_image_params_t in_params = {(uint32_t)input->dims->data[1],
@@ -374,9 +383,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // initialize the kernel
   avgpool2d_global_init(&op->plan, op->jobs, &in_params, &job_params[0],
                         n_jobs);
-
-  op->plan.shift = shift;
-  op->plan.scale = scale;
 
   return kTfLiteOk;
 }
@@ -406,6 +412,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     thread_data[i_th].data.Y = output->data.int8;
     thread_data[i_th].data.X = input->data.int8;
     thread_data[i_th].bias = op->bias;
+    thread_data[i_th].shift = op->shift;
+    thread_data[i_th].scale = op->scale;
     thread_data[i_th].plan = &op->plan;
     thread_data[i_th].job = &op->jobs[i_cg];
 

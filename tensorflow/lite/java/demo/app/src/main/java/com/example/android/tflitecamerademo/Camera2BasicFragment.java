@@ -326,58 +326,55 @@ public class Camera2BasicFragment extends Fragment
     final int deviceIndex = deviceView.getCheckedItemPosition();
     final int numThreads = np.getValue();
 
-    backgroundHandler.post(() -> {
-      if (modelIndex == currentModel && deviceIndex == currentDevice
+    backgroundHandler.post(
+        () -> {
+          if (modelIndex == currentModel
+              && deviceIndex == currentDevice
               && numThreads == currentNumThreads) {
-        return;
-      }
-      currentModel = modelIndex;
-      currentDevice = deviceIndex;
-      currentNumThreads = numThreads;
+            return;
+          }
+          currentModel = modelIndex;
+          currentDevice = deviceIndex;
+          currentNumThreads = numThreads;
 
-      // Disable classifier while updating
-      if (classifier != null) {
-        classifier.close();
-        classifier = null;
-      }
+          // Disable classifier while updating
+          if (classifier != null) {
+            classifier.close();
+            classifier = null;
+          }
 
-      // Lookup names of parameters.
-      String model = modelStrings.get(modelIndex);
-      String device = deviceStrings.get(deviceIndex);
+          // Lookup names of parameters.
+          String model = modelStrings.get(modelIndex);
+          String device = deviceStrings.get(deviceIndex);
 
-      Log.i(TAG, "Changing model to " + model + " device " + device);
+          Log.i(TAG, "Changing model to " + model + " device " + device);
 
-      // Try to load model.
-      try {
-        if (model.equals(mobilenetV1Quant)) {
-          classifier = new ImageClassifierQuantizedMobileNet(getActivity());
-        } else if (model.equals(mobilenetV1Float)) {
-          classifier = new ImageClassifierFloatMobileNet(getActivity());
-        } else {
-          showToast("Failed to load model");
-        }
-      } catch (IOException e) {
-        Log.d(TAG, "Failed to load", e);
-        classifier = null;
-      }
+          // Try to load model.
+          try {
+            if (model.equals(mobilenetV1Quant)) {
+              classifier = new ImageClassifierQuantizedMobileNet(getActivity());
+            } else if (model.equals(mobilenetV1Float)) {
+              classifier = new ImageClassifierFloatMobileNet(getActivity());
+            } else {
+              showToast("Failed to load model");
+            }
+          } catch (IOException e) {
+            Log.d(TAG, "Failed to load", e);
+            classifier = null;
+          }
 
-      // Customize the interpreter to the type of device we want to use.
-      if (classifier == null) {
-        return;
-      }
-      classifier.setNumThreads(numThreads);
-      if (device.equals(cpu)) {
-      } else if (device.equals(gpu)) {
-        if (model.equals(mobilenetV1Quant)) {
-          showToast("gpu requires float model.");
-          classifier = null;
-        } else {
-          classifier.useGpu();
-        }
-      } else if (device.equals(nnApi)) {
-        classifier.useNNAPI();
-      }
-    });
+          // Customize the interpreter to the type of device we want to use.
+          if (classifier == null) {
+            return;
+          }
+          classifier.setNumThreads(numThreads);
+          if (device.equals(cpu)) {
+          } else if (device.equals(gpu)) {
+            classifier.useGpu();
+          } else if (device.equals(nnApi)) {
+            classifier.useNNAPI();
+          }
+        });
   }
 
   /** Connect the buttons to their event handler. */

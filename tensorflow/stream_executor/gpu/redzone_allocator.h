@@ -118,6 +118,9 @@ class RedzoneAllocator : public ScratchAllocator {
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the
   // user allocation size is not a multiple of 4 bytes, we round up the size of
   // the RHS redzone.
+  //
+  // ScratchAllocators need to free all allocated memory on destruction so we
+  // use `OwningDeviceMemory` here.
   std::vector<std::pair<OwningDeviceMemory, int64>> allocated_buffers_;
 
   int64 allocated_bytes_excluding_redzones_ = 0;

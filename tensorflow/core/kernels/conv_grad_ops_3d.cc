@@ -1082,7 +1082,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
-      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
+      T padding_value);
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
@@ -1394,7 +1395,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
-    DataType dtype = context->input(0).dtype();
+    // To make sure the Conv3DBackpropInputV2 get the correct dtype, we infer
+    // the dtype from 2nd input, i.e., out_backprop.
+    DataType dtype = context->input(2).dtype();
     const ConvParameters conv_parameters = {
         dims.batch_size,
         dims.in_depth,

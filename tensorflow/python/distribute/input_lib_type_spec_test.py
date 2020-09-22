@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -340,7 +341,17 @@ class RaggedTensorDistributedIteratorTest(test.TestCase,
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
 
-    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategyV2, tpu_strategy.TPUStrategy)):
+      # TPUStrategy does not support distributed datasets with device prefetch
+      # when using sparse or ragged tensors.
+      options = distribute_lib.InputOptions(
+          experimental_prefetch_to_device=False)
+    else:
+      options = None
+
+    dist_dataset = distribution.experimental_distribute_dataset(
+        dataset, options)
     with distribution.scope():
       iterator = iter(dist_dataset)
       _check_type_spec_structure(iterator)
@@ -395,7 +406,17 @@ class RaggedTensorDistributedIteratorTest(test.TestCase,
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
 
-    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategyV2, tpu_strategy.TPUStrategy)):
+      # TPUStrategy does not support distributed datasets with device prefetch
+      # when using sparse or ragged tensors.
+      options = distribute_lib.InputOptions(
+          experimental_prefetch_to_device=False)
+    else:
+      options = None
+
+    dist_dataset = distribution.experimental_distribute_dataset(
+        dataset, options)
     with distribution.scope():
       for _ in range(3):
         iterator = iter(dist_dataset)

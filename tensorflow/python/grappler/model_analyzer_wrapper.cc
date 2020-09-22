@@ -29,7 +29,7 @@ PYBIND11_MODULE(_pywrap_model_analyzer, m) {
         [](const py::bytes& serialized_metagraph, bool assume_valid_feeds,
            bool debug) -> py::bytes {
           tensorflow::MetaGraphDef metagraph;
-          if (!metagraph.ParseFromString(serialized_metagraph)) {
+          if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
             return "The MetaGraphDef could not be parsed as a valid protocol "
                    "buffer";
           }

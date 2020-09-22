@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -518,23 +518,23 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   }
 }
 
+// Returns `true` iff node has a given `attr` set to `true`. Returns `false`
+// both for the missing attr, and the attr set to `false`.
+static bool HasBoolAttr(const NodeDef& node, const char* attr) {
+  const auto& it = node.attr().find(attr);
+  return it != node.attr().end() && it->second.b();
+}
+
 bool CanCreateXlaKernel(const NodeDef& node_def) {
-  // If kXlaMustCompileAttr is set on the node_def, use its value.
-  const auto& it = node_def.attr().find(kXlaMustCompileAttr);
-  return it != node_def.attr().end() && it->second.b();
+  return HasBoolAttr(node_def, kXlaMustCompileAttr);
 }
 
 Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
-                                       const NodeDef& node_def,
+                                       const NameAttrList& function,
                                        const FunctionBody** fbody,
                                        std::vector<int>* constant_arg_indices,
                                        std::vector<int>* resource_arg_indices) {
   FunctionLibraryRuntime::Handle handle;
-  // If node_def is not instantiable, e.g., the function does not exist,
-  // simply bail out.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
-
   TF_RETURN_IF_ERROR(
       flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
   *fbody = flr->GetFunctionBody(handle);
@@ -562,6 +562,60 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   }
 
   return Status::OK();
+}
+
+static auto const ops_triggering_xla_compilation =
+    new absl::flat_hash_set<std::string>{"XlaBroadcastHelper",
+                                         "XlaConv",
+                                         "XlaDequantize",
+                                         "XlaDot",
+                                         "XlaDynamicSlice",
+                                         "XlaDynamicUpdateSlice",
+                                         "XlaEinsum",
+                                         "XlaGather",
+                                         "XlaIf",
+                                         "XlaKeyValueSort",
+                                         "XlaPad",
+                                         "XlaRecv",
+                                         "XlaReduce",
+                                         "XlaReduceWindow",
+                                         "XlaReplicaId",
+                                         "XlaScatter",
+                                         "XlaSelectAndScatter",
+                                         "XlaSelfAdjointEig",
+                                         "XlaSend",
+                                         "XlaSharding",
+                                         "XlaSort",
+                                         "XlaSpmdFullToShardShape",
+                                         "XlaSpmdShardToFullShape",
+                                         "XlaSvd",
+                                         "XlaWhile"};
+
+static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
+  return node.attr().find(kXlaClusterIdAttr) != node.attr().end() ||
+         HasBoolAttr(node, kXlaMustCompileAttr) ||
+         HasBoolAttr(node, kXlaCompileAttr) ||
+         HasBoolAttr(node, kXlaScopeAttr) ||
+         HasBoolAttr(node, kXlaInternalScopeAttr) ||
+         ops_triggering_xla_compilation->count(node.op());
+}
+
+bool CanTriggerXlaCompilation(const GraphDef& graph) {
+  for (const FunctionDef& function : graph.library().function()) {
+    for (const NodeDef& node : function.node_def()) {
+      if (NodeCanTriggerXlaCompilation(node)) {
+        return true;
+      }
+    }
+  }
+
+  for (const NodeDef& node : graph.node()) {
+    if (NodeCanTriggerXlaCompilation(node)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace tensorflow

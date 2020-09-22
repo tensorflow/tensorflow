@@ -15,26 +15,25 @@ limitations under the License.
 
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/BufferPlacement.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace mhlo {
@@ -42,9 +41,6 @@ namespace {
 
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
-using StdReturnOpConverter =
-    detail::BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
-                                              lmhlo::CopyOp, true>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -82,7 +78,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
 }
 
 Value InsertAlloc(Location loc, OpResult result,
-                  BufferAssignmentPlacer* bufferAssignment,
                   ConversionPatternRewriter* rewriter) {
   auto result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type || !result_type.hasStaticShape()) {
@@ -92,8 +87,7 @@ Value InsertAlloc(Location loc, OpResult result,
   auto memref_type =
       MemRefType::get(result_type.getShape(), result_type.getElementType());
   OpBuilder::InsertionGuard guard(*rewriter);
-  rewriter->restoreInsertionPoint(
-      bufferAssignment->computeAllocPosition(result));
+  rewriter->setInsertionPoint(result.getDefiningOp());
   auto alloc = rewriter->create<AllocOp>(loc, memref_type);
   return alloc;
 }
@@ -115,8 +109,8 @@ class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
         return failure();
       }
       if (resultType.hasStaticShape()) {
-        buffer_args.push_back(InsertAlloc(op->getLoc(), result.value(),
-                                          this->bufferAssignment, &rewriter));
+        buffer_args.push_back(
+            InsertAlloc(op->getLoc(), result.value(), &rewriter));
       } else {
         SmallVector<Value, 1> results_shape;
         auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
@@ -263,8 +257,7 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
-      buffer_args.push_back(
-          InsertAlloc(loc, result, this->bufferAssignment, &rewriter));
+      buffer_args.push_back(InsertAlloc(loc, result, &rewriter));
     }
     auto new_op = rewriter.create<lmhlo::ReduceOp>(loc, llvm::None, buffer_args,
                                                    op.getAttrs());
@@ -272,30 +265,55 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
     // Copy over the operations inside the region.
     rewriter.inlineRegionBefore(op.body(), new_op.body(), new_op.body().end());
 
-    // Create new block arguments with correct type.
+    // Convert the region signature to memref and add extra result.
     auto& entry_block = new_op.body().front();
-    int original_arg_count = entry_block.getNumArguments();
-    for (int i = 0; i < original_arg_count; ++i) {
-      auto old_arg = entry_block.getArgument(i);
-      auto old_type = old_arg.getType().cast<TensorType>();
+    TypeConverter::SignatureConversion sig_conversion(
+        entry_block.getNumArguments() + 1);
+    for (auto arg : entry_block.getArguments()) {
+      auto old_type = arg.getType().cast<TensorType>();
       auto new_type =
           MemRefType::get(old_type.getShape(), old_type.getElementType());
-      auto new_arg = entry_block.addArgument(new_type);
-      rewriter.replaceUsesOfBlockArgument(old_arg, new_arg);
+      sig_conversion.addInputs(arg.getArgNumber(), new_type);
     }
-    // Add an argument for the result.
-    entry_block.addArgument(
-        entry_block.getArgument(original_arg_count).getType());
-    // Remove the old arguments.
-    for (int i = original_arg_count - 1; i >= 0; --i) {
-      entry_block.eraseArgument(i);
-    }
-    // Insert terminator at the end.
-    rewriter.setInsertionPointToEnd(&entry_block);
-    rewriter.create<lmhlo::TerminatorOp>(loc);
+    auto return_op = cast<mhlo::ReturnOp>(entry_block.getTerminator());
+    auto result_type = return_op.results().front().getType().cast<TensorType>();
+    sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
+                                              result_type.getElementType())});
+    rewriter.applySignatureConversion(&new_op.body(), sig_conversion);
 
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
 
+    return success();
+  }
+};
+
+// Legalize mhlo.return to a lmhlo.copy and lmhlo.terminator.
+struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
+ public:
+  using BaseOpConversion<mhlo::ReturnOp>::BaseOpConversion;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReturnOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    auto& entry_block = op.getParentRegion()->front();
+    auto num_arguments = entry_block.getNumArguments();
+    if (operands.size() > num_arguments) {
+      return op.emitError(
+          "The number of operands that need Copy operations is more "
+          "than the number of target function arguments.");
+    }
+
+    // The index of the first output block argument.
+    auto dest_arg_idx = num_arguments - operands.size();
+
+    // Create a lmhlo.copy for each operand of mhlo.return.
+    for (Value operand : operands) {
+      rewriter.create<lmhlo::CopyOp>(loc, operand,
+                                     entry_block.getArgument(dest_arg_idx));
+      ++dest_arg_idx;
+    }
+    rewriter.replaceOpWithNewOp<lmhlo::TerminatorOp>(op);
     return success();
   }
 };
@@ -312,7 +330,6 @@ class HloToLhloTensorLoadOpConverter
   }
 };
 
-// TODO(b/137624192): Rewrite into a copy and elide copy if possible.
 class HloToLhloTensorStoreOpConverter
     : public BaseOpConversion<mlir::TensorStoreOp> {
  public:
@@ -393,6 +410,10 @@ class HloToLhloTensorStoreOpConverter
 
 struct HloLegalizeToLhlo
     : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<lmhlo::LmhloDialect>();
+  }
+
  public:
   HloLegalizeToLhlo() = default;
   HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {
@@ -433,28 +454,19 @@ struct HloLegalizeToLhlo
                          isMemRefType);
     });
 
-    auto module = getOperation();
-    WalkResult result = module.walk([&](FuncOp func) -> WalkResult {
-      BufferAssignmentPlacer bufferAssignment(func);
-      OwningRewritePatternList patterns;
-      populateHLOToLHLOConversionPattern(func.getContext(), &bufferAssignment,
-                                         &converter, &patterns);
-      if (results_escape_function) {
-        populateWithBufferAssignmentOpConversionPatterns<
-            mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp,
-            /*allowMemrefFunctionResults=*/true>(&context, &bufferAssignment,
-                                                 &converter, &patterns);
-      } else {
-        populateWithBufferAssignmentOpConversionPatterns<
-            mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp,
-            /*allowMemrefFunctionResults=*/false>(&context, &bufferAssignment,
-                                                  &converter, &patterns);
-      }
-      return applyPartialConversion(func, target, patterns);
-    });
-    if (result.wasInterrupted()) {
+    auto kind = results_escape_function
+                    ? BufferAssignmentTypeConverter::KeepAsFunctionResult
+                    : BufferAssignmentTypeConverter::AppendToArgumentsList;
+    converter.setResultConversionKind<UnrankedTensorType, UnrankedMemRefType>(
+        kind);
+    converter.setResultConversionKind<RankedTensorType, MemRefType>(kind);
+
+    populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
+    populateWithBufferAssignmentOpConversionPatterns<
+        mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(&context, &converter,
+                                                       &patterns);
+    if (failed(applyPartialConversion(getOperation(), target, patterns)))
       signalPassFailure();
-    }
   }
 
  private:
@@ -467,8 +479,8 @@ struct HloLegalizeToLhlo
 }  // namespace
 
 void populateHLOToLHLOConversionPattern(
-    MLIRContext* context, BufferAssignmentPlacer* bufferAssignment,
-    TypeConverter* converter, OwningRewritePatternList* patterns) {
+    MLIRContext* context, BufferAssignmentTypeConverter* converter,
+    OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
       HloToLhloDynamicBroadcastInDimOpConverter,
@@ -488,6 +500,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::DivOp>,
       HloToLhloOpConverter<mhlo::DotOp>,
       HloToLhloOpConverter<mhlo::ExpOp>,
+      HloToLhloOpConverter<mhlo::FloorOp>,
       HloToLhloOpConverter<mhlo::GatherOp>,
       HloToLhloOpConverter<mhlo::ImagOp>,
       HloToLhloOpConverter<mhlo::IotaOp>,
@@ -502,23 +515,24 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::ReshapeOp>,
       HloToLhloOpConverter<mhlo::SelectOp>,
       HloToLhloOpConverter<mhlo::SignOp>,
+      HloToLhloOpConverter<mhlo::SinOp>,
+      HloToLhloOpConverter<mhlo::SliceOp>,
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
+      HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloReduceOpConverter,
+      HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context, bufferAssignment, converter);
+  >(context, converter);
   // clang-format on
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
     bool results_escape_function) {
-  return absl::make_unique<HloLegalizeToLhlo>(results_escape_function);
+  return std::make_unique<HloLegalizeToLhlo>(results_escape_function);
 }
-
-static PassRegistration<HloLegalizeToLhlo> legalize_pass(
-    "hlo-legalize-to-lhlo", "Legalize from HLO dialect to LHLO dialect");
 
 }  // namespace mhlo
 }  // namespace mlir

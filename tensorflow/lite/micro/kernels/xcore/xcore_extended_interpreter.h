@@ -81,6 +81,7 @@ class ExtendedXCoreInterpreter : public XCoreInterpreter {
                                   int* outputs);
 
  private:
+  const tflite::Model* model_;
   tflite::ErrorReporter* reporter_;
 };
 

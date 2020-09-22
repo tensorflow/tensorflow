@@ -165,6 +165,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
     return a, b, a_dims, b_dims
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_without_tensor_float_32("Tests tensordot, which calls matmul")
   def test_tensordot(self):
     if dynamic_shape_ and context.executing_eagerly():
       self.skipTest("Placeholders not support in eager mode")
@@ -196,6 +197,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
       self.assertAllEqual(tf_ans.shape, np_ans.shape)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_without_tensor_float_32("Tests tensordot, which calls matmul")
   def test_tensordot_scalar_axes(self):
     if dynamic_shape_ and context.executing_eagerly():
       self.skipTest("Placeholders not support in eager mode")

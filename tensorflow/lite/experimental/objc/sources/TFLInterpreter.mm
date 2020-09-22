@@ -405,7 +405,9 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     case kTfLiteNoType:
     case kTfLiteString:
     case kTfLiteComplex64:
-      // kTfLiteString and kTfLiteComplex64 are not supported in TensorFlow Lite Objc API.
+    case kTfLiteComplex128:
+      // kTfLiteString, kTfLiteComplex64 and kTfLiteComplex128 are not supported in TensorFlow Lite
+      // Objc API.
       return TFLTensorDataTypeNoType;
   }
 }

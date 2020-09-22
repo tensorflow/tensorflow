@@ -46,6 +46,7 @@ class CustomCallThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   void* call_target_;
   std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices_;
   ShapeTree<BufferAllocation::Slice> result_slices_;

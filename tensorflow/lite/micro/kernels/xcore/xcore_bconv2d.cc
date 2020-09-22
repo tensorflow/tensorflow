@@ -102,11 +102,9 @@ struct BConv2DBinOutOpData {
 };
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  BConv2DBinOutOpData *op = nullptr;
+  BConv2DBinOutOpData *op = reinterpret_cast<BConv2DBinOutOpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(BConv2DBinOutOpData)));
 
-  context->AllocatePersistentBuffer(context, sizeof(BConv2DBinOutOpData),
-                                    reinterpret_cast<void **>(&op));
-  // op->jobs = nullptr;
   op->stack_scratch_index = -1;
   op->stack_size = 0;
 
@@ -129,15 +127,14 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   TFLITE_DCHECK(op->common.k.dilation.vertical > 0);
 
   // Allocate the jobs (one pointer per thread)
-  context->AllocatePersistentBuffer(context,
-                                    sizeof(BConv2DThreadData*) *
-                                        op->n_threads,
-                                    reinterpret_cast<void **>(&op->jobs));
+  op->jobs = reinterpret_cast<BConv2DThreadData **>(
+    context->AllocatePersistentBuffer(context, 
+    sizeof(BConv2DThreadData*) * op->n_threads));
 
   // Allocate the regions (one BConv2DThreadData per region)                                  
-  context->AllocatePersistentBuffer(context,
-                                    sizeof(BConv2DThreadData) * op->n_regions,
-                                    reinterpret_cast<void **>(&op->regions));
+  op->regions = reinterpret_cast<BConv2DThreadData *>(
+    context->AllocatePersistentBuffer(context,
+    sizeof(BConv2DThreadData) * op->n_regions));
 
   //Init the job head pointers to a null pointer 
   for (unsigned i=0;i<op->n_threads;++i){

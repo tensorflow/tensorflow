@@ -253,6 +253,29 @@ TEST(FloatActivationsOpTest, Elu) {
                              })));
 }
 
+TEST(QuantizedActivationsOpTest, EluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel model(
+      BuiltinOperator_ELU,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+
+  model.SetInput<int8_t>({
+      0, -6, 2, -4,    //
+      3, -2, 6, -0.1,  //
+  });
+
+  model.Invoke();
+  EXPECT_THAT(model.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, -1.0, 2.0, -1,          //
+                      3.0, -0.875, 6.0, -0.125,  //
+                  },
+                  kQuantizedTolerance)));
+}
+
 TEST(FloatActivationsOpTest, Relu) {
   FloatActivationsOpModel m(BuiltinOperator_RELU,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});

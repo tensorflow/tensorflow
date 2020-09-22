@@ -1,8 +1,9 @@
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
 
-licenses(["notice"])
-
-package(default_visibility = [":test_friends"])
+package(
+    default_visibility = [":test_friends"],
+    licenses = ["notice"],
+)
 
 # Please only depend on this from MLIR tests.
 package_group(
@@ -14,21 +15,6 @@ cc_library(
     name = "IRProducingAPITest",
     hdrs = ["APITest.h"],
     includes = ["."],
-)
-
-gentbl(
-    name = "TestVectorTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestVectorTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-    ],
 )
 
 gentbl(
@@ -73,6 +59,7 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
         "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
@@ -114,7 +101,6 @@ cc_library(
         "lib/Dialect/Test/TestTypes.h",
     ],
     includes = [
-        "lib/DeclarativeTransforms",
         "lib/Dialect/Test",
     ],
     deps = [
@@ -141,13 +127,19 @@ cc_library(
         "lib/IR/TestFunc.cpp",
         "lib/IR/TestInterfaces.cpp",
         "lib/IR/TestMatchers.cpp",
+        "lib/IR/TestPrintDefUse.cpp",
+        "lib/IR/TestPrintNesting.cpp",
         "lib/IR/TestSideEffects.cpp",
+        "lib/IR/TestSlicing.cpp",
         "lib/IR/TestSymbolUses.cpp",
+        "lib/IR/TestTypes.cpp",
     ],
     deps = [
         ":TestDialect",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
@@ -186,7 +178,6 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
-        ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:Analysis",
@@ -195,10 +186,13 @@ cc_library(
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SPIRVDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
@@ -237,9 +231,22 @@ cc_library(
         "lib/Dialect/SPIRV/*.cpp",
     ]),
     deps = [
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SPIRVDialect",
         "@llvm-project//mlir:SPIRVLowering",
+    ],
+)
+
+cc_library(
+    name = "TestTypeDialect",
+    srcs = glob([
+        "lib/Dialect/LLVMIR/*.cpp",
+    ]),
+    deps = [
+        ":TestDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
     ],
 )

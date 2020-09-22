@@ -42,8 +42,8 @@ constexpr int64 kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 
-// A key used to identify input time gradient.
-constexpr char kInputTimeKey[] = "input_time";
+// A key used to identify the input time of the model.
+constexpr char kModelInputTimeKey[] = "model_input_time";
 
 enum class AutotuneAlgorithm {
   HILL_CLIMB = 0,
@@ -77,7 +77,14 @@ struct Parameter {
   Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
             double max)
       : name(name),
-        value(state->value),
+        // Sometimes non-autotune nodes (with `autotune_=false`) may contain
+        // parameters (for example inputs of parallel interleave dataset which
+        // are not in the current cycle). To avoid unrealistic situation
+        // (say `buffer_size=-1` or `parallelism=-1`) in the optimization
+        // computation, if the state value is `kAutotune=-1` (just to indicate
+        // the `SharedState` is tunable), we initialize the parameter value to
+        // be the minimal value of the state.
+        value(state->value == kAutotune ? min : state->value),
         min(min),
         max(max),
         state(std::move(state)) {}
@@ -339,8 +346,7 @@ class Node {
   //
   // The purpose for this method is to allow the model optimization logic to
   // operate over immutable state while allowing concurrent model updates.
-  std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output) const
-      TF_LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Node> Snapshot() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the per-element processing time spent in this node.
   double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_);
@@ -493,7 +499,7 @@ class Node {
       const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Copy the node and add the (input, copy) pairs to the NodePairList.
-  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> clone_base,
+  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> cloned_output,
                                        NodePairList* node_pairs) const;
 
   // Compute total buffered bytes for the node and store in the total bytes map.
@@ -610,8 +616,8 @@ class Model {
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
   // Uses the given algorithm to perform the autotuning optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget)
-      TF_LOCKS_EXCLUDED(mu_);
+  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,
+                double model_input_time) TF_LOCKS_EXCLUDED(mu_);
 
   // Removes the given node.
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
@@ -639,7 +645,8 @@ class Model {
   // This process is repeated until all parameters reach their maximum values or
   // the projected output time is less than or equal to the processing time
   // needed to produce an element divided by CPU budget.
-  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget);
+  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
+                         double model_input_time);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then improves current parameters by
@@ -648,12 +655,13 @@ class Model {
   // repeated until either the output time improvement is smaller than threshold
   // value or the output time is less than the processing time needed to produce
   // an element divided by CPU budget.
-  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget);
+  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
+                               double model_input_time);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
   // node.
-  double OutputTime(std::shared_ptr<Node> node,
+  double OutputTime(std::shared_ptr<Node> node, double model_input_time,
                     absl::flat_hash_map<string, double>* gradients);
 
   // Collects the processing time for the given node.

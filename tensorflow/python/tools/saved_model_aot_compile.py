@@ -321,7 +321,8 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
   # Load the Variables so that we can freeze the graph.
   with session.Session(graph=ops_lib.Graph()) as sess:
     restorer = saver_lib.import_meta_graph(meta_graph_def, clear_devices=True)
-    restorer.restore(sess, checkpoint_path)
+    if restorer is not None:
+      restorer.restore(sess, checkpoint_path)
     graph_def.CopyFrom(
         graph_util.convert_variables_to_constants(
             sess,

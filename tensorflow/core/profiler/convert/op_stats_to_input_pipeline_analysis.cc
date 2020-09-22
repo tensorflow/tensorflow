@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
@@ -207,7 +208,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
                                   GetTimeInMs(type_ps, DEVICE_WAIT_HOST));
     details.set_output_ms(GetTimeInMs(type_ps, DEVICE_TO_HOST));
     details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE_16) +
-                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32));
+                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32) +
+                                  GetTimeInMs(type_ps, DEVICE_COLLECTIVES));
     details.set_device_to_device_ms(GetTimeInMs(type_ps, DEVICE_TO_DEVICE) +
                                     GetTimeInMs(type_ps, DEVICE_WAIT_DEVICE));
     details.set_host_compute_ms(GetTimeInMs(type_ps, HOST_COMPUTE));
@@ -553,18 +555,23 @@ StepSummary ComputeStepTimeSummaryInMs(
 }
 
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
-    const OpStats& op_stats, const HardwareType& hardware_type) {
+    const OpStats& op_stats) {
   InputPipelineAnalysisResult result =
       ComputeGenericInputPipelineAnalysisResult(
           op_stats.step_db().step_sequence());
   PopulateStepDiagnostics(op_stats, result.mutable_diagnostics());
-  result.set_hardware_type(HardwareType_Name(hardware_type));
+  result.set_hardware_type(HardwareType_Name(
+      ParseHardwareType(op_stats.run_environment().device_type())));
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
 
   InputPipelineAnalysisRecommendation recommendation = GenerateRecommendation();
   BottleneckAnalysis bottleneck_analysis = ComputeBottleneckAnalysis(
       result.input_time_breakdown(), result.step_details());
-  result.set_overall_input_percent(bottleneck_analysis.input_percent());
+  result.set_input_percent(bottleneck_analysis.input_percent());
+  result.set_output_percent(bottleneck_analysis.output_percent());
+  result.set_idle_percent(bottleneck_analysis.idle_percent());
+  result.set_compute_percent(bottleneck_analysis.compute_percent());
+
   recommendation.mutable_bottleneck_analysis()->PackFrom(bottleneck_analysis);
   *recommendation.mutable_summary_next_step() =
       GetSummaryNextStep(bottleneck_analysis.input_classification(),
@@ -651,6 +658,7 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
   double total_host_compute_ms = 0;
   double total_host_prepare_ms = 0;
   double total_host_compile_ms = 0;
+  double total_device_compute_ms = 0;
   double total_device_to_device_ms = 0;
   double total_unknown_ms = 0;
 
@@ -667,6 +675,7 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
         details.host_wait_input_ms() + details.host_to_device_ms();
     total_output_ms += details.output_ms();
     total_host_prepare_ms += details.host_prepare_ms();
+    total_device_compute_ms += details.device_compute_ms();
     total_device_to_device_ms += details.device_to_device_ms();
     total_host_compute_ms += details.host_compute_ms();
     total_host_compile_ms += details.host_compile_ms();
@@ -686,6 +695,12 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
     return analysis;
   }
   double input_percent = 100.0 * total_input_ms / total_step_time_ms;
+  double output_percent = 100.0 * total_output_ms / total_step_time_ms;
+  double compute_percent = 100.0 * total_device_compute_ms / total_step_time_ms;
+  // idle_percent includes host_prepare (i.e. kernel launch, device-to-device,
+  // host compute, host compile, and unknown.
+  double idle_percent =
+      std::max(0.0, 100.0 - input_percent - output_percent - compute_percent);
   double kernel_launch_percent =
       100.0 * total_host_prepare_ms / total_step_time_ms;
   double all_other_percent = 100.0 * total_unknown_ms / total_step_time_ms;
@@ -707,6 +722,10 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
 
   BottleneckAnalysis analysis;
   analysis.set_input_percent(input_percent);
+  analysis.set_output_percent(output_percent);
+  analysis.set_idle_percent(idle_percent);
+  analysis.set_compute_percent(compute_percent);
+
   analysis.set_input_classification(input_classification);
   analysis.set_input_statement(input_statement);
   analysis.set_kernel_launch_classification(kernel_launch_classification);

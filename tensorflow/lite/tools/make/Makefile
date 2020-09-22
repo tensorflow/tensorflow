@@ -148,6 +148,7 @@ endif
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
+$(wildcard tensorflow/lite/*/*test.c) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
@@ -220,10 +221,6 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
 endif
-
-# Temporary fix for ruy compilation error.
-# TODO(b/158800055): Remove this hack once the ruy version is correctly bumped.
-CORE_CC_EXCLUDE_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/prepare_packed_matrices.cc
 
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
@@ -318,9 +315,6 @@ $(OBJDIR)%.o: %.cc
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-$(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)

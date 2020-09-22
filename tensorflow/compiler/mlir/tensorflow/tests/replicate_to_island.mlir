@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-replicate-to-island | FileCheck %s
+// RUN: tf-opt -split-input-file %s -tf-replicate-to-island | FileCheck %s
 
 // Tests per replica island has same control operands as island holding
 // replicate.
@@ -223,3 +223,219 @@ func @replica_id_attr_added(%arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>
 // CHECK:      "tf.A"
 // CHECK-NOT:   _xla_replica_id
 // CHECK:      tf_executor.fetch
+
+
+// Tests device ordinals are added to `tf._XlaSendFromHost`/`tf._XlaRecvAtHost`
+// based on the first TPU core device id.
+// CHECK-LABEL: func @device_ordinals
+func @device_ordinals(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      tf_device.replicate([%arg0, %arg0] as %arg2: tensor<f32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        %0 = "tf._XlaRecvAtHost"(%arg1) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_send_0"} : (tensor<2x!tf.string>) -> tensor<f32>
+        "tf._XlaSendFromHost"(%0, %arg1) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_recv_0"} : (tensor<f32>, tensor<2x!tf.string>) -> ()
+        "tf.NoOp"() : () -> ()
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK:      tf_executor.island
+// CHECK:      "tf._XlaRecvAtHost"
+// CHECK-SAME:   device_ordinal = 1
+// CHECK:      "tf._XlaSendFromHost"
+// CHECK-SAME:   device_ordinal = 1
+// CHECK:      "tf.NoOp"
+// CHECK:      tf_executor.island
+// CHECK:      "tf._XlaRecvAtHost"
+// CHECK-SAME:   device_ordinal = 2
+// CHECK:      "tf._XlaSendFromHost"
+// CHECK-SAME:   device_ordinal = 2
+// CHECK:      "tf.NoOp"
+
+// -----
+
+// Tests functions with replica variant ops reachable from a replicate region
+// is cloned and remapped.
+
+// CHECK-LABEL: func @call_with_replicate_variant_ops
+func @call_with_replicate_variant_ops(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      tf_device.replicate([%arg0, %arg0] as %arg2: tensor<f32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        "tf.StatefulPartitionedCall"(%arg1) {config = "", config_proto = "", executor_type = "", f = @send_recv} : (tensor<2x!tf.string>) -> ()
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = [[CALL_REPLICA_0:@[a-z0-9_]+]]
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = [[CALL_REPLICA_1:@[a-z0-9_]+]]
+
+func @send_recv(%arg0: tensor<2x!tf.string>) {
+  %0 = "tf._XlaRecvAtHost"(%arg0) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_send_0"} : (tensor<2x!tf.string>) -> tensor<f32>
+  "tf._XlaSendFromHost"(%0, %arg0) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_recv_0"} : (tensor<f32>, tensor<2x!tf.string>) -> ()
+  "tf.NoOp"() : () -> ()
+  return
+}
+
+// CHECK: func [[CALL_REPLICA_0]]
+// CHECK: "tf._XlaRecvAtHost"
+// CHECK-SAME: device_ordinal = 1
+// CHECK: "tf._XlaSendFromHost"
+// CHECK-SAME: device_ordinal = 1
+
+// CHECK: func [[CALL_REPLICA_1]]
+// CHECK: "tf._XlaRecvAtHost"
+// CHECK-SAME: device_ordinal = 2
+// CHECK: "tf._XlaSendFromHost"
+// CHECK-SAME: device_ordinal = 2
+
+// -----
+
+// Tests transitive functions with replica variant ops reachable from a
+// replicate region is cloned and remapped.
+
+// CHECK-LABEL: func @call_with_replicate_variant_ops
+func @call_with_replicate_variant_ops(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      tf_device.replicate([%arg0, %arg0] as %arg2: tensor<f32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        "tf.StatefulPartitionedCall"(%arg1) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<2x!tf.string>) -> ()
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = [[CALLEE_REPLICA_0:@[a-z0-9_]+]]
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = [[CALLEE_REPLICA_1:@[a-z0-9_]+]]
+
+func @callee(%arg0: tensor<2x!tf.string>) {
+  "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @send_recv} : (tensor<2x!tf.string>) -> ()
+  return
+}
+
+func @send_recv(%arg0: tensor<2x!tf.string>) {
+  %0 = "tf._XlaRecvAtHost"(%arg0) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_send_0"} : (tensor<2x!tf.string>) -> tensor<f32>
+  "tf._XlaSendFromHost"(%0, %arg0) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_recv_0"} : (tensor<f32>, tensor<2x!tf.string>) -> ()
+  "tf.NoOp"() : () -> ()
+  return
+}
+
+// CHECK: func [[CALLEE_REPLICA_0]]
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = [[TRANSITIVE_CALLEE_REPLICA_0:@[a-z0-9_]+]]
+
+// CHECK: func [[TRANSITIVE_CALLEE_REPLICA_0]]
+// CHECK: "tf._XlaRecvAtHost"
+// CHECK-SAME: device_ordinal = 1
+// CHECK: "tf._XlaSendFromHost"
+// CHECK-SAME: device_ordinal = 1
+
+// CHECK: func [[CALLEE_REPLICA_1]]
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = [[TRANSITIVE_CALLEE_REPLICA_1:@[a-z0-9_]+]]
+
+// CHECK: func [[TRANSITIVE_CALLEE_REPLICA_1]]
+// CHECK: "tf._XlaRecvAtHost"
+// CHECK-SAME: device_ordinal = 2
+// CHECK: "tf._XlaSendFromHost"
+// CHECK-SAME: device_ordinal = 2
+
+// -----
+
+// Tests functional control flow functions with replica variant ops reachable
+// from a replicate region is cloned and remapped. Only the branches reachable
+// with replica variant ops are cloned.
+
+// CHECK-LABEL: func @control_flow_with_replicate_variant_ops
+func @control_flow_with_replicate_variant_ops(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<2x!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      tf_device.replicate([%arg0, %arg0] as %arg4: tensor<i1>, [%arg1, %arg1] as %arg5: tensor<f32>, [%arg2, %arg2] as %arg6: tensor<f32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        %0 = "tf.If"(%arg4, %arg5, %arg6, %arg3) {else_branch = @cond_false, is_stateless = true, then_branch = @cond_true} : (tensor<i1>, tensor<f32>, tensor<f32>, tensor<2x!tf.string>) -> tensor<f32>
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK: "tf.If"
+// CHECK-SAME: else_branch = @cond_false
+// CHECK-SAME: then_branch = [[COND_TRUE_REPLICA_0:@[a-z0-9_]+]]
+// CHECK: "tf.If"
+// CHECK-SAME: else_branch = @cond_false
+// CHECK-SAME: then_branch = [[COND_TRUE_REPLICA_1:@[a-z0-9_]+]]
+
+func @cond_false(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<2x!tf.string>) -> tensor<f32> {
+  return %arg0 : tensor<f32>
+}
+
+// CHECK-NOT: func @cond_false.+(
+
+func @cond_true(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<2x!tf.string>) -> tensor<f32> {
+  "tf._XlaSendFromHost"(%arg1, %arg2) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_recv_0"} : (tensor<f32>, tensor<2x!tf.string>) -> ()
+  %0 = "tf._XlaRecvAtHost"(%arg2) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_send_0"} : (tensor<2x!tf.string>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK: func [[COND_TRUE_REPLICA_0]]
+// CHECK: "tf._XlaSendFromHost"
+// CHECK-SAME: device_ordinal = 1
+// CHECK: "tf._XlaRecvAtHost"
+// CHECK-SAME: device_ordinal = 1
+
+// CHECK: func [[COND_TRUE_REPLICA_1]]
+// CHECK: "tf._XlaSendFromHost"
+// CHECK-SAME: device_ordinal = 2
+// CHECK: "tf._XlaRecvAtHost"
+// CHECK-SAME: device_ordinal = 2
+
+// -----
+
+// Tests function with no replica variant ops reachable from a replicate region
+// is not cloned.
+
+// CHECK-LABEL: func @no_replicate_variant_ops
+func @no_replicate_variant_ops(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      tf_device.replicate([%arg0, %arg0] as %arg2: tensor<f32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        "tf.StatefulPartitionedCall"(%arg1) {config = "", config_proto = "", executor_type = "", f = @send_recv} : (tensor<2x!tf.string>) -> ()
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = @send_recv
+
+func @send_recv(%arg0: tensor<2x!tf.string>) {
+  "tf.NoOp"() : () -> ()
+  return
+}
+
+// CHECK-NOT: @send_recv.+(

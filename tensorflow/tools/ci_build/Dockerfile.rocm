@@ -1,6 +1,6 @@
 # This Dockerfile provides a starting point for a ROCm installation of
 # MIOpen and tensorflow.
-FROM ubuntu:xenial
+FROM ubuntu:bionic
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
 ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.3/
@@ -19,9 +19,9 @@ RUN sh -c  "echo deb [arch=amd64] $DEB_ROCM_REPO xenial main > /etc/apt/sources.
 # Install misc pkgs
 RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
-  clang-3.8 \
-  clang-format-3.8 \
-  clang-tidy-3.8 \
+  clang-6.0 \
+  clang-format-6.0 \
+  clang-tidy-6.0 \
   cmake \
   cmake-qt-gui \
   ssh \
@@ -91,8 +91,6 @@ RUN touch ${ROCM_PATH}/.info/version
 COPY install/*.sh /install/
 ARG DEBIAN_FRONTEND=noninteractive
 RUN /install/install_bootstrap_deb_packages.sh
-RUN add-apt-repository -y ppa:openjdk-r/ppa && \
-    add-apt-repository -y ppa:george-edison55/cmake-3.x
 RUN /install/install_deb_packages.sh
 RUN /install/install_pip_packages.sh
 RUN /install/install_bazel.sh

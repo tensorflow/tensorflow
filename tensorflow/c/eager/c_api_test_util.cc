@@ -88,6 +88,46 @@ TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx) {
   return th;
 }
 
+TFE_TensorHandle* TestMatrixTensorHandleWithInput(TFE_Context* ctx,
+                                                  float data[], int64_t dims[],
+                                                  int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t =
+      TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0], num_dims, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestTensorHandleWithDimsFloat(TFE_Context* ctx, float data[],
+                                                int64_t dims[], int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t =
+      TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0], num_dims, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestTensorHandleWithDimsInt(TFE_Context* ctx, int data[],
+                                              int64_t dims[], int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t =
+      TFE_AllocateHostTensor(ctx, TF_INT32, &dims[0], num_dims, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
 TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx) {
   constexpr int64_t dims[] = {100, 100};
   constexpr int num_elements = dims[0] * dims[1];
@@ -143,7 +183,7 @@ TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
   TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "", 0);
+  TFE_OpSetAttrString(op, "container", "localhost", 0);
   TFE_OpSetAttrString(op, "shared_name", "", 0);
   if (!device_name.empty()) {
     TFE_OpSetDevice(op, device_name.c_str(), status);

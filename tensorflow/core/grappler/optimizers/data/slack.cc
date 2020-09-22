@@ -101,10 +101,9 @@ Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
     return Status::OK();
   }
 
-  return errors::InvalidArgument(
-      "Encountered unsupported op \"", dataset_node->op(),
-      "\" when rewriting the input pipeline graph to use slack in its "
-      "final prefetch transformation.");
+  LOG(WARNING) << "Could not find a final `prefetch` in the input pipeline to "
+                  "which to introduce slack.";
+  return Status::OK();
 }
 
 Status Slack::OptimizeAndCollectStats(Cluster* cluster,

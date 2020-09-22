@@ -49,6 +49,11 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
       : data_type(dt), storage_type(st), layout(l) {}
 
+  TensorDescriptor(const TensorDescriptor&) = default;
+  TensorDescriptor& operator=(const TensorDescriptor&) = default;
+  TensorDescriptor(TensorDescriptor&& desc);
+  TensorDescriptor& operator=(TensorDescriptor&& desc);
+
   bool operator==(const TensorDescriptor& d) const {
     return data_type == d.data_type && storage_type == d.storage_type &&
            layout == d.layout;
@@ -63,6 +68,10 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   GPUResources GetGPUResources() const override;
 
+  absl::Status CreateGPUObject(CLContext* context,
+                               GPUObjectPtr* result) const override;
+  void Release() override { data.clear(); }
+
   bool HasAxis(Axis axis) const;
   void SetTextureAddressMode(TextureAddressMode mode);
 
@@ -70,12 +79,29 @@ struct TensorDescriptor : public GPUObjectDescriptor {
       const std::vector<std::string>& args, std::string* value_name,
       std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
+  void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
+  void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+
+  bool SupportsZeroClamp(const Axis& axis) const;
+  bool CanReadOutOfBorder(const Axis& axis) const;
+  bool IsLinear() const;
+
+  // applicable only for types that: IsLinear -> true.
+  // In this case for address we have 1d component - addr (int)
+  // If for addr == -1 this linear storage type returns FLT4(0.0), this function
+  // returns true, otherwise false
+  bool ReturnsZeroForNegOneRead() const;
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
   // This field describes logical layout, actual(physical) GPU layout can be
   // totally different.
   Layout layout =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+
+  // optional
+  BHWDC shape;
+  std::vector<uint8_t> data;
 
  private:
   absl::Status PerformReadSelector(
@@ -145,7 +171,17 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,
                            std::string* sc, std::string* bc) const;
+
+  void UploadData(absl::Span<const float> src);
 };
+
+template <typename T>
+void DataFromBHWDC(absl::Span<const float> src, const BHWDC& shape,
+                   const TensorDescriptor& desc, absl::Span<T> dst);
+
+template <typename T>
+void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
+                 const TensorDescriptor& desc, absl::Span<float> dst);
 
 std::string ToString(TensorStorageType type);
 

@@ -72,6 +72,44 @@ class ShardedVariableTest(test.TestCase):
     self.assertEqual(s.dtype, v0.dtype)
     self.assertEqual(s.name, 's')
 
+  def test_assign(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+    s.assign([[4, 4], [5, 5], [6, 6], [7, 7]])
+    self.assertAllEqual(self.evaluate(s.variables[0]), [[4, 4]])
+    self.assertAllEqual(self.evaluate(s.variables[1]), [[5, 5], [6, 6]])
+    self.assertAllEqual(self.evaluate(s.variables[2]), [[7, 7]])
+
+  def test_assign_add(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+    s.assign_add([[1, 1], [1, 1], [2, 2], [2, 2]])
+    self.assertAllEqual(self.evaluate(s.variables[0]), [[1, 1]])
+    self.assertAllEqual(self.evaluate(s.variables[1]), [[2, 2], [4, 4]])
+    self.assertAllEqual(self.evaluate(s.variables[2]), [[5, 5]])
+
+  def test_assign_sub(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+    s.assign_sub([[0, 0], [1, 1], [1, 1], [3, 3]])
+    self.assertAllEqual(self.evaluate(s.variables[0]), [[0, 0]])
+    self.assertAllEqual(self.evaluate(s.variables[1]), [[0, 0], [1, 1]])
+    self.assertAllEqual(self.evaluate(s.variables[2]), [[0, 0]])
+
+  def test_convert_to_tensor(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+    t = ops.convert_to_tensor(s)
+    self.assertAllEqual(t, [[0, 0], [1, 1], [2, 2], [3, 3]])
+
   def test_save_restore(self):
     fname = os.path.join(self.get_temp_dir(), 'checkpoint')
     variables = [
@@ -147,6 +185,58 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(cp2.s.variables, 2)
     self.assertAllEqual(self.evaluate(cp2.s.variables[0]), [0, 1])
     self.assertAllEqual(self.evaluate(cp2.s.variables[1]), [2, 3])
+
+  def test_delayed_restore(self):
+    fname = os.path.join(self.get_temp_dir(), 'checkpoint')
+    model = tracking.AutoTrackable()
+    variables = [
+        variables_lib.Variable([0]),
+        variables_lib.Variable([1]),
+        variables_lib.Variable([2]),
+        variables_lib.Variable([3])
+    ]
+    model.s = sharded_variable.ShardedVariable(variables)
+    cp = util.Checkpoint(model=model)
+    cp.write(fname)
+
+    model2 = tracking.AutoTrackable()
+    cp2 = util.Checkpoint(model=model2)
+    cp2.restore(fname)
+    variables2 = [
+        variables_lib.Variable([0]),
+        variables_lib.Variable([0]),
+        variables_lib.Variable([0]),
+        variables_lib.Variable([0])
+    ]
+    model2.s = sharded_variable.ShardedVariable(variables2)
+    self.assertAllEqual(self.evaluate(model2.s.variables[0]), [0])
+    self.assertAllEqual(self.evaluate(model2.s.variables[1]), [1])
+    self.assertAllEqual(self.evaluate(model2.s.variables[2]), [2])
+    self.assertAllEqual(self.evaluate(model2.s.variables[3]), [3])
+
+  def test_delayed_restore_4_to_2_partitions(self):
+    fname = os.path.join(self.get_temp_dir(), 'checkpoint')
+    model = tracking.AutoTrackable()
+    variables = [
+        variables_lib.Variable([0]),
+        variables_lib.Variable([1]),
+        variables_lib.Variable([2]),
+        variables_lib.Variable([3])
+    ]
+    model.s = sharded_variable.ShardedVariable(variables)
+    cp = util.Checkpoint(model=model)
+    cp.write(fname)
+
+    model2 = tracking.AutoTrackable()
+    cp2 = util.Checkpoint(model=model2)
+    cp2.restore(fname)
+    variables2 = [
+        variables_lib.Variable([0, 0]),
+        variables_lib.Variable([0, 0])
+    ]
+    model2.s = sharded_variable.ShardedVariable(variables2)
+    self.assertAllEqual(self.evaluate(model2.s.variables[0]), [0, 1])
+    self.assertAllEqual(self.evaluate(model2.s.variables[1]), [2, 3])
 
   def test_save_graph_def(self):
     root = tracking.AutoTrackable()

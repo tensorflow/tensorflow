@@ -44,6 +44,7 @@ absl::Status RunModelSample(const std::string& model_name) {
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
   create_info.storage_type = GetFastestStorageType(env.device());
+  create_info.hints.Add(ModelHints::kAllowSpecialKernels);
   std::cout << "Precision: " << ToString(create_info.precision) << std::endl;
   std::cout << "Storage type: " << ToString(create_info.storage_type)
             << std::endl;

@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -217,9 +218,9 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [inp.op.name for inp in variadic_op.inputs])
     self.assertEqual(
         [b'x', b'y', b'args_1', b'second_variadic', b'z', b'cust'],
-        [inp.op.get_attr('_user_specified_name')
-         for inp in variadic_op.inputs])
+        [inp.op.get_attr('_user_specified_name') for inp in variadic_op.inputs])
 
+  @test_util.disable_tfrt('GPU to host copy not implemented yet.')
   def testVariadicInputSignature(self, function_decorator):
     @function_decorator(
         input_signature=(

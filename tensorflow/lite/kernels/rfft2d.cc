@@ -248,13 +248,15 @@ void Rfft2dReorder(int fft_height, int fft_width, double** fft_input_output) {
     fft_input_output[i][0] = fft_input_output[fft_height - i][0];
     fft_input_output[i][1] = -fft_input_output[fft_height - i][1];
   }
-  fft_input_output[0][fft_width] = fft_input_output[0][1];
+
+  double temp = fft_input_output[0][1];
   fft_input_output[0][fft_width + 1] = 0;
   fft_input_output[0][1] = 0;
   fft_input_output[fft_height_half][fft_width] =
       fft_input_output[fft_height_half][1];
   fft_input_output[fft_height_half][fft_width + 1] = 0;
   fft_input_output[fft_height_half][1] = 0;
+  fft_input_output[0][fft_width] = temp;
 
   // Reorder the frequency matrix from
   //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],

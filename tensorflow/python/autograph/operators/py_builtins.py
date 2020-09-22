@@ -511,7 +511,7 @@ def next_tf_iterator(iterator, default=UNSPECIFIED):
     # Without a default, fall back to the "normal" behavior which raises
     # a runtime exception.
     return next(iterator)
-  opt_iterate = iterator_ops.get_next_as_optional(iterator)
+  opt_iterate = iterator.get_next_as_optional()
   _verify_structure_compatible(
       'the default argument', 'the iterate', default, iterator.element_spec)
   return control_flow_ops.cond(

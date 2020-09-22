@@ -24,9 +24,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import shutil
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -115,17 +115,42 @@ class CustomLayerWithConfig(CustomLayerNoConfig):
             'name': self.name}
 
 
-class TestModelRevive(keras_parameterized.TestCase):
+class CustomNetworkDefaultConfig(keras.Model):
+
+  def __init__(self, num_classes, name=None):
+    inputs = keras.Input((2, 3), name='inputs')
+    x = keras.layers.Flatten(name='flatten')(inputs)
+    y = keras.layers.Dense(num_classes, name='outputs')(x)
+    super(CustomNetworkDefaultConfig, self).__init__(inputs, y, name=name)
+
+
+class CustomNetworkWithConfig(CustomNetworkDefaultConfig):
+
+  def __init__(self, num_classes, name=None):
+    super(CustomNetworkWithConfig, self).__init__(num_classes, name=name)
+    self._config_dict = dict(num_classes=num_classes)
+
+  def get_config(self):
+    return self._config_dict
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(config['num_classes'], name=config.get('name'))
+
+
+class CustomNetworkWithConfigName(CustomNetworkWithConfig):
+
+  def __init__(self, num_classes, name=None):
+    super(CustomNetworkWithConfigName, self).__init__(num_classes, name=name)
+    self._config_dict['name'] = self.name
+
+
+class ReviveTestBase(keras_parameterized.TestCase):
 
   def setUp(self):
-    super(TestModelRevive, self).setUp()
+    super(ReviveTestBase, self).setUp()
     self.path = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, self.path, ignore_errors=True)
-
-  def _save_model_dir(self, dirname='saved_model'):
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-    return os.path.join(temp_dir, dirname)
 
   def _assert_revived_correctness(self, model, revived):
     self.assertAllEqual(model.input_names, revived.input_names)
@@ -172,6 +197,11 @@ class TestModelRevive(keras_parameterized.TestCase):
         # created with the same name.
         self.assertEqual(type(model_layer).__name__,
                          type(revived_layer).__name__)
+
+
+# These tests take a while to run, so each should run in a separate shard
+# (putting them in the same TestCase resolves this).
+class TestBigModelRevive(ReviveTestBase):
 
   @keras_parameterized.run_with_all_model_types
   def test_revive(self):
@@ -235,6 +265,9 @@ class TestModelRevive(keras_parameterized.TestCase):
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
 
+
+class TestModelRevive(ReviveTestBase):
+
   def test_revive_subclassed_with_nested_model(self):
     model = SubclassedModelNoConfig(1., 2.)
     # Run data through the Model to create save spec and weights.
@@ -244,17 +277,54 @@ class TestModelRevive(keras_parameterized.TestCase):
     self._assert_revived_correctness(model, revived)
 
   def test_revive_sequential_inputs(self):
-    model = keras.models.Sequential(
-        [keras.Input((None,), dtype=dtypes.string),
-         keras.layers.Lambda(string_ops.string_lower)])
+    model = keras.models.Sequential([
+        keras.Input((None,), dtype=dtypes.string),
+        keras.layers.Lambda(string_ops.string_lower)
+    ])
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
     self.assertEqual(dtypes.string, revived._layers[0].dtype)
+
+  @parameterized.named_parameters(
+      ('default_config', CustomNetworkDefaultConfig),
+      ('with_config', CustomNetworkWithConfig),
+      ('with_config_name', CustomNetworkWithConfigName))
+  def test_revive_network(self, model_cls):
+    model = model_cls(8)
+    model.save(self.path, include_optimizer=False, save_format='tf')
+    revived = keras_load.load(self.path, compile=False)
+    self._assert_revived_correctness(model, revived)
+
+  def test_load_compiled_metrics(self):
+    model = testing_utils.get_small_sequential_mlp(1, 3)
+
+    # Compile with dense categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    x = np.random.random((5, 10)).astype(np.float32)
+    y_true = np.random.random((5, 3)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
+
+    # Compile with sparse categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    y_true = np.random.randint(0, 3, (5, 1)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
 
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
   with generic_utils.CustomObjectScope({
       'CustomLayerWithConfig': CustomLayerWithConfig,
-      'SubclassedModelWithConfig': SubclassedModelWithConfig}):
+      'CustomNetworkWithConfig': CustomNetworkWithConfig,
+      'CustomNetworkWithConfigName': CustomNetworkWithConfigName,
+      'SubclassedModelWithConfig': SubclassedModelWithConfig
+  }):
     test.main()

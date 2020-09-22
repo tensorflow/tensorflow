@@ -540,24 +540,6 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
               HasSubstr("Instruction shouldn't change layouts"));
 }
 
-TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY BitcastCanNotChangeElementType {
-   constant.0 = f32[2] constant({0.0, 0.0})
-   ROOT bitcast = s32[2] bitcast(constant.0)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Bitcast can not change the element type"));
-}
-
 TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
   const char* const hlo_string = R"(
   HloModule Module

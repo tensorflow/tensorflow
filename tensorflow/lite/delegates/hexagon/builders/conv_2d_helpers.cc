@@ -106,6 +106,7 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
   const bool is_per_channel_quant = weights_quant_params->scale->size > 1;
 
   // WEIGHTS DATA.
+  OpBuilder* weights_data_node = nullptr;
   if (op_node_.op_type == OP_Supernode_8x8p32to8) {
     // Hexagon lib expects the weight tensor in HWCN, TFLite uses NHWC.
     // Transpose NHWC -> HWCN
@@ -137,7 +138,7 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
                                         weights_tensor.data.uint8, hwcn_shape,
                                         hwcn.data());
     }
-    weights_data_node_ = graph_builder_->AddConstNodeWithData(
+    weights_data_node = graph_builder_->AddConstNodeWithData(
         weight_shape_.data(), reinterpret_cast<char*>(hwcn.data()),
         hwcn.size() * sizeof(hwcn[0]));
   } else if (op_node_.op_type == OP_DepthwiseSupernode_8x8p32to8) {
@@ -156,17 +157,17 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
       for (int i = 0; i < converted_data.size(); ++i) {
         converted_data[i] = weights_tensor.data.int8[i] ^ k8BitSignFlipConstant;
       }
-      weights_data_node_ = graph_builder_->AddConstNodeWithData(
+      weights_data_node = graph_builder_->AddConstNodeWithData(
           weight_shape_.data(), reinterpret_cast<char*>(converted_data.data()),
           converted_data.size() * sizeof(converted_data[0]));
     } else {
-      weights_data_node_ = graph_builder_->AddConstNodeWithData(
+      weights_data_node = graph_builder_->AddConstNodeWithData(
           weight_shape_.data(), weights_tensor.data.raw,
           NumElements(&weights_tensor) * sizeof(weights_tensor.data.uint8[0]));
     }
   }
-  graph_builder_->AddTensorWithID(inputs->data[1], weights_data_node_->GetID(),
-                                  0);
+  graph_builder_->AddTensorWithID(inputs->data[1], weights_data_node->GetID(),
+                                  0, /*overwrite=*/true);
 
   // WEIGHTS QUANTIZATION.
   float weights_min = 0;
@@ -229,9 +230,11 @@ TfLiteStatus Conv2dOpBuilder::ProcessPerChannelQuantizedBias(
   }
   // Add nodes for bias.
   const std::vector<int> bias_shape = {1, 1, 1, bias_size};
-  bias_data_node_ = graph_builder_->AddConstNodeWithData(
+  auto* bias_data_node = graph_builder_->AddConstNodeWithData(
       bias_shape.data(), reinterpret_cast<char*>(preprocessed_bias_data.data()),
       preprocessed_bias_data.size() * sizeof(preprocessed_bias_data[0]));
+  graph_builder_->AddTensorWithID(inputs->data[2], bias_data_node->GetID(), 0,
+                                  /*overwrite=*/true);
   return kTfLiteOk;
 }
 
@@ -248,8 +251,10 @@ TfLiteStatus Conv2dOpBuilder::InitializeBiasNodes(const TfLiteIntArray* inputs,
     ProcessPerChannelQuantizedBias(inputs, outputs, context, &bias_min,
                                    &bias_max);
   } else {
-    bias_data_node_ =
+    auto* bias_data_node =
         graph_builder_->AddConstNodeWithData(inputs->data[2], bias_tensor);
+    graph_builder_->AddTensorWithID(inputs->data[2], bias_data_node->GetID(), 0,
+                                    /*overwrite=*/true);
     TF_LITE_ENSURE_STATUS(
         ComputeMinAndMaxQuantValues(bias_tensor, &bias_min, &bias_max));
   }

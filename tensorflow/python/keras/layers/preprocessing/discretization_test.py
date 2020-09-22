@@ -38,10 +38,10 @@ class DiscretizationTest(keras_parameterized.TestCase,
   def test_bucketize_with_explicit_buckets_integer(self):
     input_array = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
 
-    expected_output = [[0, 2, 3, 1], [1, 3, 2, 1]]
-    expected_output_shape = [None, None]
+    expected_output = [[0, 1, 3, 1], [0, 3, 2, 0]]
+    expected_output_shape = [None, 4]
 
-    input_data = keras.Input(shape=(None,))
+    input_data = keras.Input(shape=(4,))
     layer = discretization.Discretization(bins=[0., 1., 2.])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
@@ -54,9 +54,9 @@ class DiscretizationTest(keras_parameterized.TestCase,
     input_array = np.array([[-1, 1, 3, 0], [0, 3, 1, 0]], dtype=np.int64)
 
     expected_output = [[0, 2, 3, 1], [1, 3, 2, 1]]
-    expected_output_shape = [None, None]
+    expected_output_shape = [None, 4]
 
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    input_data = keras.Input(shape=(4,), dtype=dtypes.int64)
     layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
@@ -83,7 +83,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     input_array = ragged_factory_ops.constant([[-1.5, 1.0, 3.4, .5],
                                                [0.0, 3.0, 1.3]])
 
-    expected_output = [[0, 2, 3, 1], [1, 3, 2]]
+    expected_output = [[0, 1, 3, 1], [0, 3, 2]]
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True)

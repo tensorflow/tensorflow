@@ -29,6 +29,7 @@ WhileThunk::WhileThunk(
     std::unique_ptr<ThunkSequence> condition_thunk_sequence,
     std::unique_ptr<ThunkSequence> body_thunk_sequence)
     : Thunk(Kind::kWhile, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       condition_result_buffer_index_(condition_result_buffer_index),
       // Pass nullptr as the HloInstruction* to the condition_thunk_sequence_
       // and body_thunk_sequence_ constructors because these SequentialThunks
@@ -38,12 +39,6 @@ WhileThunk::WhileThunk(
           ThunkInfo(), std::move(*condition_thunk_sequence))),
       body_thunk_sequence_(absl::make_unique<SequentialThunk>(
           ThunkInfo(), std::move(*body_thunk_sequence))) {}
-
-void WhileThunk::ComputeAnnotations() {
-  Thunk::ComputeAnnotations();
-  condition_thunk_sequence_->ComputeAnnotations();
-  body_thunk_sequence_->ComputeAnnotations();
-}
 
 Status WhileThunk::Initialize(const GpuExecutable& executable,
                               se::StreamExecutor* executor) {
@@ -67,7 +62,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     profiler.StartHloComputation();
     VLOG(3) << "Executing condition computation";
     TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
-    profiler.FinishHloComputation(hlo_instruction()->while_condition());
+    profiler.FinishHloComputation(hlo_instruction_->while_condition());
 
     // Copy the result of condition computation and break the loop if 'false'.
     bool condition_result;
@@ -91,7 +86,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Invoke thunk sequence for while 'body' computation, and pass on
     // 'profiler' to measure the timing of the thunks in 'body_thunk_sequence_'.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
-    profiler.FinishHloComputation(hlo_instruction()->while_body());
+    profiler.FinishHloComputation(hlo_instruction_->while_body());
   }
   return Status::OK();
 }

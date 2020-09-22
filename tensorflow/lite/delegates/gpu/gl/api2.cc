@@ -18,10 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -542,7 +542,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
     auto workgroup_calculator = NewDefaultWorkgroupsCalculator(*gpu_info_);
     auto external_objects = absl::make_unique<ObjectManager>();
     std::vector<GlShader> shaders;
-    std::unordered_map<std::string, size_t> shader_to_index;
+    absl::flat_hash_map<std::string, size_t> shader_to_index;
     RuntimeOptions runtime_options;
     auto runtime =
         absl::make_unique<Runtime>(runtime_options, *gpu_info_,

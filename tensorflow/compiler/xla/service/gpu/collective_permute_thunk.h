@@ -33,6 +33,7 @@ class CollectivePermuteThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   BufferAllocation::Slice src_;
   BufferAllocation::Slice dest_;
 };

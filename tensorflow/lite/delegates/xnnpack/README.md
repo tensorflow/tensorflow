@@ -8,9 +8,47 @@ to use the XNNPACK library as an inference engine for TensorFlow Lite.
 ## Using XNNPACK engine with TensorFlow Lite interpreter
 
 XNNPACK integrates with TensorFlow Lite interpreter through the delegation
-mechanism. There are three methods to enable XNNPACK engine in TensorFlow Lite.
+mechanism. TensorFlow Lite supports several methods to enable XNNPACK
+for floating-point inference.
 
-### Enable XNNPACK via Bazel build flags (recommended)
+### Enable XNNPACK via Java API on Android (recommended on Android)
+
+Pre-built [nightly TensorFlow Lite binaries for Android](https://www.tensorflow.org/lite/guide/android#use_the_tensorflow_lite_aar_from_jcenter)
+include XNNPACK, albeit it is disabled by default. Use the `setUseXNNPACK`
+method in `Interpreter.Options` class to enable it:
+
+```java
+Interpreter.Options interpreterOptions = new Interpreter.Options();
+interpreterOptions.setUseXNNPACK(true);
+Interpreter interpreter = new Interpreter(model, interpreterOptions);
+```
+
+### Enable XNNPACK via Swift/Objective-C API on iOS (recommended on iOS)
+
+Pre-built [nightly TensorFlow Lite CocoaPods](https://www.tensorflow.org/lite/guide/ios#specifying_versions)
+include XNNPACK, but do not enable it by default. Swift developers can use
+`InterpreterOptions` object to enable XNNPACK:
+
+```swift
+var options = InterpreterOptions()
+options.isXNNPackEnabled = true
+var interpreter = try Interpreter(modelPath: "model/path", options: options)
+```
+
+Objective-C developers can enable XNNPACK via a new property in the
+`TFLInterpreterOptions` class:
+
+```objc
+TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
+options.useXNNPACK = YES;
+NSError *error;
+TFLInterpreter *interpreter =
+    [[TFLInterpreter alloc] initWithModelPath:@"model/path"
+                                      options:options
+                                        error:&error];
+```
+
+### Enable XNNPACK via Bazel build flags (recommended on desktop)
 
 When building TensorFlow Lite with Bazel, add
 `--define tflite_with_xnnpack=true`, and the TensorFlow Lite interpreter will
@@ -214,6 +252,20 @@ Below is the list of current operators and limitations:
 ### `RELU_N1_TO_1`
 
 * Inputs and outputs must be in 32-bit floating-point format.
+
+### `RESHAPE`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second input (the input with the new shape specification) must be either
+  static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
+  specified via `ReshapeOptions` table).
+
+### `RESIZE_BILINEAR`
+
+* The first input and the output must be 4D tensors in 32-bit floating-point
+  format.
+* The second input (the input with the new shape specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
 
 ### `ROUND`
 

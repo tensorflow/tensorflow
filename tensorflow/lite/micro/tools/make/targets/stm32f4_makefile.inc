@@ -9,11 +9,12 @@ ifeq ($(TARGET), stm32f4)
   $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
   $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
+  # TODO(b/161478030) : change - Wno - vla to - Wvla and remove - Wno-shadow once
+  # we have a solution for fixing / avoiding being tripped up by these warnings.
   PLATFORM_FLAGS = \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_STATIC_MEMORY \
     -DTF_LITE_MCU_DEBUG_LOG \
-    -fno-rtti \
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
@@ -23,10 +24,12 @@ ifeq ($(TARGET), stm32f4)
     -MMD \
     -mcpu=cortex-m4 \
     -mthumb \
-    -std=gnu++11 \
-    -Wvla \
     -Wall \
     -Wextra \
+    -Wno-shadow \
+    -Wno-vla \
+    -Wno-strict-aliasing \
+    -Wno-type-limits \
     -Wno-unused-parameter \
     -Wno-missing-field-initializers \
     -Wno-write-strings \
@@ -34,11 +37,9 @@ ifeq ($(TARGET), stm32f4)
     -Wunused-function \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
-    -fpermissive \
-    -fno-use-cxa-atexit \
     -g \
     -Os
-  CXXFLAGS += $(PLATFORM_FLAGS)
+  CXXFLAGS += $(PLATFORM_FLAGS) -std=gnu++11 -fno-rtti -fno-use-cxa-atexit
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
     --specs=nosys.specs \
@@ -61,35 +62,24 @@ ifeq ($(TARGET), stm32f4)
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
   # TODO, non working tests.. the micro_speech example partly works
   # TODO(b/158324045): Examine why some tests fail here.
+
   EXCLUDED_TESTS := \
     tensorflow/lite/micro/micro_interpreter_test.cc \
     tensorflow/lite/micro/micro_allocator_test.cc \
     tensorflow/lite/micro/memory_helpers_test.cc \
     tensorflow/lite/micro/memory_arena_threshold_test.cc \
     tensorflow/lite/micro/recording_micro_allocator_test.cc \
-    tensorflow/lite/micro/kernels/logistic_test.cc \
-    tensorflow/lite/micro/kernels/logical_test.cc \
-    tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
-    tensorflow/lite/micro/kernels/comparisons_test.cc \
-    tensorflow/lite/micro/kernels/reshape_test.cc \
-    tensorflow/lite/micro/kernels/arg_min_max_test.cc \
-    tensorflow/lite/micro/kernels/elementwise_test.cc \
-    tensorflow/lite/micro/kernels/strided_slice_test.cc \
-    tensorflow/lite/micro/kernels/prelu_test.cc \
-    tensorflow/lite/micro/kernels/pack_test.cc \
-    tensorflow/lite/micro/kernels/activations_test.cc \
-    tensorflow/lite/micro/kernels/dequantize_test.cc \
-    tensorflow/lite/micro/kernels/unpack_test.cc \
-    tensorflow/lite/micro/kernels/split_test.cc \
-    tensorflow/lite/micro/simple_tensor_allocator_test.cc
+    tensorflow/lite/micro/kernels/circular_buffer_test.cc \
+    tensorflow/lite/micro/kernels/conv_test.cc \
+    tensorflow/lite/micro/kernels/fully_connected_test.cc
+
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
+
   EXCLUDED_EXAMPLE_TESTS := \
     tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
     tensorflow/lite/micro/examples/person_detection/Makefile.inc \
     tensorflow/lite/micro/examples/person_detection_experimental/Makefile.inc \
-    tensorflow/lite/micro/examples/mobilenet_v2/Makefile.inc \
     tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
-    tensorflow/lite/micro/examples/ds_cnn_l/Makefile.inc \
     tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
   MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 

@@ -52,12 +52,16 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &delegate_interpreter),
       kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &default_interpreter),
       kTfLiteOk);
 

@@ -686,8 +686,7 @@ typedef Converter<bool> BoolConverter;
 // other.
 TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
-  Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor,
-                                              true /*convert_string*/);
+  Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor);
 
   if (TF_PREDICT_FALSE(!status.ok())) {
     PyErr_SetString(PyExc_ValueError,

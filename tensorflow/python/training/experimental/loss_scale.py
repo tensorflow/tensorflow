@@ -28,9 +28,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -196,10 +196,6 @@ class LossScale(trackable.Trackable):
   def from_config(cls, config):
     """Creates the LossScale from its config."""
     return cls(**config)
-
-
-def get_loss_scale_weights(loss_scale):
-  return loss_scale._weights.values()  # pylint: disable=protected-access
 
 
 @deprecation.deprecated_endpoints('train.experimental.FixedLossScale')

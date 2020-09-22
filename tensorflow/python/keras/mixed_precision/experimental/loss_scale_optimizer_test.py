@@ -27,6 +27,7 @@ from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -53,7 +54,7 @@ default_strategy_fn = distribution_strategy_context.get_strategy
 
 
 def create_mirrored_strategy():
-  if context.num_gpus() >= 1:
+  if tf_config.list_logical_devices('GPU'):
     return mirrored_strategy.MirroredStrategy(['cpu:0', 'gpu:0'])
   else:
     return mirrored_strategy.MirroredStrategy(['cpu:0'])
@@ -106,27 +107,28 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # and so the variable will be init_val - grad * lr == 5 - 1 * 2 == 3
       self.assertAllClose([3.], self.evaluate(var))
 
-  @test_util.deprecated_graph_mode_only
   def testFixedLossScaleAppliedToLossWithGetGradients(self):
-    var = variables.Variable([2.0])
-    opt = gradient_descent.SGD(1.0)
-    loss_scale = 10.
-    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-    grad_check_fn = mp_test_util.create_identity_with_grad_check_fn(loss_scale)
-    loss = grad_check_fn(var)
-    run_op = opt.get_gradients(loss, [var])
-    self.evaluate(variables.global_variables_initializer())
-    # This will cause an assertion to run, as
-    # mp_test_util.create_identity_with_grad_check_fn added an assertion op.
-    self.evaluate(run_op)
+    with ops.Graph().as_default():
+      var = variables.Variable([2.0])
+      opt = gradient_descent.SGD(1.0)
+      loss_scale = 10.
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      grad_check_fn = mp_test_util.create_identity_with_grad_check_fn(
+          loss_scale)
+      loss = grad_check_fn(var)
+      run_op = opt.get_gradients(loss, [var])
+      self.evaluate(variables.global_variables_initializer())
+      # This will cause an assertion to run, as
+      # mp_test_util.create_identity_with_grad_check_fn added an assertion op.
+      self.evaluate(run_op)
 
   def testGetScaledLoss(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2.)
-    loss = ops.convert_to_tensor_v2(5.)
+    loss = ops.convert_to_tensor_v2_with_dispatch(5.)
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
-    loss = ops.convert_to_tensor_v2(5., dtype='float16')
+    loss = ops.convert_to_tensor_v2_with_dispatch(5., dtype='float16')
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
 
@@ -134,8 +136,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     scaled_grads = [
-        ops.convert_to_tensor_v2(3.), None,
-        ops.convert_to_tensor_v2(-4., dtype='float16')
+        ops.convert_to_tensor_v2_with_dispatch(3.), None,
+        ops.convert_to_tensor_v2_with_dispatch(-4., dtype='float16')
     ]
     grads = opt.get_unscaled_gradients(scaled_grads)
     grads = [self.evaluate(g) if g is not None else g for g in grads]
@@ -145,9 +147,10 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     sparse_scaled_grad = ops.IndexedSlices(
-        ops.convert_to_tensor_v2([[4., 2.], [8., 5.]]),
-        ops.convert_to_tensor_v2([1, 3], dtype='int32'),
-        dense_shape=ops.convert_to_tensor_v2([5, 2], dtype='int32'))
+        ops.convert_to_tensor_v2_with_dispatch([[4., 2.], [8., 5.]]),
+        ops.convert_to_tensor_v2_with_dispatch([1, 3], dtype='int32'),
+        dense_shape=ops.convert_to_tensor_v2_with_dispatch([5, 2],
+                                                           dtype='int32'))
     sparse_grad = opt.get_unscaled_gradients([sparse_scaled_grad])[0]
     self.assertIsInstance(sparse_grad, ops.IndexedSlices)
     self.assertAllEqual([[2., 1.], [4., 2.5]],

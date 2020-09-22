@@ -110,13 +110,13 @@ func generateFunctionsForOps(w io.Writer, ops *odpb.OpList, apimap *apiDefMap) e
 	if err := tmplHeader.Execute(w, thisPackage); err != nil {
 		return err
 	}
-	blacklist := map[string]bool{
+	denylist := map[string]bool{
 		"Const":           true,
 		"PyFunc":          true,
 		"PyFuncStateless": true,
 	}
 	for _, op := range ops.Op {
-		if blacklist[op.Name] {
+		if denylist[op.Name] {
 			continue
 		}
 		apidef, err := apimap.Get(op.Name)

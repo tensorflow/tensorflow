@@ -51,12 +51,14 @@ string HloModuleConfig::compilation_cache_key() const {
   string key = absl::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");
   std::vector<string> params;
-  for (const ShapeLayout& param_layout :
-       entry_computation_layout_->parameter_layouts()) {
-    params.push_back(param_layout.shape().DebugString());
+  if (entry_computation_layout_.has_value()) {
+    for (const ShapeLayout& param_layout :
+         entry_computation_layout_->parameter_layouts()) {
+      params.push_back(param_layout.shape().DebugString());
+    }
+    StrAppend(&key, absl::StrJoin(params, ", "), ") => ",
+              entry_computation_layout_->result_shape().SerializeAsString());
   }
-  StrAppend(&key, absl::StrJoin(params, ", "), ") => ",
-            entry_computation_layout_->result_shape().SerializeAsString());
   if (seed() != 0) {
     // TODO(b/32083678): force recompilation to reset global state.
     static std::atomic<int> counter{0};

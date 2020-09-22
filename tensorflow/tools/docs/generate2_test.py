@@ -50,7 +50,12 @@ class Generate2Test(googletest.TestCase):
       shutil.rmtree(output_dir)
     os.makedirs(output_dir)
     with self.assertRaisesRegex(ValueError, '2000 files'):
-      generate2.build_docs(output_dir=output_dir, code_url_prefix='')
+      generate2.build_docs(
+          output_dir=output_dir,
+          code_url_prefix='',
+          search_hints=True,
+          gen_report=False,
+      )
 
 
 if __name__ == '__main__':

@@ -35,12 +35,11 @@ ConvolutionThunk::ConvolutionThunk(
     BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice,
     BufferAllocation::Slice tuple_result_slice)
     : Thunk(Kind::kConvolution, thunk_info),
+      cudnn_call_(Cast<HloCustomCallInstruction>(thunk_info.hlo_instruction)),
       operand_buffers_(std::move(operand_slices)),
       result_buffer_(result_slice),
       scratch_buffer_(scratch_slice),
-      tuple_result_buffer_(tuple_result_slice) {
-  cudnn_call_ = Cast<HloCustomCallInstruction>(hlo_instruction());
-}
+      tuple_result_buffer_(tuple_result_slice) {}
 
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;

@@ -1,7 +1,12 @@
 # TensorFlow Lite for iOS
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION", "tflite_ios_static_framework")
+load(
+    "//tensorflow/lite/experimental/ios:ios.bzl",
+    "TFL_MINIMUM_OS_VERSION",
+    "strip_common_include_path_prefix",
+    "tflite_ios_static_framework",
+)
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 package(
@@ -16,33 +21,27 @@ sh_binary(
     srcs = [
         "hide_symbols_with_allowlist.sh",
     ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
 )
 
-# When the static framework is built with bazel, the all header files are moved
-# to the "Headers" directory with no header path prefixes. This auxiliary rule
-# is used for stripping the path prefix to the "common.h" file included by the
-# "c_api.h" header.
-genrule(
-    name = "strip_c_api_include_hdr",
-    srcs = ["//tensorflow/lite/c:c_api.h"],
-    outs = ["c_api.h"],
-    cmd = """
-    sed 's|#include ".*common.h"|#include "common.h"|'\
-    "$(location //tensorflow/lite/c:c_api.h)"\
-    > "$@"
-    """,
+strip_common_include_path_prefix(
+    name = "strip_common_include_path_core",
+    hdr_labels = [
+        "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
+    ],
 )
 
-# Similar rule as above, but for the "xnnpack_delegate.h" header.
-genrule(
-    name = "strip_xnnpack_include_hdr",
-    srcs = ["//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h"],
-    outs = ["xnnpack_delegate.h"],
-    cmd = """
-    sed 's|#include ".*common.h"|#include "common.h"|'\
-    "$(location //tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h)"\
-    > "$@"
-    """,
+strip_common_include_path_prefix(
+    name = "strip_common_include_path_subspecs",
+    hdr_labels = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate.h",
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h",
+    ],
+    prefix = "TensorFlowLiteC/",
 )
 
 # bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteC_framework
@@ -79,23 +78,12 @@ ios_static_framework(
     ],
 )
 
-genrule(
-    name = "strip_coreml_include_hdr",
-    srcs = ["//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h"],
-    outs = ["coreml_delegate.h"],
-    cmd = """
-    sed 's|#include ".*common.h"|#include "TensorFlowLiteC/common.h"|'\
-    "$(location //tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h)"\
-    > "$@"
-    """,
-)
-
 # This target builds the Core ML delegate as a separate static framework, which
 # does not include the TensorFlow Lite runtime. As this target does not contain
 # TensorFlow Lite runtime, it is intended to be linked along with the
 # TensorFlowLiteC framework above in a composable way.
 #
-# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteCCoreMl_framework
+# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteCCoreML_framework
 tflite_ios_static_framework(
     name = "TensorFlowLiteCCoreML_framework",
     hdrs = [
@@ -118,7 +106,7 @@ tflite_ios_static_framework(
 tflite_ios_static_framework(
     name = "TensorFlowLiteCMetal_framework",
     hdrs = [
-        "//tensorflow/lite/delegates/gpu:metal_delegate.h",
+        ":metal_delegate.h",
     ],
     allowlist_symbols_file = ":allowlist_TensorFlowLiteCMetal.txt",
     bundle_name = "TensorFlowLiteCMetal",

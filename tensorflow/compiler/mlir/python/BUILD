@@ -10,6 +10,7 @@ cc_library(
     deps = [
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
@@ -35,6 +36,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )

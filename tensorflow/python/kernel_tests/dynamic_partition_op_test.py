@@ -23,8 +23,10 @@ import unittest
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
@@ -345,6 +347,19 @@ class DynamicPartitionTest(test.TestCase):
     with self.cached_session() as sess:
       res = self.evaluate(partitioned)
     self.assertEqual(res[-1].shape[0], 192)
+
+  #  see https://github.com/tensorflow/tensorflow/issues/42500
+  def testMultiGPU(self):
+    device_list = config.list_logical_devices("GPU")
+    results = []
+    for device in device_list:
+      with ops.device(device.name):
+        data = constant_op.constant(np.zeros((1000,)))
+        partitions = constant_op.constant(np.arange(1000, dtype=np.int32) % 10)
+        result = data_flow_ops.dynamic_partition(data, partitions, 10)
+        results.append(self.evaluate(result))
+    if device_list:
+      self.assertAllEqual(results, np.zeros((len(device_list), 10, 100)))
 
 
 if __name__ == "__main__":

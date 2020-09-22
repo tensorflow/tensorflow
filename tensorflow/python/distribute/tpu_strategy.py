@@ -278,6 +278,200 @@ class TPUStrategyV2(distribute_lib.Strategy):
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
 
+  def experimental_assign_to_logical_device(self, tensor, logical_device_id):
+    """Adds annotation that `tensor` will be assigned to a logical device.
+
+    This adds an annotation to `tensor` specifying that operations on
+    `tensor` will be invoked on logical core device id `logical_device_id`.
+    When model parallelism is used, the default behavior is that all ops
+    are placed on zero-th logical device.
+
+    ```python
+
+    # Initializing TPU system with 2 logical devices and 4 replicas.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 1, 1, 2],
+        num_replicas=4)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      output = tf.add(inputs, inputs)
+
+      # Add operation will be executed on logical device 0.
+      output = strategy.experimental_assign_to_logical_device(output, 0)
+      return output
+
+    strategy.run(step_fn, args=(next(iterator),))
+    ```
+
+    Args:
+      tensor: Input tensor to annotate.
+      logical_device_id: Id of the logical core to which the tensor will be
+        assigned.
+
+    Raises:
+      ValueError: The logical device id presented is not consistent with total
+      number of partitions specified by the device assignment.
+
+    Returns:
+      Annotated tensor with identical value as `tensor`.
+    """
+    num_logical_devices_per_replica = self.extended._tpu_devices.shape[1]  # pylint: disable=protected-access
+    if (logical_device_id < 0 or
+        logical_device_id >= num_logical_devices_per_replica):
+      raise ValueError("`logical_core_id` to assign must be lower then total "
+                       "number of logical devices per replica. Received "
+                       "logical device id {} but there are only total of {} "
+                       "logical devices in replica.".format(
+                           logical_device_id, num_logical_devices_per_replica))
+    return xla_sharding.assign_device(
+        tensor, logical_device_id, use_sharding_op=True)
+
+  def experimental_split_to_logical_devices(self, tensor, partition_dimensions):
+    """Adds annotation that `tensor` will be split across logical devices.
+
+    This adds an annotation to tensor `tensor` specifying that operations on
+    `tensor` will be be split among multiple logical devices. Tensor `tensor`
+    will be split across dimensions specified by `partition_dimensions`.
+    The dimensions of `tensor` must be divisible by corresponding value in
+    `partition_dimensions`.
+
+    For example, for system with 8 logical devices, if `tensor` is an image
+    tensor with shape (batch_size, width, height, channel) and
+    `partition_dimensions` is [1, 2, 4, 1], then `tensor` will be split
+    2 in width dimension and 4 way in height dimension and the split
+    tensor values will be fed into 8 logical devices.
+
+    ```python
+    # Initializing TPU system with 8 logical devices and 1 replica.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 2, 2, 2],
+        num_replicas=1)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      inputs = strategy.experimental_split_to_logical_devices(
+        inputs, [1, 2, 4, 1])
+
+      # model() function will be executed on 8 logical devices with `inputs`
+      # split 2 * 4  ways.
+      output = model(inputs)
+      return output
+
+    strategy.run(step_fn, args=(next(iterator),))
+    ```
+    Args:
+      tensor: Input tensor to annotate.
+      partition_dimensions: An unnested list of integers with the size equal to
+        rank of `tensor` specifying how `tensor` will be partitioned. The
+        product of all elements in `partition_dimensions` must be equal to the
+        total number of logical devices per replica.
+
+    Raises:
+      ValueError: 1) If the size of partition_dimensions does not equal to rank
+        of `tensor` or 2) if product of elements of `partition_dimensions` does
+        not match the number of logical devices per replica defined by the
+        implementing DistributionStrategy's device specification or
+        3) if a known size of `tensor` is not divisible by corresponding
+        value in `partition_dimensions`.
+
+    Returns:
+      Annotated tensor with identical value as `tensor`.
+    """
+    num_logical_devices_per_replica = self.extended._tpu_devices.shape[1]  # pylint: disable=protected-access
+    num_partition_splits = np.prod(partition_dimensions)
+    input_shape = tensor.shape
+    tensor_rank = len(input_shape)
+
+    if tensor_rank != len(partition_dimensions):
+      raise ValueError("Length of `partition_dimensions` ({}) must be  "
+                       "equal to the rank of `x` ({}).".format(
+                           len(partition_dimensions), tensor_rank))
+
+    for dim_index, dim_size in enumerate(input_shape):
+      if dim_size is None:
+        continue
+
+      split_size = partition_dimensions[dim_index]
+      if dim_size % split_size != 0:
+        raise ValueError("Tensor shape at dimension ({}) must be "
+                         "divisible by corresponding value specified "
+                         "by `partition_dimensions` ({}).".format(
+                             dim_index, split_size))
+
+    if num_partition_splits != num_logical_devices_per_replica:
+      raise ValueError("Number of logical devices ({}) does not match the "
+                       "number of partition splits specified ({}).".format(
+                           num_logical_devices_per_replica,
+                           num_partition_splits))
+
+    tile_assignment = np.arange(num_partition_splits).reshape(
+        partition_dimensions)
+    return xla_sharding.tile(tensor, tile_assignment, use_sharding_op=True)
+
+  def experimental_replicate_to_logical_devices(self, tensor):
+    """Adds annotation that `tensor` will be replicated to all logical devices.
+
+    This adds an annotation to tensor `tensor` specifying that operations on
+    `tensor` will be invoked on all logical devices.
+
+    ```python
+    # Initializing TPU system with 2 logical devices and 4 replicas.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 1, 1, 2],
+        num_replicas=4)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      images, labels = inputs
+      images = strategy.experimental_split_to_logical_devices(
+        inputs, [1, 2, 4, 1])
+
+      # model() function will be executed on 8 logical devices with `inputs`
+      # split 2 * 4  ways.
+      output = model(inputs)
+
+      # For loss calculation, all logical devices share the same logits
+      # and labels.
+      labels = strategy.experimental_replicate_to_logical_devices(labels)
+      output = strategy.experimental_replicate_to_logical_devices(output)
+      loss = loss_fn(labels, output)
+
+      return loss
+
+    strategy.run(step_fn, args=(next(iterator),))
+    ```
+    Args:
+      tensor: Input tensor to annotate.
+
+    Returns:
+      Annotated tensor with identical value as `tensor`.
+    """
+    return xla_sharding.replicate(tensor, use_sharding_op=True)
+
 
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
 @deprecation.deprecated_endpoints("distribute.experimental.TPUStrategy")
@@ -537,12 +731,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._logical_device_stack = [0]
 
     if context.executing_eagerly():
-      # In async remote eager, we want to sync the exectors before exiting the
+      # In async remote eager, we want to sync the executors before exiting the
       # program.
       def async_wait():
         if context.context()._context_handle is not None:  # pylint: disable=protected-access
           context.async_wait()
       atexit.register(async_wait)
+
+    # Flag to turn on VariablePolicy
+    self._use_var_policy = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
@@ -687,7 +884,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             select_replica, per_replica_inputs),))
 
       replicate_outputs = tpu.replicate(
-          run_fn, replicate_inputs, device_assignment=self._device_assignment)
+          run_fn,
+          replicate_inputs,
+          device_assignment=self._device_assignment,
+          xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
 
       # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
       # will flatten it in this case. If run_fn has no tensor outputs,
@@ -766,57 +966,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     finally:
       self._logical_device_stack.pop()
 
-  def _experimental_assign_to_logical_device(self, tensor, logical_device_id):
-    """See `DistributionStrategy.experimental_assign_to_logical_device`."""
-    num_logical_devices_per_replica = self._tpu_devices.shape[1]
-    if (logical_device_id < 0 or
-        logical_device_id >= num_logical_devices_per_replica):
-      raise ValueError("`logical_core_id` to assign must be lower then total "
-                       "number of logical devices per replica. Received "
-                       "logical device id {} but there are only total of {} "
-                       "logical devices in replica.".format(
-                           logical_device_id, num_logical_devices_per_replica))
-    return xla_sharding.assign_device(
-        tensor, logical_device_id, use_sharding_op=True)
-
-  def _experimental_split_to_logical_devices(self, tensor,
-                                             partition_dimensions):
-    """See `DistributionStrategy.experimental_split_to_logical_devices`."""
-    num_logical_devices_per_replica = self._tpu_devices.shape[1]
-    num_partition_splits = np.prod(partition_dimensions)
-    input_shape = tensor.shape
-    tensor_rank = len(input_shape)
-
-    if tensor_rank != len(partition_dimensions):
-      raise ValueError("Length of `partition_dimensions` ({}) must be  "
-                       "equal to the rank of `x` ({}).".format(
-                           len(partition_dimensions), tensor_rank))
-
-    for dim_index, dim_size in enumerate(input_shape):
-      if dim_size is None:
-        continue
-
-      split_size = partition_dimensions[dim_index]
-      if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension ({}) must be "
-                         "divisible by corresponding value specified "
-                         "by `partition_dimensions` ({}).".format(
-                             dim_index, split_size))
-
-    if num_partition_splits != num_logical_devices_per_replica:
-      raise ValueError("Number of logical devices ({}) does not match the "
-                       "number of partition splits specified ({}).".format(
-                           num_logical_devices_per_replica,
-                           num_partition_splits))
-
-    tile_assignment = np.arange(num_partition_splits).reshape(
-        partition_dimensions)
-    return xla_sharding.tile(tensor, tile_assignment, use_sharding_op=True)
-
-  def _experimental_replicate_to_logical_devices(self, tensor):
-    """See `DistributionStrategy.experimental_replicate_to_logical_devices`."""
-    return xla_sharding.replicate(tensor, use_sharding_op=True)
-
   def _experimental_initialize_system(self):
     """Experimental method added to be used by Estimator.
 
@@ -870,8 +1019,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     return distribute_utils.create_mirrored_variable(
         self._container_strategy(), _real_mirrored_creator,
-        tpu_values.TPUMirroredVariable, tpu_values.TPUSyncOnReadVariable,
-        **kwargs)
+        distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
+        distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
@@ -1163,7 +1312,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             replicate_inputs,
             device_assignment=self._device_assignment,
             maximum_shapes=maximum_shapes,
-            padding_spec=padding_spec)
+            padding_spec=padding_spec,
+            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):
@@ -1202,9 +1352,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
 
   # TODO(sourabhbajaj): Call for each replica should be updating this.
   # TODO(b/118385803): Always properly initialize replica_id.
-  def __init__(self, strategy, replica_id_in_sync_group=None):
-    if replica_id_in_sync_group is None:
-      replica_id_in_sync_group = constant_op.constant(0, dtypes.int32)
+  def __init__(self, strategy, replica_id_in_sync_group=0):
     distribute_lib.ReplicaContext.__init__(
         self, strategy, replica_id_in_sync_group=replica_id_in_sync_group)
 
@@ -1212,7 +1360,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   def devices(self):
     distribute_lib.require_replica_context(self)
     ds = self._strategy
-    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
+    replica_id = tensor_util.constant_value(self.replica_id_in_sync_group)
 
     if replica_id is None:  # Non-constant `Tensor` inside `tpu.replicate`.
       # TODO(cjfj): Return other devices when model parallelism is supported.

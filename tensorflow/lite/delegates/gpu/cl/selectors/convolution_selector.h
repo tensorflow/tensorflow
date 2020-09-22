@@ -29,27 +29,25 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectConvolution(const Convolution2DAttributes& attr,
-                               const BHWC& dst_shape,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def, ModelHints hints,
-                               std::unique_ptr<GPUOperation>* ptr);
-
-absl::Status SelectConvolutionForWinograd(
+std::unique_ptr<GPUOperation> SelectConvolution(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr);
+    const DeviceInfo& device_info, const OperationDef& op_def,
+    ModelHints hints);
 
-absl::Status SelectConvolutionWithDynamicWeights(
+std::unique_ptr<GPUOperation> SelectConvolutionForWinograd(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const DeviceInfo& device_info, const OperationDef& op_def,
+    ModelHints hints);
+
+std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    const BHWC& dst_shape, const CreationContext& creation_context,
+    const BHWC& dst_shape, const DeviceInfo& device_info,
     const OperationDef& op_def, ModelHints hints,
-    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc);
+    ConvWeightsDescription* weights_desc);
 
-absl::Status SelectConverterToConvWeights(
-    const ConvWeightsDescription& weights_desc,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
+    const ConvWeightsDescription& weights_desc, const OperationDef& op_def,
+    ModelHints hints);
 
 }  // namespace cl
 }  // namespace gpu
