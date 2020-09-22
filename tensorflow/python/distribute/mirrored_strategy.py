@@ -230,6 +230,30 @@ class MirroredStrategy(distribute_lib.Strategy):
     1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
   }
 
+  `experimental_distribute_dataset` can be used to distribute the dataset across
+  the replicas when writing your own training loop. If you are using `.fit` and
+  `.compile` methods available in `tf.keras`, then `tf.keras` will handle the
+  distribution for you.
+  For example:
+  ```python
+  my_strategy = tf.distribute.MirroredStrategy()
+  with my_strategy.scope():
+    @tf.function
+    def distribute_train_epoch(dataset):
+      def replica_fn(input):
+        # process input and return result
+        return result
+      total_result = 0
+      for x in dataset:
+        per_replica_result = my_strategy.run(replica_fn, args=(x,))
+        total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
+                                           per_replica_result, axis=None)
+      return total_result
+    dist_dataset = my_strategy.experimental_distribute_dataset(dataset)
+    for _ in range(EPOCHS):
+      train_result = distribute_train_epoch(dist_dataset)
+  ```
+
   Args:
     devices: a list of device strings such as `['/gpu:0', '/gpu:1']`.  If
       `None`, all available GPUs are used. If no GPUs are found, CPU is used.
@@ -700,7 +724,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   @property
   def worker_devices(self):
     return self._devices
-  
+
   @property
   def worker_devices_by_replica(self):
     return [[d] for d in self._devices]

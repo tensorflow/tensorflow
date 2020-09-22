@@ -320,7 +320,12 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         self._input_workers_with_options(options),
         self._container_strategy())
 
-  def _distribute_datasets_from_function(self, dataset_fn, options):
+  def _distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
+    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+      raise NotImplementedError("InputReplicationMode.PER_REPLICA "
+                                "is only supported in `experimental_distribute_datasets_from_function` "
+                                "of mirrored_strategy")
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers_with_options(options),

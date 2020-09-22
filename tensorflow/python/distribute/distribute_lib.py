@@ -648,8 +648,8 @@ class InputOptions(
       dataset elements are prefetched to host device memory. Must be False when
       using TPUEmbedding API.
     replication_mode: Replication mode for the input function. Currently, the
-      InputReplicationMode.PER_REPLICA works only under 
-      tf.distribute.MirroredStrategy for the input functions.
+      InputReplicationMode.PER_REPLICA is only supported with 
+      tf.distribute.MirroredStrategy.experimental_distribute_datasets_from_function.
       The default value is InputReplicationMode.PER_WORKER.
   """
 

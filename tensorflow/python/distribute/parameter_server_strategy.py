@@ -131,7 +131,12 @@ class ParameterServerStrategy(distribute_lib.Strategy):
           self).experimental_distribute_dataset(dataset=dataset,
                                                 options=options)
 
-  def distribute_datasets_from_function(self, dataset_fn, options=None):
+  def distribute_datasets_from_function(self, dataset_fn,
+                                                     options=None):
+    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+      raise NotImplementedError("InputReplicationMode.PER_REPLICA "
+                                "is only supported in `experimental_distribute_datasets_from_function` "
+                                "of mirrored_strategy")
     self._raise_pss_error_if_eager()
     super(ParameterServerStrategy, self).distribute_datasets_from_function(
         dataset_fn=dataset_fn, options=options)
