@@ -2422,7 +2422,7 @@ py_library(
 )
 
 py_test(
-    name = "ops/functional_ops_test",
+    name = "functional_ops_test",
     srcs = ["ops/functional_ops_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
