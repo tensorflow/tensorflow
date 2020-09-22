@@ -41,6 +41,9 @@ tf_kernel_library(
         "cwise_op_gpu_base.h",
         "cwise_op_gpu_tanh.cc",
     ]),
+    # Building abs_kernels and tanh_kernels requires hexdump on the ROCM
+    # platform, which might not be available.
+    tags = ["no_rocm"],
     deps = if_cuda_or_rocm([
         ":abs_kernels",
         ":tanh_kernels",
