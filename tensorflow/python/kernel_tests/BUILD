@@ -720,9 +720,12 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
     ],
 )
 
