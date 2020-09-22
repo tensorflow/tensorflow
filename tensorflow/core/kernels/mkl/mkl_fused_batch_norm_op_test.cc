@@ -131,24 +131,29 @@ class CommonTestUtilities : public OpsTestBase {
     int height = 8;
     int width = 8;
     int depth = 1;
+    int filter_height = 3;
+    int filter_width = 3;
+    int in_channels = 1;
+    int out_channels = 6;
     DataType dtype = DataTypeToEnum<T>::v();
 
     Tensor input(dtype, {batch, height, width, depth});
     input.flat<T>() = input.flat<T>().template setRandom<random_gen_>();
-    Tensor filter(dtype, {3, 3, 1, 6});
+    Tensor filter(dtype,
+                  {filter_height, filter_width, in_channels, out_channels});
     filter.flat<T>() = filter.flat<T>().template setRandom<random_gen_>();
 
-    Tensor y_backprop(dtype, {batch, 8, 8, 6});
+    Tensor y_backprop(dtype, {batch, height, width, out_channels});
     y_backprop.flat<T>() =
         y_backprop.flat<T>().template setRandom<random_gen_>();
-    Tensor scale(dtype, {6});
+    Tensor scale(dtype, {out_channels});
     scale.flat<T>() = scale.flat<T>().template setRandom<random_gen_>();
-    Tensor mean(dtype, {6});
+    Tensor mean(dtype, {out_channels});
     mean.flat<T>() = mean.flat<T>().template setRandom<random_gen_>();
-    Tensor variance(dtype, {6});
+    Tensor variance(dtype, {out_channels});
     variance.flat<T>() =
         variance.flat<T>().template setRandom<random_gen_>().abs();
-    Tensor res_sp3(dtype, {6});
+    Tensor res_sp3(dtype, {out_channels});
     res_sp3.flat<T>() =
         res_sp3.flat<T>().template setRandom<random_gen_>().abs();
 

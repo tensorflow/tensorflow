@@ -318,6 +318,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_fused_batch_norm_op_test.cc"],
     linkstatic = 1,
     deps = [
+        ":mkl_conv_op",
         ":mkl_fused_batch_norm_op",
         "//tensorflow/core:direct_session",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
