@@ -54,7 +54,6 @@ TfLiteRegistration* Register_AvgPool2D_Global();
 TfLiteRegistration* Register_Lookup_8();
 
 // legacy operators
-TfLiteRegistration* Register_FullyConnected_16();
 TfLiteRegistration* Register_Requantize_16_to_8();
 
 }  // namespace xcore
