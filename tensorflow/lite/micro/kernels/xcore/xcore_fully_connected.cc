@@ -62,9 +62,6 @@ TfLiteStatus Prepare_8(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* weights = GetInput(context, node, 1);
   const TfLiteTensor* bso = GetInput(context, node, 2);
 
-  int32_t C_in = weights->dims->data[1];
-  int32_t C_out = weights->dims->data[0];
-
   FullyConnectedOpData* op =
       reinterpret_cast<FullyConnectedOpData*>(node->user_data);
 
