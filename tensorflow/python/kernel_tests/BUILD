@@ -3634,6 +3634,7 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
