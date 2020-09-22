@@ -40,10 +40,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -527,7 +527,7 @@ class CompositeTensorDataAdapter(DataAdapter):
 
     def _is_composite(v):
       # Dataset inherits from CompositeTensor but shouldn't be handled here.
-      if (isinstance(v, composite_tensor.CompositeTensor) and
+      if (tf_utils.is_extension_type(v) and
           not isinstance(v, dataset_ops.DatasetV2)):
         return True
       # Support Scipy sparse tensors if scipy is installed

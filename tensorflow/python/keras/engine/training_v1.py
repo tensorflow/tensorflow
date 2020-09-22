@@ -29,7 +29,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -57,6 +56,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -2378,7 +2378,7 @@ class Model(training_lib.Model):
 
       def _type_spec_from_value(value):
         """Grab type_spec without converting array-likes to tensors."""
-        if isinstance(value, composite_tensor.CompositeTensor):
+        if tf_utils.is_extension_type(value):
           return value._type_spec  # pylint: disable=protected-access
         # Get a TensorSpec for array-like data without
         # converting the data to a Tensor
