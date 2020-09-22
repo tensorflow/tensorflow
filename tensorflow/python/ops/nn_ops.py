@@ -5556,8 +5556,7 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
 
   Returns:
     A `Tensor`. Has the same type as `value`.
-    4-D with shape `[batch, out_height, out_width, depth]`. )
-
+    4-D with shape `[batch, out_height, out_width, depth]`.
   Raises:
     ValueError: If the `value` depth does not match `kernel`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
