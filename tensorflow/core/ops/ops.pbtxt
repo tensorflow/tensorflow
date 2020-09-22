@@ -29243,6 +29243,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "buffer_size_min"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "Prelinearize"
