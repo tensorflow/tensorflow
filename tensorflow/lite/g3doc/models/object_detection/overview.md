@@ -21,12 +21,12 @@ familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">T
 download our starter object detection model and the accompanying labels.
 
 <a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1?lite-format=tflite">Download
-starter model with Medatada</a>
+starter model with Metadata</a>
 
 For more information about the starter model, see
 <a href="#starter_model">Starter model</a>.
 
-For more information about Medatada and associated fields (eg: `labels.txt`) see
+For more information about Metadata and associated fields (eg: `labels.txt`) see
 <a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
 the metadata from models</a>
 
