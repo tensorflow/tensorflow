@@ -12,5 +12,10 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/debug_log.h"
 
+#if (HAS_LIB_RTOS_SUPPORT == 1)
+#include "rtos_printf.h"
+extern "C" void DebugLog(const char* s) { rtos_printf("%s", s); }
+#else
 #include <cstdio>
 extern "C" void DebugLog(const char* s) { printf("%s", s); }
+#endif
