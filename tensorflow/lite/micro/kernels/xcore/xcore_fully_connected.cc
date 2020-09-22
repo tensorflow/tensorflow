@@ -16,8 +16,6 @@ namespace fully_connected {
 
 struct FullyConnectedOpData {
   ExecutionPlan execution_plan;
-  // nn_fully_connected_plan_t plan;
-  // nn_fully_connected_job_t* jobs;
   int stack_scratch_index;
   size_t stack_size;
   int weights_scratch_index;
@@ -32,45 +30,7 @@ struct FullyConnectedThreadData {
   channel_count_t C_in;
   channel_count_t C_out_start;
   channel_count_t C_out_end;
-  // nn_fully_connected_plan_t* plan;
-  // nn_fully_connected_job_t* job;
 };
-
-// void* Init_8(TfLiteContext* context, const char* buffer, size_t length) {
-//   FullyConnectedOpData* op = nullptr;
-//   op = reinterpret_cast<FullyConnectedOpData*>(
-//       context->AllocatePersistentBuffer(context,
-//       sizeof(FullyConnectedOpData)));
-
-//   TFLITE_DCHECK(buffer != nullptr);
-//   parse_custom_options(context, buffer, length, &op->execution_plan);
-
-//   return op;
-// }
-
-// TfLiteStatus Prepare_8(TfLiteContext* context, TfLiteNode* node) {
-//   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
-//   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-//   return kTfLiteOk;
-// }
-
-// TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
-//   const TfLiteTensor* input = GetInput(context, node, 0);
-//   const TfLiteTensor* weights = GetInput(context, node, 1);
-//   const TfLiteTensor* bso = GetInput(context, node, 2);
-//   TfLiteTensor* output = GetOutput(context, node, 0);
-
-//   FullyConnectedOpData* op =
-//       reinterpret_cast<FullyConnectedOpData*>(node->user_data);
-
-//   int32_t C_in = weights->dims->data[1];
-//   int32_t C_out = weights->dims->data[0];
-
-//   fully_connected_8(output->data.int8, weights->data.int8, input->data.int8,
-//                     (const nn_bso_block_t*)bso->data.i16, C_in, 0, C_out);
-//   return kTfLiteOk;
-// }
 
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void fully_connected_thread_worker(void* context) {
@@ -158,8 +118,13 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
   size_t weights_load_offset = 0;
   size_t biases_load_offset = 0;
   size_t weights_fetch_size;
-  int8_t *sW, *tW;
-  int16_t *sBSO, *tBSO;
+  int8_t *sW, *tW;  // sW points to the head of the weights scratch space, tW
+                    // points to the head of the fetched weights which equals sW
+                    // for the first fetch but not for subsequent fetches
+  int16_t *sBSO,
+      *tBSO;  // sBSO points to the head of the BSO scratch space, tBSO
+              // points to the head of the fetched BSO which equals sBSO for
+              // the first fetch but not for subsequent fetches
 
   if (op->weights_scratch_index >= 0) {
     sW = static_cast<int8_t*>(
