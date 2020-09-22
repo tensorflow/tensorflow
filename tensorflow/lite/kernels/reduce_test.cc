@@ -267,6 +267,17 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
+
+TEST(ConstFloatMeanOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MeanOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                     {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
 // Uses a set of reduction conditions that trigger the specialized 4D version
 // of Mean.
 TEST(ConstFloatMeanOpTest, KeepDims4DMean) {
@@ -663,6 +674,16 @@ TEST(ConstFloatSumOpTest, KeepDims) {
               ElementsAreArray(ArrayFloatNear({84, 100, 116})));
 }
 
+TEST(ConstFloatSumOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SumOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                    {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
 TEST(DynamicFloatSumOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -842,6 +863,16 @@ TEST(ConstFloatProdOpTest, KeepDims) {
                   ArrayFloatNear({7.74592e+06, 1.197504e+08, 6.6889152e+08})));
 }
 
+TEST(ConstFloatProdOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ProdOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                     {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
 TEST(DynamicFloatProdOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -913,6 +944,16 @@ TEST(ConstFloatMaxOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({20, 22, 24})));
+}
+
+TEST(ConstFloatMaxOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MaxOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                    {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
 }
 
 TEST(DynamicFloatMaxOpTest, NotKeepDims) {
@@ -1128,6 +1169,16 @@ TEST(ConstFloatMinOpTest, KeepDims) {
               ElementsAreArray(ArrayFloatNear({1, 3, 5})));
 }
 
+TEST(ConstFloatMinOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MinOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                    {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
 TEST(DynamicFloatMinOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -1336,6 +1387,16 @@ TEST(ConstAnyOpTest, KeepDims) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, false, true}));
+}
+
+TEST(ConstAnyOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  AnyOpConstModel m({TensorType_BOOL, {2, 0, 2}}, {TensorType_BOOL, {3}}, {2},
+                    {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
 }
 
 TEST(DynamicAnyOpTest, NotKeepDims) {

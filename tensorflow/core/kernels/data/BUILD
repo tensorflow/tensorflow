@@ -1,16 +1,53 @@
 # Description:
 #   OpKernels for tf.data
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_mobile",
     "tf_cc_test",
-    "tf_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+cc_library(
+    name = "hash_utils",
+    srcs = ["hash_utils.cc"],
+    hdrs = ["hash_utils.h"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "hash_utils_test",
+    srcs = ["hash_utils_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":hash_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 cc_library(
@@ -106,6 +143,7 @@ cc_library(
     hdrs = ["rewrite_utils.h"],
     deps = [
         ":dataset_utils",
+        ":hash_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1443,6 +1481,7 @@ filegroup(
         exclude = [
             "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
             "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
+            "model_dataset_op.*",  # not supported on mobile.
             "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
             "*test.cc",
             "*test.h",

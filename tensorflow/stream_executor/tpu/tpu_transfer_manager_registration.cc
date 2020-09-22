@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
 
 namespace tensorflow {
+namespace tpu {
 
 static std::unique_ptr<xla::TransferManager> CreateTpuTransferManager() {
   return std::make_unique<TpuTransferManager>();
@@ -32,4 +33,5 @@ static bool InitModule() {
 }
 static bool module_initialized = InitModule();
 
+}  // namespace tpu
 }  // namespace tensorflow

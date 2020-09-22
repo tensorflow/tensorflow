@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
@@ -58,7 +59,6 @@ cc_library(
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
-        ":grpc",
         ":profiler_service_impl",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",

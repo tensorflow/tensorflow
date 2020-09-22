@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
@@ -3568,6 +3569,7 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
   mlir::PassManager pm(module_->getContext());
+  SetCrashReproducer(pm);
   pm.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   pm.addPass(mlir::CreateExecutorDialectToFunctionalConversionPass());
   pm.addPass(

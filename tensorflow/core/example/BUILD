@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@io_bazel_rules_closure//closure:defs.bzl",
     "closure_proto_library",

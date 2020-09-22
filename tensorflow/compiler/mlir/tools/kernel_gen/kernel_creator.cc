@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
@@ -71,6 +72,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
                     llvm::ArrayRef<uint32_t> unroll_factors) {
   mlir::PassManager pm(module.getContext());
   applyPassManagerCLOptions(pm);
+  SetCrashReproducer(pm);
 
   pm.addPass(mlir::mhlo::createLegalizeTFPass(false));
   if (gpu_binary_only) {
@@ -177,6 +179,7 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
                       int32_t architecture) {
   mlir::PassManager pm(module.getContext());
   applyPassManagerCLOptions(pm);
+  SetCrashReproducer(pm);
 
   auto& kernel_pm = pm.nest<mlir::gpu::GPUModuleOp>();
   if (gpu_binary_only) {

@@ -29,7 +29,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -54,14 +53,15 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale_opti
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -1706,7 +1706,7 @@ class Model(training_lib.Model):
 
     # Avoids the override in Sequential.layers which filters Input layers.
     # (Which are often the very layers that we're after.)
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    layers = layer_utils.filter_empty_layer_containers(self._layers)
     first_layer = next(layers, None)
     if first_layer:
       # The per-replica static batch size.
@@ -2378,7 +2378,7 @@ class Model(training_lib.Model):
 
       def _type_spec_from_value(value):
         """Grab type_spec without converting array-likes to tensors."""
-        if isinstance(value, composite_tensor.CompositeTensor):
+        if tf_utils.is_extension_type(value):
           return value._type_spec  # pylint: disable=protected-access
         # Get a TensorSpec for array-like data without
         # converting the data to a Tensor
@@ -3187,7 +3187,7 @@ def _get_metrics_from_layers(layers):
     List of metrics.
   """
   metrics = []
-  layers = trackable_layer_utils.filter_empty_layer_containers(layers)
+  layers = layer_utils.filter_empty_layer_containers(layers)
   for layer in layers:
     if isinstance(layer, Model):
       # We cannot call 'metrics' on the model because we do not want to

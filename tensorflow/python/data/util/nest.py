@@ -60,7 +60,7 @@ def _sequence_like(instance, args):
   Returns:
     `args` with the type of `instance`.
   """
-  if isinstance(instance, dict):
+  if isinstance(instance, _collections_abc.Mapping):
     # Pack dictionaries in a deterministic order by sorting the keys.
     # Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -79,7 +79,7 @@ def _sequence_like(instance, args):
 
 
 def _yield_value(iterable):
-  if isinstance(iterable, dict):
+  if isinstance(iterable, _collections_abc.Mapping):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -310,7 +310,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
 
-    if check_types and isinstance(shallow_tree, dict):
+    if check_types and isinstance(shallow_tree, _collections_abc.Mapping):
       if set(input_tree) != set(shallow_tree):
         raise ValueError(
             "The two structures don't have the same keys. Input "

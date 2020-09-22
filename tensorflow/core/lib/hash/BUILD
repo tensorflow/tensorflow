@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_linux_x86_64",

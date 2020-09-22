@@ -1,5 +1,7 @@
 # Tools and utilities that aid in XLA development and usage.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",

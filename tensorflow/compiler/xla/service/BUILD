@@ -1,6 +1,7 @@
 # Description:
 #   XLA service implementation.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -8,6 +9,12 @@ load(
     "tf_proto_library_py",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "internal_hlo_deps")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -1018,6 +1025,7 @@ cc_library(
 
 cc_library(
     name = "cpu_plugin",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -1037,6 +1045,7 @@ config_setting(
 # GPU plugin should be used or not.
 cc_library(
     name = "gpu_plugin",
+    compatible_with = [],
     deps = select(
         {
             ":with_mlir_gpu_support": [
@@ -1051,6 +1060,7 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin_no_mlir",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1067,6 +1077,7 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin_mlir",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
@@ -1147,6 +1158,10 @@ cc_library(
         ":maybe_owning_device_memory",
         ":shaped_buffer",
         ":stream_pool",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_tree",
@@ -1161,11 +1176,7 @@ cc_library(
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:device_description",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
-    ],
+    ] + internal_hlo_deps(),
 )
 
 cc_library(
@@ -1194,6 +1205,7 @@ cc_library(
     name = "llvm_compiler",
     srcs = ["llvm_compiler.cc"],
     hdrs = ["llvm_compiler.h"],
+    compatible_with = [],
     deps = [
         ":compiler",
         "//tensorflow/core:lib_internal",
@@ -1941,6 +1953,29 @@ cc_library(
 )
 
 cc_library(
+    name = "qr_expander",
+    srcs = ["qr_expander.cc"],
+    hdrs = ["qr_expander.h"],
+    deps = [
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:loops",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "convolution_4d_expander",
     srcs = ["convolution_4d_expander.cc"],
     hdrs = ["convolution_4d_expander.h"],
@@ -2409,6 +2444,42 @@ tf_cc_test(
         ":convolution_group_converter",
         ":hlo",
         ":hlo_matchers",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
+    name = "space_to_batch_converter",
+    srcs = ["space_to_batch_converter.cc"],
+    hdrs = ["space_to_batch_converter.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "space_to_batch_converter_test",
+    size = "small",
+    srcs = ["space_to_batch_converter_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":space_to_batch_converter",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -4042,6 +4113,7 @@ cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
+    compatible_with = [],
     deps = [
         ":hlo",
         ":hlo_casting_utils",

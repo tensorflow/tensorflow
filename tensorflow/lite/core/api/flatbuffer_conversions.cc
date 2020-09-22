@@ -346,6 +346,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseRsqrt(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_SHAPE: {
+      return ParseShape(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_SIN: {
       return ParseSin(op, error_reporter, allocator, builtin_data);
     }
@@ -659,16 +663,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       if (const auto* sparse_to_dense_params =
               op->builtin_options_as_SparseToDenseOptions()) {
         params->validate_indices = sparse_to_dense_params->validate_indices();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SHAPE: {
-      auto params = safe_allocator.Allocate<TfLiteShapeParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_ShapeOptions()) {
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(
-            schema_params->out_type(), &params->out_type, error_reporter));
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -1511,6 +1505,29 @@ TfLiteStatus ParseRound(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseRsqrt(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                         void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseShape(const Operator* op, ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data) {
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteShapeParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteShapeParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const ShapeOptions* schema_params = op->builtin_options_as_ShapeOptions();
+
+  if (schema_params != nullptr) {
+    TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_type(),
+                                            &params->out_type, error_reporter));
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 

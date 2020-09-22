@@ -92,11 +92,6 @@ int64 GetEventType(bool is_host_plane, const EventNode& event) {
   }
 }
 
-void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
-  AddOrUpdateIntStat(*visitor.GetStatMetadataId(StatType::kGroupId), group_id,
-                     event);
-}
-
 void SetContextGroup(EventNode* event, ContextGroupMap* context_groups) {
   auto producer = event->GetProducerContext();
   if (producer.has_value()) {
@@ -413,22 +408,34 @@ std::string EventNode::GetGroupName() const {
   return name;
 }
 
+void EventNode::SetGroupId(int64 group_id) {
+  group_id_ = group_id;
+  AddOrUpdateIntStat(*plane_->GetStatMetadataId(StatType::kGroupId), group_id,
+                     raw_event_);
+}
+
 void EventNode::PropagateGroupId(int64 group_id,
                                  GroupMetadataMap* group_metadata_map) {
-  group_id_ = group_id;
-  SetGroupId(*plane_, group_id, raw_event_);
-  for (const auto& child : children_) {
-    absl::optional<int64> child_group_id = child->GetGroupId();
-    if (child_group_id.has_value()) {
-      if (*child_group_id != group_id) {
-        (*group_metadata_map)[group_id].children.insert(*child_group_id);
-        (*group_metadata_map)[*child_group_id].parents.insert(group_id);
+  std::queue<EventNode*> nodes;
+  absl::flat_hash_set<EventNode*> seen = {this};
+  nodes.push(this);
+  while (!nodes.empty()) {
+    EventNode* node = nodes.front();
+    nodes.pop();
+    absl::optional<int64> node_group_id = node->GetGroupId();
+    if (node_group_id.has_value()) {
+      if (*node_group_id != group_id) {
+        (*group_metadata_map)[group_id].children.insert(*node_group_id);
+        (*group_metadata_map)[*node_group_id].parents.insert(group_id);
       }
-      // Stop propagation if it already belongs to a group. It may have been
-      // grouped by another root.
-      continue;
+    } else {
+      node->SetGroupId(group_id);
+      for (EventNode* child : node->GetChildren()) {
+        if (seen.contains(child)) continue;
+        nodes.push(child);
+        seen.insert(child);
+      }
     }
-    child->PropagateGroupId(group_id, group_metadata_map);
   }
 }
 

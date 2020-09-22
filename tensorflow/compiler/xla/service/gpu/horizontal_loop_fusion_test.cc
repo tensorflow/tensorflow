@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -37,9 +37,9 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HorizontalFusionTest : public HloTestBase {};
+class HorizontalLoopFusionTest : public HloTestBase {};
 
-TEST_F(HorizontalFusionTest, BasicTest) {
+TEST_F(HorizontalLoopFusionTest, BasicTest) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule BasicTest
 
@@ -70,7 +70,7 @@ TEST_F(HorizontalFusionTest, BasicTest) {
 )")
                     .ValueOrDie();
 
-  EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
   const HloInstruction* entry_root =
@@ -88,7 +88,7 @@ TEST_F(HorizontalFusionTest, BasicTest) {
 }
 
 // Horizontal fusion should not be triggered as fusion will create cycles.
-TEST_F(HorizontalFusionTest, NegativeTestForCycle) {
+TEST_F(HorizontalLoopFusionTest, NegativeTestForCycle) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule NegativeTestForCycle
 
@@ -122,10 +122,10 @@ TEST_F(HorizontalFusionTest, NegativeTestForCycle) {
 )")
                     .ValueOrDie();
 
-  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
 
-TEST_F(HorizontalFusionTest, NegativeTestForIncompatibleTypes) {
+TEST_F(HorizontalLoopFusionTest, NegativeTestForIncompatibleTypes) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule NegativeTestForIncompatibleTypes
 
@@ -158,10 +158,10 @@ TEST_F(HorizontalFusionTest, NegativeTestForIncompatibleTypes) {
 )")
                     .ValueOrDie();
 
-  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
 
-TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
+TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule MergeSharedFusionInstruction
 
@@ -190,7 +190,7 @@ TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false);
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true);
   EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
-  EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -198,7 +198,7 @@ TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalFusionTest, GradientDescentOptimizerLike) {
+TEST_F(HorizontalLoopFusionTest, GradientDescentOptimizerLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> var_outs;
@@ -229,7 +229,7 @@ TEST_F(HorizontalFusionTest, GradientDescentOptimizerLike) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalFusionTest, FusingDifferentOutputs) {
+TEST_F(HorizontalLoopFusionTest, FusingDifferentOutputs) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule HeterogeneousMultiOutputFusions
 
@@ -280,7 +280,7 @@ TEST_F(HorizontalFusionTest, FusingDifferentOutputs) {
 )")
                     .ValueOrDie();
 
-  EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
   VLOG(2) << "Dump after horizontal fusion:";
@@ -289,7 +289,7 @@ TEST_F(HorizontalFusionTest, FusingDifferentOutputs) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalFusionTest, RMSPropLike) {
+TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> all_outputs;
@@ -364,7 +364,7 @@ TEST_F(HorizontalFusionTest, RMSPropLike) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
-TEST_F(HorizontalFusionTest, NegativeTestForDynamicUpdateSlice) {
+TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule NegativeTestForDynamicUpdateSlice
 
@@ -400,7 +400,7 @@ TEST_F(HorizontalFusionTest, NegativeTestForDynamicUpdateSlice) {
   })")
                     .ValueOrDie();
 
-  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
 
 }  // namespace
