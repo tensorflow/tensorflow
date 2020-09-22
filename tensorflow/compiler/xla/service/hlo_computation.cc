@@ -380,6 +380,9 @@ void HloComputation::ComputeInstructionPostOrder(
   dfs_stack.push_back(root);
   while (!dfs_stack.empty()) {
     const auto current = dfs_stack.back();
+    CHECK_EQ(current->parent(), this)
+        << "Instruction " << current->name()
+        << " is not in the current computation (" << name() << ").";
     auto it = visited->find(current);
     if (it != visited->end()) {
       if (it->second == kVisited) {
