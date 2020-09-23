@@ -559,6 +559,25 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "placement_test",
+    size = "small",
+    srcs = ["placement_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "prefetch_test",
     size = "small",
