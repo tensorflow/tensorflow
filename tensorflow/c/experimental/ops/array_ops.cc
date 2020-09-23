@@ -34,6 +34,18 @@ Status Identity(AbstractContext* ctx,
   return identity_op->Execute(outputs, &num_retvals);
 }
 
+Status IdentityN(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> inputs,
+                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr identity_n_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      identity_n_op->Reset("IdentityN", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(identity_n_op.get(), name));
+  TF_RETURN_IF_ERROR(identity_n_op->AddInputList(inputs));
+  int num_retvals = inputs.size();
+  return identity_n_op->Execute(outputs, &num_retvals);
+}
+
 Status ZerosLike(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> inputs,
                  absl::Span<AbstractTensorHandle*> outputs, const char* name) {
