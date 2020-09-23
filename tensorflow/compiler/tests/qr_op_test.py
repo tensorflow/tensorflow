@@ -74,8 +74,14 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _test(self, dtype, shape, full_matrices):
     np.random.seed(1)
-    x_np = np.random.uniform(
-        low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype)
+
+    def rng():
+      return np.random.uniform(
+          low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype)
+
+    x_np = rng()
+    if np.issubdtype(dtype, np.complexfloating):
+      x_np += rng() * dtype(1j)
 
     with self.session() as sess:
       x_tf = array_ops.placeholder(dtype)
@@ -102,7 +108,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
       self.CheckUnitary(q_tf_val)
 
   SIZES = [1, 2, 5, 10, 32, 100, 300]
-  DTYPES = [np.float32]
+  DTYPES = [np.float32, np.complex64]
   PARAMS = itertools.product(SIZES, SIZES, DTYPES)
 
   @parameterized.parameters(*PARAMS)
