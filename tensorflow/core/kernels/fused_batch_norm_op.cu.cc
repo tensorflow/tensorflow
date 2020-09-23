@@ -18,6 +18,10 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_fp16.h"
+typedef __half2 half2;
+#endif
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -174,6 +178,11 @@ template <TensorFormat tensor_format, bool add_side_input,
 struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
                                      add_side_input, activation_mode,
                                      /*is_generic_kernel=*/false> {
+#if TENSORFLOW_USE_ROCM
+  using IT = __half;
+#else
+  using IT = Eigen::half;
+#endif
   using T = Eigen::half;
   using U = float;
 
@@ -185,15 +194,19 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
                                     /*is_generic_kernel=*/true>;
 
   __device__ static void run(int32 count, int32 channels_size,
-                             int32 inner_dim_size, const T* __restrict__ in,
+                             int32 inner_dim_size, const T* __restrict__ _in,
                              const U* __restrict__ scale,
                              const U* __restrict__ offset,
                              const U* __restrict__ mean,
                              const U* __restrict__ var,
-                             const T* __restrict__ side_input, float epsilon,
-                             T* __restrict__ out) {
+                             const T* __restrict__ _side_input, float epsilon,
+                             T* __restrict__ _out) {
     // Old GPUs do not have (or have very slow) fp16 arithmetic.
-#if __CUDA_ARCH__ >= 610
+#if (__CUDA_ARCH__ >= 610) || TENSORFLOW_USE_ROCM
+    const IT* in = reinterpret_cast<const IT*>(_in);
+    const IT* side_input = reinterpret_cast<const IT*>(_side_input);
+    IT* out = reinterpret_cast<IT*>(_out);
+
     int32 index = blockIdx.x * blockDim.x + threadIdx.x;
     const int32 total_device_threads = gridDim.x * blockDim.x;
 
@@ -274,8 +287,8 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
     }
 
 #else
-    GenericKernel::run(count, channels_size, inner_dim_size, in, scale, offset,
-                       mean, var, side_input, epsilon, out);
+    GenericKernel::run(count, channels_size, inner_dim_size, _in, scale, offset,
+                       mean, var, _side_input, epsilon, _out);
 #endif  // __CUDA_ARCH__ >= 610
   }
 };
@@ -287,10 +300,16 @@ __global__ void FusedBatchNormInferenceMetaKernel(
     const U* scale, const U* offset, const U* mean, const U* var,
     const T* side_input, float epsilon, T* out) {
   // We prefer to run non-generic specialization, for the given types T and U.
-  // TODO(b/135435976): Temporary disable non-generic kernel implementation.
-  FusedBatchNormInferenceKernel<
-      T, U, tensor_format, add_side_input, activation_mode,
-      /*is_generic_kernel=*/true>::run(count, channels_size, inner_dim_size, in,
+  FusedBatchNormInferenceKernel<T, U, tensor_format, add_side_input,
+                                activation_mode,
+#if TENSORFLOW_USE_ROCM
+                                false
+#else
+                                // TODO(b/135435976): Temporary disable
+                                // non-generic kernel implementation.
+                                /*is_generic_kernel=*/true
+#endif
+                                >::run(count, channels_size, inner_dim_size, in,
                                        scale, offset, mean, var, side_input,
                                        epsilon, out);
 }
@@ -312,7 +331,11 @@ struct FusedBatchNormInferenceFunctor<GPUDevice, T, U> {
     if (count == 0) return;
 
     bool launched = false;
+#if TENSORFLOW_USE_ROCM
+    constexpr int32 kThreadInBlock = 1024;
+#else
     constexpr int32 kThreadInBlock = 512;
+#endif
 
 #define LAUNCH(DATA_FORMAT, ADD_SIDE_INPUT, ACTIVATION, CHANNEL_SIZE,          \
                INNER_DIM_SIZE)                                                 \

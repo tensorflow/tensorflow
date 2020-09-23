@@ -19,9 +19,6 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Round", functor::round, Eigen::half, float, double,
           int32, int64);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Round", functor::round, float, double);
-#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER5(UnaryOp, GPU, "Round", functor::round, Eigen::half, float, double,

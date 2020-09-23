@@ -45,6 +45,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 
 
 def undecorated_function(x):
@@ -586,6 +588,22 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertIs(func_a, func_b)
 
+  def testCacheWithinSaveContext(self):
+
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    func_a = func.get_concrete_function(constant_op.constant(2.))
+    func_b = func.get_concrete_function(constant_op.constant(2.))
+
+    self.assertIs(func_a, func_b)
+
+    with save_context.save_context(save_options.SaveOptions()):
+      func_c = func.get_concrete_function(constant_op.constant(2.))
+
+    self.assertIs(func_a, func_c)
+
   @test_util.disable_tfrt('Nested function is not supported')
   def testInitializationInNestedCall(self):
     v_holder = []
@@ -667,6 +685,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (True, False),                          # compile
       (True, False),                          # override_function
   ))
+  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
+                          'for function.')
   def testClone(self, input_signature, autograph, autograph_options, implements,
                 relax_shapes, compile_, override_function):
     original_py_function = lambda x: x
@@ -749,6 +769,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (None, 'foo.bar'),  # implements
       (None, True, False),  # relax_shapes
   ))
+  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
+                          'for function.')
   def test_pickle(self, input_signature, autograph, autograph_options,
                   implements, relax_shapes):
     """@function objects can be pickled and unpickled."""

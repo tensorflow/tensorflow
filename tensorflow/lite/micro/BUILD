@@ -1,10 +1,10 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
-    "cc_library",
     "micro_copts",
 )
 
@@ -13,46 +13,59 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+package_group(
+    name = "micro",
+    packages = ["//tensorflow/lite/micro/..."],
+)
+
 cc_library(
     name = "micro_compatibility",
     hdrs = [
         "compatibility.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
 )
 
 cc_library(
     name = "micro_framework",
     srcs = [
-        "memory_helpers.cc",
         "micro_allocator.cc",
         "micro_interpreter.cc",
-        "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
     ],
     hdrs = [
-        "memory_helpers.h",
         "micro_allocator.h",
         "micro_interpreter.h",
-        "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
+        ":memory_helpers",
         ":micro_compatibility",
+        ":micro_profiler",
         ":op_resolvers",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/micro:micro_profiler",
         "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "memory_helpers",
+    srcs = ["memory_helpers.cc"],
+    hdrs = ["memory_helpers.h"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:reference",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
     ],
 )
 
@@ -64,7 +77,6 @@ cc_library(
     hdrs = [
         "test_helpers.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_utils",
@@ -89,7 +101,6 @@ cc_library(
         "micro_mutable_op_resolver.h",
         "micro_op_resolver.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_compatibility",
@@ -110,7 +121,6 @@ cc_library(
     hdrs = [
         "debug_log.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
 )
 
@@ -122,7 +132,6 @@ cc_library(
     hdrs = [
         "micro_error_reporter.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":debug_log",
@@ -140,9 +149,7 @@ cc_library(
     hdrs = [
         "micro_string.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
-    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
@@ -153,7 +160,6 @@ cc_library(
     hdrs = [
         "micro_time.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -166,7 +172,6 @@ cc_library(
     hdrs = [
         "micro_profiler.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_compatibility",
@@ -184,7 +189,6 @@ cc_library(
     hdrs = [
         "micro_utils.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -203,7 +207,6 @@ cc_library(
         "recording_micro_interpreter.h",
         "recording_simple_memory_allocator.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_compatibility",
@@ -282,9 +285,11 @@ tflite_micro_cc_test(
         "micro_allocator_test.cc",
     ],
     deps = [
+        ":memory_helpers",
         ":micro_framework",
         ":test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:test_conv_model",
     ],
 )
 
@@ -309,7 +314,7 @@ tflite_micro_cc_test(
         "memory_helpers_test.cc",
     ],
     deps = [
-        ":micro_framework",
+        ":memory_helpers",
         ":test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -371,4 +376,11 @@ tflite_micro_cc_test(
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/micro/testing:test_conv_model",
     ],
+)
+
+bzl_library(
+    name = "build_def_bzl",
+    srcs = ["build_def.bzl"],
+    visibility = [":micro"],
+    deps = ["//tensorflow:tensorflow_bzl"],
 )

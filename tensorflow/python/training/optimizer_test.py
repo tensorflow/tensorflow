@@ -78,7 +78,7 @@ class OptimizerTest(test.TestCase):
             aggregation_method=gradients_util.AggregationMethod.
             EXPERIMENTAL_ACCUMULATE_N)
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
@@ -102,7 +102,7 @@ class OptimizerTest(test.TestCase):
         opt_op = sgd_op.minimize(
             cost, global_step, [var0, var1], grad_loss=grad_loss)
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
@@ -259,7 +259,7 @@ class OptimizerTest(test.TestCase):
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
       opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       # Fetch params to validate initial values
       self.assertAllClose([1.0, 2.0], self.evaluate(var0))
       self.assertAllClose([3.0, 4.0], self.evaluate(var1))

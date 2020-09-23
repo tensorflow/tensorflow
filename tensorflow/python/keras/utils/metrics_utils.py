@@ -27,6 +27,7 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.ops import array_ops
@@ -36,7 +37,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.tpu import tpu
@@ -311,7 +311,8 @@ def update_confusion_matrix_variables(variables_to_update,
 
   y_true = math_ops.cast(y_true, dtype=variable_dtype)
   y_pred = math_ops.cast(y_pred, dtype=variable_dtype)
-  thresholds = ops.convert_to_tensor_v2(thresholds, dtype=variable_dtype)
+  thresholds = ops.convert_to_tensor_v2_with_dispatch(
+      thresholds, dtype=variable_dtype)
   num_thresholds = thresholds.shape[0]
   if multi_label:
     one_thresh = math_ops.equal(
@@ -343,12 +344,12 @@ def update_confusion_matrix_variables(variables_to_update,
           message='predictions must be <= 1')
   ]):
     if sample_weight is None:
-      y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+      y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
           y_pred, y_true)
     else:
       sample_weight = math_ops.cast(sample_weight, dtype=variable_dtype)
       y_pred, y_true, sample_weight = (
-          tf_losses_utils.squeeze_or_expand_dimensions(
+          losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))
   y_pred.shape.assert_is_compatible_with(y_true.shape)
 

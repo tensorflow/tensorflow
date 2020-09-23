@@ -22,8 +22,8 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -42,7 +42,7 @@ using ::mlir::RankedTensorType;
 using ::mlir::Type;
 using ::mlir::Value;
 
-namespace hlo = ::mlir::xla_hlo;
+namespace hlo = ::mlir::mhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
@@ -185,7 +185,7 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* instr) {
 
 Status HloDialectEmitter::HandleGather(HloInstruction* instr) {
   HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
-  mlir::xla_hlo::GatherDimensionNumbers dimension_numbers =
+  mlir::mhlo::GatherDimensionNumbers dimension_numbers =
       xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
                                         builder_);
   mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(

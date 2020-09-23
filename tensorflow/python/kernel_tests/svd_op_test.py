@@ -343,7 +343,7 @@ class SVDBenchmark(test.Benchmark):
             low=-1.0, high=1.0, size=shape_).astype(np.float32)
         matrix = variables.Variable(matrix_value)
         u, s, v = linalg_ops.svd(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(u, s, v),
@@ -358,7 +358,7 @@ class SVDBenchmark(test.Benchmark):
               low=-1.0, high=1.0, size=shape_).astype(np.float32)
           matrix = variables.Variable(matrix_value)
           u, s, v = linalg_ops.svd(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(u, s, v),

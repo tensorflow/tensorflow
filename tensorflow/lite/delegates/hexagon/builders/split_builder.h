@@ -38,8 +38,6 @@ class SplitOpBuilder : public OpBuilder {
 
  private:
   std::vector<TensorID> node_outputs_;
-  float input_min_;
-  float input_max_;
 };
 
 }  // namespace hexagon

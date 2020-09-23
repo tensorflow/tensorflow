@@ -28,7 +28,7 @@ TfLiteStatus LoadModel(const string& path, ModelT* model);
 // Going through the model and add intermediates tensors if the ops have any.
 // Returns early if the model has already intermediate tensors. This is to
 // support cases where a model is initialized multiple times.
-TfLiteStatus AddIntemediateTensorsToFusedOp(
+TfLiteStatus AddIntermediateTensorsToFusedOp(
     flatbuffers::FlatBufferBuilder* builder, ModelT* model);
 
 // Write model to a given location.

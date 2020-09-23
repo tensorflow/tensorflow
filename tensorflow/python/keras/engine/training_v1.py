@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import warnings
 
 import numpy as np
 
@@ -28,8 +29,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -43,38 +42,35 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training as training_lib
-from tensorflow.python.keras.engine import training_arrays
-from tensorflow.python.keras.engine import training_distributed
-from tensorflow.python.keras.engine import training_eager
-from tensorflow.python.keras.engine import training_generator
+from tensorflow.python.keras.engine import training_arrays_v1
+from tensorflow.python.keras.engine import training_distributed_v1
+from tensorflow.python.keras.engine import training_eager_v1
+from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.types import core
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   issparse = None
-
-_keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras/model_v1',
-                                        'keras model v1 usage', 'method')
 
 
 class Model(training_lib.Model):
@@ -143,7 +139,6 @@ class Model(training_lib.Model):
 
   def __init__(self, *args, **kwargs):
     super(Model, self).__init__(*args, **kwargs)
-    _keras_api_gauge.get_cell('model_v1').set(True)
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
@@ -303,6 +298,7 @@ class Model(training_lib.Model):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    self._assert_built_as_v1()
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
@@ -413,7 +409,7 @@ class Model(training_lib.Model):
       # time the model gets called on training data.
       return
     self._is_compiled = True
-    _keras_api_gauge.get_cell('compile_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('compile').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
@@ -548,7 +544,7 @@ class Model(training_lib.Model):
       if self._run_eagerly is None:
         # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
+        return def_function.functions_run_eagerly()
       else:
         return self._run_eagerly
     else:
@@ -587,25 +583,25 @@ class Model(training_lib.Model):
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if self._in_multi_worker_mode():
-        return training_distributed.DistributionMultiWorkerTrainingLoop(
-            training_distributed.DistributionSingleWorkerTrainingLoop())
+        return training_distributed_v1.DistributionMultiWorkerTrainingLoop(
+            training_distributed_v1.DistributionSingleWorkerTrainingLoop())
       else:
-        return training_distributed.DistributionSingleWorkerTrainingLoop()
+        return training_distributed_v1.DistributionSingleWorkerTrainingLoop()
 
     # Case 2: generator-like. Input is Python generator, or Sequence object,
     # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(inputs):
-      return training_generator.GeneratorOrSequenceTrainingLoop()
+      return training_generator_v1.GeneratorOrSequenceTrainingLoop()
     if training_utils.is_eager_dataset_or_iterator(inputs):
-      return training_generator.EagerDatasetOrIteratorTrainingLoop()
+      return training_generator_v1.EagerDatasetOrIteratorTrainingLoop()
 
     # Case 3: Symbolic tensors or Numpy array-like.
     # This includes Datasets and iterators in graph mode (since they
     # generate symbolic tensors).
     if self.run_eagerly:
-      return training_generator.GeneratorLikeTrainingLoop()
+      return training_generator_v1.GeneratorLikeTrainingLoop()
     else:
-      return training_arrays.ArrayLikeTrainingLoop()
+      return training_arrays_v1.ArrayLikeTrainingLoop()
 
   def fit(self,
           x=None,
@@ -773,7 +769,8 @@ class Model(training_lib.Model):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
-    _keras_api_gauge.get_cell('fit_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('fit').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -893,7 +890,8 @@ class Model(training_lib.Model):
     Raises:
         ValueError: in case of invalid arguments.
     """
-    _keras_api_gauge.get_cell('evaluate_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('evaluate').set(True)
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
@@ -972,7 +970,8 @@ class Model(training_lib.Model):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
-    _keras_api_gauge.get_cell('predict_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('predict').set(True)
     self._check_call_args('predict')
 
     func = self._select_training_loop(x)
@@ -995,7 +994,7 @@ class Model(training_lib.Model):
 
     # Reset metrics on all the distributed (cloned) models.
     if self._distribution_strategy:
-      distributed_training_utils._reset_metrics(self)  # pylint: disable=protected-access
+      distributed_training_utils_v1._reset_metrics(self)  # pylint: disable=protected-access
 
   def train_on_batch(self,
                      x,
@@ -1064,7 +1063,7 @@ class Model(training_lib.Model):
     # for each replica by `self._distribution_strategy` and the same code path
     # as Eager is expected to be taken.
     if self.run_eagerly or self._distribution_strategy:
-      output_dict = training_eager.train_on_batch(
+      output_dict = training_eager_v1.train_on_batch(
           self,
           x,
           y,
@@ -1143,7 +1142,7 @@ class Model(training_lib.Model):
     # If `self._distribution_strategy` is True, then we are in a replica context
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
-      output_dict = training_eager.test_on_batch(
+      output_dict = training_eager_v1.test_on_batch(
           self,
           x,
           y,
@@ -1213,8 +1212,6 @@ class Model(training_lib.Model):
       return outputs[0]
     return outputs
 
-  @deprecation.deprecated(
-      None, 'Please use Model.fit, which supports generators.')
   def fit_generator(self,
                     generator,
                     steps_per_epoch=None,
@@ -1236,6 +1233,9 @@ class Model(training_lib.Model):
       `Model.fit` now supports generators, so there is no longer any need to use
       this endpoint.
     """
+    warnings.warn('`model.fit_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.fit`, which supports generators.')
     return self.fit(
         generator,
         steps_per_epoch=steps_per_epoch,
@@ -1252,8 +1252,6 @@ class Model(training_lib.Model):
         shuffle=shuffle,
         initial_epoch=initial_epoch)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.evaluate, which supports generators.')
   def evaluate_generator(self,
                          generator,
                          steps=None,
@@ -1268,6 +1266,9 @@ class Model(training_lib.Model):
       `Model.evaluate` now supports generators, so there is no longer any need
       to use this endpoint.
     """
+    warnings.warn('`Model.evaluate_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.evaluate`, which supports generators.')
     self._check_call_args('evaluate_generator')
 
     return self.evaluate(
@@ -1279,8 +1280,6 @@ class Model(training_lib.Model):
         verbose=verbose,
         callbacks=callbacks)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.predict, which supports generators.')
   def predict_generator(self,
                         generator,
                         steps=None,
@@ -1295,6 +1294,9 @@ class Model(training_lib.Model):
       `Model.predict` now supports generators, so there is no longer any need
       to use this endpoint.
     """
+    warnings.warn('`Model.predict_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.predict`, which supports generators.')
     return self.predict(
         generator,
         steps=steps,
@@ -1397,7 +1399,7 @@ class Model(training_lib.Model):
             'We currently do not support enabling `run_eagerly` with '
             'distribution strategy.')
 
-      if (distributed_training_utils.is_distributing_by_cloning(self) and
+      if (distributed_training_utils_v1.is_distributing_by_cloning(self) and
           (not self.built or not self.inputs or not self.outputs)):
         raise ValueError(
             'We currently do not support distribution strategy with a '
@@ -1589,7 +1591,7 @@ class Model(training_lib.Model):
             else:
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
-                  tf_losses_utils.squeeze_or_expand_dimensions(
+                  losses_utils.squeeze_or_expand_dimensions(
                       mask, sample_weight=sample_weight))
               sample_weight *= mask
 
@@ -1705,7 +1707,7 @@ class Model(training_lib.Model):
 
     # Avoids the override in Sequential.layers which filters Input layers.
     # (Which are often the very layers that we're after.)
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    layers = layer_utils.filter_empty_layer_containers(self._layers)
     first_layer = next(layers, None)
     if first_layer:
       # The per-replica static batch size.
@@ -2377,7 +2379,7 @@ class Model(training_lib.Model):
 
       def _type_spec_from_value(value):
         """Grab type_spec without converting array-likes to tensors."""
-        if isinstance(value, composite_tensor.CompositeTensor):
+        if tf_utils.is_extension_type(value):
           return value._type_spec  # pylint: disable=protected-access
         # Get a TensorSpec for array-like data without
         # converting the data to a Tensor
@@ -2812,7 +2814,8 @@ class Model(training_lib.Model):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
-  def _get_compile_args(self):
+  def _get_compile_args(self, user_metrics=True):
+    del user_metrics
     self._assert_compile_was_called()
     kwargs = {
         'loss': self.loss,
@@ -2854,12 +2857,12 @@ class DistributedCallbackModel(Model):
     self._original_model.load_weights(filepath, by_name=False)
     # Copy the weights from the original model to each of the replicated models.
     orig_model_weights = self._original_model.get_weights()
-    distributed_training_utils.set_weights(
+    distributed_training_utils_v1.set_weights(
         self._original_model._distribution_strategy, self,  # pylint: disable=protected-access
         orig_model_weights)
 
   def __getattr__(self, item):
-    # Whitelisted attributes of the model that can be accessed by the user
+    # Allowed attributes of the model that can be accessed by the user
     # during a callback.
     if item not in ('_setattr_tracking', '_layers'):
       logging.warning('You are accessing attribute ' + item + ' of the '
@@ -3185,7 +3188,7 @@ def _get_metrics_from_layers(layers):
     List of metrics.
   """
   metrics = []
-  layers = trackable_layer_utils.filter_empty_layer_containers(layers)
+  layers = layer_utils.filter_empty_layer_containers(layers)
   for layer in layers:
     if isinstance(layer, Model):
       # We cannot call 'metrics' on the model because we do not want to

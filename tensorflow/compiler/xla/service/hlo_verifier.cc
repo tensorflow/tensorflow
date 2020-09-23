@@ -670,14 +670,6 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
-  // Bitcasts are not allowed to change the element type.
-  if (bitcast->operand(0)->shape().element_type() !=
-      bitcast->shape().element_type()) {
-    return InternalError(
-        "Bitcast can not change the element type from %s to %s",
-        PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
-        PrimitiveType_Name(bitcast->shape().element_type()));
-  }
   if (layout_sensitive_ &&
       shape_size_function_(bitcast->shape()) !=
           shape_size_function_(bitcast->operand(0)->shape())) {
@@ -707,6 +699,20 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
+  }
+  return Status::OK();
+}
+
+Status ShapeVerifier::HandleDynamicReshape(HloInstruction* dynamic_reshape) {
+  // Check for mixed precision.
+  const Shape& operand_shape = dynamic_reshape->operand(0)->shape();
+  TF_RET_CHECK(SameElementType(dynamic_reshape->shape(), operand_shape));
+  TF_RET_CHECK(ShapeUtil::ElementsIn(dynamic_reshape->shape()) ==
+               ShapeUtil::ElementsIn(operand_shape));
+  TF_RET_CHECK(dynamic_reshape->shape().rank() + 1 ==
+               dynamic_reshape->operand_count());
+  for (int64 i = 1; i < dynamic_reshape->operand_count(); ++i) {
+    TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
   }
   return Status::OK();
 }
@@ -1031,7 +1037,7 @@ namespace {
 // inputs.
 Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
-    // White list the following opcodes for mixed-precision check, because
+    // Allow-list the following opcodes for mixed-precision check, because
     // they involve data pass through or grouping via tuples, where the
     // precisions of buffers can be different.
     case HloOpcode::kCall:
@@ -1154,6 +1160,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCopyDone:
       case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
+      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:

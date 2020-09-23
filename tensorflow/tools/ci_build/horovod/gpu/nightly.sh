@@ -15,52 +15,12 @@
 # ==============================================================================
 set -e
 
-# Source the external common scripts.
-source tensorflow/tools/ci_build/release/common.sh
+# Build the docker image
+cd tensorflow/tools/ci_build
+docker build -t horovod_test_container:latest -f Dockerfile.horovod.gpu .
 
+docker run --rm \
+  --gpus all \
+  --shm-size=2g --ulimit memlock=-1 --ulimit stack=67108864 \
+  horovod_test_container:latest bash -c "python3.7 -m pytest"
 
-# Install latest bazel
-install_bazelisk
-which bazel
-
-# Install realpath
-sudo apt-get install realpath
-
-# Update the version string to nightly
-if [ -n "${IS_NIGHTLY_BUILD}" ]; then
-  ./tensorflow/tools/ci_build/update_version.py --nightly
-fi
-
-# Download and install open-mpi.
-wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz
-tar xvf openmpi-4.0.4.tar.gz
-
-# Install gcc.
-sudo apt install --assume-yes build-essential
-
-gcc --version
-
-cd openmpi-4.0.4
-./configure
-
-# Install open-mpi.
-sudo make all install
-export LD_LIBRARY_PATH=/usr/local/lib/openmpi
-sudo ldconfig
-
-# Install Horovod.
-cd ..
-pip3 install horovod tensorflow
-
-# Install tests.
-git clone https://github.com/DEKHTIARJonathan/TF_HVD_Stability_Test.git
-
-# Install pytest.
-pip3 install -U pytest
-
-# Install requirements.
-cd TF_HVD_Stability_Test
-pip3 install -r requirements.txt
-
-# Run the tests.
-python3 -m pytest

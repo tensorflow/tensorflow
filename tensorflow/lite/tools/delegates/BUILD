@@ -64,9 +64,11 @@ cc_library(
         ":delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
         ],
+        "//conditions:default": [],
+    }) + select({
         "//tensorflow:ios": [
             "//tensorflow/lite/delegates/gpu:metal_delegate",
         ],
@@ -81,7 +83,9 @@ cc_library(
     copts = common_copts,
     deps = [
         ":delegate_provider_hdr",
-        "//tensorflow/lite/tools/evaluation:utils",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_util",
     ],
     alwayslink = 1,
 )

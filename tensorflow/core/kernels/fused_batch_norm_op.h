@@ -30,7 +30,7 @@ namespace functor {
 //   (2) batch norm + side input + activation
 enum class FusedBatchNormActivationMode { kIdentity, kRelu };
 
-string ToString(FusedBatchNormActivationMode activation_mode);
+std::string ToString(FusedBatchNormActivationMode activation_mode);
 
 Status ParseActivationMode(OpKernelConstruction* context,
                            FusedBatchNormActivationMode* activation_mode);

@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_UTIL_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_UTIL_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "grpcpp/server_builder.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -55,19 +57,9 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
 Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
                                    std::vector<TensorShape>* shapes);
 
-// Given a tensor of `shape` and `type`, as what shape should it be stored on
-// the TPU device? This function tranposes or flattens the excessively-padded
-// tensors to rank 1, but leaves other tensor shapes alone.
-xla::StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
-                                                 DataType type,
-                                                 bool use_fast_memory);
-
-// Given a tensor, returns the shape of its representation on device,
-// fully padded. Contents of `shape` are undefined on error.
-Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
-
-// A callback called on exit.
-void LogAndExit(int code);
+// Creates gRPC ServerBuilder.
+xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
+    int serving_port);
 }  // namespace tpu
 }  // namespace tensorflow
 

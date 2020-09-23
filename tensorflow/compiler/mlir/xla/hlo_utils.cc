@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -77,13 +77,17 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     return tensorflow::errors::Internal(
         "Permutations for dynamic shapes are not yet supported");
   }
-  llvm::SmallVector<int64_t, 2> permuted_sizes;
-  for (auto dim : llvm::reverse(shape.layout().minor_to_major())) {
-    permuted_sizes.push_back(shape.dimensions(dim));
+  int64_t accumulated_stride = 1;
+  llvm::SmallVector<int64_t, 4> strides(shape.rank(), 1);
+  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+    strides[dim] = accumulated_stride;
+    accumulated_stride *= shape.dimensions(dim);
   }
-  return llvm::SmallVector<AffineMap, 1>{AffineMap::get(
-      permuted_sizes.size(), 0,
-      makeCanonicalStridedLayoutExpr(permuted_sizes, builder.getContext()))};
+  if (accumulated_stride == 0) {
+    return llvm::SmallVector<AffineMap, 1>{};
+  }
+  return llvm::SmallVector<AffineMap, 1>{
+      makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};
 }
 
 }  // namespace
@@ -197,7 +201,7 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
   }
 }
 
-mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder) {
   auto offset_dims = CreateDenseIntElementsAttrFromVector(
       llvm::SmallVector<int64, 4>{input.offset_dims().begin(),
@@ -215,7 +219,7 @@ mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
   mlir::IntegerAttr index_vector_dim =
       builder.getI64IntegerAttr(input.index_vector_dim());
 
-  return mlir::xla_hlo::GatherDimensionNumbers::get(
+  return mlir::mhlo::GatherDimensionNumbers::get(
       offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim,
       builder.getContext());
 }

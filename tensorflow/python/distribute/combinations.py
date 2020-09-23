@@ -58,11 +58,17 @@ class DistributionParameter(combinations_lib.ParameterModifier):
   """
 
   def modified_arguments(self, kwargs, requested_parameters):
-    del requested_parameters
+    # Get the parameter that indicates if we need to set the `_use_policy` flag
+    # on the strategy object. This is a temporary flag for testing the variable
+    # policy rollout.
+    use_var_policy = kwargs.get("use_var_policy", None)
     distribution_arguments = {}
     for k, v in kwargs.items():
       if isinstance(v, NamedDistribution):
-        distribution_arguments[k] = v.strategy
+        strategy = v.strategy
+        if use_var_policy:
+          strategy.extended._use_var_policy = use_var_policy
+        distribution_arguments[k] = strategy
     return distribution_arguments
 
 
@@ -93,7 +99,36 @@ class ClusterParameters(combinations_lib.ParameterModifier):
     return update
 
 
-class NamedGPUCombination(combinations_lib.TestCombination):
+class DistributionCombination(combinations_lib.TestCombination):
+  """Sets up distribution strategy for tests."""
+
+  XLA_TEST = re.search(r"(test_xla|test_xla_gpu)$", sys.argv[0])
+
+  def should_execute_combination(self, kwargs):
+    distributions = [
+        v for v in kwargs.values() if isinstance(v, NamedDistribution)
+    ]
+    if self.XLA_TEST and any(d.no_xla for d in distributions):
+      return (
+          False,
+          "n/a: skipping strategy combination with no_xla=True in XLA tests")
+    return (True, None)
+
+  def parameter_modifiers(self):
+    return [
+        DistributionParameter(),
+        combinations_lib.OptionalParameter("use_var_policy"),
+    ]
+
+
+class ClusterCombination(combinations_lib.TestCombination):
+  """Sets up multi worker tests."""
+
+  def parameter_modifiers(self):
+    return [ClusterParameters()]
+
+
+class GPUCombination(combinations_lib.TestCombination):
   """Enable tests to request GPU hardware and skip non-GPU combinations.
 
   This class expects test_combinations to be generated with `NamedDistribution`
@@ -135,17 +170,7 @@ class NamedGPUCombination(combinations_lib.TestCombination):
     return [combinations_lib.OptionalParameter("required_gpus")]
 
 
-class GPUCombination(NamedGPUCombination):
-  """NamedGPUCombination that passes `tf.distribute.Strategy` to the tests."""
-
-  def parameter_modifiers(self):
-    return [
-        ClusterParameters(),
-        DistributionParameter(),
-    ] + NamedGPUCombination.parameter_modifiers(self)
-
-
-class NamedTPUCombination(combinations_lib.TestCombination):
+class TPUCombination(combinations_lib.TestCombination):
   """Allow to request TPU hardware and skip non-TPU combinations.
 
   This class expects test_combinations to be generated with `NamedDistribution`
@@ -207,16 +232,6 @@ class NamedTPUCombination(combinations_lib.TestCombination):
     ]
 
 
-class TPUCombination(NamedTPUCombination):
-  """NamedTPUCombination that passes `tf.distribute.Strategy` to the tests."""
-
-  def parameter_modifiers(self):
-    return [
-        ClusterParameters(),
-        DistributionParameter(),
-    ] + NamedTPUCombination.parameter_modifiers(self)
-
-
 class NamedDistribution(object):
   """Wraps a `tf.distribute.Strategy` and adds a name for test titles."""
 
@@ -228,7 +243,8 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
-               use_pool_runner=True):
+               use_pool_runner=False,
+               no_xla=False):
     """Initialize NamedDistribution.
 
     Args:
@@ -241,6 +257,7 @@ class NamedDistribution(object):
       num_workers: The number of workers that the strategy requires.
       use_pool_runner: Whether to use a pool runner so that workers are re-used
         each time.
+      no_xla: Whether to skip in XLA tests.
     """
     object.__init__(self)
     self._name = name
@@ -250,6 +267,7 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self.no_xla = no_xla
     self._runner = None
 
     if _num_total_workers(self.has_chief, self.num_workers) > 1:
@@ -298,6 +316,8 @@ def generate(combinations, test_combinations=()):
   default_combinations = (
       framework_combinations.EagerGraphCombination(),
       framework_combinations.TFVersionCombination(),
+      ClusterCombination(),
+      DistributionCombination(),
       GPUCombination(),
       TPUCombination(),
   )

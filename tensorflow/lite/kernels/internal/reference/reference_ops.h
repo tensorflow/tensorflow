@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
+#include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
 #include "tensorflow/lite/kernels/internal/reference/tanh.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
@@ -249,8 +250,9 @@ inline void ReluX(const tflite::ActivationParams& params,
   const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
     const T val = input_data[i];
-    const T clamped =
-        val > max_value ? max_value : val < min_value ? min_value : val;
+    const T clamped = val > max_value   ? max_value
+                      : val < min_value ? min_value
+                                        : val;
     output_data[i] = clamped;
   }
 }
@@ -1345,7 +1347,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-
 inline void Dequantize(const RuntimeShape& input_shape,
                        const Eigen::half* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
@@ -2309,11 +2310,16 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
                    const RuntimeShape& input_y_shape, const T* input_y_data,
                    const RuntimeShape& output_shape, T* output_data) {
   const int64_t outer_size = input_condition_shape.FlatSize();
-  TFLITE_DCHECK_EQ(
-      MatchingDim(input_x_shape, 0, input_y_shape, 0, output_shape, 0),
-      outer_size);
-  const int64_t inner_size =
-      MatchingFlatSizeSkipDim(input_x_shape, 0, input_y_shape, output_shape);
+  int64_t inner_size;
+  if (input_condition_shape.DimensionsCount() == 0) {
+    inner_size = MatchingFlatSize(input_x_shape, input_y_shape, output_shape);
+  } else {
+    TFLITE_DCHECK_EQ(
+        MatchingDim(input_x_shape, 0, input_y_shape, 0, output_shape, 0),
+        outer_size);
+    inner_size =
+        MatchingFlatSizeSkipDim(input_x_shape, 0, input_y_shape, output_shape);
+  }
 
   int64_t offset = 0;
   for (int64_t i = 0; i < outer_size; i++) {
@@ -2378,6 +2384,10 @@ template <typename D, typename T>
 void SelectTrueCoords(const RuntimeShape& input_condition_shape,
                       const D* input_condition_data, T* output_data) {
   const size_t size = input_condition_shape.FlatSize();
+  if (size == 0) {
+    // Dimension is zero, in which case we don't need to output.
+    return;
+  }
   const size_t cond_rank = input_condition_shape.DimensionsCount();
 
   std::vector<int> dims_to_count(cond_rank, 0);
@@ -2603,7 +2613,6 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
     }
   }
 }
-
 
 template <typename T>
 inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,

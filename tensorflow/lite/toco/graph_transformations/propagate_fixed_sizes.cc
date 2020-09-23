@@ -2400,7 +2400,7 @@ void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
         return ::tensorflow::Status::OK();
       }
       for (size_t i = 0; i < op->outputs.size(); ++i) {
-        const string& output = op->outputs[i];
+        const std::string& output = op->outputs[i];
         model->GetArray(output).copy_shape(unsupported_op->output_shapes.at(i));
       }
       break;

@@ -218,14 +218,17 @@ RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
 }  // anonymous namespace
 
 CollectivePermuteThunk::CollectivePermuteThunk(
-    const BufferAllocation::Slice& src, const BufferAllocation::Slice& dest,
-    const HloInstruction* instr)
-    : Thunk(kCollectivePermute, instr), src_(src), dest_(dest) {}
+    ThunkInfo thunk_info, const BufferAllocation::Slice& src,
+    const BufferAllocation::Slice& dest)
+    : Thunk(kCollectivePermute, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
+      src_(src),
+      dest_(dest) {}
 
 Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto* instr = Cast<HloCollectivePermuteInstruction>(hlo_instruction());
+  auto* instr = Cast<HloCollectivePermuteInstruction>(hlo_instruction_);
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
 
   // Rendezvous with the threads for all other devices that are participating in
   // this CollectivePermute.

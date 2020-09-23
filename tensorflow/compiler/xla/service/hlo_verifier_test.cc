@@ -494,6 +494,28 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicUpdateSlice) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTestAllowMixedPrecision, DynamicUpdateSliceMixedPrecision) {
+  const char* const kDynamicUpdateSliceMixedPrecision = R"(
+    HloModule kDynamicUpdateSliceMixedPrecision
+
+    ENTRY %entry (parameter.0: f32[32,511,2048], parameter.1: bf16[32,511,512], parameter.2: s32[], parameter.3: s32[], parameter.4: s32[]) -> bf16[32,511,2048] {
+      %parameter.0 = f32[32,511,2048] parameter(0)
+      %parameter.1 = bf16[32,511,512] parameter(1)
+      %parameter.2 = s32[] parameter(2)
+      %parameter.3 = s32[] parameter(3)
+      %parameter.4 = s32[] parameter(4)
+      ROOT %dus = bf16[32,511,2048] dynamic-update-slice(f32[32,511,2048] %parameter.0, bf16[32,511,512] %parameter.1, s32[] %parameter.2, s32[] %parameter.3, s32[] %parameter.4)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                           kDynamicUpdateSliceMixedPrecision));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to "
+                        "f32[32,511,2048], actual shape is bf16[32,511,2048]"));
+}
+
 TEST_F(HloVerifierTestLayoutSensitive, AddWithLayoutChangeNotAllowed) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnUnverifiedModule(kAddWithLayoutChangeHlo));
@@ -538,24 +560,6 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("Instruction shouldn't change layouts"));
-}
-
-TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY BitcastCanNotChangeElementType {
-   constant.0 = f32[2] constant({0.0, 0.0})
-   ROOT bitcast = s32[2] bitcast(constant.0)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Bitcast can not change the element type"));
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {

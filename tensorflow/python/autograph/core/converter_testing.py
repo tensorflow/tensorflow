@@ -28,21 +28,20 @@ import six
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
-from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-def whitelist(f):
+def allowlist(f):
   """Helper that marks a callable as whtelitisted."""
-  if 'whitelisted_module_for_testing' not in sys.modules:
-    whitelisted_mod = imp.new_module('whitelisted_module_for_testing')
-    sys.modules['whitelisted_module_for_testing'] = whitelisted_mod
+  if 'allowlisted_module_for_testing' not in sys.modules:
+    allowlisted_mod = imp.new_module('allowlisted_module_for_testing')
+    sys.modules['allowlisted_module_for_testing'] = allowlisted_mod
     config.CONVERSION_RULES = (
-        (config.DoNotConvert('whitelisted_module_for_testing'),) +
+        (config.DoNotConvert('allowlisted_module_for_testing'),) +
         config.CONVERSION_RULES)
 
-  f.__module__ = 'whitelisted_module_for_testing'
+  f.__module__ = 'allowlisted_module_for_testing'
 
 
 def is_inside_generated_code():
@@ -64,16 +63,26 @@ def is_inside_generated_code():
     del frame
 
 
-class TestingTranspiler(conversion.AutoGraphTranspiler):
+class TestingTranspiler(api.PyToTF):
   """Testing version that only applies given transformations."""
 
-  def __init__(self, converters):
+  def __init__(self, converters, ag_overrides):
     super(TestingTranspiler, self).__init__()
     if isinstance(converters, (list, tuple)):
       self._converters = converters
     else:
       self._converters = (converters,)
     self.transformed_ast = None
+    self._ag_overrides = ag_overrides
+
+  def get_extra_locals(self):
+    retval = super(TestingTranspiler, self).get_extra_locals()
+    if self._ag_overrides:
+      modified_ag = imp.new_module('fake_autograph')
+      modified_ag.__dict__.update(retval['ag__'].__dict__)
+      modified_ag.__dict__.update(self._ag_overrides)
+      retval['ag__'] = modified_ag
+    return retval
 
   def transform_ast(self, node, ctx):
     node = self.initial_analysis(node, ctx)
@@ -113,18 +122,8 @@ class TestCase(test.TestCase):
         options=converter.ConversionOptions(recursive=True),
         autograph_module=api)
 
-    conversion.create_custom_vars(program_ctx)
-    custom_vars = dict(conversion.custom_vars)
-
-    if ag_overrides:
-      modified_ag = imp.new_module('fake_autograph')
-      modified_ag.__dict__.update(custom_vars['ag__'].__dict__)
-      modified_ag.__dict__.update(ag_overrides)
-      custom_vars['ag__'] = modified_ag
-
-    tr = TestingTranspiler(converter_module)
-    transformed, _, _ = tr.transform_function(
-        f, program_ctx.options, program_ctx, custom_vars)
+    tr = TestingTranspiler(converter_module, ag_overrides)
+    transformed, _, _ = tr.transform_function(f, program_ctx)
 
     if include_ast:
       return transformed, tr.transformed_ast, tr.transform_ctx

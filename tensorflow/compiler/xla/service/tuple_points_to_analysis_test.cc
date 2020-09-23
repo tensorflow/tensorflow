@@ -333,10 +333,10 @@ TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
       ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
                                  ShapeUtil::MakeShape(U32, {})}),
-      HloOpcode::kCopyStart, constant));
+      constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
 

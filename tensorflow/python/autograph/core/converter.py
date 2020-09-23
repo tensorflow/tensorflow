@@ -63,7 +63,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import enum
 
 from tensorflow.python.autograph.pyct import anno
@@ -234,18 +233,17 @@ STANDARD_OPTIONS = ConversionOptions(
     optional_features=None)
 
 
-class ProgramContext(
-    collections.namedtuple('ProgramContext', ('options', 'autograph_module'))):
+class ProgramContext(object):
   """ProgramContext keeps track of converting function hierarchies.
-
-  This object is mutable, and is updated during conversion. Not thread safe.
 
   Attributes:
     options: ConversionOptions
-    autograph_module: Module, a reference to the autograph module. This needs to
-      be specified by the caller to avoid circular dependencies.
+    autograph_module: Deprecated. Do not use.
   """
-  pass
+
+  def __init__(self, options, autograph_module=None):
+    self.options = options
+    self.autograph_module = autograph_module
 
 
 class Base(transformer.Base):

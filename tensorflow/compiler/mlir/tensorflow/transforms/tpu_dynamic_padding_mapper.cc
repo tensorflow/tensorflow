@@ -151,7 +151,7 @@ LogicalResult GetRemappedPaddings(
 
 // Inserts padding maps for relevant arguments as argument attributes on the
 // encapsulated function. The padding maps will be in the form of:
-//   %arg0 : type {xla_hlo.padding_map = {shape_indices = [...],
+//   %arg0 : type {mhlo.padding_map = {shape_indices = [...],
 //                                        padding_arg_indices = [...]}}
 void AnnotateFunctionArgumentsWithPaddings(
     FuncOp func,
@@ -174,7 +174,7 @@ void AnnotateFunctionArgumentsWithPaddings(
         "padding_arg_indices",
         builder.getI32ArrayAttr(padding.getSecond().second));
     func.setArgAttr(
-        padding.getFirst(), "xla_hlo.padding_map",
+        padding.getFirst(), "mhlo.padding_map",
         builder.getDictionaryAttr({shape_indices, padding_arg_indices}));
   }
 }

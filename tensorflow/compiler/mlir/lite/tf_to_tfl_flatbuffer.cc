@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -70,6 +71,27 @@ mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {
   }
   return mlir::success();
 }
+
+// Util that registers 'extra_tf_opdefs' to the TF global registry.
+// Return OK on success, failure if registering failed.
+Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
+  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
+    tensorflow::OpDef opdef;
+    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
+                                                           &opdef)) {
+      LOG(ERROR) << "OpDef parsing failed for: " << tf_opdefs_string;
+      return errors::InvalidArgument("fail to parse extra OpDef");
+    }
+    // Register extra opdefs.
+    // TODO(b/133770952): Support shape functions.
+    tensorflow::OpRegistry::Global()->Register(
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
+          *op_reg_data = tensorflow::OpRegistrationData(opdef);
+          return Status::OK();
+        });
+  }
+  return Status::OK();
+}
 }  // namespace
 
 StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
@@ -92,21 +114,9 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
   }
 
-  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
-    tensorflow::OpDef opdef;
-    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
-                                                           &opdef)) {
-      LOG(ERROR) << "OpDef parsing failed for: " << tf_opdefs_string;
-      return errors::InvalidArgument("fail to parse extra OpDef");
-    }
-    // Register extra opdefs.
-    // TODO(b/133770952): Support shape functions.
-    tensorflow::OpRegistry::Global()->Register(
-        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
-          *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
-        });
-  }
+  // Register extra TF ops passed as OpDef.
+  auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
+  if (!extra_opdefs_status.ok()) return extra_opdefs_status;
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
@@ -129,6 +139,18 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     bool emit_select_tf_ops, bool emit_custom_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
     mlir::PassManager* pass_manager) {
+  // Register a warning handler only log to std out.
+  mlir::ScopedDiagnosticHandler s(
+      module.getContext(), [](mlir::Diagnostic& diag) {
+        if (diag.getSeverity() == mlir::DiagnosticSeverity::Warning) {
+          for (auto& note : diag.getNotes()) {
+            std::cout << note.str() << "\n";
+            LOG(WARNING) << note.str() << "\n";
+          }
+        }
+        return mlir::failure();
+      });
+
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
 
@@ -186,22 +208,24 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
-    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
+    absl::Span<const std::string> extra_tf_opdefs,
+    absl::Span<std::string> exported_names, const GraphImportConfig& specs,
+    mlir::MLIRContext* context) {
+  // Register extra TF ops passed as OpDef.
+  auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
+  if (!extra_opdefs_status.ok()) return extra_opdefs_status;
+
   if (saved_model_version == 2) {
-    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
+    auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, exported_names, context);
-    if (!module)
-      return tensorflow::errors::InvalidArgument("fail to open input file");
-
-    return module;
+    if (!module_or.status().ok()) return module_or.status();
+    return module_or.ConsumeValueOrDie();
   } else if (saved_model_version == 1) {
-    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context);
+    auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, exported_names, context, specs.upgrade_legacy);
 
-    if (!module)
-      return tensorflow::errors::InvalidArgument("fail to open input file");
-
-    return module;
+    if (!module_or.status().ok()) return module_or.status();
+    return module_or.ConsumeValueOrDie();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

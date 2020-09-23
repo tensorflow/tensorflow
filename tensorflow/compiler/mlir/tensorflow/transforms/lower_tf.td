@@ -155,6 +155,14 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
 
 //===----------------------------------------------------------------------===//
+// NaN op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsNanOp : Pat<(TF_IsNanOp $x),
+                     (TF_EqualOp $x, (TF_ConstOp:$nan (GetScalarNanOfType $x)),
+                      /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
 // L2Loss op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -187,9 +195,27 @@ def : Pat<(TF_PadOp TensorOf<[AnySignlessInteger, AnyFloat]>:$input, $paddings),
 // Reciprocal op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Support complex and unsigned input types.
-def LowerReciprocal : Pat<(TF_ReciprocalOp TF_SintOrFpTensor:$x),
+def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
                           (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
+
+//===----------------------------------------------------------------------===//
+// Round op patterns.
+//===----------------------------------------------------------------------===//
+
+
+// Rounds on integers should just be bypassed.
+def : Pat<(TF_RoundOp:$res TF_IntTensor:$input), (TF_IdentityOp $input)>;
+
+// Implements TF Round on floats using basic operations.
+def : Pat<(TF_RoundOp:$res TF_FloatTensor:$input),
+          (TF_SelectOp
+           (TF_LessOp
+            (TF_SubOp $input, (TF_FloorOp:$floor $input)),
+            (TF_ConstOp (GetScalarOfFloatType<"0.5"> $input))),
+           $floor,
+           (TF_AddOp
+            (TF_ConstOp (GetScalarOfType<1> $input)), $floor))>;
+
 
 //===----------------------------------------------------------------------===//
 // Rsqrt op patterns.
@@ -210,7 +236,7 @@ def : Pat<(TF_RsqrtGradOp $lhs, $rhs),
 
 // TODO(hinsu): Support complex input types.
 def LowerTanhGradOp :
-  Pat<(TF_TanhGradOp TF_FpTensor:$y, TF_FpTensor:$dy),
+  Pat<(TF_TanhGradOp TF_FloatTensor:$y, TF_FloatTensor:$dy),
       (TF_MulOp $dy,
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
                           (TF_SquareOp $y)))>;

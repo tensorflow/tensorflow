@@ -40,6 +40,9 @@ py_library(
 tf_py_test(
     name = "api_test",
     srcs = ["api_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
@@ -49,27 +52,10 @@ tf_py_test(
     ],
 )
 
-py_test(
-    name = "api_py3_test",
-    srcs = ["api_py3_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-        "no_pip",
-        "nopip",
-    ],
-    deps = [
-        ":impl",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/autograph/core",
-    ],
-)
-
 tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",

@@ -57,13 +57,14 @@ class ReduceTest(test_util.TensorFlowTestCase):
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
-      for axis in (0, -2, (0, 0), (0, -2)):
+      for axis in (0, -2):
         self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
                             [5, 7, 9])
-      for axis in (1, -1, (1, 1), (1, -1)):
+      for axis in (1, -1):
         self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
                             [6, 15])
-      for axis in (None, (0, 1), (-1, -2), (-2, -1, 0, 1)):
+      for axis in (None, (0, 1), (1, 0), (-1, 0), (0, -1), (-2, 1), (1, -2),
+                   (-1, -2), (-2, -1)):
         self.assertEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)), 21)
 
   def testReduceInvalidAxis(self):
@@ -260,7 +261,10 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype,
+        np.int32, np.int64
+    ]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
@@ -471,6 +475,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     # tf2_result = (array_ops.constant(nums)
     #               % array_ops.constant(divs))
     # self.assertAllEqual(tf2_result, tf_result)
+
+  def testFloorModBfloat64(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.floormod(math_ops.cast(nums, dtypes.bfloat16),
+                                  math_ops.cast(divs, dtypes.bfloat16))
+    np_result = nums % divs
+    self.assertAllEqual(tf_result, np_result)
 
   def testTruncateModInt(self):
     nums, divs = self.intTestData()

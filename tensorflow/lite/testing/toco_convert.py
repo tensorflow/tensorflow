@@ -134,9 +134,16 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
           for _ in range(100):
             yield representative_dataset(input_tensors)
 
-        converter.target_spec.supported_ops = [
-            tf.lite.OpsSet.TFLITE_BUILTINS_INT8
-        ]
+        if test_params.get("quant_16x8", False):
+          converter.target_spec.supported_ops = [
+              tf.lite.OpsSet.\
+              EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+          ]
+        else:
+          converter.target_spec.supported_ops = [
+              tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+          ]
+
         converter.representative_dataset = representative_dataset_gen
         if extra_toco_options.inference_input_type:
           converter.inference_input_type = (
@@ -145,7 +152,10 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
           converter.inference_output_type = (
               extra_toco_options.inference_output_type)
         else:
-          converter.inference_output_type = tf.int8
+          if test_params.get("quant_16x8", False):
+            converter.inference_output_type = tf.int16
+          else:
+            converter.inference_output_type = tf.int8
 
       try:
         tflite_model = converter.convert()

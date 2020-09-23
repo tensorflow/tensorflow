@@ -51,19 +51,18 @@ class ProfilerOptions(
     collections.namedtuple(
         'ProfilerOptions',
         ['host_tracer_level', 'python_tracer_level', 'device_tracer_level'])):
-  """Options to control profiler behaviors.
+  """Options for finer control over the profiler.
 
-  A `tf.profiler.ProfilerOptions` hold the knobs to control tf.profiler's
+  Use `tf.profiler.ProfilerOptions` to control `tf.profiler`
   behavior.
 
   Fields:
-    host_tracer_level: for adjust TraceMe levels. i.e. 1 => critical,
-                       2 => info, 3 => verbose. [default to 2]
-    python_tracer_level: for enable python function call tracing, 1 => enable.
-                         0 => disable [default to 0]
-    device_tracer_level: for adjust device (TPU/GPU) tracer level, 0 => disable
-                         1 => enabled. We may introduce fine-tuned level in the
-                         future. [default to 1]
+    host_tracer_level: Adjust CPU tracing level. Values are: 1 - critical info
+    only, 2 - info, 3 - verbose. [default value is 2]
+    python_tracer_level: Toggle tracing of Python function calls. Values are: 1
+    - enabled, 0 - disabled [default value is 0]
+    device_tracer_level: Adjust device (TPU/GPU) tracing level. Values are: 1 -
+    enabled, 0 - disabled [default value is 1]
   """
 
   def __new__(cls,
@@ -77,26 +76,29 @@ class ProfilerOptions(
 
 @tf_export('profiler.experimental.start', v1=[])
 def start(logdir, options=None):
-  """Starts profiling.
+  """Start profiling TensorFlow performance.
 
   Args:
-    logdir: A log directory read by TensorBoard to export the profile results.
-    options: namedtuple of ProfilerOptions for miscellaneous profiler options.
+    logdir: Profiling results log directory.
+    options: `ProfilerOptions` namedtuple to specify miscellaneous profiler
+      options. See example usage below.
 
   Raises:
-    AlreadyExistsError: If another profiling session is running.
+    AlreadyExistsError: If a profiling session is already running.
 
   Example usage:
   ```python
-  tf.profiler.experimental.start(
-      'logdir_path', tf.profiler.ProfilerOptions(host_tracer_level=2))
-  # do your training here.
+  options = tf.profiler.experimental.ProfilerOptions(host_tracer_level = 3,
+                                                     python_tracer_level = 1,
+                                                     device_tracer_level = 1)
+  tf.profiler.experimental.start('logdir_path', options = options)
+  # Training code here
   tf.profiler.experimental.stop()
   ```
 
-  Launch TensorBoard and point it to the same logdir you provided to this API.
-  $ tensorboard --logdir=logdir_path
-  Open your browser and go to localhost:6006/#profile to view profiling results.
+  To view the profiling results, launch TensorBoard and point it to `logdir`.
+  Open your browser and go to `localhost:6006/#profile` to view profiling
+  results.
 
   """
   global _profiler

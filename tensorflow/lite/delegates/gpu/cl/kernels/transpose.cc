@@ -25,17 +25,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-
-std::string GetTransposeCode(
-    const OperationDef& op_def, const TransposeAttributes& attr,
-    Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-
+std::string GetTransposeCode(const OperationDef& op_def,
+                             const TransposeAttributes& attr) {
   const std::string batch_id =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c = GetCommonDefines(op_def.precision);
@@ -103,62 +94,14 @@ std::string GetTransposeCode(
 }
 }  // namespace
 
-Transpose::Transpose(Transpose&& operation)
-    : GPUOperation(std::move(operation)),
-      attr_(operation.attr_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
-
-Transpose& Transpose::operator=(Transpose&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status Transpose::Compile(const CreationContext& creation_context) {
-  std::string code = GetTransposeCode(definition_, attr_, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status Transpose::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
-}
-
-int3 Transpose::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Transpose::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status Transpose::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-Transpose CreateTranspose(const OperationDef& definition,
-                          const TransposeAttributes& attr) {
-  return Transpose(definition, attr);
+GPUOperation CreateTranspose(const OperationDef& definition,
+                             const TransposeAttributes& attr) {
+  GPUOperation op(definition);
+  op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  op.code_ = GetTransposeCode(definition, attr);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

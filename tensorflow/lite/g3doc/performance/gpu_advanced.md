@@ -65,27 +65,83 @@ allows the appropriate versions; for example, ADD v2.
 
 ## Basic usage
 
-### Android (Java)
+### Android (Kotlin / Java)
 
-Run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify the
-`GpuDelegate` through `Interpreter.Options`.
+Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
+package in the existing `dependencies` block.
 
-```java
-// NEW: Prepare GPU delegate.
-GpuDelegate delegate = new GpuDelegate();
-Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
-
-// Set up interpreter.
-Interpreter interpreter = new Interpreter(model, options);
-
-// Run inference.
-writeToInputTensor(inputTensor);
-interpreter.run(inputTensor, outputTensor);
-readFromOutputTensor(outputTensor);
-
-// Clean up.
-delegate.close();
 ```
+dependencies {
+    ...
+    implementation 'org.tensorflow:tensorflow-lite:2.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.3.0'
+}
+```
+
+Then run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify
+the `GpuDelegate` through `Interpreter.Options`.
+
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Kotlin</h3>
+      <p><pre class="prettyprint lang-kotlin">
+    import org.tensorflow.lite.Interpreter
+    import org.tensorflow.lite.gpu.CompatibilityList
+    import org.tensorflow.lite.gpu.GpuDelegate
+
+    val compatList = CompatibilityList()
+
+    val options = Interpreter.Options().apply{
+        if(compatList.isDelegateSupportedOnThisDevice){
+            // if the device has a supported GPU, add the GPU delegate
+            val delegateOptions = compatList.bestOptionsForThisDevice
+            this.addDelegate(GpuDelegate(delegateOptions))
+        } else {
+            // if the GPU is not supported, run on 4 threads
+            this.setNumThreads(4)
+        }
+    }
+
+    val interpreter = Interpreter(model, options)
+
+    // Run inference
+    writeToInput(input)
+    interpreter.run(input, output)
+    readFromOutput(output)
+      </pre></p>
+    </section>
+    <section>
+      <h3>Java</h3>
+      <p><pre class="prettyprint lang-java">
+    import org.tensorflow.lite.Interpreter;
+    import org.tensorflow.lite.gpu.CompatibilityList;
+    import org.tensorflow.lite.gpu.GpuDelegate;
+
+    // Initialize interpreter with GPU delegate
+    Interpreter.Options options = new Interpreter.Options();
+    CompatibilityList compatList = CompatibilityList();
+
+    if(compatList.isDelegateSupportedOnThisDevice()){
+        // if the device has a supported GPU, add the GPU delegate
+        GpuDelegate.Options delegateOptions = compatList.getBestOptionsForThisDevice();
+        GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions);
+        options.addDelegate(gpuDelegate);
+    } else {
+        // if the GPU is not supported, run on 4 threads
+        options.setNumThreads(4);
+    }
+
+    Interpreter interpreter = new Interpreter(model, options);
+
+    // Run inference
+    writeToInput(input);
+    interpreter.run(input, output);
+    readFromOutput(output);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 ### Android (C/C++)
 
@@ -122,8 +178,8 @@ TFLite GPU for Android C/C++ uses the [Bazel](https://bazel.io) build system.
 The delegate can be built, for example, using the following command:
 
 ```sh
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:gl_delegate                  # for static library
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_gl.so  # for dynamic library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:delegate                           # for static library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so  # for dynamic library
 ```
 
 ### iOS (Swift)
@@ -197,7 +253,7 @@ default options (which are explicated in the Basic Usage example above).
 
 // THIS:
 var options = MetalDelegate.Options()
-options.allowsPrecisionLoss = false
+options.isPrecisionLossAllowed = false
 options.waitType = .passive
 options.isQuantizationEnabled = false
 let delegate = MetalDelegate(options: options)
@@ -243,6 +299,24 @@ as well. This includes all flavors of quantization, including:
 
 To optimize performance, use models that have floating-point input & output
 tensors.
+
+#### How does this work?
+
+Since the GPU backend only supports floating-point execution, we run quantized
+models by giving it a ‘floating-point view’ of the original model. At a
+high-level, this entails the following steps:
+
+*   *Constant tensors* (such as weights/biases) are dequantized once into the
+    GPU memory. This happens when the delegate is applied to the TFLite
+    Interpreter.
+
+*   *Inputs and outputs* to the GPU program, if 8-bit quantized, are dequantized
+    and quantized (respectively) for each inference. This is done on the CPU
+    using TFLite’s optimized kernels.
+
+*   The GPU program is modified to mimic quantized behavior by inserting
+    *quantization simulators* between operations. This is necessary for models
+    where ops expect activations to follow bounds learnt during quantization.
 
 This feature can be enabled using delegate options as follows:
 

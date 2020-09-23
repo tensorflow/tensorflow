@@ -21,15 +21,17 @@ from __future__ import print_function
 import math
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import dtypes
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.optimizer_v2 import legacy_learning_rate_decay as learning_rate_decay
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-class LRDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class LRDecayTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testContinuous(self):
     self.evaluate(variables.global_variables_initializer())
     step = 5
@@ -37,7 +39,6 @@ class LRDecayTest(test_util.TensorFlowTestCase):
     expected = .05 * 0.96**(5.0 / 10.0)
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testStaircase(self):
     if context.executing_eagerly():
       step = variables.Variable(0)
@@ -59,26 +60,28 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.evaluate(step.assign(100))
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testVariables(self):
     step = variables.VariableV1(1)
-    assign_1 = step.assign(1)
-    assign_2 = step.assign(2)
-    assign_100 = step.assign(100)
+
     decayed_lr = learning_rate_decay.exponential_decay(
         .1, step, 3, 0.96, staircase=True)
     self.evaluate(variables.global_variables_initializer())
     # No change to learning rate
-    self.evaluate(assign_1.op)
+    assign_1 = step.assign(1)
+    if not context.executing_eagerly():
+      self.evaluate(assign_1.op)
     self.assertAllClose(self.evaluate(decayed_lr), .1, 1e-6)
-    self.evaluate(assign_2.op)
+    assign_2 = step.assign(2)
+    if not context.executing_eagerly():
+      self.evaluate(assign_2.op)
     self.assertAllClose(self.evaluate(decayed_lr), .1, 1e-6)
     # Decayed learning rate
-    self.evaluate(assign_100.op)
+    assign_100 = step.assign(100)
+    if not context.executing_eagerly():
+      self.evaluate(assign_100.op)
     expected = .1 * 0.96**(100 // 3)
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstant(self):
     x = variables.Variable(-999)
     decayed_lr = learning_rate_decay.piecewise_constant(
@@ -98,10 +101,8 @@ class LRDecayTest(test_util.TensorFlowTestCase):
     self.evaluate(x.assign(999))
     self.assertAllClose(self.evaluate(decayed_lr), 0.001, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
-  @test_util.run_v1_only("b/120545219")
   def testPiecewiseConstantEdgeCases(self):
-    x_int = variables.Variable(0, dtype=variables.dtypes.int32)
+    x_int = variables.Variable(0, dtype=dtypes.int32)
     boundaries, values = [-1.0, 1.0], [1, 2, 3]
     with self.assertRaises(ValueError):
       decayed_lr = learning_rate_decay.piecewise_constant(
@@ -119,13 +120,13 @@ class LRDecayTest(test_util.TensorFlowTestCase):
 
     # Test that ref types are valid.
     if not context.executing_eagerly():
-      x = variables.VariableV1(0.0)
+      x = variables.VariableV1(0.0, use_resource=False)
       x_ref = x.op.outputs[0]   # float32_ref tensor should be accepted
       boundaries, values = [1.0, 2.0], [1, 2, 3]
       learning_rate_decay.piecewise_constant(x_ref, boundaries, values)
 
     # Test casting boundaries from int32 to int64.
-    x_int64 = variables.Variable(0, dtype=variables.dtypes.int64)
+    x_int64 = variables.Variable(0, dtype=dtypes.int64)
     boundaries, values = [1, 2, 3], [0.4, 0.5, 0.6, 0.7]
     decayed_lr = learning_rate_decay.piecewise_constant(
         x_int64, boundaries, values)
@@ -142,9 +143,9 @@ class LRDecayTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(decayed_lr), 0.7, 1e-6)
 
 
-class LinearDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class LinearDecayTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWay(self):
     step = 5
     lr = 0.05
@@ -153,7 +154,6 @@ class LinearDecayTest(test_util.TensorFlowTestCase):
     expected = lr * 0.5
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testEnd(self):
     step = 10
     lr = 0.05
@@ -162,7 +162,6 @@ class LinearDecayTest(test_util.TensorFlowTestCase):
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWayWithEnd(self):
     step = 5
     lr = 0.05
@@ -171,7 +170,6 @@ class LinearDecayTest(test_util.TensorFlowTestCase):
     expected = (lr + end_lr) * 0.5
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEnd(self):
     step = 15
     lr = 0.05
@@ -180,7 +178,6 @@ class LinearDecayTest(test_util.TensorFlowTestCase):
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEndWithCycle(self):
     step = 15
     lr = 0.05
@@ -191,9 +188,9 @@ class LinearDecayTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
 
-class SqrtDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class SqrtDecayTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWay(self):
     step = 5
     lr = 0.05
@@ -204,7 +201,6 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
     expected = lr * 0.5**power
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testEnd(self):
     step = 10
     lr = 0.05
@@ -215,7 +211,6 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWayWithEnd(self):
     step = 5
     lr = 0.05
@@ -226,7 +221,6 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
     expected = (lr - end_lr) * 0.5**power + end_lr
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEnd(self):
     step = 15
     lr = 0.05
@@ -237,7 +231,6 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEndWithCycle(self):
     step = 15
     lr = 0.05
@@ -249,9 +242,9 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
 
-class PolynomialDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class PolynomialDecayTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeginWithCycle(self):
     lr = 0.001
     decay_steps = 10
@@ -262,9 +255,9 @@ class PolynomialDecayTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
 
-class ExponentialDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class ExponentialDecayTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testDecay(self):
     initial_lr = 0.1
     k = 10
@@ -279,7 +272,6 @@ class ExponentialDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
       self.evaluate(step.assign_add(1))
 
-  @test_util.run_in_graph_and_eager_modes
   def testStaircase(self):
     initial_lr = 0.1
     k = 10
@@ -295,9 +287,9 @@ class ExponentialDecayTest(test_util.TensorFlowTestCase):
       self.evaluate(step.assign_add(1))
 
 
-class InverseDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class InverseDecayTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testDecay(self):
     initial_lr = 0.1
     k = 10
@@ -312,7 +304,6 @@ class InverseDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
       self.evaluate(step.assign_add(1))
 
-  @test_util.run_in_graph_and_eager_modes
   def testStaircase(self):
     initial_lr = 0.1
     k = 10
@@ -328,7 +319,8 @@ class InverseDecayTest(test_util.TensorFlowTestCase):
       self.evaluate(step.assign_add(1))
 
 
-class CosineDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class CosineDecayTest(keras_parameterized.TestCase):
 
   def np_cosine_decay(self, step, decay_steps, alpha=0.0):
     step = min(step, decay_steps)
@@ -336,7 +328,6 @@ class CosineDecayTest(test_util.TensorFlowTestCase):
     decay = 0.5 * (1.0 + math.cos(math.pi * completed_fraction))
     return (1.0 - alpha) * decay + alpha
 
-  @test_util.run_in_graph_and_eager_modes
   def testDecay(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -346,7 +337,6 @@ class CosineDecayTest(test_util.TensorFlowTestCase):
       expected = self.np_cosine_decay(step, num_training_steps)
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testAlpha(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -358,7 +348,8 @@ class CosineDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
 
-class CosineDecayRestartsTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class CosineDecayRestartsTest(keras_parameterized.TestCase):
 
   def np_cosine_decay_restarts(self, step, decay_steps, t_mul=2.0, m_mul=1.0,
                                alpha=0.0):
@@ -372,7 +363,6 @@ class CosineDecayRestartsTest(test_util.TensorFlowTestCase):
     decay = fac * 0.5 * (1.0 + math.cos(math.pi * completed_fraction))
     return (1.0 - alpha) * decay + alpha
 
-  @test_util.run_in_graph_and_eager_modes
   def testDecay(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -382,7 +372,6 @@ class CosineDecayRestartsTest(test_util.TensorFlowTestCase):
       expected = self.np_cosine_decay_restarts(step, num_training_steps)
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testAlpha(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -394,7 +383,6 @@ class CosineDecayRestartsTest(test_util.TensorFlowTestCase):
           step, num_training_steps, alpha=alpha)
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testMMul(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -406,7 +394,6 @@ class CosineDecayRestartsTest(test_util.TensorFlowTestCase):
           step, num_training_steps, m_mul=m_mul)
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testTMul(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -419,7 +406,8 @@ class CosineDecayRestartsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
 
-class LinearCosineDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class LinearCosineDecayTest(keras_parameterized.TestCase):
 
   def np_linear_cosine_decay(self,
                              step,
@@ -433,7 +421,6 @@ class LinearCosineDecayTest(test_util.TensorFlowTestCase):
     cosine_decayed = 0.5 * (1.0 + math.cos(math.pi * fraction))
     return (alpha + linear_decayed) * cosine_decayed + beta
 
-  @test_util.run_in_graph_and_eager_modes
   def testDefaultDecay(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -443,7 +430,6 @@ class LinearCosineDecayTest(test_util.TensorFlowTestCase):
       expected = self.np_linear_cosine_decay(step, num_training_steps)
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testNonDefaultDecay(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -460,9 +446,9 @@ class LinearCosineDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
 
-class NoisyLinearCosineDecayTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class NoisyLinearCosineDecayTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testDefaultNoisyLinearCosine(self):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -473,7 +459,6 @@ class NoisyLinearCosineDecayTest(test_util.TensorFlowTestCase):
       # Cannot be deterministically tested
       self.evaluate(decayed_lr)
 
-  @test_util.run_in_graph_and_eager_modes
   def testNonDefaultNoisyLinearCosine(self):
     num_training_steps = 1000
     initial_lr = 1.0

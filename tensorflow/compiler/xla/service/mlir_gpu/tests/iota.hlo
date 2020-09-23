@@ -6,6 +6,6 @@ HloModule Iota
 }
 
 //  CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
-//  CHECK:   "xla_lhlo.iota"(%[[OUT]])
+//  CHECK:   "lmhlo.iota"(%[[OUT]])
 //  CHECK:   {iota_dimension = 0 : i64} : ([[OUT_T]]) -> ()
 //  CHECK: }

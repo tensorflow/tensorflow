@@ -279,9 +279,8 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
     with self.cached_session():
-      self.assertAllClose(2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -298,9 +297,8 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
     with self.cached_session():
-      self.assertAllClose(3.2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(3.2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -318,9 +316,8 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
     with self.cached_session():
-      self.assertAllClose(1.2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(1.2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -343,9 +340,8 @@ class AddAndReturnDiagTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorDiag)
 
     with self.cached_session():
-      self.assertAllClose(2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -365,8 +361,8 @@ class AddAndReturnDiagTest(test.TestCase):
 
     with self.cached_session():
       self.assertAllClose(
-          linalg.LinearOperatorDiag(diag1 + diag2).to_dense().eval(),
-          operator.to_dense().eval())
+          linalg.LinearOperatorDiag(diag1 + diag2).to_dense(),
+          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)

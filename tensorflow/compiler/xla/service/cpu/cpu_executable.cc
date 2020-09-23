@@ -247,6 +247,12 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
       ExecutionInput& input = arguments[alias->parameter_number];
       MaybeOwningDeviceMemory* maybe_owning_memory =
           input.MutableBuffer(alias->parameter_index);
+      if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
+        return InvalidArgument(
+            "An input was configured to be must-alias at "
+            "compile time but not donated at runtime: %s",
+            alias->ToString());
+      }
       if (absl::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
@@ -256,17 +262,15 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
         se::DeviceMemoryBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
-        if (alias->kind == HloInputOutputAliasConfig::kUserAlias) {
-          // This is a user alias, so a must alias. The caller is giving us the
-          // input buffer, but in case of error of the execute call, we should
-          // not be releasing it as it contains valid data (for example, it is a
-          // parameter which the user wants us to alias, in a gradient update
-          // computation). So we store the index into the result in the aliased
-          // vactor, which will be fed to the ExecutionOutput, which will be
-          // using the indices to drop the addresses from its own
-          // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
-          result.AddAliasedIndex(index);
-        }
+        // The caller is giving us the
+        // input buffer, but in case of error of the execute call, we should
+        // not be releasing it as it contains valid data (for example, it is a
+        // parameter which the user wants us to alias, in a gradient update
+        // computation). So we store the index into the result in the aliased
+        // vactor, which will be fed to the ExecutionOutput, which will be
+        // using the indices to drop the addresses from its own
+        // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
+        result.AddAliasedIndex(index);
       } else {
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";

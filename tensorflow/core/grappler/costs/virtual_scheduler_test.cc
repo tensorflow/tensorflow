@@ -205,6 +205,26 @@ TEST_F(ReadyNodeManagerTest, AddAndRemoveMultipleLIFOManager) {
   EXPECT_TRUE(manager.Empty());
 }
 
+TEST_F(ReadyNodeManagerTest, MergeOrderInLIFOManager) {
+  LIFOManager manager = LIFOManager();
+  node3_.set_op("Merge");
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Merge node (node3) will be scheduled at the end (even though it's added
+  // after nodde2).
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node4");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node2");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node1");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node3");
+  manager.RemoveCurrNode();
+}
+
 TEST_F(ReadyNodeManagerTest, GetSingleNodeFirstReadyManager) {
   FirstReadyManager manager;
   TF_EXPECT_OK(manager.Init(&node_states_));

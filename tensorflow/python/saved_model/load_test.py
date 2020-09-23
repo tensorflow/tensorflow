@@ -50,9 +50,11 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numpy_ops as tnp
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
@@ -851,6 +853,25 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                         imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
+
+  def test_experimental_compile(self, cycles):
+
+    # It'd be nice to use parameterize here, but the library does not support
+    # having parameterized test methods inside already-parameterized classes.
+    for experimental_compile in (None, True, False):
+
+      @def_function.function(experimental_compile=experimental_compile)
+      def f(x):
+        return x + 1.
+
+      root = module.Module()
+      root.f = f
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(root, save_dir)
+
+      imported = cycle(root, cycles)
+
+      self.assertEqual(imported.f._experimental_compile, experimental_compile)
 
   def test_get_concrete_function(self, cycles):
 
@@ -1798,6 +1819,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
     root.table.insert("foo", 15)
+    root.table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
+    root.table2.insert("idk", 21)
 
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
@@ -1809,6 +1832,34 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
+
+  def test_saving_ndarray_specs(self, cycles):
+    class NdarrayModule(module.Module):
+
+      @def_function.function
+      def plain(self, x):
+        return tnp.add(x, 1)
+
+      @def_function.function(input_signature=[
+          np_arrays.NdarraySpec(tensor_spec.TensorSpec([], dtypes.float32))])
+      def with_signature(self, x):
+        return tnp.add(x, 1)
+
+    m = NdarrayModule()
+    c = tnp.asarray(3.0, tnp.float32)
+    output_plain, output_with_signature = m.plain(c), m.with_signature(c)
+
+    loaded_m = cycle(m, cycles)
+
+    load_output_plain, load_output_with_signature = (
+        loaded_m.plain(c), loaded_m.with_signature(c))
+
+    self.assertIsInstance(output_plain, tnp.ndarray)
+    self.assertIsInstance(load_output_plain, tnp.ndarray)
+    self.assertIsInstance(output_with_signature, tnp.ndarray)
+    self.assertIsInstance(load_output_with_signature, tnp.ndarray)
+    self.assertAllClose(output_plain, load_output_plain)
+    self.assertAllClose(output_with_signature, load_output_with_signature)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

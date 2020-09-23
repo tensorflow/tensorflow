@@ -36,6 +36,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -49,7 +50,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
-WHITELIST_COLLECTIONS = [
+ALLOWLIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
     ops.GraphKeys.LOCAL_VARIABLES,
     ops.GraphKeys.TRAINABLE_VARIABLES,
@@ -172,9 +173,9 @@ class FuncGraph(ops.Graph):
       name: the name of the function.
       collections: a dictionary of collections this FuncGraph should start
         with. If not specified (None), the FuncGraph will read (but not write
-        to) the outer graph's collections that are not whitelisted, and both
-        read and write to the outer graph's collections that are whitelisted.
-        The current whitelisted collections are the global variables, the
+        to) the outer graph's collections that are not allowlisted, and both
+        read and write to the outer graph's collections that are allowlisted.
+        The current allowlisted collections are the global variables, the
         local variables, and the trainable variables.
         Defaults to None.
       capture_by_value: An optional boolean. If True, the func graph will
@@ -192,6 +193,7 @@ class FuncGraph(ops.Graph):
     self.structured_outputs = None
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
+    self.is_control_flow_graph = False
 
     outer_graph = ops.get_default_graph()
     self._weak_outer_graph = weakref.ref(outer_graph)
@@ -241,10 +243,10 @@ class FuncGraph(ops.Graph):
 
     if collections is None:
       for collection_name in graph.get_all_collection_keys():
-        if collection_name not in WHITELIST_COLLECTIONS:
+        if collection_name not in ALLOWLIST_COLLECTIONS:
           self._collections[collection_name] = graph.get_collection(
               collection_name)
-      for collection_name in WHITELIST_COLLECTIONS:
+      for collection_name in ALLOWLIST_COLLECTIONS:
         self._collections[collection_name] = graph.get_collection_ref(
             collection_name)
     else:
@@ -399,10 +401,6 @@ class FuncGraph(ops.Graph):
       # optimizers.
       old_graph_key = self._graph_key
       self._graph_key = graph._graph_key
-      # Inherit the auto_cast_variable_read_dtype, since this should not change
-      # inside a function.
-      old_auto_cast_var_read_dtype = self._auto_cast_variable_read_dtype
-      self._auto_cast_variable_read_dtype = graph._auto_cast_variable_read_dtype
       # pylint: enable=protected-access
 
       old_scope_exit_callbacks = self._scope_exit_callbacks
@@ -421,7 +419,6 @@ class FuncGraph(ops.Graph):
             self._device_function_stack = old_device_stack
             self._variable_creator_stack = old_creator_stack
             self._graph_key = old_graph_key
-            self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
     return inner_cm()
 
   @property
@@ -582,14 +579,16 @@ class FuncGraph(ops.Graph):
     # backward accumulators in the original graph before we create placeholders
     # to capture the inputs.
     ctxt = ops.get_default_graph()._control_flow_context  # pylint: disable=protected-access
-    for i, inp in enumerate(inputs):
+    # Use a different list to avoid modifying the original inputs list.
+    captured_inputs = []
+    for inp in inputs:
       # TPU Estimator defines a control flow context with no AddValue method.
       if ctxt is not None and hasattr(ctxt, "AddValue"):
         inp = ctxt.AddValue(inp)
       inp = self.capture(inp)
-      inputs[i] = inp
+      captured_inputs.append(inp)
     return super(FuncGraph, self)._create_op_internal(  # pylint: disable=protected-access
-        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        op_type, captured_inputs, dtypes, input_types, name, attrs, op_def,
         compute_device)
 
   def capture(self, tensor, name=None, shape=None):
@@ -718,7 +717,12 @@ class FuncGraph(ops.Graph):
       # device as the source tensor. The device placement may be relaxed at
       # a later date.
       with ops.control_dependencies(None), self.device(tensor.device):
-        graph_const = constant_op.constant(tensor.numpy(), dtype=tensor.dtype,
+        constant_value = tensor_util.constant_value(tensor)
+        if constant_value is None:
+          # Some eager tensors, e.g. parallel tensors, are not convertible to a
+          # single constant. We'll use a placeholder for this case.
+          return self._capture_helper(tensor, name)
+        graph_const = constant_op.constant(constant_value, dtype=tensor.dtype,
                                            shape=tensor.shape, name=name)
       self.add_capture(tensor, graph_const)
     else:
@@ -842,9 +846,9 @@ def func_graph_from_py_func(name,
       set, returning an Operation triggers an error.
     collections: a dictionary of collections this FuncGraph should start
       with. If not specified (None), the FuncGraph will read (but not write to)
-      the outer graph's collections that are not whitelisted, and both
-      read and write to the outer graph's collections that are whitelisted.
-      The current whitelisted collections are the global variables, the
+      the outer graph's collections that are not allowlisted, and both
+      read and write to the outer graph's collections that are allowlisted.
+      The current allowlisted collections are the global variables, the
       local variables, and the trainable variables.
       Defaults to None.
     capture_by_value: An optional boolean. If True, the func graph will capture

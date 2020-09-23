@@ -77,11 +77,10 @@ TEST(ConvertXPlaneToProfileResponse, OverviewPage) {
   request.add_tools("overview_page");
   ProfileResponse response;
   TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
-  EXPECT_EQ(2, response.tool_data_size());
-  EXPECT_EQ("overview_page.pb", response.tool_data(/*index=*/1).name());
+  EXPECT_EQ(1, response.tool_data_size());
+  EXPECT_EQ("overview_page.pb", response.tool_data(0).name());
   OverviewPage overview_page;
-  ASSERT_TRUE(
-      overview_page.ParseFromString(response.tool_data(/*index=*/1).data()));
+  ASSERT_TRUE(overview_page.ParseFromString(response.tool_data(0).data()));
 }
 
 TEST(ConvertXPlaneToProfileResponse, InputPipeline) {
@@ -91,11 +90,10 @@ TEST(ConvertXPlaneToProfileResponse, InputPipeline) {
   request.add_tools("input_pipeline");
   ProfileResponse response;
   TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
-  EXPECT_EQ(2, response.tool_data_size());
-  EXPECT_EQ("input_pipeline.pb", response.tool_data(/*index=*/1).name());
+  EXPECT_EQ(1, response.tool_data_size());
+  EXPECT_EQ("input_pipeline.pb", response.tool_data(0).name());
   InputPipelineAnalysisResult input_pipeline;
-  ASSERT_TRUE(
-      input_pipeline.ParseFromString(response.tool_data(/*index=*/1).data()));
+  ASSERT_TRUE(input_pipeline.ParseFromString(response.tool_data(0).data()));
 }
 
 TEST(ConvertXPlaneToProfileResponse, TensorflowStats) {
@@ -105,11 +103,10 @@ TEST(ConvertXPlaneToProfileResponse, TensorflowStats) {
   request.add_tools("tensorflow_stats");
   ProfileResponse response;
   TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
-  EXPECT_EQ(2, response.tool_data_size());
-  EXPECT_EQ("tensorflow_stats.pb", response.tool_data(/*index=*/1).name());
+  EXPECT_EQ(1, response.tool_data_size());
+  EXPECT_EQ("tensorflow_stats.pb", response.tool_data(0).name());
   TfStatsDatabase tf_stats_db;
-  ASSERT_TRUE(
-      tf_stats_db.ParseFromString(response.tool_data(/*index=*/1).data()));
+  ASSERT_TRUE(tf_stats_db.ParseFromString(response.tool_data(0).data()));
 }
 
 }  // namespace

@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
@@ -59,6 +60,10 @@ cc_library(
     name = "tracked_device_buffer",
     srcs = ["tracked_device_buffer.cc"],
     hdrs = ["tracked_device_buffer.h"],
+    visibility = [
+        "//learning/pathways/data_parallel:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":event_pool",
         ":local_device_state",
@@ -204,6 +209,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_cuda(["@local_config_nccl//:nccl"]),
 )
@@ -215,6 +221,7 @@ tf_cc_test(
         # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
         "no_oss",
         "requires-gpu-nvidia",
+        "notap",
     ],
     deps = [
         ":nvidia_gpu_device",

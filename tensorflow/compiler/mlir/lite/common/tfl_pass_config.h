@@ -30,7 +30,7 @@ struct PassConfig {
   explicit PassConfig(QuantizationSpecs specs)
       : emit_builtin_tflite_ops(true),
         lower_tensor_list_ops(false),
-        trim_functions_whitelist({}),
+        trim_functions_allowlist({}),
         quant_specs(std::move(specs)),
         form_clusters(false),
         unfold_batch_matmul(true),
@@ -44,8 +44,8 @@ struct PassConfig {
   // If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
   // TF ops before legalization to TF Lite dialect.
   bool lower_tensor_list_ops;
-  // The whitelist of functions that would be preserved after trimming.
-  llvm::ArrayRef<std::string> trim_functions_whitelist;
+  // The allowlist of functions that would be preserved after trimming.
+  llvm::ArrayRef<std::string> trim_functions_allowlist;
   // All information about quantization.
   QuantizationSpecs quant_specs;
   // If `form_clusters` is true , clusters are formed by grouping consecutive

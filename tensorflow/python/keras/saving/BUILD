@@ -14,6 +14,15 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob([
+        "*.py",
+        "**/*.py",
+    ]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "saving",
     srcs = [
@@ -47,6 +56,7 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",
@@ -127,6 +137,7 @@ tf_py_test(
         "no_oss",  # TODO(b/119349471): Re-enable
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -144,6 +155,7 @@ tf_py_test(
     tags = [
         "no_rocm",
         "no_windows",
+        "notap",  # TODO(b/161198218): flaky timeout
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -176,7 +188,7 @@ tf_py_test(
     size = "medium",
     srcs = ["saved_model/revive_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_windows",  # b/158005583
     ],
@@ -193,6 +205,7 @@ tf_py_test(
     size = "small",
     srcs = ["saved_model/json_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",

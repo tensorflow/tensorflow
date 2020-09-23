@@ -46,10 +46,7 @@ def set_tf_options():
 # This function needs to take a "create_module_fn", as opposed to just the
 # module itself, because the creation of the module has to be delayed until
 # after absl and tensorflow have run various initialization steps.
-def do_test(signature_def_map,
-            init_op=None,
-            canonicalize=False,
-            show_debug_info=False):
+def do_test(create_signature, canonicalize=False, show_debug_info=False):
   """Runs test.
 
   1. Performs absl and tf "main"-like initialization that must run before almost
@@ -62,10 +59,10 @@ def do_test(signature_def_map,
   This is only for use by the MLIR SavedModel importer tests.
 
   Args:
-    signature_def_map: A map from string key to signature_def. The key will be
-      used as function name in the resulting MLIR.
-    init_op: The initializer op for the saved model. If set, it will generate a
-      initializer graph in the resulting MLIR.
+    create_signature: A functor that return signature_def_map, init_op and
+      assets_collection. signature_def_map is a map from string key to
+      signature_def. The key will be used as function name in the resulting
+      MLIR.
     canonicalize: If true, canonicalizer will be run on the resulting MLIR.
     show_debug_info: If true, shows debug locations in the resulting MLIR.
   """
@@ -84,6 +81,8 @@ def do_test(signature_def_map,
     else:
       save_model_path = tempfile.mktemp(suffix='.saved_model')
 
+    signature_def_map, init_op, assets_collection = create_signature()
+
     sess = tf.Session()
     sess.run(tf.initializers.global_variables())
     builder = tf.saved_model.builder.SavedModelBuilder(save_model_path)
@@ -91,6 +90,7 @@ def do_test(signature_def_map,
         sess, [tf.saved_model.tag_constants.SERVING],
         signature_def_map,
         main_op=init_op,
+        assets_collection=assets_collection,
         strip_default_attrs=True)
     builder.save()
 
@@ -98,9 +98,10 @@ def do_test(signature_def_map,
     # TODO(b/153507667): Set the following boolean flag once the hoisting
     #                    variables logic from SavedModel importer is removed.
     lift_variables = False
+    upgrade_legacy = True
     mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
         save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
-        lift_variables, show_debug_info)
+        lift_variables, upgrade_legacy, show_debug_info)
 
     if canonicalize:
       mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir, 'canonicalize',

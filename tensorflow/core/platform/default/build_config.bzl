@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows", "if_tpu")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -368,6 +368,8 @@ def tf_proto_library_cc(
         j2objc_api_version = 1,
         cc_api_version = 2,
         js_codegen = "jspb",
+        create_service = False,
+        create_java_proto = False,
         make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
@@ -376,6 +378,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
+    _ignore = (create_service, create_java_proto)
 
     use_grpc_plugin = None
     if cc_grpc_version:
@@ -500,14 +503,17 @@ def tf_proto_library(
         use_grpc_namespace = False,
         j2objc_api_version = 1,
         js_codegen = "jspb",
+        create_service = False,
+        create_java_proto = False,
         make_default_target_header_only = False,
-        exports = []):
+        exports = [],
+        tags = []):
     """Make a proto library, possibly depending on other proto libraries."""
 
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports)
+    _ignore = (js_codegen, exports, create_service, create_java_proto)
 
     native.proto_library(
         name = name,
@@ -515,6 +521,7 @@ def tf_proto_library(
         deps = protodeps + well_known_proto_libs(),
         visibility = visibility,
         testonly = testonly,
+        tags = tags,
     )
 
     tf_proto_library_cc(
@@ -594,6 +601,16 @@ def tf_protos_profiler_impl():
         clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
     ]
 
+def tf_protos_profiler_service():
+    return [
+        clean_dep("//tensorflow/core/profiler:profiler_analysis_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
+    ]
+
+def tf_profiler_client_deps():
+    return [clean_dep("//tensorflow/core/profiler/rpc/client:profiler_client_headers")]
+
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]
 
@@ -651,6 +668,7 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:linux_s390x"): [],
         clean_dep("//tensorflow:windows"): [],
         clean_dep("//tensorflow:no_hdfs_support"): [],
+        clean_dep("//tensorflow:with_tpu_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/hadoop:hadoop_file_system"),
         ],
@@ -779,3 +797,12 @@ def if_llvm_aarch64_available(then, otherwise = []):
     # TODO(b/...): The TF XLA build fails when adding a dependency on
     # @llvm/llvm-project/llvm:aarch64_target.
     return otherwise
+
+def if_llvm_system_z_available(then, otherwise = []):
+    return select({
+        "//tensorflow:linux_s390x": then,
+        "//conditions:default": otherwise,
+    })
+
+def tf_tpu_dependencies():
+    return if_tpu(["//tensorflow/core/tpu/kernels"])

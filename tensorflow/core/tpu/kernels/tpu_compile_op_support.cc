@@ -16,27 +16,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
 namespace tpu {
-
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
-using xla::ComputationLayout;
-using xla::DebugOptions;
-using xla::DeviceAssignment;
-using xla::HloModuleConfig;
-using xla::HloSharding;
-using xla::InvalidArgument;
-using xla::ProgramShape;
-using xla::Shape;
-using xla::ShapeTree;
-using xla::ShapeUtil;
+using ::stream_executor::port::Status;
+using ::stream_executor::port::StatusOr;
+using ::xla::ComputationLayout;
+using ::xla::DebugOptions;
+using ::xla::DeviceAssignment;
+using ::xla::HloModuleConfig;
+using ::xla::HloSharding;
+using ::xla::InvalidArgument;
+using ::xla::ProgramShape;
+using ::xla::Shape;
+using ::xla::ShapeTree;
+using ::xla::ShapeUtil;
 
 Status ValidateResultShape(const Shape& client_shape,
                            const Shape& result_shape) {
@@ -333,107 +334,146 @@ Status CreateHloModules(
   return Status::OK();
 }
 
-XlaCompilationResultProto SerializeCompilationResult(
-    const XlaCompiler::CompilationResult& compilation_result) {
-  XlaCompilationResultProto compilation_result_proto;
-  for (int input_mapping : compilation_result.input_mapping) {
-    compilation_result_proto.add_input_mappings(input_mapping);
-  }
-
-  for (const Shape& input_shape : compilation_result.xla_input_shapes) {
-    *(compilation_result_proto.add_xla_input_shapes()) = input_shape.ToProto();
-  }
-  *(compilation_result_proto.mutable_xla_output_shape()) =
-      compilation_result.xla_output_shape.ToProto();
-
-  for (const XlaCompiler::OutputDescription& output_description :
-       compilation_result.outputs) {
-    auto* new_output = compilation_result_proto.add_outputs();
-    new_output->set_type(output_description.type);
-    output_description.shape.AsProto(new_output->mutable_shape());
-    new_output->set_is_constant(output_description.is_constant);
-    output_description.constant_value.AsProtoField(
-        new_output->mutable_constant_value());
-    new_output->set_input_index(output_description.input_index);
-    new_output->set_is_tensor_list(output_description.is_tensor_list);
-  }
-
-  *compilation_result_proto.mutable_host_compute_metadata() =
-      compilation_result.host_compute_metadata;
-
-  for (const XlaCompiler::ResourceUpdate& resource_update :
-       compilation_result.resource_updates) {
-    auto* new_resource_update = compilation_result_proto.add_resource_updates();
-    new_resource_update->set_input_index(resource_update.input_index);
-    new_resource_update->set_type(resource_update.type);
-    resource_update.shape.AsProto(new_resource_update->mutable_shape());
-    new_resource_update->set_modified(resource_update.modified);
-    for (const std::string& gradient_access :
-         resource_update.tensor_array_gradients_accessed) {
-      new_resource_update->mutable_tensor_array_gradients_accessed()->insert(
-          {gradient_access, true});
+StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
+    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const TPUCompileMetadataProto& metadata,
+    const std::vector<TensorShape>& arg_shapes) {
+  VLOG(1) << "CreateTpuCompilationRequest.";
+  TpuCompilationRequestProto compilation_request;
+  bool use_mlir = computation.index() == 0;
+  compilation_request.set_use_mlir(use_mlir);
+  if (use_mlir) {
+    VLOG(1) << "Serializing MlirModule";
+    const MlirToHloArgs& mlir_computation = absl::get<0>(computation);
+    *compilation_request.mutable_mlir_module() = mlir_computation.mlir_module;
+  } else {
+    VLOG(1) << "Serializing FunctionDefinitionLibrary";
+    const FunctionToHloArgs& function_computation = absl::get<1>(computation);
+    *compilation_request.mutable_fdef_lib() =
+        function_computation.flib_def->ToProto();
+    compilation_request.set_graph_def_version(
+        function_computation.graph_def_version);
+    *compilation_request.mutable_function() = *function_computation.function;
+    // TODO(b/160937500): serializing and copying large guaranteed_constants can
+    // be a perf hit. There is a future work to refactor the compilation layer
+    // to avoid passing guaranteed_constants over C_API.
+    if (function_computation.guaranteed_constants.index() == 0) {
+      absl::Span<const TensorProto* const> guaranteed_constants =
+          absl::get<0>(function_computation.guaranteed_constants);
+      for (const TensorProto* constant : guaranteed_constants) {
+        *compilation_request.add_guaranteed_constants() = *constant;
+      }
+    } else {
+      CHECK_EQ(function_computation.guaranteed_constants.index(), 1);
+      const OpInputList& guaranteed_constants =
+          *absl::get<1>(function_computation.guaranteed_constants);
+      for (const Tensor& constant : guaranteed_constants) {
+        constant.AsProtoTensorContent(
+            compilation_request.add_guaranteed_constants());
+      }
     }
   }
 
-  if (compilation_result.computation != nullptr) {
-    *compilation_result_proto.mutable_computation() =
-        compilation_result.computation->proto();
+  for (const TensorShape& shape : arg_shapes) {
+    shape.AsProto(compilation_request.add_arg_shapes());
   }
 
-  return compilation_result_proto;
+  *(compilation_request.mutable_metadata()) = metadata;
+
+  VLOG(1) << "TpuCompilationRequest:\n" << compilation_request.DebugString();
+  return compilation_request;
 }
 
-StatusOr<TpuAotCompilationRequestProto> CreateTpuAotCompilationRequest(
-    const xla::HloModuleGroup& module_group,
-    const XlaCompiler::CompilationResult& compilation_result,
-    const TPUCompileMetadataProto& metadata,
-    const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-    const std::vector<std::vector<xla::Shape>>& per_core_output_shapes,
-    const std::vector<std::vector<std::pair<int, bool>>>&
-        per_core_variable_indices,
-    const absl::optional<xla::DeviceAssignment>& device_assignment) {
-  VLOG(1) << "CreateTpuAotCompilationRequest.";
-  TpuAotCompilationRequestProto aot_request;
-  *(aot_request.mutable_hlo_module_group()) = module_group.ToProto();
-  *(aot_request.mutable_metadata()) = metadata;
-  if (device_assignment.has_value()) {
-    xla::DeviceAssignmentProto device_assignment_proto;
-    Status status = device_assignment->Serialize(&device_assignment_proto);
-    if (!status.ok()) {
-      return status;
-    }
-    *(aot_request.mutable_device_assignment()) = device_assignment_proto;
+Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                    TPUCompileMetadataProto* metadata,
+                                    NameAttrList* function_name,
+                                    std::string* mlir_module) {
+  CHECK_NE(metadata, nullptr);
+
+  int num_computations;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("num_computations", &num_computations));
+
+  std::string metadata_string;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("metadata", &metadata_string));
+  if (!metadata->ParsePartialFromString(metadata_string)) {
+    return errors::InvalidArgument("Unable to parse TPUCompileMetadataProto");
   }
 
-  for (const auto& arg_shapes : per_core_arg_shapes) {
-    auto* new_shape_list = aot_request.add_per_core_arg_shapes();
-    for (const auto& arg_shape : arg_shapes) {
-      *new_shape_list->add_shapes() = arg_shape.ToProto();
-    }
+  if (function_name != nullptr) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("function", function_name));
   }
 
-  for (const auto& output_shapes : per_core_output_shapes) {
-    auto* new_shape_list = aot_request.add_per_core_output_shapes();
-    for (const auto& output_shape : output_shapes) {
-      *new_shape_list->add_shapes() = output_shape.ToProto();
-    }
+  if (mlir_module != nullptr) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("mlir_module", mlir_module));
   }
 
-  for (const auto& variable_indices : per_core_variable_indices) {
-    auto* new_list = aot_request.add_per_core_variable_indices();
-    for (const auto& variable_index : variable_indices) {
-      auto* core_index = new_list->add_variable_indices();
-      core_index->set_index(variable_index.first);
-      core_index->set_updated(variable_index.second);
-    }
+  if (num_computations != metadata->num_cores_per_replica()) {
+    return errors::InvalidArgument(
+        "num_computations must be equal to "
+        "num_cores_per_replica in the 'metadata' "
+        "attribute (",
+        num_computations, " vs ", metadata->num_cores_per_replica(), ")");
   }
 
-  XlaCompilationResultProto compilation_result_proto =
-      SerializeCompilationResult(compilation_result);
-  *aot_request.mutable_compilation_result() = compilation_result_proto;
+  if (metadata->has_device_assignment()) {
+    StatusOr<std::unique_ptr<DeviceAssignment>> device_assignment_or_error =
+        DeviceAssignment::Deserialize(metadata->device_assignment());
+    TF_RETURN_IF_ERROR(device_assignment_or_error.status());
+    const DeviceAssignment& device_assignment =
+        *device_assignment_or_error.ValueOrDie();
+    const int num_replicas = metadata->num_replicas();
+    if (device_assignment.replica_count() != num_replicas) {
+      return errors::InvalidArgument(
+          "Device assignment replica_count != num_replicas; ",
+          device_assignment.replica_count(), " vs ", num_replicas);
+    }
+    if (device_assignment.computation_count() !=
+        metadata->num_cores_per_replica()) {
+      return errors::InvalidArgument(
+          "Device assignment computation_count != num_cores_per_replica; ",
+          device_assignment.computation_count(), " vs ",
+          metadata->num_cores_per_replica());
+    }
+  }
+  return Status::OK();
+}
 
-  VLOG(1) << "TpuAotCompilationRequest:\n" << aot_request.DebugString();
-  return aot_request;
+Status ComputeArgumentShapes(const tpu::TPUCompileMetadataProto& metadata,
+                             const std::vector<TensorShape>& dynamic_shapes,
+                             std::vector<TensorShape>* arg_shapes) {
+  arg_shapes->resize(metadata.args_size());
+  int dynamic_shape_pos = 0;
+  for (int i = 0; i < metadata.args_size(); ++i) {
+    const tpu::TPUCompileMetadataProto::Arg& arg = metadata.args(i);
+    // The XLA compiler determines the shape of each constant by inspecting the
+    // value of its corresponding host-memory tensor. As a result, we don't need
+    // to give the compiler graph-inferred shapes for constant arguments.
+    if (arg.kind() == tpu::TPUCompileMetadataProto::Arg::GUARANTEED_CONSTANT) {
+      continue;
+    }
+    TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(arg.shape()));
+    PartialTensorShape static_shape(arg.shape());
+
+    TensorShape& shape = (*arg_shapes)[i];
+    if (static_shape.IsFullyDefined()) {
+      TF_RET_CHECK(static_shape.AsTensorShape(&shape));
+    } else {
+      TF_RET_CHECK(dynamic_shape_pos < dynamic_shapes.size())
+          << "Too few dynamic shapes";
+      shape = dynamic_shapes[dynamic_shape_pos++];
+      if (!static_shape.IsCompatibleWith(shape)) {
+        return errors::InvalidArgument(
+            "Mismatch between static and dynamic shape for argument. Static "
+            "shape: ",
+            static_shape.DebugString(),
+            "; dynamic shape: ", shape.DebugString());
+      }
+    }
+  }
+  // Checks we consumed all of the dynamic shapes.
+  TF_RET_CHECK(dynamic_shape_pos == dynamic_shapes.size())
+      << "Too many dynamic shapes";
+  return Status::OK();
 }
 }  // namespace tpu
 }  // namespace tensorflow

@@ -80,6 +80,7 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_stubby_versions = ["2"],
+    create_service = True,
     protodeps = [":worker_proto"],
 )
 
@@ -97,6 +98,7 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_stubby_versions = ["2"],
+    create_service = True,
     protodeps = [":master_proto"],
 )
 
@@ -107,6 +109,7 @@ tf_proto_library_cc(
     cc_api_version = 2,
     cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
+    create_service = True,
     protodeps = tf_additional_all_protos(),
 )
 
@@ -137,6 +140,7 @@ exports_files(
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
         "data/experimental/snapshot.proto",
+        "data/experimental/service_config.proto",
         "debug_event.proto",
         "meta_graph.proto",
         "named_tensor.proto",
@@ -162,6 +166,7 @@ tf_proto_library(
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
         "data/experimental/snapshot.proto",
+        "data/experimental/service_config.proto",
         "debug_event.proto",
         "meta_graph.proto",
         "named_tensor.proto",

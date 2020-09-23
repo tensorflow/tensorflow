@@ -17,6 +17,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 tf_py_test(
     name = "get_config_test",
     srcs = ["get_config_test.py"],
@@ -25,6 +31,7 @@ tf_py_test(
     tags = [
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":get_config_samples",
         "//tensorflow/python:client_testlib",
@@ -86,6 +93,7 @@ tf_py_test(
     srcs = ["convert_to_constants_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -121,6 +129,7 @@ tf_py_test(
     name = "graph_util_test",
     srcs = ["graph_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -168,6 +177,7 @@ tf_py_test(
     srcs = ["model_architectures_test.py"],
     python_version = "PY3",
     shard_count = 16,
+    tfrt_enabled = True,
     deps = [
         ":model_architectures",
         "//tensorflow/python/keras",
@@ -260,6 +270,7 @@ tf_py_test(
         "nomsan",  # TODO(b/149948895): Re-enable.
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -274,6 +285,7 @@ cuda_py_test(
     name = "op_callbacks_test",
     srcs = ["op_callbacks_test.py"],
     python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
@@ -282,6 +294,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -289,6 +302,7 @@ cuda_py_test(
     name = "summary_ops_test",
     size = "small",
     srcs = ["summary_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -305,6 +319,7 @@ tf_py_test(
     name = "saved_model_test",
     size = "small",
     srcs = ["saved_model_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -349,11 +364,13 @@ tf_py_test(
     size = "small",
     srcs = ["serialization_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
     ],
@@ -379,6 +396,7 @@ tf_py_test(
         "no_windows",
         "nomac",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -389,6 +407,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
         "//tensorflow/python/keras/layers:normalization",
@@ -405,6 +424,7 @@ tf_py_test(
     srcs = ["tracking_util_test.py"],
     python_version = "PY3",
     tags = ["notsan"],  # b/74395663
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:checkpoint_management",
@@ -426,6 +446,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
         "//tensorflow/python/keras/optimizer_v2",
@@ -459,6 +480,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
         "//tensorflow/python/training/tracking",

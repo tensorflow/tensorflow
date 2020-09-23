@@ -39,7 +39,7 @@ namespace mlir {
 namespace TFTPU {
 namespace {
 
-constexpr char kShardingAttr[] = "xla_hlo.sharding";
+constexpr char kShardingAttr[] = "mhlo.sharding";
 
 struct TPUShardingIdentificationPass
     : public PassWrapper<TPUShardingIdentificationPass,

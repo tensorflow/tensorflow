@@ -106,9 +106,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         mins.push_back(FloatAttr::getValueAsDouble(*it++));
         maxs.push_back(FloatAttr::getValueAsDouble(*it));
       }
-      quant_type = quant::fakeQuantAttrsToType(
-          op.getLoc(), num_bits, op.axis()->getSExtValue(), mins, maxs,
-          narrow_range, expressed, is_signed);
+      quant_type =
+          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
+                                      maxs, narrow_range, expressed, is_signed);
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
@@ -119,7 +119,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       return failure();
     }
 
-    rewriter.setInsertionPointAfter(op);
+    rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
@@ -386,8 +386,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     Operation* def = pre_quantized.getDefiningOp();
     if (!def) return failure();
-    if (llvm::isa<FixedOutputRangeInterface>(def) ||
-        llvm::isa<SameScalesOpInterface>(def) ||
+    if (llvm::isa<FixedOutputRangeInterface, SameScalesOpInterface>(def) ||
         def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
       return failure();
     }
@@ -396,8 +395,6 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     llvm::SmallVector<Type, 4> new_output_types;
     for (auto result : def->getResults()) {
-      result.getUsers().begin()->dump();
-      op.dump();
       if (result.hasOneUse() && *result.getUsers().begin() == op) {
         new_output_types.push_back(op.qtype());
       } else {
@@ -493,9 +490,13 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function. Set `disable_per_channel` to true to not
 // use per channel quantization even the op supports it.
+// Setting `enforce_fixed_output_range` to true, to infer quantization
+// parameters from the fixed output range ops. This is only used for
+// post-training quantization.
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
-                                        OpQuantSpecGetter op_quant_spec_getter);
+                                        OpQuantSpecGetter op_quant_spec_getter,
+                                        bool enforce_fixed_output_range);
 
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method
@@ -503,6 +504,13 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter);
 
+// Given quantization parameters for int8, compute the quantization parameters
+// for uint if it is required, and wrap the result in an UniformQuantizedType.
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point,
+                                                int64_t storage_min = -128,
+                                                int64_t storage_max = 127);
 }  // namespace quant
 }  // namespace mlir
 

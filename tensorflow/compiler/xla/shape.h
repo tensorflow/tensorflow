@@ -49,7 +49,7 @@ class Shape {
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
   int64 rank() const {
-    CHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
+    DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
 

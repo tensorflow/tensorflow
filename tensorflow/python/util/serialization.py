@@ -70,6 +70,9 @@ def get_json_type(obj):
   if isinstance(obj, collections_abc.Mapping):
     return dict(obj)
 
+  if obj is Ellipsis:
+    return {'class_name': '__ellipsis__'}
+
   if isinstance(obj, wrapt.ObjectProxy):
     return obj.__wrapped__
 

@@ -10,7 +10,7 @@ import "tensorflow/core/protobuf/struct.proto";
 import "tensorflow/core/protobuf/trackable_object_graph.proto";
 
 option cc_enable_arenas = true;
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A SavedObjectGraph is part of object-based SavedModels in TF 2.0. It
 // describes the directed graph of Python objects (or equivalent in other
@@ -140,7 +140,9 @@ message SavedVariable {
   VariableSynchronization synchronization = 4;
   VariableAggregation aggregation = 5;
   string name = 6;
+  string device = 7;
 }
+
 
 // Represents `FunctionSpec` used in `Function`. This represents a
 // function that has been wrapped as a TensorFlow `Function`.
@@ -151,6 +153,21 @@ message FunctionSpec {
   bool is_method = 2;
   // The input signature, if specified.
   StructuredValue input_signature = 5;
+
+  // Whether the function should be compiled by XLA.
+  //
+  // The public interface to `tf.function` uses an optional boolean to
+  // represent three distinct states for this field.  Unfortunately, proto3
+  // removes the ability to explicitly check for the presence or absence of a
+  // field, so we instead map to an enum.
+  //
+  // See `tf.function` for details.
+  enum ExperimentalCompile {
+    DEFAULT = 0;
+    ON = 1;
+    OFF = 2;
+  }
+  ExperimentalCompile experimental_compile = 6;
 
   reserved 3, 4;
 }

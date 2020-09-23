@@ -486,29 +486,6 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
       static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
 }
 
-void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
-                                          TFE_ContextMirroringPolicy policy) {
-  options->mirroring_policy = policy;
-}
-
-void TFE_ContextSetThreadLocalMirroringPolicy(
-    TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetThreadLocalMirroringPolicy(
-      static_cast<tensorflow::ContextMirroringPolicy>(policy));
-}
-
-// Note: this function looks up a thread local policy. So it should be called in
-// the appropriate client thread. In particular, in async mode, it may not be
-// safe to call this function from the async EagerExecutor threads.
-extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
-    TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  return static_cast<TFE_ContextMirroringPolicy>(context->GetMirroringPolicy());
-}
-
 void TFE_ContextOptionsSetLazyRemoteInputsCopy(TFE_ContextOptions* options,
                                                bool lazy_copy) {
   options->lazy_remote_inputs_copy = lazy_copy;

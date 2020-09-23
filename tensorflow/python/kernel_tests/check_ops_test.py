@@ -1529,10 +1529,33 @@ class AssertTypeTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_sparsetensor_doesnt_raise_when_correct_type(self):
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+
+    with ops.control_dependencies(
+        [check_ops.assert_type(sparse_float, dtypes.float32)]):
+      out = sparse_tensor.SparseTensor(sparse_float.indices,
+                                       array_ops.identity(sparse_float.values),
+                                       sparse_float.dense_shape)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_raises_when_wrong_type(self):
     floats = constant_op.constant([1.0, 2.0], dtype=dtypes.float16)
     with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
       check_ops.assert_type(floats, dtypes.float32)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparsetensor_raises_when_wrong_type(self):
+    sparse_float16 = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float16),
+        constant_op.constant([500], dtypes.int64))
+    with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
+      check_ops.assert_type(sparse_float16, dtypes.float32)
 
 
 class AssertShapesTest(test.TestCase):

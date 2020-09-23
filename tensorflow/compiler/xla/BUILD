@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -967,6 +969,11 @@ tf_cc_test(
         ":types",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "union_find",
+    hdrs = ["union_find.h"],
 )
 
 # -----------------------------------------------------------------------------

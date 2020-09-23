@@ -23,6 +23,7 @@ import copy
 import functools
 import itertools
 import threading
+import warnings
 import weakref
 
 import numpy as np
@@ -35,10 +36,9 @@ from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
-from tensorflow.python.eager import function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -62,27 +62,27 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
+
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -94,9 +94,11 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
 
-_keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
-                                           'keras layers usage', 'method')
-_keras_model_gauge = monitoring.BoolGauge(
+keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
+                                          'keras layers usage', 'method')
+keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
+                                       'keras api usage', 'method')
+keras_model_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
@@ -301,6 +303,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                dtype=None,
                dynamic=False,
                **kwargs):
+    keras_api_gauge.get_cell('layer').set(True)
+    keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -313,6 +317,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         'weights',
         'activity_regularizer',
         'autocast',
+        'implementation',
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -378,8 +383,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
     # Used in symbolic mode only, only in conjunction with graph-networks
-    self._inbound_nodes = []
-    self._outbound_nodes = []
+    self._inbound_nodes_value = []
+    self._outbound_nodes_value = []
 
     self._init_call_fn_args()
 
@@ -414,6 +419,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Default to True, which means auto tracking is turned on. Certain subclass
     # might want to turn it off, like Sequential model.
     self._auto_track_sub_layers = True
+
+    # For backwards compat reasons, most built-in layers do not guarantee
+    # That they will 100% preserve the structure of input args when saving
+    # / loading configs. E.g. they may un-nest an arg that is
+    # a list with one element.
+    self._preserve_input_structure_in_config = False
 
   @trackable.no_automatic_dependency_tracking
   @generic_utils.default
@@ -483,7 +494,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                  regularizer=None,
                  trainable=None,
                  constraint=None,
-                 partitioner=None,
                  use_resource=None,
                  synchronization=tf_variables.VariableSynchronization.AUTO,
                  aggregation=tf_variables.VariableAggregation.NONE,
@@ -502,7 +512,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         Note that `trainable` cannot be `True` if `synchronization`
         is set to `ON_READ`.
       constraint: Constraint instance (callable).
-      partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
@@ -517,24 +526,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         `collections`, `experimental_autocast` and `caching_device`.
 
     Returns:
-      The created variable. Usually either a `Variable` or `ResourceVariable`
-      instance. If `partitioner` is not `None`, a `PartitionedVariable`
-      instance is returned.
+      The variable created.
 
     Raises:
-      RuntimeError: If called with partitioned variable regularization and
-        eager execution is enabled.
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
     if shape is None:
       shape = ()
+    kwargs.pop('partitioner', None)  # Ignored.
     # Validate optional keyword arguments.
     for kwarg in kwargs:
-      if kwarg not in ['getter', 'collections', 'experimental_autocast',
-                       'caching_device']:
+      if kwarg not in ['collections', 'experimental_autocast',
+                       'caching_device', 'getter']:
         raise TypeError('Unknown keyword argument:', kwarg)
-    getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
     # AutoCastVariable should never be created.
@@ -579,10 +584,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
+    getter = kwargs.pop('getter', base_layer_utils.make_variable)
     if (autocast and self._dtype_policy.should_cast_variables and
         dtype.is_floating):
-      # Wrap 'getter' with a version that returns an AutoCastVariable.
       old_getter = getter
+      # Wrap variable constructor to return an AutoCastVariable.
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
         variable = old_getter(*args, **kwargs)
         return autocast_variable.create_autocast_variable(variable)
@@ -606,7 +612,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         dtype=dtype,
         constraint=constraint,
         trainable=trainable,
-        partitioner=partitioner,
         use_resource=use_resource,
         collections=collections_arg,
         synchronization=synchronization,
@@ -620,9 +625,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       self._handle_weight_regularization(name_in_scope,
                                          variable,
                                          regularizer)
-    if isinstance(
-        variable,
-        (tf_variables.PartitionedVariable, sharded_variable.ShardedVariable)):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         backend.track_variable(v)
         if trainable:
@@ -738,7 +741,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                   '`compute_output_shape` method on your layer (%s).' %
                   self.__class__.__name__), e)
       return nest.map_structure(lambda t: t.shape, outputs)
-    raise NotImplementedError
+    raise NotImplementedError(
+        'Please run in eager mode or implement the `compute_output_shape` '
+        'method on your layer (%s).' % self.__class__.__name__)
 
   @doc_controls.for_subclass_implementers
   def compute_output_signature(self, input_signature):
@@ -828,9 +833,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
       inputs = self._maybe_cast_inputs(inputs)
 
-      # try:
       with backend.name_scope(self._name_scope()):
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           # TODO(kaftan): do we maybe_build here, or have we already done it?
@@ -922,7 +927,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # >> inputs = tf.keras.Input(10)
     # >> outputs = MyLayer()(inputs)  # Functional construction mode.
     # >> model = tf.keras.Model(inputs, outputs)
-    if _in_functional_construction_mode(inputs, args, kwargs, input_list):
+    if _in_functional_construction_mode(self, inputs, args, kwargs, input_list):
       return self._functional_construction_call(inputs, args, kwargs,
                                                 input_list)
 
@@ -930,7 +935,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     call_context = base_layer_utils.call_context()
 
     # Accept NumPy and scalar inputs by converting to Tensors.
-    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+    if any(isinstance(x, (
+        np_arrays.ndarray, np.ndarray, float, int)) for x in input_list):
       inputs = nest.map_structure(_convert_numpy_or_python_types, inputs)
       input_list = nest.flatten(inputs)
 
@@ -969,12 +975,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if self._autocast:
         inputs = self._maybe_cast_inputs(inputs, input_list)
 
+      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       if eager:
         call_fn = self.call
         name_scope = self._name
       else:
-        input_spec.assert_input_compatibility(self.input_spec, inputs,
-                                              self.name)
         name_scope = self._name_scope()  # Avoid autoincrementing.
         call_fn = self._autographed_call()
 
@@ -982,7 +987,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         if not self.built:
           self._maybe_build(inputs)
 
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           outputs = call_fn(inputs, *args, **kwargs)
 
         if self._activity_regularizer:
@@ -998,13 +1004,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     call_context = base_layer_utils.call_context()
 
     # Accept NumPy and scalar inputs by converting to Tensors.
-    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+    if any(isinstance(x, (
+        np_arrays.ndarray, np.ndarray, float, int)) for x in input_list):
 
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
+        # Don't call `ops.convert_to_tensor` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
-        if isinstance(x, (np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2(x)
+        if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
+          return ops.convert_to_tensor_v2_with_dispatch(x)
         return x
 
       inputs = nest.map_structure(_convert_non_tensor, inputs)
@@ -1114,7 +1121,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             call_fn = self.call
 
           try:
-            with ops.enable_auto_cast_variables(self._compute_dtype_object):
+            with autocast_variable.enable_auto_cast_variables(
+                self._compute_dtype_object):
               outputs = call_fn(cast_inputs, *args, **kwargs)
 
           except errors.OperatorNotAllowedInGraphError as e:
@@ -1315,6 +1323,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Trainable weights are updated via gradient descent during training.
 
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
+
     Returns:
       A list of trainable variables.
     """
@@ -1330,6 +1341,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Non-trainable weights are *not* updated during training. They are expected
     to be updated manually in `call()`.
+
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
 
     Returns:
       A list of non-trainable variables.
@@ -1349,18 +1363,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def weights(self):
     """Returns the list of all layer variables/weights.
 
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
+
     Returns:
       A list of variables.
     """
     return self.trainable_weights + self.non_trainable_weights
 
   @property
-  @deprecation.deprecated(
-      date=None,
-      instructions='This property should not be used in TensorFlow 2.0, '
-      'as updates are applied automatically.')
   @doc_controls.do_not_generate_docs
   def updates(self):
+    warnings.warn('`layer.updates` will be removed in a future version. '
+                  'This property should not be used in TensorFlow 2.0, '
+                  'as `updates` are applied automatically.')
     if keras_tensor.keras_tensors_enabled():
       return []
 
@@ -1400,9 +1416,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     >>> outputs = tf.keras.layers.Dense(1)(x)
     >>> model = tf.keras.Model(inputs, outputs)
     >>> # Activity regularization.
+    >>> len(model.losses)
+    0
     >>> model.add_loss(tf.abs(tf.reduce_mean(x)))
-    >>> model.losses
-    [<tf.Tensor 'Abs:0' shape=() dtype=float32>]
+    >>> len(model.losses)
+    1
 
     >>> inputs = tf.keras.Input(shape=(10,))
     >>> d = tf.keras.layers.Dense(10, kernel_initializer='ones')
@@ -1506,12 +1524,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
-        with ops.enable_auto_cast_variables(None):
+        with autocast_variable.enable_auto_cast_variables(None):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       loss._unconditional_loss = True  # pylint: disable=protected-access
       return loss
 
@@ -1528,7 +1547,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if not tensor_util.is_tensor(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if ((tf_utils.is_symbolic_tensor(loss) or
            isinstance(loss, keras_tensor.KerasTensor)) and
@@ -1715,8 +1735,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       aggregation = None if from_metric_obj else 'mean'
       self._graph_network_add_metric(value, aggregation, name)
 
-  @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
-                               'inputs')
   @doc_controls.do_not_doc_inheritable
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
@@ -1739,6 +1757,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         on this Layer, when executing in Eager mode.
       inputs: Deprecated, will be automatically inferred.
     """
+    if inputs is not None:
+      tf_logging.warning(
+          '`add_update` `inputs` kwarg has been deprecated. You no longer need '
+          'to pass a value to `inputs` as it is being automatically inferred.')
     call_context = base_layer_utils.call_context()
     # No need to run updates during Functional API construction.
     if call_context.in_keras_graph:
@@ -1748,7 +1770,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if not call_context.frozen:
       for update in nest.flatten(updates):
         if callable(update):
-          update()
+          update()  # pylint: disable=not-callable
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -1874,8 +1896,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.updates` instead.')
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
     """Deprecated, do NOT use!
@@ -1888,10 +1908,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       List of update ops of the layer that depend on `inputs`.
     """
+    warnings.warn('`layer.get_updates_for` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.updates` method instead.')
     return self.updates
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.losses` instead.')
   @doc_controls.do_not_generate_docs
   def get_losses_for(self, inputs):
     """Deprecated, do NOT use!
@@ -1904,6 +1925,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
     """
+    warnings.warn('`layer.get_losses_for` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.losses` instead.')
     return self.losses
 
   @doc_controls.do_not_doc_inheritable
@@ -2208,8 +2232,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # Methods & attributes below are public aliases of other methods.            #
   ##############################################################################
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.__call__` method instead.')
   @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
     """Deprecated, do NOT use!
@@ -2224,13 +2246,17 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       Output tensor(s).
     """
+    warnings.warn('`layer.apply` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.__call__` method instead.')
     return self.__call__(inputs, *args, **kwargs)
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.add_weight` method instead.')
   @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
     """Deprecated, do NOT use! Alias for `add_weight`."""
+    warnings.warn('`layer.add_variable` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.add_weight` method instead.')
     return self.add_weight(*args, **kwargs)
 
   @property
@@ -2239,6 +2265,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """Returns the list of all layer variables/weights.
 
     Alias of `self.weights`.
+
+    Note: This will not track the weights of nested `tf.Modules` that are not
+    themselves Keras layers.
 
     Returns:
       A list of variables.
@@ -2258,6 +2287,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   ##############################################################################
   # Methods & attributes below are all private and only used by the framework. #
   ##############################################################################
+
+  @property
+  def _inbound_nodes(self):
+    return self._inbound_nodes_value
+
+  @_inbound_nodes.setter
+  @trackable.no_automatic_dependency_tracking
+  def _inbound_nodes(self, value):
+    self._inbound_nodes_value = value
+
+  @property
+  def _outbound_nodes(self):
+    return self._outbound_nodes_value
+
+  @_outbound_nodes.setter
+  @trackable.no_automatic_dependency_tracking
+  def _outbound_nodes(self, value):
+    self._outbound_nodes_value = value
 
   def _set_dtype_policy(self, dtype):
     """Sets self._dtype_policy."""
@@ -2281,11 +2328,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                        'precision by removing the use of the "%s" policy or '
                        'use a different Strategy, e.g. a MirroredStrategy.' %
                        (strategy.__class__.__name__, self._dtype_policy.name))
-
-    # This has no impact on the layer behavior, and is only used for printing
-    # warnings.
-    self._dtype_defaulted_to_floatx = (not dtype and
-                                       policy.policy_defaults_to_floatx())
 
     # Performance optimization: cache the compute dtype as a Dtype object or
     # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
@@ -2347,36 +2389,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _cast_single_input(self, x):
     """Cast a single Tensor or TensorSpec to the compute dtype."""
     if self._should_cast_single_input(x):
-      if self._dtype_defaulted_to_floatx:
-        self._warn_about_input_casting(x.dtype.base_dtype)
       return math_ops.cast(x, self._compute_dtype_object)
     else:
       return x
-
-  def _warn_about_input_casting(self, input_dtype):
-    # self._already_warned_about_input_casting is only retrieved or set in this
-    # function.
-    already_warned = getattr(self, '_already_warned_about_input_casting', False)
-    if not already_warned:
-      tf_logging.warn(
-          "Layer {self.name} is casting an input tensor from dtype "
-          "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
-          "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          'because its dtype defaults to floatx.\n\n'
-          ""
-          "If you intended to run this layer in {layer_dtype}, you can safely "
-          "ignore this warning. If in doubt, this warning is likely only an "
-          "issue if you are porting a TensorFlow 1.X model to TensorFlow 2.\n\n"
-          ""
-          "To change all layers to have dtype {input_dtype} by default, call "
-          "`tf.keras.backend.set_floatx('{input_dtype}')`. To change just this "
-          "layer, pass dtype='{input_dtype}' to the layer constructor. If you "
-          "are the author of this layer, you can disable autocasting by "
-          "passing autocast=False to the base Layer constructor.\n".format(
-              self=self,
-              input_dtype=input_dtype.name,
-              layer_dtype=self._compute_dtype))
-      self._already_warned_about_input_casting = True
 
   # _dtype used to be an attribute set in the constructor. We still expose it
   # because some clients still use it.
@@ -2434,7 +2449,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         regularization = regularizer(v)
       return regularization
 
-    if isinstance(variable, tf_variables.PartitionedVariable):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         self.add_loss(functools.partial(_loss_for_variable, v))
     else:
@@ -2559,10 +2574,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # we copy them to avoid loss of KerasHistory metadata.
     flat_outputs = nest.flatten(outputs)
     flat_inputs = nest.flatten((args, kwargs))
-    inputs_set = object_identity.ObjectIdentitySet(flat_inputs)
+    input_ids_set = {id(i) for i in flat_inputs}
     outputs_copy = []
     for x in flat_outputs:
-      if x in inputs_set:
+      if id(x) in input_ids_set:
         with backend.name_scope(self.name):
           x = array_ops.identity(x)
       outputs_copy.append(x)
@@ -2742,7 +2757,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     super(tracking.AutoTrackable, self).__delattr__(name)
 
     if (isinstance(existing_value, Layer)
-        or trackable_layer_utils.has_weights(existing_value)):
+        or base_layer_utils.has_weights(existing_value)):
       super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
@@ -2792,7 +2807,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
     if (getattr(self, '_auto_track_sub_layers', True) and
-        (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
+        (isinstance(value, Layer) or base_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
@@ -2838,7 +2853,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         'weights', 'trainable_weights', 'non_trainable_weights'
     }
     if hasattr(self, '_layers'):
-      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+      nested_layers = layer_utils.filter_empty_layer_containers(
           self._layers)
       return list(
           itertools.chain.from_iterable(
@@ -2899,14 +2914,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                               self._call_accepts_kwargs)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_full_argspec(self):
     # Argspec inspection is expensive and the call spec is used often, so it
     # makes sense to cache the result.
     return tf_inspect.getfullargspec(self.call)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_args(self):
     all_args = self._call_full_argspec.args
     # Scrub `self` that appears if a decorator was applied.
@@ -2915,7 +2930,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return all_args
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_arg_defaults(self):
     call_fn_args = self._call_fn_args
     call_fn_defaults = self._call_full_argspec.defaults or []
@@ -2928,7 +2943,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return defaults
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_arg_positions(self):
     call_fn_arg_positions = dict()
     for pos, arg in enumerate(self._call_fn_args):
@@ -2936,7 +2951,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return call_fn_arg_positions
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_accepts_kwargs(self):
     return self._call_full_argspec.varkw is not None
 
@@ -2958,12 +2973,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
-    output, seen_weights = [], object_identity.ObjectIdentitySet()
+    output, seen_ids = [], set()
     for w in weights:
-      if w not in seen_weights:
+      if id(w) not in seen_ids:
         output.append(w)
         # Track the Variable's identity to avoid __eq__ issues.
-        seen_weights.add(w)
+        seen_ids.add(id(w))
+
     return output
 
   def _split_out_first_arg(self, args, kwargs):
@@ -3079,7 +3095,6 @@ class TensorFlowOpLayer(Layer):
     super(TensorFlowOpLayer, self).__init__(
         name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
         autocast=False)
-    _keras_layers_gauge.get_cell('TensorflowOpLayer').set(True)
     if isinstance(node_def, dict):
       self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
     else:
@@ -3141,7 +3156,7 @@ class TensorFlowOpLayer(Layer):
         return op.outputs[0]
       return op.outputs
 
-  @function.defun
+  @def_function.function
   def _defun_call(self, inputs):
     """Wraps the op creation method in an Eager function for `run_eagerly`."""
     return self._make_op(inputs)
@@ -3209,7 +3224,7 @@ class AddMetric(Layer):
     return config
 
 
-def _in_functional_construction_mode(inputs, args, kwargs, input_list):  # pylint: disable=unused-argument
+def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  # pylint: disable=unused-argument
   """Check the arguments to see if we are constructing a functional model."""
   if keras_tensor.keras_tensors_enabled():
     # We are constructing a functional model if any of the inputs
@@ -3219,15 +3234,28 @@ def _in_functional_construction_mode(inputs, args, kwargs, input_list):  # pylin
         for tensor in nest.flatten([inputs, args, kwargs]))
   else:
     if context.executing_eagerly():
-      return all(tf_utils.is_symbolic_tensor(t) for t in input_list)
+      all_inputs_symbolic = all(
+          tf_utils.is_symbolic_tensor(t) for t in input_list)
+      if (base_layer_utils.is_subclassed(layer) and
+          any(tf_utils.is_symbolic_tensor(t) for t in nest.flatten(
+              [inputs, args, kwargs])) and not all_inputs_symbolic):
+        raise ValueError('It appears you are trying to construct a '
+                         'functional model, but not all of the inputs in '
+                         'the first positional argument of your layer call '
+                         'are symbolic tensors. '
+                         '(Input objects, or the output of another layer) '
+                         'Functional models cannot correctly track custom '
+                         'layers unless all values in the first call argument '
+                         'are symbolic.')
+      return all_inputs_symbolic
     else:
       return (base_layer_utils.is_in_keras_graph() or
               all(hasattr(t, '_keras_history') for t in input_list))
 
 
 def _convert_numpy_or_python_types(x):
-  if isinstance(x, (np.ndarray, float, int)):
-    return ops.convert_to_tensor_v2(x)
+  if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
+    return ops.convert_to_tensor_v2_with_dispatch(x)
   return x
 
 

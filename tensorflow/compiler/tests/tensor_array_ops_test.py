@@ -801,7 +801,7 @@ class TensorArrayTest(xla_test.XLATestCase):
   #     state0_grad = gradients_impl.gradients([vout], [state0], [grad_val])[0]
   #     var_grad = gradients_impl.gradients([vout], [var], [grad_val])[0]
 
-  #     variables.global_variables_initializer().run()
+  #     self.evaluate(variables.global_variables_initializer())
   #     state0_t, var_t, v0_t, vout_t, v0_grad_t, var_grad_t, state0_grad_t = (
   #         self.evaluate([state0, var, v0, vout, v0_grad, var_grad, state0_grad])
   #     )
@@ -1150,7 +1150,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
         return [read0, read1, size0, size1, v0, v1]
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       read0_v, read1_v, size0_v, size1_v, v0, v1 = self.evaluate(
           xla.compile(fn))

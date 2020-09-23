@@ -44,6 +44,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import analytics
@@ -991,16 +992,16 @@ class TensorTracer(object):
 
       Raises:
         ValueError: If tensor_name is not already in
-                    self._tensorname_idx_map.
+                    tensor_trace_order.tensorname_idx_map.
       """
 
       if self._parameters.is_brief_mode():
         if tensor_name not in tensor_trace_order.tensorname_idx_map:
           raise ValueError(
               'Tensor name %s is not in the tensorname_idx_map'%tensor_name)
-        msg = '%d'%self._tensorname_idx_map[tensor_name]
+        msg = '%d' % tensor_trace_order.tensorname_idx_map[tensor_name]
       else:
-        msg = '"%s"'%tensor_name
+        msg = '"%s"' % tensor_name
 
       if self._parameters.trace_dir:
         output_path = os.path.join(self._parameters.trace_dir, _TRACE_FILE_NAME)
@@ -1643,11 +1644,12 @@ class TensorTracer(object):
       raise ValueError('Provide a trace_dir for tensor tracer in summary mode. '
                        '--trace_dir=/model/dir')
 
-    def _write_cache(step, **kwargs):
+    def _write_cache(step, event_file_suffix=None, **kwargs):
       """Writes the given caches as tensor summary.
 
       Args:
         step: Step tensor with dimension [num_cores].
+        event_file_suffix: Event filename suffix tensor.
         **kwargs: The dictionary of tensors that needs to be written as
           summaries. Key and value pairs within kwargs correspond to the tag
           name, and tensor content that will be written using summary.write.
@@ -1664,16 +1666,20 @@ class TensorTracer(object):
       Raises:
         RuntimeError: if there is no aggregate function defined for a signature.
       """
-
+      file_suffix = _TT_EVENT_FILE_SUFFIX
+      if event_file_suffix is not None:
+        file_suffix = string_ops.string_join([file_suffix, event_file_suffix],
+                                             separator='.')
       # TODO(deveci): Parametrize max_queue, so that flushing op can be called
       # less frequently.
       # Setting max_queue to 100 appears to be safe even when the number of
       # iterations are much lower, as the destructor of the writer flushes it.
       summary_write_ops = []
-      with summary.create_file_writer_v2(
+      summary_writer = summary.create_file_writer_v2(
           self._parameters.trace_dir,
-          filename_suffix=_TT_EVENT_FILE_SUFFIX,
-          max_queue=_TT_SUMMARY_MAX_QUEUE).as_default():
+          filename_suffix=file_suffix,
+          max_queue=_TT_SUMMARY_MAX_QUEUE)
+      with summary_writer.as_default():
         summary_metadata = summary_pb2.SummaryMetadata(
             plugin_data=summary_pb2.SummaryMetadata.PluginData(
                 plugin_name=_TT_TENSORBOARD_PLUGIN_NAME))
@@ -1688,8 +1694,7 @@ class TensorTracer(object):
             if key == _TT_SUMMARY_TAG and value.shape.as_list()[0] != 1:
               value = self.aggregate_global_cache(value)
 
-          with ops.control_dependencies(
-              summary.summary_writer_initializer_op()):
+          with ops.control_dependencies([summary_writer.init()]):
             summary_write_ops.append(summary.write(
                 _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
                 step=step[0]))

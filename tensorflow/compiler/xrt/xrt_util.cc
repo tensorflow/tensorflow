@@ -303,11 +303,8 @@ Status RebuildOutputAliases(
       [&](const xla::ShapeIndex& output_index,
           const xla::HloInputOutputAliasConfig::Alias& alias) -> Status {
     TF_RET_CHECK(alias.parameter_number < input_tuples.size());
-    return alias.kind == xla::HloInputOutputAliasConfig::AliasKind::kUserAlias
-               ? output_tuple->AliasBufferFrom(
-                     *input_tuples[alias.parameter_number],
-                     alias.parameter_index, output_index)
-               : Status::OK();
+    return output_tuple->AliasBufferFrom(*input_tuples[alias.parameter_number],
+                                         alias.parameter_index, output_index);
   };
   return input_output_alias.ForEachAliasWithStatus(alias_function);
 }
@@ -332,17 +329,7 @@ xla::StatusOr<std::vector<xla::ExecutionInput>> GetArgumentsBuffers(
   for (int64 i = 0; i < input_tuples.size(); ++i) {
     auto alias_checker =
         [&](const xla::ShapeIndex& index) -> xla::StatusOr<bool> {
-      // Only the buffers which the caller explicitly marked as aliased
-      // (kUserAlias), should create aliases.
-      // The XLA compiler might create opportunistic aliases (kSystemAlias)
-      // which need a different handling. With a system alias we know that XLA
-      // is going to reuse a given input parameter buffer for a given output, so
-      // unless it is known at call site that the input buffer has no more uses,
-      // a copy needs to be made at call site. With user specified alias the
-      // caller tells us that he expects a given output to land over the buffers
-      // of a given parametter.
-      if (input_output_alias.ParameterAliasKind(i, index) ==
-          xla::HloInputOutputAliasConfig::AliasKind::kUserAlias) {
+      if (input_output_alias.ParameterHasAlias(i, index)) {
         TF_RET_CHECK(!is_dynamic(i));
         return true;
       }

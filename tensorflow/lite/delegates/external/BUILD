@@ -26,6 +26,7 @@ cc_library(
     hdrs = ["external_delegate.h"],
     deps = [
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:shared_library",
         "//tensorflow/lite/c:common",
     ],
 )

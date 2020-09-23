@@ -234,7 +234,7 @@ def _matrix_exp_pade13(matrix):
 def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the matrix exponential of one or more square matrices.
 
-  exp(A) = \sum_{n=0}^\infty A^n/n!
+  $$exp(A) = \sum_{n=0}^\infty A^n/n!$$
 
   The exponential is computed using a combination of the scaling and squaring
   method and the Pade approximation. Details can be found in:
@@ -276,6 +276,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
             math_ops.abs(matrix),
             axis=array_ops.size(array_ops.shape(matrix)) - 2),
         axis=-1)[..., array_ops.newaxis, array_ops.newaxis]
+
     const = lambda x: constant_op.constant(x, l1_norm.dtype)
 
     def _nest_where(vals, cases):
@@ -320,13 +321,19 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     else:
       raise ValueError('tf.linalg.expm does not support matrices of type %s' %
                        matrix.dtype)
-    numer = u + v
-    denom = -u + v
-    result = linalg_ops.matrix_solve(denom, numer)
-    max_squarings = math_ops.reduce_max(squarings)
 
+    is_finite = math_ops.is_finite(math_ops.reduce_max(l1_norm))
+    nan = constant_op.constant(np.nan, matrix.dtype)
+    result = control_flow_ops.cond(
+        is_finite, lambda: linalg_ops.matrix_solve(-u + v, u + v),
+        lambda: array_ops.fill(array_ops.shape(matrix), nan))
+    max_squarings = math_ops.reduce_max(squarings)
     i = const(0.0)
-    c = lambda i, r: math_ops.less(i, max_squarings)
+
+    def c(i, _):
+      return control_flow_ops.cond(is_finite,
+                                   lambda: math_ops.less(i, max_squarings),
+                                   lambda: constant_op.constant(False))
 
     def b(i, r):
       return i + 1, array_ops.where_v2(

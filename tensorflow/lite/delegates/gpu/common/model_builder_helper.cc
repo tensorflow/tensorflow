@@ -15,22 +15,55 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <any>
+#include <limits>
 #include <string>
+#include <vector>
 
 #include <fp16.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/utils.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
+
+// Creates a node that consumes output from the given node. Because output need
+// to stay the same, newly created node will inherit the output from the given
+// node, which will in turn get newly created copy of output. This is necessary
+// to preserve reference consistency if another node was pointing at that
+// output:
+//   node(output)
+// will turn into:
+//   node(copy(output)) <- passthrough_node(output)
+absl::Status NewPassthroughNode(GraphFloat32* graph, Node* node,
+                                const Value* output, Node** passthru_node) {
+  *passthru_node = graph->NewNode();
+  // Make copies for every output in the original node.
+  RETURN_IF_ERROR(graph->SetProducer((*passthru_node)->id, output->id));
+  Value* copy_output = graph->NewValue();
+  RETURN_IF_ERROR(graph->SetProducer(node->id, copy_output->id));
+  RETURN_IF_ERROR(graph->AddConsumer((*passthru_node)->id, copy_output->id));
+  copy_output->tensor = output->tensor;
+  copy_output->tensor.ref = -1;
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 absl::Status GetNodeAndRegistration(TfLiteContext* context, int node_id,
                                     TfLiteNode** tflite_node,
@@ -64,15 +97,19 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
   const TfLiteIntArray* dims = tflite_tensor.dims;
   switch (dims->size) {
     case 1:
+      // B layout
       *bhwc = BHWC(dims->data[0], 1, 1, 1);
       return absl::OkStatus();
     case 2:
+      // BC layout
       *bhwc = BHWC(dims->data[0], 1, 1, dims->data[1]);
       return absl::OkStatus();
     case 3:
+      // BWC layout
       *bhwc = BHWC(dims->data[0], 1, dims->data[1], dims->data[2]);
       return absl::OkStatus();
     case 4:
+      // BHWC layout
       *bhwc = BHWC(dims->data[0], dims->data[1], dims->data[2], dims->data[3]);
       return absl::OkStatus();
     default:
@@ -80,6 +117,40 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
           "Tensor \"", tflite_tensor.name ? tflite_tensor.name : "nullptr",
           "\" has bad input dims size: ", dims->size, "."));
   }
+}
+
+absl::Status ExtractAxisFromIndex(const TfLiteTensor& tflite_tensor, int index,
+                                  Axis* axis) {
+  const TfLiteIntArray* dims = tflite_tensor.dims;
+  if (index == -1) {
+    index = dims->size - 1;
+  }
+  if (index < 0 || index >= dims->size) {
+    return absl::OutOfRangeError("Index for axis out of range");
+  }
+  std::vector<Axis> index_to_axis;
+  switch (dims->size) {
+    case 1:
+      // B layout
+      index_to_axis = {Axis::BATCH};
+      break;
+    case 2:
+      // BC layout
+      index_to_axis = {Axis::BATCH, Axis::CHANNELS};
+      break;
+    case 3:
+      // BWC layout
+      index_to_axis = {Axis::BATCH, Axis::WIDTH, Axis::CHANNELS};
+      break;
+    case 4:
+      // BHWC layout
+      index_to_axis = {Axis::BATCH, Axis::HEIGHT, Axis::WIDTH, Axis::CHANNELS};
+      break;
+    default:
+      return absl::UnavailableError("Unknown layout.");
+  }
+  *axis = index_to_axis[index];
+  return absl::OkStatus();
 }
 
 absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
@@ -127,8 +198,10 @@ absl::Status PopulateQuantParams(const TfLiteTensor& tensor,
 int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
                                     const TfLiteNode* tflite_node) {
   int number_of_runtime_inputs = 0;
-  for (int i = 0; i < tflite_node->inputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->inputs->data[i]])) {
+  for (int i = 0; i < NumInputs(tflite_node); i++) {
+    const TfLiteTensor* tensor =
+        GetOptionalInputTensor(context, tflite_node, i);
+    if (tensor != nullptr && !IsConstantTensor(tensor)) {
       number_of_runtime_inputs++;
     }
   }
@@ -137,19 +210,8 @@ int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
 
 int GetNumberOfConstInputsForNode(const TfLiteContext* context,
                                   const TfLiteNode* tflite_node) {
-  return tflite_node->inputs->size -
+  return NumInputs(tflite_node) -
          GetNumberOfRuntimeInputsForNode(context, tflite_node);
-}
-
-int GetNumberOfRuntimeOutputsForNode(const TfLiteContext* context,
-                                     const TfLiteNode* tflite_node) {
-  int number_of_runtime_outputs = 0;
-  for (int i = 0; i < tflite_node->outputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->outputs->data[i]])) {
-      number_of_runtime_outputs++;
-    }
-  }
-  return number_of_runtime_outputs;
 }
 
 absl::Status CheckInputsOutputs(const TfLiteContext* context,
@@ -162,12 +224,11 @@ absl::Status CheckInputsOutputs(const TfLiteContext* context,
         "Expected ", runtime_inputs, " runtime input tensor(s), but node has ",
         runtime_inputs_from_model, " runtime input(s)."));
   }
-  const int runtime_outputs =
-      GetNumberOfRuntimeOutputsForNode(context, tflite_node);
-  if (runtime_outputs != outputs) {
+  const int outputs_from_model = NumOutputs(tflite_node);
+  if (outputs_from_model != outputs) {
     return absl::InternalError(absl::StrCat("Expected ", outputs,
                                             " output tensor(s), but node has ",
-                                            runtime_outputs, " output(s)."));
+                                            outputs_from_model, " output(s)."));
   }
   return absl::OkStatus();
 }
@@ -315,6 +376,71 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, BHWC* shape) {
   shape->w = dimensions->data[2];
   shape->c = dimensions->data[3];
   return absl::OkStatus();
+}
+
+absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
+  switch (fused_activation) {
+    case kTfLiteActNone:
+    case kTfLiteActRelu:
+    case kTfLiteActReluN1To1:
+    case kTfLiteActRelu6:
+    case kTfLiteActTanh:
+    case kTfLiteActSigmoid:
+      return absl::OkStatus();
+    case kTfLiteActSignBit:
+      return absl::UnimplementedError(
+          "TfLiteFusedActivation.kTfLiteActSignBit");
+
+      // Do not add default; we want compilation error rather than run-time
+      // error.
+  }
+}
+
+// If there is fused activation present, then there will be another node created
+// that will have identical output as the given node. New operation node will
+// depend on the given node output.
+absl::Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
+                                 GraphFloat32* graph, Node* node) {
+  const auto outputs = graph->FindOutputs(node->id);
+  if (outputs.size() != 1) {
+    return absl::InternalError("Number of outputs != 1");
+  }
+  switch (fused_activation) {
+    case kTfLiteActNone:
+      // Nothing to do here
+      return absl::OkStatus();
+    case kTfLiteActRelu:
+    case kTfLiteActReluN1To1:
+    case kTfLiteActRelu6: {
+      ReLUAttributes attr;
+      attr.clip = fused_activation == kTfLiteActRelu
+                      ? 0.0f
+                      : (fused_activation == kTfLiteActReluN1To1 ? 1.0f : 6.0f);
+      Node* activation_node;
+      RETURN_IF_ERROR(
+          NewPassthroughNode(graph, node, outputs[0], &activation_node));
+      activation_node->operation.type = ToString(OperationType::RELU);
+      activation_node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
+    case kTfLiteActTanh: {
+      Node* activation_node;
+      RETURN_IF_ERROR(
+          NewPassthroughNode(graph, node, outputs[0], &activation_node));
+      activation_node->operation.type = ToString(OperationType::TANH);
+      return absl::OkStatus();
+    }
+    case kTfLiteActSigmoid: {
+      Node* activation_node;
+      RETURN_IF_ERROR(
+          NewPassthroughNode(graph, node, outputs[0], &activation_node));
+      activation_node->operation.type = ToString(OperationType::SIGMOID);
+      return absl::OkStatus();
+    } break;
+    default:
+      return absl::NotFoundError(
+          absl::StrCat("Unsupported fused activation: ", fused_activation));
+  }
 }
 
 }  // namespace gpu

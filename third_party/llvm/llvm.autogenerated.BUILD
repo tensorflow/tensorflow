@@ -155,10 +155,10 @@ gentbl(
     name = "InstCombineTableGen",
     tbl_outs = [(
         "-gen-searchable-tables",
-        "lib/Transforms/InstCombine/InstCombineTables.inc",
+        "lib/Target/AMDGPU/InstCombineTables.inc",
     )],
     tblgen = ":llvm-tblgen",
-    td_file = "lib/Transforms/InstCombine/InstCombineTables.td",
+    td_file = "lib/Target/AMDGPU/InstCombineTables.td",
     td_srcs = glob([
         "include/llvm/CodeGen/*.td",
         "include/llvm/IR/Intrinsics*.td",
@@ -419,6 +419,19 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "filecheck-lib",
+    srcs = glob([
+        "lib/FileCheck/*.cpp",
+        "lib/FileCheck/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/FileCheck/*.h",
+    ]),
+    includes = ["include"],
+    deps = [":Support"],
+)
+
 cc_binary(
     name = "FileCheck",
     testonly = 1,
@@ -429,7 +442,10 @@ cc_binary(
     copts = llvm_copts,
     linkopts = llvm_linkopts,
     stamp = 0,
-    deps = [":Support"],
+    deps = [
+        ":Support",
+        ":filecheck-lib",
+    ],
 )
 
 llvm_target_list = [
@@ -532,6 +548,8 @@ llvm_target_list = [
             ("-gen-callingconv", "lib/Target/PowerPC/PPCGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/PowerPC/PPCGenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/PowerPC/PPCGenDisassemblerTables.inc"),
+            ("-gen-register-bank", "lib/Target/PowerPC/PPCGenRegisterBank.inc"),
+            ("-gen-global-isel", "lib/Target/PowerPC/PPCGenGlobalISel.inc"),
         ],
     },
     {
@@ -634,6 +652,7 @@ gentbl(
         ":common_target_td_sources",
     ] + glob([
         "lib/Target/" + target["dir_name"] + "/*.td",
+        "lib/Target/" + target["name"] + "/GISel/*.td",
     ]),
     deps = target.get("tbl_deps", []),
 ) for target in llvm_target_list]
@@ -685,15 +704,36 @@ cc_library(
     ],
 )
 
-gentbl(
-    name = "omp_gen",
-    tbl_outs = [("--gen-directive-decls", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
-    td_srcs = glob([
+exports_files([
+    "include/llvm/Frontend/OpenMP/OMP.td",
+])
+
+filegroup(
+    name = "omp_td_files",
+    srcs = glob([
         "include/llvm/Frontend/OpenMP/*.td",
         "include/llvm/Frontend/Directive/*.td",
     ]),
+)
+
+gentbl(
+    name = "omp_gen",
+    tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
+    td_srcs = [
+        ":omp_td_files",
+    ],
+)
+
+gentbl(
+    name = "omp_gen_impl",
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
+    td_srcs = [
+        ":omp_td_files",
+    ],
 )
 
 # TODO(b/159809163): autogenerate this after enabling release-mode ML
@@ -710,8 +750,10 @@ cc_library(
             "lib/Analysis/*.h",
         ],
         exclude = [
+            "lib/Analysis/DevelopmentModeInlineAdvisor.cpp",
             "lib/Analysis/MLInlineAdvisor.cpp",
             "lib/Analysis/ReleaseModeModelRunner.cpp",
+            "lib/Analysis/TFUtils.cpp",
         ],
     ),
     hdrs = glob([
@@ -1543,7 +1585,9 @@ cc_library(
         ":BPFInfo",
         ":CodeGen",
         ":Core",
+        ":IPO",
         ":MC",
+        ":Scalar",
         ":SelectionDAG",
         ":Support",
         ":Target",
@@ -1734,6 +1778,7 @@ cc_library(
         "lib/CodeGen/*.c",
         "lib/CodeGen/*.cpp",
         "lib/CodeGen/*.inc",
+        "lib/CodeGen/LiveDebugValues/*.cpp",
         "lib/CodeGen/*.h",
     ]),
     hdrs = glob([
@@ -2069,7 +2114,10 @@ cc_library(
         "include/llvm/Extensions/*.inc",
     ]),
     copts = llvm_copts,
-    deps = [":config"],
+    deps = [
+        ":Support",
+        ":config",
+    ],
 )
 
 cc_library(
@@ -2079,7 +2127,7 @@ cc_library(
         "lib/Frontend/OpenMP/*.cpp",
         "lib/Frontend/OpenMP/*.inc",
         "lib/Frontend/OpenMP/*.h",
-    ]),
+    ]) + ["include/llvm/Frontend/OpenMP/OMP.cpp"],
     hdrs = glob([
         "include/llvm/Frontend/OpenMP/*.h",
         "include/llvm/Frontend/OpenMP/*.def",
@@ -2092,6 +2140,7 @@ cc_library(
         ":TransformUtils",
         ":config",
         ":omp_gen",
+        ":omp_gen_impl",
     ],
 )
 
@@ -2144,6 +2193,27 @@ cc_library(
         ":Support",
         ":Target",
         ":TransformUtils",
+        ":config",
+    ],
+)
+
+cc_library(
+    name = "HelloNew",
+    srcs = glob([
+        "lib/Transforms/HelloNew/*.c",
+        "lib/Transforms/HelloNew/*.cpp",
+        "lib/Transforms/HelloNew/*.inc",
+        "lib/Transforms/HelloNew/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/HelloNew/*.h",
+        "include/llvm/Transforms/HelloNew/*.def",
+        "include/llvm/Transforms/HelloNew/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Core",
+        ":Support",
         ":config",
     ],
 )
@@ -2381,6 +2451,27 @@ cc_library(
         ":ProfileData",
         ":Support",
         ":TransformUtils",
+        ":config",
+    ],
+)
+
+cc_library(
+    name = "InterfaceStub",
+    srcs = glob([
+        "lib/InterfaceStub/*.c",
+        "lib/InterfaceStub/*.cpp",
+        "lib/InterfaceStub/*.inc",
+        "lib/InterfaceStub/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/InterfaceStub/*.h",
+        "include/llvm/InterfaceStub/*.def",
+        "include/llvm/InterfaceStub/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Object",
+        ":Support",
         ":config",
     ],
 )
@@ -3174,6 +3265,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":BinaryFormat",
         ":DebugInfoCodeView",
         ":MC",
         ":Object",
@@ -3272,9 +3364,11 @@ cc_library(
         ":CodeGen",
         ":Core",
         ":Coroutines",
+        ":HelloNew",
         ":IPO",
         ":InstCombine",
         ":Instrumentation",
+        ":ObjCARC",
         ":Scalar",
         ":Support",
         ":Target",
@@ -3314,6 +3408,7 @@ cc_library(
         "lib/Target/PowerPC/*.c",
         "lib/Target/PowerPC/*.cpp",
         "lib/Target/PowerPC/*.inc",
+        "lib/Target/PowerPC/GISel/*.cpp",
     ]),
     hdrs = glob([
         "include/llvm/Target/PowerPC/*.h",
@@ -3327,6 +3422,7 @@ cc_library(
         ":AsmPrinter",
         ":CodeGen",
         ":Core",
+        ":GlobalISel",
         ":MC",
         ":PowerPCDesc",
         ":PowerPCInfo",
@@ -3430,6 +3526,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":Core",
+        ":Demangle",
         ":Support",
         ":config",
     ],
@@ -4067,8 +4164,6 @@ cc_library(
         "include/llvm/TextAPI/*.def",
         "include/llvm/TextAPI/*.inc",
     ]) + [
-        "include/llvm/TextAPI/ELF/TBEHandler.h",
-        "include/llvm/TextAPI/ELF/ELFStub.h",
         "include/llvm/TextAPI/MachO/Architecture.def",
         "include/llvm/TextAPI/MachO/PackedVersion.h",
         "include/llvm/TextAPI/MachO/InterfaceFile.h",

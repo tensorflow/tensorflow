@@ -54,15 +54,7 @@ TfLiteStatus ArgMinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   AddInput(TensorID(input_axis_const->GetID(), 0));
 
   // Compute Min/Max
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
-  auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
-  auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
-
-  AddInput(TensorID(input_min_const->GetID(), 0));
-  AddInput(TensorID(input_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, input_tensor));
 
   // Output Node
   int output_batch_size, output_height_size, output_width_size,

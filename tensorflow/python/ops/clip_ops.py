@@ -89,7 +89,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     t: A `Tensor` or `IndexedSlices`.
     clip_value_min: The minimum value to clip to. A scalar `Tensor` or one that
       is broadcastable to the shape of `t`.
-    clip_value_max: The minimum value to clip to. A scalar `Tensor` or one that
+    clip_value_max: The maximum value to clip to. A scalar `Tensor` or one that
       is broadcastable to the shape of `t`.
     name: A name for the operation (optional).
 

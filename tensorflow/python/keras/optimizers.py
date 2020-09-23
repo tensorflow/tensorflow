@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""Built-in optimizer classes."""
+"""Built-in optimizer classes.
+
+For more examples see the base class `tf.keras.optimizers.Optimizer`.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,6 +25,7 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
@@ -41,6 +45,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -771,8 +776,28 @@ class TFOptimizer(Optimizer, trackable.Trackable):
     # TFOptimizer wrapper has no gradient clipping options.
     return grads
 
-  def apply_gradients(self, grads):
-    self.optimizer.apply_gradients(grads, global_step=self.iterations)
+  def minimize(self, loss, var_list, grad_loss=None, tape=None):
+    """Mimics the `OptimizerV2.minimize` API."""
+    if not callable(loss) and tape is None:
+      raise ValueError('`tape` is required when a `Tensor` loss is passed.')
+    tape = tape if tape is not None else backprop.GradientTape()
+
+    if callable(loss):
+      with tape:
+        if not callable(var_list):
+          tape.watch(var_list)
+        loss = loss()
+        if callable(var_list):
+          var_list = var_list()
+
+    var_list = nest.flatten(var_list)
+    if var_list:
+      grads = tape.gradient(loss, var_list, grad_loss)
+      grads_and_vars = list(zip(grads, var_list))
+      self.apply_gradients(grads_and_vars)
+
+  def apply_gradients(self, grads_and_vars):
+    self.optimizer.apply_gradients(grads_and_vars, global_step=self.iterations)
 
   def get_grads(self, loss, params):
     return self.optimizer.compute_gradients(loss, params)

@@ -60,18 +60,19 @@ GpuExecutable::GpuExecutable(
     std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    std::vector<ConstantInfo> globals)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       text_(text),
       binary_(binary),
       gpu_version_(gpu_version),
       thunk_schedule_(std::move(thunk_schedule)),
-      assignment_(std::move(assignment)) {
+      assignment_(std::move(assignment)),
+      constants_(std::move(globals)) {
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              assignment_);
-  ComputeThunkAnnotations();
 }
 
 GpuExecutable::~GpuExecutable() {
@@ -90,12 +91,6 @@ GpuExecutable::~GpuExecutable() {
     for (const auto& pair : module_globals_) {
       CHECK(pair.first->SynchronizeAllActivity());
     }
-  }
-}
-
-void GpuExecutable::ComputeThunkAnnotations() {
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    thunk->ComputeAnnotations();
   }
 }
 
@@ -173,14 +168,12 @@ Status GpuExecutable::ExecuteThunks(
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   std::vector<std::function<void()>> deferred_host_callbacks;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    CHECK(thunk->hlo_instruction());
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    int32 stream_no =
-        thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
+    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk);
     se::Stream* stream =
         (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
 
@@ -188,9 +181,8 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    VLOG(2) << "Executing the thunk for "
-            << thunk->hlo_instruction()->ToString() << " on stream "
-            << stream_no;
+    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
+            << " on stream " << stream_no;
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
@@ -290,28 +282,23 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   se::ModuleHandle module_handle;
   TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
 
-  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-       ++i) {
-    const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    if (allocation.is_constant()) {
-      TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryBase global,
-          executor->GetUntypedSymbol(
-              llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
-              module_handle));
-      VLOG(3) << "Resolved global "
-              << llvm_ir::ConstantBufferAllocationToGlobalName(allocation)
-              << " to " << global.opaque();
-      InsertOrDie(&globals, i, global);
+  for (const auto& info : constants_) {
+    const Literal& literal = info.content;
 
-      const Literal& literal =
-          llvm_ir::LiteralForConstantAllocation(allocation);
-      CHECK(literal.shape().IsArray());
-      if (!ShouldEmitLiteralInLlvmIr(literal)) {
-        VLOG(3) << "H2D memcpy for constant with shape "
-                << ShapeUtil::HumanString(literal.shape());
-        stream->ThenMemcpy(&global, literal.untyped_data(), allocation.size());
-      }
+    TF_ASSIGN_OR_RETURN(auto global, executor->GetUntypedSymbol(
+                                         info.symbol_name, module_handle));
+    VLOG(3) << "Resolved global " << info.symbol_name << " to "
+            << global.opaque();
+
+    CHECK(literal.shape().IsArray());
+    if (!ShouldEmitLiteralInLlvmIr(literal)) {
+      VLOG(3) << "H2D memcpy for constant with shape "
+              << ShapeUtil::HumanString(literal.shape());
+      stream->ThenMemcpy(&global, literal.untyped_data(), literal.size_bytes());
+    }
+
+    if (info.allocation_index != -1) {
+      InsertOrDie(&globals, info.allocation_index, global);
     }
   }
 
@@ -344,7 +331,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     }
     return registered_buffer;
   } else if (allocation.is_constant()) {
-    return FindOrDie(*globals, arg_idx);
+    auto it = globals->find(arg_idx);
+    if (it == globals->end()) {
+      return se::DeviceMemoryBase();
+    }
+    return it->second;
   } else {
     // Allocate each allocation that might escape, or is the temp buffer.
     CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
@@ -490,6 +481,12 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
       ExecutionInput& input = arguments[alias->parameter_number];
       MaybeOwningDeviceMemory* maybe_owning_memory =
           input.MutableBuffer(alias->parameter_index);
+      if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
+        return InvalidArgument(
+            "An input was configured to be must-alias at "
+            "compile time but not donated at runtime: %s",
+            alias->ToString());
+      }
       if (absl::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
@@ -499,17 +496,15 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
         se::DeviceMemoryBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
-        if (alias->kind == HloInputOutputAliasConfig::kUserAlias) {
-          // This is a user alias, so a must alias. The caller is giving us the
-          // input buffer, but in case of error from the execute call, we should
-          // not be releasing it as it contains valid data (for example, it is a
-          // parameter which the user wants us to alias, in a gradient update
-          // computation). So we store the index into the result in the aliased
-          // vector, which will be fed to the ExecutionOutput, which will use
-          // the indices to drop the addresses from its own ScopedShapedBuffer
-          // result, if the ExecutionOutput is not committed.
-          result.AddAliasedIndex(index);
-        }
+        // The caller is giving us the
+        // input buffer, but in case of error from the execute call, we should
+        // not be releasing it as it contains valid data (for example, it is a
+        // parameter which the user wants us to alias, in a gradient update
+        // computation). So we store the index into the result in the aliased
+        // vector, which will be fed to the ExecutionOutput, which will use
+        // the indices to drop the addresses from its own ScopedShapedBuffer
+        // result, if the ExecutionOutput is not committed.
+        result.AddAliasedIndex(index);
       } else if (src_hlo->opcode() != HloOpcode::kParameter) {
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output

@@ -136,7 +136,7 @@ class ScalarTest(test.TestCase):
 
   def testSparseToDense(self):
     self.check(sparse_ops.sparse_to_dense, (1, 4, 7),
-               'output_shape should be a vector', [0, 7, 0, 0])
+               'output_shape must be rank 1', [0, 7, 0, 0])
 
   def testTile(self):
     self.check(array_ops.tile, ([7], 2), 'Expected multiples to be 1-D', [7, 7])

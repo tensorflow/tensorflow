@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
@@ -30,11 +31,9 @@ namespace micro {
 namespace xtensa {
 namespace hifimini {
 
-void AffineQuantize(int scale_multiplier,
-                    const tflite::QuantizationParams& op_params,
+void AffineQuantize(int scale_multiplier, const int32_t zero_point,
                     const RuntimeShape& input_shape, const int16_t* input_data,
                     const RuntimeShape& output_shape, int8_t* output_data) {
-  const int32 zero_point = op_params.zero_point;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   ae_q56s min_val_56 = AE_CVTQ48A32S(INT16_MIN);
   ae_q56s max_val_56 = AE_CVTQ48A32S(INT16_MAX);
@@ -105,17 +104,13 @@ void AffineQuantize(int scale_multiplier,
 namespace quantize {
 
 struct OpData {
+  int32_t zero_point = 0;
   int scale_multiplier = 0;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -129,6 +124,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
       0, input->params.scale / output->params.scale);
 
+  op_data->zero_point = output->params.zero_point;
+
   return kTfLiteOk;
 }
 
@@ -136,11 +133,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   auto* op_data = static_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   tflite::QuantizationParams op_params;
-  op_params.zero_point = output->params.zero_point;
+  op_params.zero_point = op_data->zero_point;
 
   if (input->type != kTfLiteInt16 && output->type != kTfLiteInt8) {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -150,9 +147,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   xtensa::hifimini::AffineQuantize(
-      op_data->scale_multiplier, op_params, GetTensorShape(input),
-      GetTensorData<int16_t>(input), GetTensorShape(output),
-      GetTensorData<int8_t>(output));
+      op_data->scale_multiplier, op_data->zero_point,
+      tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int16_t>(input),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
@@ -160,17 +159,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8 or uint8 format.
-TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {/*init=*/quantize::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/quantize::Prepare,
-                                 /*invoke=*/quantize::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+// quantized output, in int8_t or uint8_t format.
+TfLiteRegistration Register_QUANTIZE() {
+  return {/*init=*/quantize::Init,
+          /*free=*/nullptr,
+          /*prepare=*/quantize::Prepare,
+          /*invoke=*/quantize::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

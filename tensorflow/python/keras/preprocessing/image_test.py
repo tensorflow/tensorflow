@@ -24,9 +24,10 @@ import tempfile
 
 import numpy as np
 
-from tensorflow.python.framework import test_util
+from tensorflow.python.data import Dataset
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.preprocessing import image as preprocessing_image
 from tensorflow.python.platform import test
@@ -57,7 +58,7 @@ def _generate_test_images():
 
 class TestImage(keras_parameterized.TestCase):
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_smart_resize(self):
     test_input = np.random.random((20, 40, 3))
     output = preprocessing_image.smart_resize(test_input, size=(50, 50))
@@ -69,6 +70,19 @@ class TestImage(keras_parameterized.TestCase):
     self.assertListEqual(list(output.shape), [100, 50, 3])
     output = preprocessing_image.smart_resize(test_input, size=(5, 15))
     self.assertListEqual(list(output.shape), [5, 15, 3])
+
+  @testing_utils.run_v2_only
+  def test_smart_resize_tf_dataset(self):
+    test_input_np = np.random.random((2, 20, 40, 3))
+    test_ds = Dataset.from_tensor_slices(test_input_np)
+
+    resize = lambda img: preprocessing_image.smart_resize(img, size=size)
+
+    for size in [(50, 50), (10, 10), (100, 50), (5, 15)]:
+      test_ds = test_ds.map(resize)
+      for sample in test_ds.as_numpy_iterator():
+        self.assertIsInstance(sample, np.ndarray)
+        self.assertListEqual(list(sample.shape), [size[0], size[1], 3])
 
   def test_smart_resize_errors(self):
     with self.assertRaisesRegex(ValueError, 'a tuple of 2 integers'):

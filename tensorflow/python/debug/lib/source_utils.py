@@ -221,15 +221,15 @@ def annotate_source(dump,
 
 
 def list_source_files_against_dump(dump,
-                                   path_regex_whitelist=None,
-                                   node_name_regex_whitelist=None):
+                                   path_regex_allowlist=None,
+                                   node_name_regex_allowlist=None):
   """Generate a list of source files with information regarding ops and tensors.
 
   Args:
     dump: (`DebugDumpDir`) A `DebugDumpDir` object of which the Python graph
       has been loaded.
-    path_regex_whitelist: A regular-expression filter for source file path.
-    node_name_regex_whitelist: A regular-expression filter for node names.
+    path_regex_allowlist: A regular-expression filter for source file path.
+    node_name_regex_allowlist: A regular-expression filter for node names.
 
   Returns:
     A list of tuples regarding the Python source files involved in constructing
@@ -264,10 +264,11 @@ def list_source_files_against_dump(dump,
   path_to_first_line = {}
   tensor_name_to_num_dumps = {}
 
-  path_regex = (re.compile(path_regex_whitelist)
-                if path_regex_whitelist else None)
-  node_name_regex = (re.compile(node_name_regex_whitelist)
-                     if node_name_regex_whitelist else None)
+  path_regex = (
+      re.compile(path_regex_allowlist) if path_regex_allowlist else None)
+  node_name_regex = (
+      re.compile(node_name_regex_allowlist)
+      if node_name_regex_allowlist else None)
 
   to_skip_file_paths = set()
   for op in py_graph.get_operations():

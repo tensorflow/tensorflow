@@ -1,4 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
@@ -25,6 +27,7 @@ tf_proto_library(
     name = "profiler_service_monitor_result_proto",
     srcs = ["profiler_service_monitor_result.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
@@ -48,6 +51,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
+    make_default_target_header_only = True,
     protodeps = [
         ":profiler_options_proto",
         ":profiler_service_monitor_result_proto",
@@ -62,6 +66,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
+    make_default_target_header_only = True,
     protodeps = [":profiler_service_proto"],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],

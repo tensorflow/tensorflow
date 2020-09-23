@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace xla {
 
-class GpuDevice : public Device {
+class GpuDevice : public PjRtDevice {
  public:
   GpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state,
             std::string device_kind, int node_id);

@@ -7,7 +7,6 @@ load(
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
-    "cc_library",
     "micro_copts",
 )
 
@@ -23,7 +22,6 @@ cc_library(
     hdrs = [
         "model.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
 )
 
@@ -38,7 +36,6 @@ tflite_micro_cc_test(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
-        "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
     ],

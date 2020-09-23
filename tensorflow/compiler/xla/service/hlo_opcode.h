@@ -123,6 +123,7 @@ namespace xla {
   V(kRemainder, "remainder", 2)                                        \
   V(kReplicaId, "replica-id", 0)                                       \
   V(kReshape, "reshape", 1)                                            \
+  V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)          \
   V(kReverse, "reverse", 1)                                            \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                 \
   V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)              \

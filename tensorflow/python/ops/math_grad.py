@@ -187,9 +187,12 @@ def _SumGrad(op, grad):
 
           # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
           def EvaluateAsTuple(t):
-            value = c_api.TF_TryEvaluateConstant_wrapper(
-                t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
-            assert value is not None
+            if tensor_util.is_tensor(t):
+              value = c_api.TF_TryEvaluateConstant_wrapper(
+                  t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
+              assert value is not None
+            else:
+              value = t
             return tuple(value)
 
           output_shape_kept_dims = EvaluateAsTuple(
@@ -294,7 +297,7 @@ def _ProdGrad(op, grad):
     reduction_indices = (reduction_indices + rank) % rank
     reduced = math_ops.cast(reduction_indices, dtypes.int32)
     idx = math_ops.range(0, rank)
-    other, _ = array_ops.setdiff1d(idx, reduced)
+    other, _ = gen_array_ops.list_diff(idx, reduced, dtypes.int32)
     perm = array_ops.concat([reduced, other], 0)
     reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
     other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))

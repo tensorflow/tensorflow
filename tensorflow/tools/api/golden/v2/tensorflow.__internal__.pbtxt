@@ -1,0 +1,15 @@
+path: "tensorflow.__internal__"
+tf_module {
+  member {
+    name: "decorator"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "test"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tracking"
+    mtype: "<type \'module\'>"
+  }
+}

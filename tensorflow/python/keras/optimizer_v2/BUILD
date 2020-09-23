@@ -16,6 +16,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "optimizer_v2",
     srcs = [
@@ -28,6 +34,7 @@ py_library(
         "nadam.py",
         "optimizer_v2.py",
         "rmsprop.py",
+        "utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -39,6 +46,7 @@ py_library(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
@@ -47,6 +55,7 @@ py_library(
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:base_layer_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -85,6 +94,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adagrad_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -126,6 +136,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adamax_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -146,6 +157,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adadelta_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -166,6 +178,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ftrl_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -205,6 +218,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["nadam_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -251,6 +265,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -265,6 +280,7 @@ cuda_py_test(
     name = "legacy_learning_rate_decay_test",
     size = "medium",
     srcs = ["legacy_learning_rate_decay_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":legacy_learning_rate_decay",
         "//tensorflow/python:framework_test_lib",
@@ -273,6 +289,7 @@ cuda_py_test(
         "//tensorflow/python:training_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -281,6 +298,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["rmsprop_test.py"],
     shard_count = 2,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:array_ops",

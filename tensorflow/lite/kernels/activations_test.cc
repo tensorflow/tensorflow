@@ -50,6 +50,10 @@ TfLiteRegistration* Register_LOGISTIC_REF();
 TfLiteRegistration* Register_LOGISTIC_GENERIC_OPT();
 TfLiteRegistration* Register_LOGISTIC_FIXED_POINT_OPT();
 
+// PRelu kernel registrations.
+TfLiteRegistration* Register_PRELU_REF();
+TfLiteRegistration* Register_PRELU();
+
 }  // namespace builtin
 }  // namespace ops
 
@@ -251,6 +255,29 @@ TEST(FloatActivationsOpTest, Elu) {
                                  0.0, -0.997521, 2.0, -0.981684,    //
                                  3.0, -0.864665, 10.0, -0.0951626,  //
                              })));
+}
+
+TEST(QuantizedActivationsOpTest, EluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel model(
+      BuiltinOperator_ELU,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+
+  model.SetInput<int8_t>({
+      0, -6, 2, -4,    //
+      3, -2, 6, -0.1,  //
+  });
+
+  model.Invoke();
+  EXPECT_THAT(model.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, -1.0, 2.0, -1,          //
+                      3.0, -0.875, 6.0, -0.125,  //
+                  },
+                  kQuantizedTolerance)));
 }
 
 TEST(FloatActivationsOpTest, Relu) {
@@ -2008,6 +2035,11 @@ TEST(QuantizedActivationsOpTest, LogSoftmaxInt8) {
                                      }));
 }
 
+const auto kPReluKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_PRELU_REF()},
+    {"GenericOptimized", ops::builtin::Register_PRELU()},
+});
+
 // A base class of PRelu op model. It provides the constructor for
 // FloatPReluOpModel and QuantizedPReluOpModel.
 class BasePReluOpModel : public SingleOpModel {
@@ -2064,7 +2096,14 @@ class QuantizedPReluOpModel : public BasePReluOpModel {
   }
 };
 
-TEST(FloatActivationsOpTest, PRelu) {
+class PReluOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kPReluKernelMap;
+  }
+};
+
+TEST_P(PReluOpTest, PReluFloat32) {
   FloatPReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
                       {TensorType_FLOAT32, {1, 1, 3}});
 
@@ -2084,7 +2123,7 @@ TEST(FloatActivationsOpTest, PRelu) {
                              }));
 }
 
-TEST(FloatActivationsOpTest, PReluSameShapes) {
+TEST_P(PReluOpTest, PReluFloat32SameShapes) {
   FloatPReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
                       {TensorType_FLOAT32, {1, 2, 2, 3}});
 
@@ -2109,7 +2148,7 @@ TEST(FloatActivationsOpTest, PReluSameShapes) {
                              }));
 }
 
-TEST(QuantizedActivationsOpTest, PRelu) {
+TEST_P(PReluOpTest, PReluUInt8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedPReluOpModel m({TensorType_UINT8, {1, 2, 2, 3}, kMin, kMax},
@@ -2139,7 +2178,7 @@ TEST(QuantizedActivationsOpTest, PRelu) {
                                       }));
 }
 
-TEST(QuantizedActivationsOpTest, PReluSameShapes) {
+TEST_P(PReluOpTest, PReluUInt8SameShapes) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedPReluOpModel m({TensorType_UINT8, {1, 2, 2, 3}, kMin, kMax},
@@ -2174,7 +2213,7 @@ TEST(QuantizedActivationsOpTest, PReluSameShapes) {
                                       }));
 }
 
-TEST(QuantizedActivationsOpTest, PReluInt8) {
+TEST_P(PReluOpTest, PReluInt8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedPReluOpModel m({TensorType_INT8, {1, 2, 2, 3}, kMin, kMax},
@@ -2204,7 +2243,7 @@ TEST(QuantizedActivationsOpTest, PReluInt8) {
                                      }));
 }
 
-TEST(QuantizedActivationsOpTest, PReluInt8SameShapes) {
+TEST_P(PReluOpTest, PReluInt8SameShapes) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedPReluOpModel m({TensorType_INT8, {1, 2, 2, 3}, kMin, kMax},
@@ -2279,6 +2318,10 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     LogisticOpTest, LogisticOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLogisticKernelMap)));
+
+INSTANTIATE_TEST_SUITE_P(
+    PReluOpTest, PReluOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kPReluKernelMap)));
 
 }  // namespace
 }  // namespace tflite

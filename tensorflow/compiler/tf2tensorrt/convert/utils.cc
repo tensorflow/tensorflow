@@ -241,34 +241,43 @@ int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
 
 #endif
 
-string GetLinkedTensorRTVersion() {
-  int major, minor, patch;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  major = NV_TENSORRT_MAJOR;
-  minor = NV_TENSORRT_MINOR;
-  patch = NV_TENSORRT_PATCH;
-#else
-  major = 0;
-  minor = 0;
-  patch = 0;
-#endif
-  return absl::StrCat(major, ".", minor, ".", patch);
+absl::string_view GetDeviceName(const Node* node) {
+  if (node->has_assigned_device_name()) {
+    return node->assigned_device_name();
+  }
+  return node->requested_device();
 }
 
-string GetLoadedTensorRTVersion() {
-  int major, minor, patch;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  int ver = getInferLibVersion();
-  major = ver / 1000;
-  ver = ver - major * 1000;
-  minor = ver / 100;
-  patch = ver - minor * 100;
-#else
-  major = 0;
-  minor = 0;
-  patch = 0;
-#endif
-  return absl::StrCat(major, ".", minor, ".", patch);
+absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+    const Node* node) {
+  absl::string_view device_name = GetDeviceName(node);
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
+    return absl::nullopt;
+  }
+  return parsed_name;
+}
+
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a,
+    const DeviceNameUtils::ParsedName& b) {
+  DeviceNameUtils::ParsedName merged_name = a;
+  if (!DeviceNameUtils::MergeDevNames(&merged_name, b,
+                                      /*allow_soft_placement=*/false)
+           .ok()) {
+    return absl::nullopt;
+  }
+  return merged_name;
+}
+
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a, absl::string_view b) {
+  DeviceNameUtils::ParsedName b_parsed_name;
+  if (!DeviceNameUtils::ParseFullName(b, &b_parsed_name)) {
+    return absl::nullopt;
+  }
+
+  return MergeIfCompatible(a, b_parsed_name);
 }
 
 }  // namespace tensorrt

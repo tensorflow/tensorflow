@@ -57,6 +57,7 @@ py_library(
 tf_py_test(
     name = "tracking_test",
     srcs = ["tracking_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":base",
         ":tracking",
@@ -146,6 +147,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/saved_model:utils",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -157,6 +159,7 @@ tf_py_test(
     name = "util_test",
     srcs = ["util_test.py"],
     tags = ["notsan"],  # b/74395663
+    tfrt_enabled = True,
     deps = [
         ":base",
         ":graph_view",
@@ -184,6 +187,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/training/saving:checkpoint_options",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
@@ -196,6 +200,7 @@ tf_py_test(
     tags = [
         "notsan",  # b/74395663
     ],
+    tfrt_enabled = True,
     deps = [
         ":tracking",
         ":util",
@@ -238,6 +243,7 @@ tf_py_test(
 tf_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":util",
         "//tensorflow/python:framework_ops",

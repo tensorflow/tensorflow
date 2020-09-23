@@ -396,7 +396,7 @@ class GatherNdOpBenchmark(test.Benchmark):
       t_params = variables.Variable(params)
       t_indices = variables.Variable(indices)
       gather_op = array_ops.gather_nd(t_params, t_indices)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(10):
         self.evaluate(gather_op)
       t1 = time.time()

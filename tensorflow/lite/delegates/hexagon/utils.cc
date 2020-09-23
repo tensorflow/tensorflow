@@ -70,7 +70,7 @@ TfLiteStatus Get4DShape(unsigned int* batch_size, unsigned int* height_size,
   return kTfLiteOk;
 }
 
-// We maintain an op-version whitelist here to ensure we don't accept unintended
+// We maintain an op-version allowlist here to ensure we don't accept unintended
 // ops.
 bool CheckOpVersion(const TfLiteRegistration* registration) {
   switch (registration->builtin_code) {
@@ -91,8 +91,6 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinQuantize:
     case kTfLiteBuiltinRelu6:
-    case kTfLiteBuiltinResizeBilinear:
-    case kTfLiteBuiltinResizeNearestNeighbor:
     case kTfLiteBuiltinSlice:
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToDepth:
@@ -107,6 +105,8 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
       return registration->version == 2;
     case kTfLiteBuiltinConv2d:
     case kTfLiteBuiltinDepthwiseConv2d:
+    case kTfLiteBuiltinResizeBilinear:
+    case kTfLiteBuiltinResizeNearestNeighbor:
       return registration->version <= 3;
     case kTfLiteBuiltinFullyConnected:
       return registration->version <= 4;

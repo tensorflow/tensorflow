@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_API_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_API_H_
 
+#ifdef CL_DELEGATE_NO_GL
+#define EGL_NO_PROTOTYPES
+#endif
+
 #include <EGL/egl.h>
 
 #include <cstdint>

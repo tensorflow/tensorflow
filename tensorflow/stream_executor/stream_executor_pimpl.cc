@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace {
@@ -228,23 +229,6 @@ bool StreamExecutor::CanEnablePeerAccessTo(StreamExecutor *other) {
 
 port::Status StreamExecutor::EnablePeerAccessTo(StreamExecutor *other) {
   return implementation_->EnablePeerAccessTo(other->implementation_.get());
-}
-
-SharedMemoryConfig StreamExecutor::GetDeviceSharedMemoryConfig() {
-  return implementation_->GetDeviceSharedMemoryConfig();
-}
-
-port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
-    SharedMemoryConfig config) {
-  if (config != SharedMemoryConfig::kDefault &&
-      config != SharedMemoryConfig::kFourByte &&
-      config != SharedMemoryConfig::kEightByte) {
-    std::string error_msg = absl::StrFormat(
-        "Invalid shared memory config specified: %d", static_cast<int>(config));
-    LOG(ERROR) << error_msg;
-    return port::Status(port::error::INVALID_ARGUMENT, error_msg);
-  }
-  return implementation_->SetDeviceSharedMemoryConfig(config);
 }
 
 const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
@@ -478,7 +462,7 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
 
 DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
   if (memory_limit_bytes_ > 0 &&
-      mem_alloc_bytes_ + size > memory_limit_bytes_) {
+      static_cast<int64>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_
@@ -858,7 +842,7 @@ absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 }
 
 template <typename TraceCallT, typename... ArgsT>
-void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&... args) {
+void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&...args) {
   if (tracing_enabled_) {
     {
       // instance tracers held in a block to limit the lock lifetime.

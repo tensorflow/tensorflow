@@ -261,6 +261,36 @@ config_setting(
 )
 
 config_setting(
+    name = "armeabi",
+    values = {"cpu": "armeabi"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "armeabi-v7a",
+    values = {"cpu": "armeabi-v7a"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "arm64-v8a",
+    values = {"cpu": "arm64-v8a"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "arm_any",
+    match_any = [
+        ":arm",
+        ":armeabi",
+        ":armeabi-v7a",
+        ":arm64-v8a",
+        ":linux_aarch64",
+        ":linux_armhf",
+    ],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
@@ -467,6 +497,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag enables experimental MLIR bridge support.
+config_setting(
+    name = "enable_mlir_bridge",
+    values = {"define": "enable_mlir_bridge=true"},
+    visibility = ["//visibility:public"],
+)
+
 # This flag enables experimental TPU support
 config_setting(
     name = "with_tpu_support",
@@ -525,16 +562,15 @@ selects.config_setting_group(
 package_group(
     name = "internal",
     packages = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/...",
+        "//learning/brain/distribute/...",
         "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
-        "//third_party/swift/tensorflow_apis/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
+        "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
+        "//third_party/swift/tensorflow_apis/...",
     ],
 )
 
@@ -542,11 +578,6 @@ package_group(
     name = "ndarray_tensor_allow_list",
     packages = ["//learning/pathways/..."],
 )
-
-# Packages that use composite tensors or dispatch.
-# TODO(b/154762408) Remove this package group once it's no longer needed.
-# If this is modified, then copy.bara.sky must also be modified.
-package_group(name = "composite_tensor_whitelist")
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.

@@ -108,8 +108,9 @@ class SegmentTest : public ::testing::Test {
     segment_options_.allow_dynamic_non_batch_dim = true;
   }
 
-  void EnableImplicitBatchModeForStaticEngine() {
+  void EnableImplicitBatchModeForStaticEngine(int maximum_batch_size = 1000) {
     segment_options_.use_implicit_batch = true;
+    segment_options_.maximum_batch_size = maximum_batch_size;
     segment_options_.allow_dynamic_non_batch_dim = false;
   }
 
@@ -177,6 +178,69 @@ TEST_F(SegmentTest, Simple) {
   // output is sink.
   auto without_add3 = all_adds - "add3";
   RunTest(&g, all_adds, all_adds, without_add3, {all_adds});
+}
+
+TEST_F(SegmentTest, WithDeviceAssignments) {
+  //           feed
+  //          //  \\
+  //       add0    add1
+  //        | \    /
+  //        |  add2
+  //        | /   \\
+  //       add3    add4
+  //          \    /
+  //          <sink>
+  Scope s = Scope::NewRootScope();
+  auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT);
+  auto add0 = ops::Add(s.WithOpName("add0"), feed, feed);
+  auto add1 = ops::Add(s.WithOpName("add1"), feed, feed);
+  auto add2 = ops::Add(s.WithOpName("add2"), add0, add1);
+  auto add3 = ops::Add(s.WithOpName("add3"), add0, add2);
+  auto add4 = ops::Add(s.WithOpName("add4"), add2, add2);
+
+  const std::set<string> all_adds = {"add0", "add1", "add2", "add3", "add4"};
+  DisableImplicitBatchMode();
+
+  {
+    Graph g(OpRegistry::Global());
+    TF_EXPECT_OK(s.ToGraph(&g));
+    RunTest(&g, all_adds, all_adds, all_adds, {all_adds});
+  }
+
+  {
+    // Assigning add1 to CPU to exclude it from the cluster.
+    add1.node()->set_assigned_device_name("/device:CPU:0");
+    Graph g(OpRegistry::Global());
+    TF_EXPECT_OK(s.ToGraph(&g));
+    RunTest(&g, all_adds, all_adds, all_adds, {all_adds - "add1"});
+    add1.node()->set_assigned_device_name("");
+  }
+
+  {
+    // Assigning operations add3 and add4 to another GPU to exclude the
+    // operation from the cluster.
+    constexpr char kGpu0[] = "/device:GPU:0";
+    add0.node()->set_assigned_device_name(kGpu0);
+    add1.node()->set_assigned_device_name(kGpu0);
+    add2.node()->set_assigned_device_name(kGpu0);
+    constexpr char kGpu1[] = "/device:GPU:1";
+    add3.node()->set_assigned_device_name(kGpu1);
+    add4.node()->set_assigned_device_name(kGpu1);
+    Graph g(OpRegistry::Global());
+    TF_EXPECT_OK(s.ToGraph(&g));
+    RunTest(&g, all_adds, all_adds, all_adds, {{"add0", "add1", "add2"}});
+  }
+
+  {
+    // Assigning the operations to two compatibile GPU devices resulting in
+    // one cluster with all operations.
+    constexpr char kGpuAny[] = "/device:GPU:*";
+    add3.node()->set_assigned_device_name(kGpuAny);
+    add4.node()->set_assigned_device_name(kGpuAny);
+    Graph g(OpRegistry::Global());
+    TF_EXPECT_OK(s.ToGraph(&g));
+    RunTest(&g, all_adds, all_adds, all_adds, {all_adds});
+  }
 }
 
 TEST_F(SegmentTest, AvoidCycle) {
@@ -424,7 +488,11 @@ TEST_F(SegmentTest, TwoChainsDiffBatchSizes) {
   const std::set<string> all_nodes = {"const-scalar", "output-0", "output-1"};
   EnableImplicitBatchModeForStaticEngine();
   RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
-          {{"output-0", "const-scalar"}});
+          /*expected_segments=*/{{"output-0", "const-scalar"}});
+
+  EnableImplicitBatchModeForStaticEngine(1);
+  RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
+          /*expected_segments=*/{});
 }
 
 TEST_F(SegmentTest, SameRankImplicitBroadcastingStaticBatchSize) {

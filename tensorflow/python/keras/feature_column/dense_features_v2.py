@@ -89,7 +89,7 @@ class DenseFeatures(dense_features.DenseFeatures):
 
   def build(self, _):
     for column in self._feature_columns:
-      with ops.name_scope(column.name):
+      with ops.name_scope_v2(column.name):
         column.create_state(self._state_manager)
     # We would like to call Layer.build and not _DenseFeaturesHelper.build.
     # pylint: disable=protected-access

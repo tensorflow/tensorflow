@@ -25,6 +25,8 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/util/abstract_stack_trace.h"
 #include "tensorflow/python/lib/core/py_util.h"
 
 namespace tensorflow {
@@ -48,7 +50,6 @@ class StackTrace final {
     int i = 0;
     for (; i < kMaxDepth && frame != nullptr; frame = frame->f_back, ++i) {
       PyCodeObject* code_obj = frame->f_code;
-      DCHECK(frame->f_trace == nullptr);
       DCHECK(code_obj != nullptr);
 
       Py_INCREF(code_obj);
@@ -82,10 +83,8 @@ class StackTrace final {
     return *this;
   }
 
-  // Returns string representation of the captured stack trace.
-  std::string ToString() const;
-
-  // TODO(kkb): Implement structured stack trace object getter.
+  // Returns a structured representation of the captured stack trace.
+  std::vector<StackFrame> ToStackFrames() const;
 
  private:
   std::array<PyCodeObject*, kMaxDepth> code_objs_;
@@ -102,6 +101,53 @@ class StackTrace final {
   StackTrace(const StackTrace&) = delete;
   StackTrace& operator=(const StackTrace&) = delete;
 };
+
+// A class that manages Python stack traces in a circular buffer. Users can
+// insert stack trace entries and retrive them by ids.
+class StackTraceManager {
+ public:
+  static constexpr int kStackTraceCircularBufferSize = 1024;
+
+  // Captures the current Python stack trace and returns an id.
+  // Python GIL must be acquired beforehand.
+  ABSL_MUST_USE_RESULT
+  ABSL_ATTRIBUTE_HOT
+  int Capture() {
+    DCheckPyGilState();
+    const int id = next_id_++;
+    const int index = id & (kStackTraceCircularBufferSize - 1);
+    stack_traces_[index] = StackTrace::Capture();
+    return id;
+  }
+
+  // Retrieve captured Python stack trace by id. Returns `nullptr` if the
+  // requested stack trace is evicted from the circular buffer.
+  // Python GIL must be acquired beforehand.
+  ABSL_MUST_USE_RESULT
+  StackTrace* Get(int id);
+
+ private:
+  int next_id_ = 0;
+  std::array<StackTrace, kStackTraceCircularBufferSize> stack_traces_;
+};
+
+// Singleton StackTraceManager.
+extern StackTraceManager* const stack_trace_manager;
+
+// Returns Python stack trace object that can be converted to string.
+// Note that the actual stack trace is kept in a circular buffer for string
+// conversion could fail if it's evicted before.
+// Python GIL must be acquired beforehand.
+inline AbstractStackTrace GetStackTrace() {
+  DCheckPyGilState();
+  return AbstractStackTrace(stack_trace_manager->Capture(), [](int id) {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    std::vector<StackFrame> result =
+        stack_trace_manager->Get(id)->ToStackFrames();
+    PyGILState_Release(gstate);
+    return result;
+  });
+}
 
 }  // namespace tensorflow
 

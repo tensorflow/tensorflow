@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Strategy and optimizer combinations for combinations.combine()."""
+"""Strategy combinations for combinations.combine()."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,26 +34,15 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
-from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_keras_v2
-from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
-from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
-from tensorflow.python.keras.optimizer_v2 import adamax as adamax_keras_v2
-from tensorflow.python.keras.optimizer_v2 import ftrl as ftrl_keras_v2
-from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
-from tensorflow.python.keras.optimizer_v2 import nadam as nadam_keras_v2
-from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import adagrad
-from tensorflow.python.training import adam
-from tensorflow.python.training import ftrl
-from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import rmsprop
 
 FLAGS = flags.FLAGS
 
 _did_connect_to_cluster = False
+CollectiveAllReduceExtended = (
+    collective_all_reduce_strategy.CollectiveAllReduceExtended)
 
 
 # pylint: disable=missing-docstring
@@ -122,6 +111,11 @@ def _get_multi_worker_mirrored_creator(required_gpus):
         num_accelerators={"GPU": required_gpus},
         rpc_layer=tf_config.rpc_layer or "grpc",
     )
+    # Disable health check. We don't have a reliable to shutdown the strategy
+    # (and thus the health check) at the end of a test. Turning on health check
+    # causes some flakiness since we re-create part of the server when creating
+    # a strategy, and our tests are capable of handling failures.
+    CollectiveAllReduceExtended._enable_check_health = False  # pylint: disable=protected-access
     # Always create the strategy in eager mode so that it starts the server and
     # configures the eager context. The eager context can no longer be
     # configured after initialization.
@@ -217,6 +211,8 @@ multi_worker_mirrored_2x1_cpu = combinations.NamedDistribution(
     _get_multi_worker_mirrored_creator(required_gpus=0),
     has_chief=True,
     num_workers=1,
+    use_pool_runner=True,
+    no_xla=True,
 )
 # chief + 1 worker, with 1 GPU each.
 multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
@@ -225,6 +221,8 @@ multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=1,
     required_gpus=1,
+    use_pool_runner=True,
+    no_xla=True,
 )
 # chief + 1 worker, with 2 GPU each.
 multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
@@ -233,6 +231,8 @@ multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=1,
     required_gpus=2,
+    use_pool_runner=True,
+    no_xla=True,
 )
 # chief + 3 workers, with CPU.
 multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
@@ -240,6 +240,8 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     _get_multi_worker_mirrored_creator(required_gpus=0),
     has_chief=True,
     num_workers=3,
+    use_pool_runner=True,
+    no_xla=True,
 )
 
 
@@ -257,48 +259,6 @@ def _shutdown_at_exit():
 
 atexit.register(_shutdown_at_exit)
 
-
-gradient_descent_optimizer_v1_fn = combinations.NamedObject(
-    "GradientDescentV1",
-    lambda: gradient_descent.GradientDescentOptimizer(0.001))
-adagrad_optimizer_v1_fn = combinations.NamedObject(
-    "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
-adam_optimizer_v1_fn = combinations.NamedObject(
-    "AdamV1", lambda: adam.AdamOptimizer(0.001, epsilon=1))
-ftrl_optimizer_v1_fn = combinations.NamedObject(
-    "FtrlV1", lambda: ftrl.FtrlOptimizer(0.001))
-rmsprop_optimizer_v1_fn = combinations.NamedObject(
-    "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
-
-# TODO(shiningsun): consider adding the other v1 optimizers
-optimizers_v1 = [
-    gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn,
-    ftrl_optimizer_v1_fn, rmsprop_optimizer_v1_fn
-]
-
-adadelta_optimizer_keras_v2_fn = combinations.NamedObject(
-    "AdadeltaKerasV2", lambda: adadelta_keras_v2.Adadelta(0.001))
-adagrad_optimizer_keras_v2_fn = combinations.NamedObject(
-    "AdagradKerasV2", lambda: adagrad_keras_v2.Adagrad(0.001))
-adam_optimizer_keras_v2_fn = combinations.NamedObject(
-    "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
-adamax_optimizer_keras_v2_fn = combinations.NamedObject(
-    "AdamaxKerasV2", lambda: adamax_keras_v2.Adamax(0.001, epsilon=1.0))
-nadam_optimizer_keras_v2_fn = combinations.NamedObject(
-    "NadamKerasV2", lambda: nadam_keras_v2.Nadam(0.001, epsilon=1.0))
-ftrl_optimizer_keras_v2_fn = combinations.NamedObject(
-    "FtrlKerasV2", lambda: ftrl_keras_v2.Ftrl(0.001))
-gradient_descent_optimizer_keras_v2_fn = combinations.NamedObject(
-    "GradientDescentKerasV2", lambda: gradient_descent_keras_v2.SGD(0.001))
-rmsprop_optimizer_keras_v2_fn = combinations.NamedObject(
-    "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
-
-# TODO(shiningsun): consider adding the other v2 optimizers
-optimizers_v2 = [
-    gradient_descent_optimizer_keras_v2_fn, adagrad_optimizer_keras_v2_fn
-]
-
-optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -324,39 +284,6 @@ def set_virtual_cpus_to_at_least(num_virtual_cpus):
     if len(configs) < num_virtual_cpus:
       raise RuntimeError("Already configured with %d < %d virtual CPUs" %
                          (len(configs), num_virtual_cpus))
-
-
-def distributions_and_v1_optimizers():
-  """A common set of combination with DistributionStrategies and Optimizers."""
-  return combinations.combine(
-      distribution=[
-          one_device_strategy,
-          mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus,
-      ],
-      optimizer_fn=optimizers_v1)
-
-
-def distributions_and_v2_optimizers():
-  """A common set of combination with DistributionStrategies and Optimizers."""
-  return combinations.combine(
-      distribution=[
-          one_device_strategy,
-          mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus,
-      ],
-      optimizer_fn=optimizers_v2)
-
-
-def distributions_and_v1_and_v2_optimizers():
-  """A common set of combination with DistributionStrategies and Optimizers."""
-  return combinations.combine(
-      distribution=[
-          one_device_strategy,
-          mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus,
-      ],
-      optimizer_fn=optimizers_v1_and_v2)
 
 
 strategies_minus_tpu = [
@@ -408,6 +335,12 @@ multidevice_strategies = [
     mirrored_strategy_with_two_gpus,
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step
+]
+
+multiworker_strategies = [
+    multi_worker_mirrored_2x1_cpu,
+    multi_worker_mirrored_2x1_gpu,
+    multi_worker_mirrored_2x2_gpu
 ]
 
 

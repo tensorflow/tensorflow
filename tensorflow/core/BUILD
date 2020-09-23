@@ -65,7 +65,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
     "if_android",
     "if_chromiumos",
     "if_cuda_or_rocm",
@@ -81,12 +80,17 @@ load(
     "tf_cuda_library",
     "tf_defines_nortti_if_lite_protos",
     "tf_features_nomodules_if_mobile",
-    "tf_gen_op_libs",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_lite_protos",
     "tf_portable_full_lite_protos",
     "transitive_hdrs",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
@@ -103,6 +107,12 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "genrule")
+
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -117,6 +127,7 @@ load(
     "tf_protos_all_impl",
     "tf_protos_grappler_impl",
     "tf_protos_profiler_impl",
+    "tf_tpu_dependencies",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -318,7 +329,6 @@ alias(
 cc_library(
     name = "lib_proto_parsing",
     hdrs = [
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/platform:lib_proto_parsing_hdrs",
@@ -328,7 +338,6 @@ cc_library(
         ":platform_base",
         "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/lib/core:status",
@@ -353,6 +362,7 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
+        # TODO(rmlarsen): Remove bfloat16.h once dependency in third_party/swift is updated.
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
@@ -458,7 +468,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:common_shape_fns.h",
         "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
-        "//tensorflow/core/framework:dataset_stateful_op_whitelist.h",
+        "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
         "//tensorflow/core/framework:device_base.h",
         "//tensorflow/core/framework:function.h",
         "//tensorflow/core/framework:function_handle_cache.h",
@@ -489,6 +499,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:register_types_traits.h",
         "//tensorflow/core/framework:resource_mgr.h",
         "//tensorflow/core/framework:resource_op_kernel.h",
+        "//tensorflow/core/framework:rng_alg.h",
         "//tensorflow/core/framework:selective_registration.h",
         "//tensorflow/core/framework:session_state.h",
         "//tensorflow/core/framework:shape_inference.h",
@@ -582,7 +593,6 @@ cc_library(
         "//tensorflow/core/framework:numeric_types.h",
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
@@ -593,7 +603,6 @@ cc_library(
             "@nsync//:nsync_cpp",
         ] + [
             "//third_party/eigen3",
-            "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform:dynamic_annotations",
             "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
@@ -629,8 +638,8 @@ tf_gen_op_libs(
         "io_ops",
         "linalg_ops",
         "list_ops",
+        "map_ops",
         "lookup_ops",
-        "logging_ops",
         "manip_ops",
         "math_ops",
         "mkl_nn_ops",
@@ -655,12 +664,28 @@ tf_gen_op_libs(
         "spectral_ops",
         "state_ops",
         "stateless_random_ops",
+        "stateless_random_ops_v2",
         "summary_ops",
         "training_ops",
     ],
     deps = [
         ":lib",
         ":protos_all_cc",
+    ],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "logging_ops",
+    ],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+        # TODO(b/162630222): remove this dependency.
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
+        "//tensorflow/c/kernels:merge_summary_op_lib",
+        "//tensorflow/c/kernels:summary_op_lib",
     ],
 )
 
@@ -798,36 +823,7 @@ tf_gen_op_libs(
         "ragged_conversion_ops",
         "ragged_math_ops",
     ],
-    deps = [":ragged_to_dense_util"],
-)
-
-cc_library(
-    name = "ragged_to_dense_util",
-    srcs = [
-        "ops/ragged_to_dense_util.cc",
-    ],
-    hdrs = [
-        "ops/ragged_to_dense_util.h",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-    ],
-)
-
-tf_cc_test(
-    name = "ragged_to_dense_util_test",
-    srcs = [
-        "ops/ragged_to_dense_util_test.cc",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-        ":ragged_to_dense_util",
-        ":test",
-        ":testlib",
-        "@com_google_googletest//:gtest_main",
-    ],
+    deps = ["//tensorflow/core/util:ragged_to_dense_util"],
 )
 
 cc_library(
@@ -860,6 +856,7 @@ cc_library(
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
         ":list_ops_op_lib",
+        ":map_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
         ":manip_ops_op_lib",
@@ -887,12 +884,15 @@ cc_library(
         ":spectral_ops_op_lib",
         ":state_ops_op_lib",
         ":stateless_random_ops_op_lib",
+        ":stateless_random_ops_v2_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
+        "//tensorflow/c/kernels:merge_summary_op_lib",
+        "//tensorflow/c/kernels:summary_op_lib",
     ] + if_chromiumos(
         [],
         # Non-tpu platforms don't need tpu dependency. It would be best to guard
@@ -909,6 +909,7 @@ cc_library(
             ":tpu_outfeed_ops_op_lib",
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
+            "//tensorflow/core/tpu/ops",
         ],
     ) + if_mkl([
         ":mkl_array_ops_op_lib",
@@ -916,7 +917,10 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
-    ]),
+    ]) + if_tpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op"],
+        if_true = [],
+    ),
     alwayslink = 1,
 )
 
@@ -999,6 +1003,9 @@ cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/c/kernels:bitcast_op",
+        "//tensorflow/c/kernels:histogram_summary_op",
+        "//tensorflow/c/kernels:merge_summary_op",
+        "//tensorflow/c/kernels:summary_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",
@@ -1022,9 +1029,8 @@ cc_library(
         "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:grappler",
         "//tensorflow/core/kernels:histogram_op",
-        "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
-        "//tensorflow/core/kernels:linalg",
+        "//tensorflow/core/kernels:isotonic_regression_op",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:manip",
@@ -1058,32 +1064,34 @@ cc_library(
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
+        "//tensorflow/core/kernels/linalg:linalg",
+        "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
     ] + if_not_windows([
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
-        "//tensorflow/core/kernels:mkl_aggregate_ops",
-        "//tensorflow/core/kernels:mkl_concat_op",
-        "//tensorflow/core/kernels:mkl_dequantize_op",
-        "//tensorflow/core/kernels:mkl_conv_op",
-        "//tensorflow/core/kernels:mkl_cwise_ops_common",
-        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels:mkl_identity_op",
-        "//tensorflow/core/kernels:mkl_input_conversion_op",
-        "//tensorflow/core/kernels:mkl_lrn_op",
-        "//tensorflow/core/kernels:mkl_pooling_ops",
-        "//tensorflow/core/kernels:mkl_qmatmul_op",
-        "//tensorflow/core/kernels:mkl_requantize_ops",
-        "//tensorflow/core/kernels:mkl_quantize_op",
-        "//tensorflow/core/kernels:mkl_relu_op",
-        "//tensorflow/core/kernels:mkl_reshape_op",
-        "//tensorflow/core/kernels:mkl_slice_op",
-        "//tensorflow/core/kernels:mkl_softmax_op",
-        "//tensorflow/core/kernels:mkl_transpose_op",
-        "//tensorflow/core/kernels:mkl_batch_matmul_op",
-        "//tensorflow/core/kernels:mkl_matmul_op",
-        "//tensorflow/core/kernels:mkl_tfconv_op",
-        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
+        "//tensorflow/core/kernels/mkl:mkl_concat_op",
+        "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
+        "//tensorflow/core/kernels/mkl:mkl_conv_op",
+        "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
+        "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_identity_op",
+        "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
+        "//tensorflow/core/kernels/mkl:mkl_lrn_op",
+        "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
+        "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_requantize_ops",
+        "//tensorflow/core/kernels/mkl:mkl_quantize_op",
+        "//tensorflow/core/kernels/mkl:mkl_relu_op",
+        "//tensorflow/core/kernels/mkl:mkl_reshape_op",
+        "//tensorflow/core/kernels/mkl:mkl_slice_op",
+        "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+        "//tensorflow/core/kernels/mkl:mkl_transpose_op",
+        "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
+        "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
     ]) + if_cuda([
@@ -1094,9 +1102,7 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_op_kernels",
         "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
-    ]) + if_tpu([
-        "//tensorflow/core/tpu/kernels",
-    ]),
+    ]) + tf_tpu_dependencies(),
 )
 
 cc_library(
@@ -1121,6 +1127,8 @@ cc_library(
         # these also dynamically loading.
         "//tensorflow/core/kernels:dataset_ops",  # Depends on grappler
         "//tensorflow/core/kernels:list_kernels",  # Depends on variant_op_registry.h
+        "//tensorflow/core/kernels:map_kernels",
+        "//tensorflow/core/kernels:tensor_map",
     ],
 )
 
@@ -1172,7 +1180,7 @@ cc_library(
 )
 
 # Test support library needed for higher-level (TensorFlow-specific) tests
-cc_library(
+tf_cuda_library(
     name = "testlib",
     testonly = 1,
     srcs = [
@@ -1265,7 +1273,6 @@ filegroup(
         "//tensorflow/core/example:mobile_srcs_no_runtime",
         "//tensorflow/core/framework:attr_value_proto_text_srcs",
         "//tensorflow/core/framework:mobile_srcs_no_runtime",
-        "//tensorflow/core/lib/bfloat16:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/core:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/gtl:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/hash:mobile_srcs_no_runtime",
@@ -1297,7 +1304,6 @@ filegroup(
     srcs = [
         # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
-        "//tensorflow/c/experimental/saved_model/core:mobile_srcs_only_runtime",
         "//tensorflow/c:srcs",
         "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
@@ -1305,6 +1311,7 @@ filegroup(
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
         "//tensorflow/core/kernels:mobile_srcs",
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
+        "//tensorflow/core/nccl:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
         "//tensorflow/core/util/sparse:mobile_srcs_only_runtime",
@@ -1704,7 +1711,6 @@ filegroup(
         "//tensorflow/core/framework:resource_handle.h",
         "//tensorflow/core/platform:legacy_lib_internal_headers",
         "//tensorflow/core/platform:lib_internal_private_hdrs",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
         "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
@@ -1821,7 +1827,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/lib/core:arena",
         "//tensorflow/core/lib/core:bitmap",
         "//tensorflow/core/lib/core:blocking_counter",
@@ -1902,6 +1907,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:casts",
@@ -1928,6 +1934,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:resource",
@@ -1987,6 +1994,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform:gif",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2020,6 +2028,11 @@ alias(
 )
 
 alias(
+    name = "portable_png_internal",
+    actual = "//tensorflow/core/lib/png:png_io",
+)
+
+alias(
     name = "android_png_internal",
     actual = "//tensorflow/core/lib/png:png_io",
 )
@@ -2027,7 +2040,6 @@ alias(
 cc_library(
     name = "tflite_portable_logging",
     hdrs = [
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
@@ -2048,8 +2060,8 @@ cc_library(
 )
 
 cc_library(
-    name = "android_jpeg_internal",
-    srcs = if_android([
+    name = "portable_jpeg_internal",
+    srcs = if_mobile([
         "lib/jpeg/jpeg_handle.cc",
         "lib/jpeg/jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
@@ -2057,14 +2069,13 @@ cc_library(
     hdrs = [
         "lib/jpeg/jpeg_handle.h",
         "lib/jpeg/jpeg_mem.h",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:jpeg_internal_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = if_android(["-ldl"]),
     deps = [
         ":core_stringpiece",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -2077,14 +2088,13 @@ cc_library(
 )
 
 cc_library(
-    name = "android_gif_internal",
-    srcs = if_android([
+    name = "portable_gif_internal",
+    srcs = if_mobile([
         "lib/gif/gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
     ]),
     hdrs = [
         "lib/gif/gif_io.h",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:gif_internal_hdrs",
@@ -2092,19 +2102,25 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = if_android(["-ldl"]),
     deps = [
-        "//tensorflow/core/lib/strings:numbers",
-        "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:numbers",
-        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
+)
+
+alias(
+    name = "android_jpeg_internal",
+    actual = ":portable_jpeg_internal",
+)
+
+alias(
+    name = "android_gif_internal",
+    actual = ":portable_gif_internal",
 )
 
 alias(
@@ -2260,7 +2276,6 @@ tf_cuda_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/tpu:tpu_api_dlsym_initializer",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:port",
@@ -2708,27 +2723,27 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ] + if_mkl([
-        "//tensorflow/core/kernels:mkl_aggregate_ops",
-        "//tensorflow/core/kernels:mkl_batch_matmul_op",
-        "//tensorflow/core/kernels:mkl_concat_op",
-        "//tensorflow/core/kernels:mkl_conv_op",
-        "//tensorflow/core/kernels:mkl_cwise_ops_common",
-        "//tensorflow/core/kernels:mkl_dequantize_op",
-        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels:mkl_identity_op",
-        "//tensorflow/core/kernels:mkl_input_conversion_op",
-        "//tensorflow/core/kernels:mkl_lrn_op",
-        "//tensorflow/core/kernels:mkl_matmul_op",
-        "//tensorflow/core/kernels:mkl_pooling_ops",
-        "//tensorflow/core/kernels:mkl_qmatmul_op",
-        "//tensorflow/core/kernels:mkl_quantize_op",
-        "//tensorflow/core/kernels:mkl_relu_op",
-        "//tensorflow/core/kernels:mkl_reshape_op",
-        "//tensorflow/core/kernels:mkl_slice_op",
-        "//tensorflow/core/kernels:mkl_softmax_op",
-        "//tensorflow/core/kernels:mkl_tfconv_op",
-        "//tensorflow/core/kernels:mkl_transpose_op",
-        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
+        "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_concat_op",
+        "//tensorflow/core/kernels/mkl:mkl_conv_op",
+        "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
+        "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_identity_op",
+        "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
+        "//tensorflow/core/kernels/mkl:mkl_lrn_op",
+        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
+        "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_quantize_op",
+        "//tensorflow/core/kernels/mkl:mkl_relu_op",
+        "//tensorflow/core/kernels/mkl:mkl_reshape_op",
+        "//tensorflow/core/kernels/mkl:mkl_slice_op",
+        "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+        "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
+        "//tensorflow/core/kernels/mkl:mkl_transpose_op",
+        "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
     ]),
 )
 
@@ -2980,6 +2995,8 @@ filegroup(
     srcs = [
         # PNG data
         "//tensorflow/core/lib/png:testdata",
+        "//tensorflow/core/lib/ssim:testdata",
+        "//tensorflow/core/lib/psnr:testdata",
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
@@ -3001,37 +3018,14 @@ filegroup(
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
         # BMP data
-        "lib/bmp/testdata/lena.bmp",
-        # SSIM, PSNR data
-        "lib/ssim/testdata/checkerboard1.png",
-        "lib/ssim/testdata/checkerboard2.png",
-        "lib/ssim/testdata/checkerboard3.png",
-        "lib/psnr/testdata/cat_q20.jpg",
-        "lib/psnr/testdata/cat_q72.jpg",
-        "lib/psnr/testdata/cat_q95.jpg",
+        "//tensorflow/core/lib/bmp:bmp_testdata",
     ],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+alias(
     name = "lmdb_testdata",
-    testonly = 1,
-    srcs = [
-        # A simple key-value store:
-        #   0 : 'b'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'b'
-        # Which is then overwritten with:
-        #   0 : 'a'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'j'
-        "lib/lmdb/testdata/data.mdb",
-        # LMDB, being a memory-mapped database, uses a different file format on
-        # big-endian systems.
-        "lib/lmdb/testdata/data_bigendian.mdb",
-    ],
+    actual = "//tensorflow/core/lib/lmdb:lmdb_testdata",
     visibility = ["//visibility:public"],
 )
 

@@ -1,16 +1,53 @@
 # Description:
 #   OpKernels for tf.data
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_mobile",
     "tf_cc_test",
-    "tf_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+cc_library(
+    name = "hash_utils",
+    srcs = ["hash_utils.cc"],
+    hdrs = ["hash_utils.h"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "hash_utils_test",
+    srcs = ["hash_utils_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":hash_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 cc_library(
@@ -26,6 +63,7 @@ cc_library(
         ":map_dataset_op",
         ":name_utils",
         ":range_dataset_op",
+        ":split_utils",
         ":take_dataset_op",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu",
@@ -54,6 +92,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -63,6 +102,7 @@ tf_cc_test(
     name = "dataset_utils_test",
     srcs = ["dataset_utils_test.cc"],
     deps = [
+        ":dataset_test_base",
         ":dataset_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
@@ -103,6 +143,7 @@ cc_library(
     hdrs = ["rewrite_utils.h"],
     deps = [
         ":dataset_utils",
+        ":hash_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -611,6 +652,8 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -619,7 +662,6 @@ tf_cc_test(
     name = "parallel_interleave_dataset_op_test",
     size = "small",
     srcs = ["parallel_interleave_dataset_op_test.cc"],
-    tags = ["notsan"],  # TODO(b/147147071): Remove this tag once bug fix lands.
     deps = [
         ":captured_function",
         ":dataset_test_base",
@@ -810,6 +852,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -893,6 +936,32 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "split_utils",
+    srcs = ["split_utils.cc"],
+    hdrs = ["split_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:iterator_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "split_utils_test",
+    size = "small",
+    srcs = ["split_utils_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":split_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+    ],
+)
+
 tf_kernel_library(
     name = "tensor_dataset_op",
     srcs = ["tensor_dataset_op.cc"],
@@ -925,6 +994,7 @@ tf_kernel_library(
     deps = [
         ":dataset_utils",
         ":name_utils",
+        ":split_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -1199,6 +1269,7 @@ tf_kernel_library(
     hdrs = ["cache_dataset_ops.h"],
     deps = [
         ":cache_ops",
+        ":dataset_utils",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1238,6 +1309,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:platform_port",
     ],
 )
 
@@ -1259,6 +1331,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op",
     ],
 )
 
@@ -1409,6 +1482,7 @@ filegroup(
         exclude = [
             "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
             "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
+            "model_dataset_op.*",  # not supported on mobile.
             "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
             "*test.cc",
             "*test.h",

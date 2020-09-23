@@ -238,8 +238,8 @@ class Tensor {
   Tensor(const Tensor& other);
 
   /// \brief Move constructor. After this call, <other> is safely destructible
-  /// and can be assigned to, but other calls on it (e.g. shape manipulation)
-  /// are not valid.
+  /// can be assigned to, and IsInitialized() can be called and will return
+  /// false. Other calls on <other> (e.g. shape manipulation) are not valid.
   Tensor(Tensor&& other);
 
   // Explicitly delete constructor that take a pointer (except char*)

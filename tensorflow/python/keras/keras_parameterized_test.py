@@ -269,8 +269,8 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       self.assertLen(l, 4)
       self.assertAllEqual(l, [
           ("graph", False, False),
-          ("eager", True, False),
-          ("eager", False, False),
+          ("eager", True, keras_tensor._KERAS_TENSORS_ENABLED),
+          ("eager", False, keras_tensor._KERAS_TENSORS_ENABLED),
           ("eager", False, True),
       ])
 
@@ -281,8 +281,8 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     else:
       self.assertLen(l, 3)
       self.assertAllEqual(l, [
-          ("eager", True, False),
-          ("eager", False, False),
+          ("eager", True, keras_tensor._KERAS_TENSORS_ENABLED),
+          ("eager", False, keras_tensor._KERAS_TENSORS_ENABLED),
           ("eager", False, True),
       ])
 

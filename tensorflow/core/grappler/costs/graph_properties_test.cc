@@ -1008,7 +1008,7 @@ TEST_F(GraphPropertiesTest, IdentityPassingShape) {
 
 TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
   // When using aggressive_shape_inference, we run EvaluateNode() for
-  // whitelisted ops and small input / output tensors. For instance, Fill op is
+  // allowlisted ops and small input / output tensors. For instance, Fill op is
   // evaluated and produces output tensor value if output tensor size is smal
   // (currently, fewer than 17 elements); otherwise we don't run EvaluateNode().
   // This is to avoid wasting time and memory for producing huge tensors (e.g.,

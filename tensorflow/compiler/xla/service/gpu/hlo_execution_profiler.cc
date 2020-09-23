@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -97,26 +96,24 @@ void HloExecutionProfiler::StartHloInstruction() {
   }
 }
 
-void HloExecutionProfiler::FinishHloInstruction(
-    const HloInstruction* hlo_instruction) {
+void HloExecutionProfiler::FinishHloInstruction(size_t index) {
   if (do_profile_) {
-    hlo_instructions_.erase(hlo_instruction);
-    profile_->SetCyclesTakenBy(
-        hlo_instruction,
-        GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
+    indices_.erase(index);
+    profile_->SetCyclesTakenBy(index, GetCyclesTaken(&timers_, sub_streams_,
+                                                     stream_, clock_rate_ghz_));
   }
 }
 
 std::unique_ptr<ScopedInstructionProfiler>
 HloExecutionProfiler::MakeScopedInstructionProfiler(
-    const HloInstruction* hlo_instruction) {
-  if (do_profile_ && hlo_instruction != nullptr) {
+    absl::optional<int64> index) {
+  if (do_profile_ && index.has_value()) {
     // Make sure that we are not already measuring the time for the same
-    // 'hlo_instruction'.
-    CHECK(hlo_instructions_.insert(hlo_instruction).second)
-        << hlo_instruction->name();
+    // instruction.
+    // TODO(timshen): provide more useful printout.
+    CHECK(indices_.insert(*index).second) << *index;
   }
-  return absl::make_unique<ScopedInstructionProfiler>(this, hlo_instruction);
+  return absl::make_unique<ScopedInstructionProfiler>(this, index);
 }
 
 }  // namespace gpu

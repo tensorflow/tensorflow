@@ -72,8 +72,6 @@ class TensorShapeRep {
   std::string DebugString() const;
   static std::string DebugString(const TensorShapeProto& proto);
 
-  void DumpRep() const;  // XXX
-
  protected:
   // Constructable only via TensorShapeBase
   TensorShapeRep() = default;
@@ -333,6 +331,11 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // For access to TensorShapeBase(DataType).
   friend class Tensor;
 };
+
+/// Outputs `TensorShapeBase` to `std::ostream`.
+inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
+  return os << ts.DebugString();
+}
 
 /// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {

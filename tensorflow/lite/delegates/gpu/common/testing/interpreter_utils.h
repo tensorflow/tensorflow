@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"

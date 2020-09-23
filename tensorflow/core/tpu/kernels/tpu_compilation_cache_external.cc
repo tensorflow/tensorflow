@@ -16,15 +16,18 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_metrics.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/kernels/trace_util.h"
 
@@ -48,22 +51,21 @@ void PopulateEntry(const std::string& key, CompiledSubgraph* entry,
   entry->tpu_program_group =
       absl::make_unique<TpuProgramGroup>(std::move(tpu_program_group));
   entry->initialized = true;
+
+  if (entry->initialization_status.ok()) {
+    // Compute the entries total size once all members are initialized.
+    entry->total_size = entry->ComputeTotalSize();
+  }
+}
+
+std::unique_ptr<CompiledSubgraph> CreateAndInitializeCompiledSubgraph(
+    CompiledSubgraph* main_entry) {
+  auto entry = absl::make_unique<CompiledSubgraph>();
+  entry->main_entry = main_entry;
+  entry->tpu_program_group = absl::make_unique<TpuProgramGroup>();
+  return entry;
 }
 }  // namespace
-
-TpuCompilationCacheExternal::EntryRefImpl::EntryRefImpl(
-    TpuCompilationCacheInterface* parent, CompiledSubgraph* entry, int index)
-    : CompilationCacheEntryRefImpl<TpuCompilationCacheEntry>(parent, entry,
-                                                             index) {}
-
-TpuCompilationCacheEntry TpuCompilationCacheExternal::EntryRefImpl::get() {
-  if (entry_ == nullptr) {
-    // Create an empty entry if the entry is nullptr. This corresponds to
-    // non-existing sharding/unsharding entries.
-    return TpuCompilationCacheEntry();
-  }
-  return TpuCompilationCacheEntry(entry_->tpu_program_group.get(), index_);
-}
 
 CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
     const string& key,
@@ -73,7 +75,6 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
   main_entry->parent = this;
   main_entry->subgraph_key = key;
   main_entry->uid = get_uid();
-  // TODO(henrytan): implement TpuCompilationCacheKey.debug_string.
   main_entry->cache_entry_debug_string = subgraph_key.prefix;
   VLOG(1) << "Cache Initializing Entry Session Debug "
           << main_entry->cache_entry_debug_string;
@@ -112,17 +113,29 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
       std::pair<int64, CompiledSubgraph*>(main_entry->uid, main_entry));
   CHECK(uid_inserted.second);
 
-  if (initialization_status.ok()) {
-    // Compute the entries total size once all members are initialized.
-    main_entry->total_size = tpu_program_group.program_size();
+  if (tpu_program_group.has_sharding_program()) {
+    main_entry->sharding_entry =
+        CreateAndInitializeCompiledSubgraph(main_entry);
+    TpuProgramGroup sharding_programs;
+    sharding_programs.Initialize(
+        tpu_program_group.tpu_programs(TpuProgramShardingType::kSharding));
+    PopulateEntry(key, main_entry->sharding_entry.get(),
+                  std::move(sharding_programs));
+
+    main_entry->unsharding_entry =
+        CreateAndInitializeCompiledSubgraph(main_entry);
+    TpuProgramGroup unsharding_programs;
+    unsharding_programs.Initialize(
+        tpu_program_group.tpu_programs(TpuProgramShardingType::kUnsharding));
+    PopulateEntry(key, main_entry->unsharding_entry.get(),
+                  std::move(unsharding_programs));
   }
 
-  // TODO(henrytan): handle sharding/unsharding.
   PopulateEntry(key, main_entry, std::move(tpu_program_group));
 
   for (int64 i = 0; i < main_entry->proto_key.size(); ++i) {
     auto entry_inserted = entries_by_proto_key_.insert(
-        std::pair<string, std::pair<CompiledSubgraph*, int>>(
+        std::pair<std::string, std::pair<CompiledSubgraph*, int>>(
             main_entry->proto_key[i], std::make_pair(main_entry, i)));
     CHECK(entry_inserted.second);
   }

@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/interpreter_builder.h"
 
-#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
-#include <dlfcn.h>
-#endif
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,14 +27,11 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/tflite_with_xnnpack_optional.h"
+#include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
-
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-#include "tensorflow/lite/profiling/platform_profiler.h"
-#endif
 
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
@@ -117,15 +111,24 @@ const char* kEmptyTensorName = "";
 // For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
-#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
+#if !defined(__ANDROID__)
   // If _pywrap_tensorflow_internal.so is available, use
   // TF_AcquireFlexDelegate() to initialize flex delegate.
+  const char* filename_pywrap_tensorflow_internal =
+#if defined(_WIN32)
+      "_pywrap_tensorflow_internal.pyd";
+#elif defined(__APPLE__)
+      "python/_pywrap_tensorflow_internal.so";
+#else
+      "_pywrap_tensorflow_internal.so";
+#endif
   void* lib_tf_internal =
-      dlopen("_pywrap_tensorflow_internal.so", RTLD_NOW | RTLD_LOCAL);
+      SharedLibrary::LoadLibrary(filename_pywrap_tensorflow_internal);
   if (lib_tf_internal) {
     auto TF_AcquireFlexDelegate =
         reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
-            dlsym(lib_tf_internal, "TF_AcquireFlexDelegate"));
+            SharedLibrary::GetLibrarySymbol(lib_tf_internal,
+                                            "TF_AcquireFlexDelegate"));
     if (TF_AcquireFlexDelegate) {
       return TF_AcquireFlexDelegate();
     }
@@ -133,8 +136,6 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
 #endif
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
-
-namespace impl {
 
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
@@ -609,7 +610,12 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* buffers = model_->buffers();
 
   if (subgraphs->size() == 0) {
-    error_reporter_->Report("No subgraph in the model.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
+    return cleanup_and_error();
+  }
+
+  if (!buffers) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "No buffers in the model.\n");
     return cleanup_and_error();
   }
 
@@ -619,9 +625,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
 
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-  (*interpreter)->SetProfiler(tflite::profiling::CreatePlatformProfiler());
-#endif
+  (*interpreter)->SetProfiler(tflite::profiling::MaybeCreatePlatformProfiler());
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
@@ -630,10 +634,10 @@ TfLiteStatus InterpreterBuilder::operator()(
         (*interpreter)->subgraph(subgraph_index);
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
-    if (!operators || !tensors || !buffers) {
-      error_reporter_->Report(
-          "Did not get operators, tensors, or buffers in subgraph %d.\n",
-          subgraph_index);
+    if (!operators || !tensors) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Did not get operators or tensors in subgraph %d.\n",
+                           subgraph_index);
       return cleanup_and_error();
     }
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
@@ -663,8 +667,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   if (num_fp32_tensors_ > 0) {
-    (*interpreter)->lazy_delegate_provider_ =
-        MaybeCreateXNNPACKDelegate(num_threads);
+    (*interpreter)->lazy_delegate_providers_ =
+        op_resolver_.GetDelegates(num_threads);
   }
 
   if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)
@@ -672,7 +676,5 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   return kTfLiteOk;
 }
-
-}  // namespace impl
 
 }  // namespace tflite

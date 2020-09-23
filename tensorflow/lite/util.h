@@ -29,6 +29,12 @@ limitations under the License.
 
 namespace tflite {
 
+// Memory allocation parameter used by ArenaPlanner.
+// Clients (such as delegates) might look at this to ensure interop between
+// TFLite memory & hardware buffers.
+// NOTE: This only holds for tensors allocated on the arena.
+constexpr int kDefaultTensorAlignment = 64;
+
 // The prefix of Flex op custom code.
 // This will be matched agains the `custom_code` field in `OperatorCode`
 // Flatbuffer Table.

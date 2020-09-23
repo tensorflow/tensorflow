@@ -319,11 +319,11 @@ class ClusterSpec(object):
                       "job names to lists of network addresses, or a "
                       "`ClusterDef` protocol buffer")
 
-  def __nonzero__(self):
+  def __bool__(self):
     return bool(self._cluster_spec)
 
-  # Python 3.x
-  __bool__ = __nonzero__
+  # Python 2.x
+  __nonzero__ = __bool__
 
   def __eq__(self, other):
     return self._cluster_spec == other

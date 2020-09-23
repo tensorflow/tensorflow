@@ -26,8 +26,7 @@ namespace gpu {
 // Thunk that implements the ReplicaId HLO.
 class ReplicaIdThunk : public Thunk {
  public:
-  ReplicaIdThunk(const BufferAllocation::Slice& dest,
-                 const HloInstruction* instr);
+  ReplicaIdThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& dest);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 

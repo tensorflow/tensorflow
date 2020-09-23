@@ -59,8 +59,8 @@ class EmbeddingColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, embedding_column._parse_example_spec)
 
-  def test_blacklisted_column(self):
-    # HashedCategoricalColumn is blacklisted and so will raise an exception.
+  def test_denylisted_column(self):
+    # HashedCategoricalColumn is denylisted and so will raise an exception.
     categorical_column = fc_lib.categorical_column_with_hash_bucket(
         key='aaa', hash_bucket_size=3)
     embedding_dimension = 2
@@ -68,7 +68,7 @@ class EmbeddingColumnTest(test.TestCase):
       tpu_fc.embedding_column(categorical_column, dimension=embedding_dimension)
 
   def test_custom_column(self):
-    # This column is not in any whitelist but should succeed because
+    # This column is not in any allowlist but should succeed because
     # it inherits from V2 CategoricalColumn.
     categorical_column = fc_lib.categorical_column_with_identity(
         key='aaa', num_buckets=10)

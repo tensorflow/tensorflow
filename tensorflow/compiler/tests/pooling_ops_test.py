@@ -268,9 +268,6 @@ class PoolingTest(xla_test.XLATestCase):
         expected=[1, 3, 9, 11])
 
   # Average pooling
-  @test_util.disable_mlir_bridge("TODO(b/159812644): AvgPool TF to HLO lowering"
-                                 " doesn't support all paddings and data "
-                                 "formats")
   def testAvgPoolValidPadding(self):
     expected_output = [7, 8, 9]
     self._VerifyValues(
@@ -281,9 +278,6 @@ class PoolingTest(xla_test.XLATestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.disable_mlir_bridge("TODO(b/159812644): AvgPool TF to HLO lowering"
-                                 " doesn't support all paddings and data "
-                                 "formats")
   def testAvgPoolSamePadding(self):
     expected_output = [7., 8., 9., 11.5, 12.5, 13.5]
     self._VerifyValues(

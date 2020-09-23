@@ -9,8 +9,16 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
-    "tf_generate_proto_text_sources",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_generate_proto_text_sources")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -28,7 +36,7 @@ package(
 )
 
 # Export all header files for which we do not yet provide a dedicated build
-# rule. This avoids breading all the rules in tensorflow/core/BUILD.
+# rule. This avoids breaking all the rules in tensorflow/core/BUILD.
 exports_files(
     srcs = [
         "allocator_registry.h",
@@ -36,7 +44,7 @@ exports_files(
         "collective.h",
         "control_flow.h",
         "dataset.h",
-        "dataset_stateful_op_whitelist.h",
+        "dataset_stateful_op_allowlist.h",
         "device_base.h",
         "function.h",
         "function_handle_cache.h",
@@ -65,6 +73,7 @@ exports_files(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.h",
         "run_handler_util.h",
         "session_state.h",
@@ -163,7 +172,7 @@ filegroup(
         "common_shape_fns.h",
         "control_flow.h",
         "dataset.h",
-        "dataset_stateful_op_whitelist.h",
+        "dataset_stateful_op_allowlist.h",
         "device_base.h",
         "function.h",
         "function_handle_cache.h",
@@ -211,6 +220,7 @@ filegroup(
         "shared_ptr_variant.h",
         "stats_aggregator.h",
         "tensor.h",
+        "tensor_key.h",
         "tensor_reference.h",
         "tensor_shape.h",
         "tensor_slice.h",
@@ -290,6 +300,7 @@ filegroup(
         "resource_handle.h",
         "tensor.cc",
         "tensor.h",
+        "tensor_key.h",
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
@@ -325,7 +336,7 @@ filegroup(
         "control_flow.h",
         "dataset.cc",
         "dataset.h",
-        "dataset_stateful_op_whitelist.h",
+        "dataset_stateful_op_allowlist.h",
         "device_base.cc",
         "device_base.h",
         "function.cc",
@@ -380,6 +391,7 @@ filegroup(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.cc",
         "run_handler.h",
         "run_handler_util.cc",
@@ -425,7 +437,7 @@ filegroup(
     ],
 )
 
-# Individual targets. These should be prefered over tensorflow/core:framework
+# Individual targets. These should be preferred over tensorflow/core:framework
 # whenever possible.
 
 # This is redundant with the "tensorflow/core:framework" target. It's useful for
@@ -507,7 +519,7 @@ cc_library(
     srcs = ["tensor_testutil.cc"],
     hdrs = ["tensor_testutil.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -597,6 +609,7 @@ cc_library(
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
@@ -609,7 +622,6 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
@@ -618,7 +630,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core/platform:macros",
         "//third_party/eigen3",
@@ -674,7 +686,11 @@ cc_library(
     name = "type_index",
     hdrs = ["type_index.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = [
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(
@@ -937,6 +953,7 @@ cc_library(
 cc_library(
     name = "selective_registration",
     hdrs = ["selective_registration.h"],
+    deps = tf_selective_registration_deps(),
 )
 
 cc_library(
@@ -1034,6 +1051,7 @@ tf_cc_tests(
         "rendezvous_test.cc",
         "resource_mgr_test.cc",
         "resource_op_kernel_test.cc",
+        "selective_registration_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
         "tensor_shape_test.cc",
@@ -1087,9 +1105,9 @@ tf_cc_tests(
     ],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "op_gen_lib.h",
         "rendezvous.h",
     ],
@@ -1493,5 +1511,8 @@ tf_proto_library(
         ":types_proto",
         ":variable_proto",
         ":versions_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )

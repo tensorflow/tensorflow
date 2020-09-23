@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.core.util import event_pb2
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine.sequential import Sequential
 from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.layers.core import Activation
@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 
-class SummaryOpsTest(test_util.TensorFlowTestCase):
+class SummaryOpsTest(test.TestCase):
 
   def tearDown(self):
     super(SummaryOpsTest, self).tearDown()
@@ -50,7 +50,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     # the second event.
     return events[1]
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testKerasModel(self):
     model = Sequential(
         [Dense(10, input_shape=(100,)),
@@ -59,7 +59,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     first_val = event.summary.value[0]
     self.assertEqual(model.to_json(), first_val.tensor.string_val[0].decode())
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testKerasModel_usesDefaultStep(self):
     model = Sequential(
         [Dense(10, input_shape=(100,)),
@@ -72,7 +72,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       # Reset to default state for other tests.
       summary_ops.set_step(None)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testKerasModel_subclass(self):
 
     class SimpleSubclass(Model):
@@ -93,7 +93,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       self.assertRegex(
           str(mock_log.call_args), 'Model failed to serialize as JSON.')
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testKerasModel_otherExceptions(self):
     model = Sequential()
 

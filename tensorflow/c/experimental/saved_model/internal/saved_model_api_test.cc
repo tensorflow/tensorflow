@@ -16,15 +16,25 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_api.h"
+#include "tensorflow/c/experimental/saved_model/internal/saved_model_api_type.h"
+#include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace {
+
+using tensorflow::tstring;
 
 constexpr char kTestData[] = "cc/saved_model/testdata";
 const char* kServeTag[] = {"serve"};
@@ -92,11 +102,274 @@ TEST_P(CSavedModelAPITest, LoadsSavedModel) {
   TF_SavedModel* saved_model =
       TF_LoadSavedModel(model_dir.c_str(), ctx, status);
 
-  // TODO(bmzhao): Change this to expect TF_OK when loading is implemented.
-  // That unblocks writing other tests that require a TF_SavedModel*,
-  // like loading a ConcreteFunction. This test at least checks that the
-  // C API builds and can be minimally run.
-  EXPECT_EQ(TF_GetCode(status), TF_UNIMPLEMENTED);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TF_ConcreteFunction* compute_fn =
+      TF_GetSavedModelConcreteFunction(saved_model, "compute", status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  std::vector<TFE_TensorHandle*> compute_fn_inputs;
+  TFE_TensorHandle* input_a = TestScalarTensorHandle(ctx, 2.0f);
+  TFE_TensorHandle* input_b = TestScalarTensorHandle(ctx, 1.0f);
+  compute_fn_inputs.push_back(input_a);
+  compute_fn_inputs.push_back(input_b);
+
+  TFE_Op* compute_fn_op = TF_ConcreteFunctionMakeCallOp(
+      compute_fn, compute_fn_inputs.data(), compute_fn_inputs.size(), status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
+  // inputs + outputs a function has.
+  TFE_TensorHandle* compute_fn_outputs[1] = {nullptr};
+  int num_retvals = 1;
+
+  TFE_Execute(compute_fn_op, &compute_fn_outputs[0], &num_retvals, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TF_Tensor* result = TFE_TensorHandleResolve(compute_fn_outputs[0], status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  EXPECT_EQ(TF_NumDims(result), 0);
+  float output_value = *static_cast<float*>(TF_TensorData(result));
+  // (1 + 2) * (2 + 1) / 3 + 5 should be 8
+  EXPECT_FLOAT_EQ(output_value, 8.0);
+
+  TF_DeleteTensor(result);
+  TFE_DeleteTensorHandle(compute_fn_outputs[0]);
+  TFE_DeleteTensorHandle(input_a);
+  TFE_DeleteTensorHandle(input_b);
+  TFE_DeleteOp(compute_fn_op);
+  TF_DeleteSavedModel(saved_model);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
+TEST_P(CSavedModelAPITest, LoadsAssetSavedModel) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  bool use_tfrt = GetParam();
+  if (use_tfrt) {
+    TFE_DeleteContextOptions(opts);
+    TF_DeleteStatus(status);
+    GTEST_SKIP();  // TODO(chky) : Enable this once TFRT is open sourced.
+  }
+
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
+
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::string model_dir = SavedModelPath("AssetModule");
+
+  TF_SavedModel* saved_model =
+      TF_LoadSavedModel(model_dir.c_str(), ctx, status);
+
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TF_ConcreteFunction* read_file_fn =
+      TF_GetSavedModelConcreteFunction(saved_model, "read_file", status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TFE_Op* read_file_op =
+      TF_ConcreteFunctionMakeCallOp(read_file_fn, nullptr, 0, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
+  // inputs + outputs a function has.
+  TFE_TensorHandle* read_file_fn_outputs[1] = {nullptr};
+  int num_retvals = 1;
+
+  TFE_Execute(read_file_op, &read_file_fn_outputs[0], &num_retvals, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TF_Tensor* result = TFE_TensorHandleResolve(read_file_fn_outputs[0], status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  EXPECT_EQ(TF_NumDims(result), 0);
+  tensorflow::tstring* output_value =
+      static_cast<tensorflow::tstring*>(TF_TensorData(result));
+  EXPECT_EQ(std::string(*output_value), "TEST ASSET FILE CONTENTS\n");
+
+  TF_DeleteTensor(result);
+  TFE_DeleteTensorHandle(read_file_fn_outputs[0]);
+  TFE_DeleteOp(read_file_op);
+  TF_DeleteSavedModel(saved_model);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
+TEST_P(CSavedModelAPITest, LoadsStaticHashtableSavedModel) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  bool use_tfrt = GetParam();
+  if (use_tfrt) {
+    TFE_DeleteContextOptions(opts);
+    TF_DeleteStatus(status);
+    GTEST_SKIP();  // TODO(chky) : Enable this once TFRT is open sourced.
+  }
+
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
+
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::string model_dir = SavedModelPath("StaticHashTableModule");
+
+  TF_SavedModel* saved_model =
+      TF_LoadSavedModel(model_dir.c_str(), ctx, status);
+
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TF_ConcreteFunction* lookup_fn =
+      TF_GetSavedModelConcreteFunction(saved_model, "lookup", status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  // Note(bmzhao): Based on static_hashtable_asset.txt, we expect the following
+  // mapping:
+  // "foo" -> 0
+  // "bar" -> 1
+  // "baz" -> 2
+  // "wombat" -> 3
+  // all other strings -> -1
+
+  // Call lookup function with input "foo", expecting an output of 0
+  {
+    std::vector<TFE_TensorHandle*> lookup_fn_inputs;
+    TFE_TensorHandle* input_foo = TestScalarTensorHandle(ctx, tstring("foo"));
+    lookup_fn_inputs.push_back(input_foo);
+
+    TFE_Op* lookup_op = TF_ConcreteFunctionMakeCallOp(
+        lookup_fn, lookup_fn_inputs.data(), lookup_fn_inputs.size(), status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
+    // inputs + outputs a function has.
+    TFE_TensorHandle* lookup_fn_outputs[1] = {nullptr};
+    int num_retvals = 1;
+
+    TFE_Execute(lookup_op, &lookup_fn_outputs[0], &num_retvals, status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    TF_Tensor* result = TFE_TensorHandleResolve(lookup_fn_outputs[0], status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    EXPECT_EQ(TF_NumDims(result), 0);
+    tensorflow::int64* output_value =
+        static_cast<tensorflow::int64*>(TF_TensorData(result));
+    EXPECT_EQ(*output_value, 0);
+
+    TF_DeleteTensor(result);
+    TFE_DeleteTensorHandle(input_foo);
+    TFE_DeleteTensorHandle(lookup_fn_outputs[0]);
+    TFE_DeleteOp(lookup_op);
+  }
+
+  // Call lookup function with input "baz", expecting an output of 2
+  {
+    std::vector<TFE_TensorHandle*> lookup_fn_inputs;
+    TFE_TensorHandle* input_foo = TestScalarTensorHandle(ctx, tstring("baz"));
+    lookup_fn_inputs.push_back(input_foo);
+
+    TFE_Op* lookup_op = TF_ConcreteFunctionMakeCallOp(
+        lookup_fn, lookup_fn_inputs.data(), lookup_fn_inputs.size(), status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
+    // inputs + outputs a function has.
+    TFE_TensorHandle* lookup_fn_outputs[1] = {nullptr};
+    int num_retvals = 1;
+
+    TFE_Execute(lookup_op, &lookup_fn_outputs[0], &num_retvals, status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    TF_Tensor* result = TFE_TensorHandleResolve(lookup_fn_outputs[0], status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    EXPECT_EQ(TF_NumDims(result), 0);
+    tensorflow::int64* output_value =
+        static_cast<tensorflow::int64*>(TF_TensorData(result));
+    EXPECT_EQ(*output_value, 2);
+
+    TF_DeleteTensor(result);
+    TFE_DeleteTensorHandle(input_foo);
+    TFE_DeleteTensorHandle(lookup_fn_outputs[0]);
+    TFE_DeleteOp(lookup_op);
+  }
+
+  // Call lookup function w/input "NON-EXISTENT-KEY", expecting an output of -1
+  {
+    std::vector<TFE_TensorHandle*> lookup_fn_inputs;
+    TFE_TensorHandle* input_foo =
+        TestScalarTensorHandle(ctx, tstring("NON-EXISTENT-KEY"));
+    lookup_fn_inputs.push_back(input_foo);
+
+    TFE_Op* lookup_op = TF_ConcreteFunctionMakeCallOp(
+        lookup_fn, lookup_fn_inputs.data(), lookup_fn_inputs.size(), status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
+    // inputs + outputs a function has.
+    TFE_TensorHandle* lookup_fn_outputs[1] = {nullptr};
+    int num_retvals = 1;
+
+    TFE_Execute(lookup_op, &lookup_fn_outputs[0], &num_retvals, status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    TF_Tensor* result = TFE_TensorHandleResolve(lookup_fn_outputs[0], status);
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+    EXPECT_EQ(TF_NumDims(result), 0);
+    tensorflow::int64* output_value =
+        static_cast<tensorflow::int64*>(TF_TensorData(result));
+    EXPECT_EQ(*output_value, -1);
+
+    TF_DeleteTensor(result);
+    TFE_DeleteTensorHandle(input_foo);
+    TFE_DeleteTensorHandle(lookup_fn_outputs[0]);
+    TFE_DeleteOp(lookup_op);
+  }
+
+  TF_DeleteSavedModel(saved_model);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
+TEST_P(CSavedModelAPITest, LoadSavedModelWithUninitializedVariable) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  bool use_tfrt = GetParam();
+  if (use_tfrt) {
+    TFE_DeleteContextOptions(opts);
+    TF_DeleteStatus(status);
+    GTEST_SKIP();  // TODO(chky) : Enable this once TFRT is open sourced.
+  }
+
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
+
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::string model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(),
+      "c/experimental/saved_model/internal/testdata/UninitializedVariable");
+
+  TF_SavedModel* saved_model =
+      TF_LoadSavedModel(model_dir.c_str(), ctx, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  tensorflow::TFSavedModelAPI* model_api =
+      tensorflow::down_cast<tensorflow::TFSavedModelAPI*>(
+          tensorflow::unwrap(saved_model));
+  tensorflow::Variable* uninitialized_variable;
+  ASSERT_EQ(tensorflow::Status::OK(),
+            model_api->GetVariable("uninitialized_variable",
+                                   &uninitialized_variable));
+  ASSERT_EQ(tensorflow::DT_FLOAT, uninitialized_variable->dtype());
+
+  ASSERT_EQ(tensorflow::Status::OK(),
+            model_api->GetVariable("sub_module.uninitialized_variable",
+                                   &uninitialized_variable));
+  ASSERT_EQ(tensorflow::DT_INT64, uninitialized_variable->dtype());
 
   TF_DeleteSavedModel(saved_model);
   TF_DeleteStatus(status);

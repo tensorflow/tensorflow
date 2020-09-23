@@ -21,7 +21,9 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:filecheck-lib",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:StandardOps",
         "@pybind11",
     ],
@@ -36,6 +38,7 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:filecheck-lib",
         "@pybind11",
     ],
 )

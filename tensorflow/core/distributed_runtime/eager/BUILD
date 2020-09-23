@@ -1,3 +1,9 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -44,6 +50,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:worker_session",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
     ],

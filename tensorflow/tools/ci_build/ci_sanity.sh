@@ -96,8 +96,8 @@ do_pylint() {
   #   --incremental  Performs check on only the python files changed in the
   #                  last non-merge git commit.
 
-  # Use this list to whitelist pylint errors
-  ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
+  # Use this list to allowlist pylint errors
+  ERROR_ALLOWLIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
 "^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
 "^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
@@ -109,13 +109,15 @@ do_pylint() {
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/engine/base_layer.py.*\[E1102.*not-callable "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
 "^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
-"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "
+"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "\
+"^tensorflow/\.py.*\[C0326.*bad-whitespace.*No space allowed around keyword argument assignment "
 
-  echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
+  echo "ERROR_ALLOWLIST=\"${ERROR_ALLOWLIST}\""
 
   if [[ $# != "0" ]]  && [[ $# != "1" ]]; then
     echo "Invalid syntax when invoking do_pylint"
@@ -124,6 +126,22 @@ do_pylint() {
   fi
 
   PYLINT_BIN="python3 -m pylint"
+
+  echo ""
+  echo "check whether pylint is available or not."
+  echo ""
+  ${PYLINT_BIN} --version
+  if [[ $? -eq 0 ]]
+  then
+    echo ""
+    echo "pylint available, proceeding with pylint sanity check."
+    echo ""
+  else
+    echo ""
+    echo "pylint not available." >&2
+    echo ""
+    return 1
+  fi
 
   if [[ "$1" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
@@ -195,16 +213,16 @@ do_pylint() {
 
   N_ERRORS=0
   while read -r LINE; do
-    IS_WHITELISTED=0
-    for WL_REGEX in ${ERROR_WHITELIST}; do
+    IS_ALLOWLISTED=0
+    for WL_REGEX in ${ERROR_ALLOWLIST}; do
       if echo ${LINE} | grep -q "${WL_REGEX}"; then
-        echo "Found a whitelisted error:"
+        echo "Found an allowlisted error:"
         echo "  ${LINE}"
-        IS_WHITELISTED=1
+        IS_ALLOWLISTED=1
       fi
     done
 
-    if [[ ${IS_WHITELISTED} == "0" ]]; then
+    if [[ ${IS_ALLOWLISTED} == "0" ]]; then
       echo "${LINE}" >> ${NONWL_ERRORS_FILE}
       echo "" >> ${NONWL_ERRORS_FILE}
       ((N_ERRORS++))
@@ -213,11 +231,11 @@ do_pylint() {
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-whitelisted pylint errors:"
+    echo "FAIL: Found ${N_ERRORS} non-allowlisted pylint errors:"
     cat "${NONWL_ERRORS_FILE}"
     return 1
   else
-    echo "PASS: No non-whitelisted pylint errors were found."
+    echo "PASS: No non-allowlisted pylint errors were found."
     return 0
   fi
 }
@@ -355,7 +373,7 @@ do_external_licenses_check(){
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
-  # Blacklist
+  # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
     -e "@bazel_tools//third_party/" \
@@ -370,7 +388,7 @@ do_external_licenses_check(){
     -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
-  # Whitelist
+  # Allowlist
   echo ${EXTRA_LICENSE_FILE}
   grep \
     -e "//third_party/mkl" \

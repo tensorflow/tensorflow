@@ -99,12 +99,14 @@ class QuantizationDriver {
  public:
   explicit QuantizationDriver(FuncOp fn, bool is_signed,
                               bool disable_per_channel,
-                              OpQuantSpecGetter op_quant_spec_getter)
+                              OpQuantSpecGetter op_quant_spec_getter,
+                              bool enforce_fixed_output_range)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
         disable_per_channel_(disable_per_channel),
-        op_quant_spec_getter_(op_quant_spec_getter) {}
+        op_quant_spec_getter_(op_quant_spec_getter),
+        enforce_fixed_output_range_(enforce_fixed_output_range) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -354,6 +356,8 @@ class QuantizationDriver {
   llvm::SmallVector<BlockArgument, 4> args_;
 
   OpQuantSpecGetter op_quant_spec_getter_;
+
+  bool enforce_fixed_output_range_;
 };
 }  // namespace
 
@@ -646,15 +650,12 @@ void QuantizationDriver::PreprocessConstantOps() {
       Operation *user = use.getOwner();
       int operand_num = use.getOperandNumber();
 
-      // Only duplicate if there are more than one use.
-      if (indexed_use.index() > 0) {
-        cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
-      }
-
       if (biases.find(operand_num) == biases.end() &&
-          !llvm::dyn_cast<mlir::SameScalesOpInterface>(user)) {
+          !llvm::dyn_cast<mlir::SameScalesOpInterface>(user) &&
+          !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
         // Needs to scan the content to get the quantiztion parameters if there
         // are no quantization parameters (FakeQuant ops).
+        // For this case, the weight isn't duplicated.
         weights_.insert(cst);
         auto affine_user =
             llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
@@ -668,6 +669,10 @@ void QuantizationDriver::PreprocessConstantOps() {
         // This is a bias, so the quantization parameter isn't determined by the
         // local content. Same if the user can have quantization parameter
         // propagated from other places.
+        // Duplicate this constant in case it is shared by different users.
+        if (indexed_use.index() > 0) {
+          cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+        }
         user->setOperand(operand_num, cst);
       }
     }
@@ -693,8 +698,7 @@ void QuantizationDriver::SetupAllStates() {
   fn_.walk([&](Operation *op) {
     if (op->isKnownTerminator() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::DequantizeCastOp>(op) ||
-        llvm::isa<quant::QuantizeCastOp>(op))
+        llvm::isa<quant::DequantizeCastOp, quant::QuantizeCastOp>(op))
       return;
     work_list_.push_back(op);
 
@@ -794,16 +798,19 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
-    auto spec = GetQuantSpec(op);
-    auto key = std::make_pair(8, is_signed_);
-    auto &restricted_outputs = spec->restricted_output_params[key];
-    for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
-      // The restrict can be nullptr if the result has been quantized.
-      if (auto params = restricted_outputs[i]) {
-        changed |= SetResultParams(op, i, params);
+    auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op);
+    if (restricted && enforce_fixed_output_range_) {
+      // TODO(fengliuai): different result can have different fixed range.
+      auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
+      for (auto i = 0; i < op->getNumResults(); ++i) {
+        // The range is null if the result has been quantized.
+        if (params) {
+          changed |= SetResultParams(op, i, params);
+        }
       }
     }
 
+    auto spec = GetQuantSpec(op);
     for (auto &it : spec->biases_params) {
       auto params =
           GetBiasParams(op, it.first, it.second.first, it.second.second);
@@ -862,10 +869,12 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(
-    mlir::FuncOp func, bool is_signed, bool disable_per_channel,
-    OpQuantSpecGetter op_quant_spec_getter) {
-  QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter)
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+                                        bool disable_per_channel,
+                                        OpQuantSpecGetter op_quant_spec_getter,
+                                        bool post_training_quantization) {
+  QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
+                     post_training_quantization)
       .Run();
 }
 

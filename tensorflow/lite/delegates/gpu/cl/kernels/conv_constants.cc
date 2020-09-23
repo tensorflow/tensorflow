@@ -26,36 +26,48 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+// Adreno can provide up to ~3-4KB of constant memory, but in some cases even
+// 3KB can have very bad performance.
+int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
+  if (gpu_version < 600) {
+    return 256 * 10;  // 2.5KB
+  } else {
+    return 256 * 14;  // 3.5KB
+  }
+}
+
+int GetOptimalMaxConstantSize(const DeviceInfo& info) {
+  if (!info.IsAdreno()) {
+    // In general we do not expect that this kernel will be used with non Adreno
+    // so as it tuned for __constant memory that have big profit on Adreno
+    return 1024;  // 1KB
+  } else {
+    return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
+  }
+}
 
 std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
-                                            const int2& kernel_size,
-                                            int src_channels, int dst_channels,
+                                            const OHWI& weights_shape,
                                             bool stride_correction,
-                                            const CLDevice& device,
-                                            Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
+                                            GPUOperation* op) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  op->AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    dst_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  args->AddInt("stride_x");
-  args->AddInt("stride_y");
-  args->AddInt("padding_x");
-  args->AddInt("padding_y");
-  args->AddInt("dilation_x");
-  args->AddInt("dilation_y");
+  op->AddDstTensor("dst_tensor", dst_desc);
 
   std::string c = GetCommonDefines(op_def.precision);
 
-  const int out_z = DivideRoundUp(dst_channels, 4);
+  const int out_z = DivideRoundUp(weights_shape.o, 4);
   const std::string kOutZ = std::to_string(out_z);
-  const int src_depth = DivideRoundUp(src_channels, 4);
+  const int src_depth = DivideRoundUp(weights_shape.i, 4);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
@@ -109,11 +121,16 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
        "return;\n";
   if (stride_correction) {
     c += "  int start_x = " +
-         GetXStrideCorrected("X", "args.src_tensor.Batch()", "args.stride_x",
-                             "args.padding_x") +
+         GetXStrideCorrectedV2("X", "args.src_tensor.Batch()", "args.stride_x",
+                               "args.padding_x") +
          ";\n";
   } else {
-    c += "  int start_x = X * args.stride_x + args.padding_x;\n";
+    if (op_def.IsBatchSupported()) {
+      c += "  int start_x = X * args.stride_x + args.padding_x * "
+           "args.src_tensor.Batch();\n";
+    } else {
+      c += "  int start_x = X * args.stride_x + args.padding_x;\n";
+    }
   }
   c += "  int start_y = Y * args.stride_y + args.padding_y;\n";
   c += "  ACCUM_FLT4 r[" + kOutZ + "];\n";
@@ -122,22 +139,25 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
   c += "  }\n";
   int filters_counter = 0;
   for (int s = 0; s < src_depth; ++s) {
-    const int ch_count = std::min(4, src_channels - s * 4);
+    const int ch_count = std::min(4, weights_shape.i - s * 4);
     const std::string s_conv = "CONV" + std::to_string(ch_count);
     const std::string s_count = ch_count == 1 ? "" : std::to_string(ch_count);
     const std::string s_type = absl::StrCat("FLT", s_count);
     const std::string s_postfix = postfixes[ch_count - 1];
-    for (int ky = 0; ky < kernel_size.y; ++ky) {
+    const std::string dilation_x =
+        op_def.IsBatchSupported() ? "args.dilation_x * args.src_tensor.Batch()"
+                                  : "args.dilation_x";
+    for (int ky = 0; ky < weights_shape.h; ++ky) {
       std::string s_y = absl::StrCat("(start_y + ", ky, " * args.dilation_y)");
       if (manual_clamp) {
         c += "  {\n";
         c += "  bool y_out = " + s_y + " < 0 || " + s_y +
              " >= args.src_tensor.Height();\n";
       }
-      for (int kx = 0; kx < kernel_size.x; ++kx) {
+      for (int kx = 0; kx < weights_shape.w; ++kx) {
         c += "  {\n";
         std::string s_x =
-            absl::StrCat("(start_x + ", kx, " * args.dilation_x)");
+            absl::StrCat("(start_x + ", kx, " * " + dilation_x + ")");
         if (manual_clamp) {
           c += "    bool x_out = " + s_x + "< 0 || " + s_x +
                ">= args.src_tensor.Width();\n";
@@ -173,113 +193,13 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
   return c;
 }
 
-// Adreno can provide up to ~3-4KB of constant memory, but in some cases even
-// 3KB can have very bad performance.
-int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
-  if (gpu_version < 600) {
-    return 256 * 10;  // 2.5KB
-  } else {
-    return 256 * 14;  // 3.5KB
-  }
-}
-
-int GetOptimalMaxConstantSize(const DeviceInfo& info) {
-  if (info.vendor != Vendor::QUALCOMM) {
-    // In general we do not expect that this kernel will be used with non Adreno
-    // so as it tuned for __constant memory that have big profit on Adreno
-    return 1024;  // 1KB
-  } else {
-    return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
-  }
-}
 }  // namespace
 
-ConvConstants::ConvConstants(ConvConstants&& kernel)
-    : GPUOperation(std::move(kernel)),
-      kernel_size_(kernel.kernel_size_),
-      stride_(kernel.stride_),
-      padding_(kernel.padding_),
-      dilation_(kernel.dilation_),
-      src_channels_(kernel.src_channels_),
-      dst_channels_(kernel.dst_channels_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
-
-ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
-  if (this != &kernel) {
-    std::swap(kernel_size_, kernel.kernel_size_);
-    std::swap(stride_, kernel.stride_);
-    std::swap(padding_, kernel.padding_);
-    std::swap(dilation_, kernel.dilation_);
-    std::swap(src_channels_, kernel.src_channels_);
-    std::swap(dst_channels_, kernel.dst_channels_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-absl::Status ConvConstants::Compile(const CreationContext& creation_context) {
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code = GenerateConvolutionConstantCode(
-      definition_, kernel_size_, src_channels_, dst_channels_,
-      stride_correction, *creation_context.device, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsAdreno3xx()) {
-    options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
-  }
-  if (definition_.precision != CalculationsPrecision::F32 &&
-      creation_context.device->IsPowerVR()) {
-    // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    options.push_back(CompilerOptions::CL_OPT_DISABLE);
-  }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status ConvConstants::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
-  RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
-  RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
-  RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
-  RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
-  RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
-}
-
-int3 ConvConstants::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  return int3(grid_x, grid_y, 1);
-}
-
-absl::Status ConvConstants::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-bool IsConvConstantsSupported(const CLDevice& device,
+bool IsConvConstantsSupported(const DeviceInfo& device_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (device.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
+  if (device_info.IsAMD() &&
+      definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
     // BUG, some AMD gpus crashe without it
     return false;
@@ -292,34 +212,46 @@ bool IsConvConstantsSupported(const CLDevice& device,
                              ? sizeof(float)
                              : sizeof(half);
   const int filters_buffer_size = filters_count * float_size;
-  const int kConstantMaxSize = GetOptimalMaxConstantSize(device.GetInfo());
+  const int kConstantMaxSize = GetOptimalMaxConstantSize(device_info);
   const int flt4_registers = DivideRoundUp(w_shape.o, 4);
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
 
-absl::Status CreateConvConstants(const CreationContext& creation_context,
+GPUOperation CreateConvConstants(const DeviceInfo& device_info,
                                  const OperationDef& definition,
-                                 const Convolution2DAttributes& attr,
-                                 ConvConstants* result) {
-  if (!IsConvConstantsSupported(*creation_context.device, definition, attr)) {
-    return absl::InvalidArgumentError("ConvConstants doesn't supported");
+                                 const Convolution2DAttributes& attr) {
+  GPUOperation op(definition);
+  UploadWeightsForConvConstants(attr.weights, definition.precision, &op);
+  op.args_.AddInt("stride_x", attr.strides.w);
+  op.args_.AddInt("stride_y", attr.strides.h);
+  op.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  op.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  op.args_.AddInt("dilation_x", attr.dilations.w);
+  op.args_.AddInt("dilation_y", attr.dilations.h);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
+
+  const bool stride_correction =
+      definition.IsBatchSupported() && attr.strides.w != 1;
+  op.code_ = GenerateConvolutionConstantCode(definition, attr.weights.shape,
+                                             stride_correction, &op);
+  if (definition.precision == CalculationsPrecision::F16 &&
+      device_info.IsAdreno3xx()) {
+    op.compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
-  *result = ConvConstants(definition, attr);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+  if (definition.precision != CalculationsPrecision::F32 &&
+      device_info.IsPowerVR()) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::BUFFER;
   desc.element_type = definition.GetDataType();
   desc.memory_type = MemoryType::CONSTANT;
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(attr.bias);
+  op.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return op;
 }
 
 }  // namespace cl

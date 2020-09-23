@@ -89,6 +89,16 @@ def _find_originating_frame(caller_fn_scope, innermost=True):
   return result
 
 
+def locals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_locals
+
+
+def globals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_globals
+
+
 def eval_in_original_context(f, args, caller_fn_scope):
   """Executes the eval function in the context of a specified function."""
   # When control flow is rewritten using functions, eval should use the
@@ -501,7 +511,7 @@ def next_tf_iterator(iterator, default=UNSPECIFIED):
     # Without a default, fall back to the "normal" behavior which raises
     # a runtime exception.
     return next(iterator)
-  opt_iterate = iterator_ops.get_next_as_optional(iterator)
+  opt_iterate = iterator.get_next_as_optional()
   _verify_structure_compatible(
       'the default argument', 'the iterate', default, iterator.element_spec)
   return control_flow_ops.cond(

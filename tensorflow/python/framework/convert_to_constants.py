@@ -612,12 +612,14 @@ class _While(_FunctionCaller):
   def convert_variable_to_constant(self, incoming_edge, tensor_data):
     super(_While, self).convert_variable_to_constant(incoming_edge, tensor_data)
     node = self.converted_self()
-    node.node.attr["output_shapes"].list.shape[
-        incoming_edge.destination.index].CopyFrom(
-            tensor_shape_pb2.TensorShapeProto(dim=[
-                tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
-                for dim in tensor_data.numpy.shape
-            ]))
+    if node.node.attr["output_shapes"].list.shape:
+      node.node.attr["output_shapes"].list.shape[
+          incoming_edge.destination.index].CopyFrom(
+              tensor_shape_pb2.TensorShapeProto(dim=[
+                  tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
+                  for dim in tensor_data.numpy.shape
+              ]))
+
     # The while's body inputs and outputs have the same type, so here we can go
     # ahead and change that function's output type.
     body_name = self._node.attr["body"].func.name
@@ -710,13 +712,13 @@ class _ConverterData(object):
 
   def __init__(self,
                graph_def,
-               variable_names_whitelist=None,
-               variable_names_blacklist=None):
+               variable_names_allowlist=None,
+               variable_names_denylist=None):
     self._graph_def = graph_def
     self._tensor_data = {}
     self._build_node_defs_list()
-    self._variable_names_whitelist = variable_names_whitelist
-    self._variable_names_blacklist = variable_names_blacklist
+    self._variable_names_allowlist = variable_names_allowlist
+    self._variable_names_denylist = variable_names_denylist
 
   @property
   def graph_def(self):
@@ -740,10 +742,10 @@ class _ConverterData(object):
 
   def _should_convert(self, name):
     """Checks whether to convert the given variable name to a constant."""
-    return (self._variable_names_whitelist is None or
-            name in self._variable_names_whitelist) and (
-                self._variable_names_blacklist is None or
-                name not in self._variable_names_blacklist)
+    return (self._variable_names_allowlist is None or
+            name in self._variable_names_allowlist) and (
+                self._variable_names_denylist is None or
+                name not in self._variable_names_denylist)
 
   def _build_node_defs_list(self):
     """Builds the list of NodeDefs in the GraphDef.
@@ -776,8 +778,8 @@ class _FunctionConverterData(_ConverterData):
                func,
                lower_control_flow,
                aggressive_inlining,
-               variable_names_whitelist=None,
-               variable_names_blacklist=None):
+               variable_names_allowlist=None,
+               variable_names_denylist=None):
     """Creates the conversion data for the given function.
 
     Args:
@@ -787,9 +789,9 @@ class _FunctionConverterData(_ConverterData):
       aggressive_inlining: Boolean indicating whether or not to to aggressive
         function inlining (might be unsafe if function has stateful ops, not
         properly connected to control outputs).
-      variable_names_whitelist: The set of variable names to convert (by
+      variable_names_allowlist: The set of variable names to convert (by
         default, all variables are converted).
-      variable_names_blacklist: The set of variable names to omit converting to
+      variable_names_denylist: The set of variable names to omit converting to
         constants.
     """
 
@@ -799,8 +801,8 @@ class _FunctionConverterData(_ConverterData):
                                                aggressive_inlining)
     super(_FunctionConverterData, self).__init__(
         graph_def,
-        variable_names_whitelist=variable_names_whitelist,
-        variable_names_blacklist=variable_names_blacklist)
+        variable_names_allowlist=variable_names_allowlist,
+        variable_names_denylist=variable_names_denylist)
     self._build_tensor_data()
 
   def _build_tensor_data(self):
@@ -849,13 +851,13 @@ class _SessionConverterData(_ConverterData):
                session,
                graph_def,
                output_node_names,
-               variable_names_whitelist=None,
-               variable_names_blacklist=None):
+               variable_names_allowlist=None,
+               variable_names_denylist=None):
     graph_def = graph_util.extract_sub_graph(graph_def, output_node_names)
     super(_SessionConverterData, self).__init__(
         graph_def,
-        variable_names_whitelist=variable_names_whitelist,
-        variable_names_blacklist=variable_names_blacklist)
+        variable_names_allowlist=variable_names_allowlist,
+        variable_names_denylist=variable_names_denylist)
 
     nodes_to_convert = []
     tensor_names_to_convert = []
@@ -1114,8 +1116,8 @@ def convert_variables_to_constants_from_session_graph(
     session,
     graph_def,
     output_node_names,
-    variable_names_whitelist=None,
-    variable_names_blacklist=None):
+    variable_names_allowlist=None,
+    variable_names_denylist=None):
   """Replaces all the variables in a graph with constants of the same values.
 
   This function works similarly to convert_variables_to_constants_v2, but it
@@ -1129,9 +1131,9 @@ def convert_variables_to_constants_from_session_graph(
     session: Active TensorFlow session containing the variables.
     graph_def: A GraphDef to convert.
     output_node_names: List of name strings for the result nodes of the graph.
-    variable_names_whitelist: The set of variable names to convert (by default,
+    variable_names_allowlist: The set of variable names to convert (by default,
       all variables are converted).
-    variable_names_blacklist: The set of variable names to omit converting to
+    variable_names_denylist: The set of variable names to omit converting to
       constants.
 
   Returns:
@@ -1142,6 +1144,6 @@ def convert_variables_to_constants_from_session_graph(
           session=session,
           graph_def=graph_def,
           output_node_names=output_node_names,
-          variable_names_whitelist=variable_names_whitelist,
-          variable_names_blacklist=variable_names_blacklist))
+          variable_names_allowlist=variable_names_allowlist,
+          variable_names_denylist=variable_names_denylist))
   return graph_def

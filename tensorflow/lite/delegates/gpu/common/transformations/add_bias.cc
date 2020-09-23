@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -48,6 +53,11 @@ class AddBias : public NodeTransformation {
  public:
   TransformResult ApplyToNode(Node* node, GraphFloat32* graph) final {
     if (node->operation.type == ToString(OperationType::CONVOLUTION_2D)) {
+      if (graph->FindInputs(node->id).size() != 1) {
+        return {TransformStatus::DECLINED,
+                "This transformation is only applicable to conv with one "
+                "runtime input."};
+      }
       auto& attr =
           absl::any_cast<Convolution2DAttributes&>(node->operation.attributes);
       return FillBias(attr.weights.shape.o, &attr.bias);

@@ -22,6 +22,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
@@ -31,7 +32,6 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale as k
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import keras_export
@@ -48,6 +48,8 @@ class _UnwrapPreventer(object):
   TODO(reedwm): Find/implement a better way of preventing values from being
   unwrapped by DistributionStrategy
   """
+
+  __slots__ = ['value']
 
   def __init__(self, value):
     self.value = value
@@ -140,8 +142,8 @@ class _DelegatingTrackableMixin(object):
     return self._trackable._add_variable_with_custom_getter(
         name, shape, dtype, initializer, getter, overwrite, **kwargs_for_getter)
 
-  def _preload_simple_restoration(self, name, shape):
-    return self._trackable._preload_simple_restoration(name, shape)
+  def _preload_simple_restoration(self, name):
+    return self._trackable._preload_simple_restoration(name)
 
   def _track_trackable(self, trackable, name, overwrite=False):  # pylint: disable=redefined-outer-name
     return self._trackable._track_trackable(trackable, name, overwrite)
@@ -246,19 +248,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     if not isinstance(optimizer, optimizer_v2.OptimizerV2):
       raise ValueError('"optimizer" must be an instance of OptimizerV2, but '
                        'got: %s' % optimizer)
-    if optimizer.clipnorm is not None:
-      raise ValueError('LossScaleOptimizer does not support wrapping '
-                       'optimizers with a clipnorm. Optimizer %s has clipnorm '
-                       '%s' % (optimizer, optimizer.clipnorm))
-
-    if optimizer.clipvalue is not None:
-      raise ValueError('LossScaleOptimizer does not support wrapping '
-                       'optimizers with a clipvalue. Optimizer %s has '
-                       'clipvalue %s' % (optimizer, optimizer.clipvalue))
     self._raise_if_strategy_unsupported()
-
-    self.clipnorm = None
-    self.clipvalue = None
 
     self._optimizer = optimizer
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
@@ -269,7 +259,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # constructor.
     _DelegatingTrackableMixin.__init__(self, self._optimizer)
 
-    for weight in loss_scale_module.get_loss_scale_weights(self._loss_scale):
+    for weight in self._loss_scale._weights.values():  # pylint: disable=protected-access
       # We cannot call `track_variable` in the LossScale class itself, because a
       # file outside of Keras cannot depend on a Keras file. Calling it here
       # instead is OK, because a variable only needs to be tracked if used with
@@ -347,10 +337,15 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         for g in grads
     ]
 
-  def _compute_gradients(self, loss, var_list, grad_loss=None):
-    loss = self.get_scaled_loss(loss)
-    grads_and_vars = self._optimizer._compute_gradients(loss, var_list,  # pylint: disable=protected-access
-                                                        grad_loss)
+  def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
+    tape = backprop.GradientTape() if tape is None else tape
+    with tape:
+      loss = self.get_scaled_loss(loss)
+    grads_and_vars = self._optimizer._compute_gradients(  # pylint: disable=protected-access
+        loss,
+        var_list,
+        grad_loss,
+        tape=tape)
     grads = [g for g, _ in grads_and_vars]
     variables = [v for _, v in grads_and_vars]
     unscaled_grads = self.get_unscaled_gradients(grads)
@@ -405,8 +400,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # DistributionStrategy does not support having a cond in a replica context
     # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
     # calls `merge_call`.
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads,
-                                           apply_fn,
+    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
                                            do_not_apply_fn)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
@@ -479,6 +473,30 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 
   def set_weights(self, weights):
     return self._optimizer.set_weights(weights)
+
+  @property
+  def clipnorm(self):
+    return self._optimizer.clipnorm
+
+  @clipnorm.setter
+  def clipnorm(self, val):
+    self._optimizer.clipnorm = val
+
+  @property
+  def global_clipnorm(self):
+    return self._optimizer.global_clipnorm
+
+  @global_clipnorm.setter
+  def global_clipnorm(self, val):
+    self._optimizer.global_clipnorm = val
+
+  @property
+  def clipvalue(self):
+    return self._optimizer.clipvalue
+
+  @clipvalue.setter
+  def clipvalue(self, val):
+    self._optimizer.clipvalue = val
 
   def _aggregate_gradients(self, grads_and_vars):
     return self._optimizer._aggregate_gradients(grads_and_vars)  # pylint: disable=protected-access

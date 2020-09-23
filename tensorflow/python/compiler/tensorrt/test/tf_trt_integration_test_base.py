@@ -31,6 +31,7 @@ import warnings
 import numpy as np
 import six
 
+from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -98,6 +99,12 @@ def IsQuantizationMode(mode):
 
 def IsQuantizationWithCalibration(params):
   return IsQuantizationMode(params.precision_mode) and params.use_calibration
+
+
+def IsTensorRTVersionGreaterEqual(major, minor=0, patch=0):
+  ver = get_linked_tensorrt_version()
+  return ver[0] > major or (ver[0] == major and ver[1] > minor) or (
+      ver[0] == major and ver[1] == minor and ver[2] >= patch)
 
 
 class GraphState(object):
@@ -273,7 +280,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
         use_calibration=run_params.use_calibration,
-        max_batch_size=min(batch_list))
+        max_batch_size=max(batch_list))
     return conversion_params
 
   def GetTrtRewriterConfig(self,

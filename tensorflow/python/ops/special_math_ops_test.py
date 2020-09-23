@@ -635,6 +635,8 @@ class BesselTest(test.TestCase, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32(
+    'Tests einsum, which sometimes does a matmul with cuBLAS')
 class EinsumTest(test.TestCase):
 
   def _check(self, s, *input_shapes, **kwargs):
@@ -1115,7 +1117,7 @@ class EinsumBenchmark(test.Benchmark):
           input_shape = (dim,) * len(subscript)
           input_vars.append(
               variables.Variable(np.array(r.randn(*input_shape), np.float32)))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         if len(input_vars) <= 2:
           self.run_op_benchmark(

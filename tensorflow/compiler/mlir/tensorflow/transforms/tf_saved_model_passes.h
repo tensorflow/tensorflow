@@ -30,11 +30,24 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass();
 // Creates a pass that freezes tf_saved_model.global_tensor ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass();
 
+// Creates as pass that removes variables in the session initializer.
+// This job is required with lifting variable passes. Originally, the session
+// initializer function does assigning variables. However, the read-only
+// variable assignments will be done via lifting variables pass by converting
+// the read-only variables to constant ops, instead. This pass removes the
+// redundant operations. This pass should be located in front of the pass for
+// lifting read-only variables.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateRemoveVariablesInSessionInitializerPass();
+
 // Creates as pass that creates GlobalTensorOp for each variable from function
 // arguments and converts the function arguments to the corresponding saved
 // model arguments.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesPass(
     ::tensorflow::Session* session);
+
+// Creates a pass that removes duplicate 'tf_saved_model.bound_input' bindings.
+std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
 
 }  // namespace tf_saved_model
 }  // namespace mlir

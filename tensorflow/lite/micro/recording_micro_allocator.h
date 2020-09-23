@@ -25,8 +25,9 @@ namespace tflite {
 // List of buckets currently recorded by this class. Each type keeps a list of
 // allocated information during model initialization.
 enum class RecordedAllocationType {
-  kTfLiteTensorArray,
-  kTfLiteTensorArrayQuantizationData,
+  kTfLiteEvalTensorData,
+  kPersistentTfLiteTensorData,
+  kPersistentTfLiteTensorQuantizationData,
   kTfLiteTensorVariableBufferData,
   kNodeAndRegistrationArray,
   kOpData,
@@ -66,20 +67,29 @@ class RecordingMicroAllocator : public MicroAllocator {
   void PrintAllocations() const;
 
  protected:
-  TfLiteStatus AllocateTfLiteTensorArray(TfLiteContext* context,
-                                         const SubGraph* subgraph) override;
-  TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer(
-      const Model* model, TfLiteContext* context,
-      const SubGraph* subgraph) override;
   TfLiteStatus AllocateNodeAndRegistrations(
-      const SubGraph* subgraph,
+      const Model* model,
       NodeAndRegistration** node_and_registrations) override;
   TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer(
-      const Model* model, const SubGraph* subgraph,
-      const MicroOpResolver& op_resolver,
+      const Model* model, const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations) override;
-  TfLiteStatus AllocateVariables(TfLiteContext* context,
-                                 const SubGraph* subgraph) override;
+  TfLiteStatus AllocateTfLiteEvalTensors(
+      const Model* model, TfLiteEvalTensor** eval_tensors) override;
+  TfLiteStatus AllocateVariables(const SubGraph* subgraph,
+                                 TfLiteEvalTensor* eval_tensors) override;
+  // TODO(b/160894903): Once all kernels have been updated to the new API drop
+  // this method. It is only used to record TfLiteTensor persistent allocations.
+  TfLiteTensor* AllocatePersistentTfLiteTensorInternal(
+      const Model* model, TfLiteEvalTensor* eval_tensors,
+      int tensor_index) override;
+  // TODO(b/160894903): Once all kernels have been updated to the new API drop
+  // this function since all allocations for quantized data will take place in
+  // the temp section.
+  TfLiteStatus PopulateTfLiteTensorFromFlatbuffer(const Model* model,
+                                                  const SubGraph* subgraph,
+                                                  TfLiteTensor* tensor,
+                                                  int tensor_index,
+                                                  bool allocate_temp) override;
 
  private:
   RecordingMicroAllocator(RecordingSimpleMemoryAllocator* memory_allocator,
@@ -95,8 +105,9 @@ class RecordingMicroAllocator : public MicroAllocator {
 
   const RecordingSimpleMemoryAllocator* recording_memory_allocator_;
 
-  RecordedAllocation recorded_tflite_tensor_array_data_ = {};
-  RecordedAllocation recorded_tflite_tensor_array_quantization_data_ = {};
+  RecordedAllocation recorded_tflite_eval_tensor_data_ = {};
+  RecordedAllocation recorded_persistent_tflite_tensor_data_ = {};
+  RecordedAllocation recorded_persistent_tflite_tensor_quantization_data_ = {};
   RecordedAllocation recorded_tflite_tensor_variable_buffer_data_ = {};
   RecordedAllocation recorded_node_and_registration_array_data_ = {};
   RecordedAllocation recorded_op_data_ = {};

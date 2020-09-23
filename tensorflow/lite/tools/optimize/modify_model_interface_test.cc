@@ -26,8 +26,11 @@ namespace tflite {
 namespace optimize {
 namespace {
 
-// Create a quantized model with 1 quant, 1 FC, 1 dequant
-std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput() {
+using ::testing::ElementsAreArray;
+
+// Create a model with 1 quant, 1 FC, 1 dequant
+std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput(
+    const TensorType& quantization_type) {
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
   auto buffer = absl::make_unique<tflite::BufferT>();
@@ -87,7 +90,7 @@ std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput() {
   tensor_1->quantization->zero_point.push_back(28);
   tensor_1->name = "tensor_1";
   tensor_1->shape = {};
-  tensor_1->type = TensorType_INT8;
+  tensor_1->type = quantization_type;
 
   auto tensor_2 = absl::make_unique<TensorT>();
   tensor_2->quantization = absl::make_unique<QuantizationParametersT>();
@@ -95,7 +98,7 @@ std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput() {
   tensor_2->quantization->zero_point.push_back(50);
   tensor_2->name = "tensor_2";
   tensor_2->shape = {};
-  tensor_2->type = TensorType_INT8;
+  tensor_2->type = quantization_type;
 
   auto tensor_3 = absl::make_unique<TensorT>();
   tensor_3->name = "tensor_3";
@@ -113,8 +116,10 @@ std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput() {
   return model;
 }
 
-// Create a quantized model with 2 quant, 1 FC, 2 dequant
-std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput() {
+// Create a model with 2 quant, 1 FC, 2 dequant
+// The model mimics the behavior of the quantize_model.cc.
+std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput(
+    const TensorType& quantization_type) {
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
   auto buffer = absl::make_unique<tflite::BufferT>();
@@ -189,7 +194,7 @@ std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput() {
   tensor_2->quantization->zero_point.push_back(28);
   tensor_2->name = "tensor_2";
   tensor_2->shape = {};
-  tensor_2->type = TensorType_INT8;
+  tensor_2->type = quantization_type;
 
   auto tensor_3 = absl::make_unique<TensorT>();
   tensor_3->quantization = absl::make_unique<QuantizationParametersT>();
@@ -197,7 +202,7 @@ std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput() {
   tensor_3->quantization->zero_point.push_back(50);
   tensor_3->name = "tensor_3";
   tensor_3->shape = {};
-  tensor_3->type = TensorType_INT8;
+  tensor_3->type = quantization_type;
 
   auto tensor_4 = absl::make_unique<TensorT>();
   tensor_4->quantization = absl::make_unique<QuantizationParametersT>();
@@ -205,7 +210,7 @@ std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput() {
   tensor_4->quantization->zero_point.push_back(28);
   tensor_4->name = "tensor_4";
   tensor_4->shape = {};
-  tensor_4->type = TensorType_INT8;
+  tensor_4->type = quantization_type;
 
   auto tensor_5 = absl::make_unique<TensorT>();
   tensor_5->quantization = absl::make_unique<QuantizationParametersT>();
@@ -213,7 +218,7 @@ std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput() {
   tensor_5->quantization->zero_point.push_back(50);
   tensor_5->name = "tensor_5";
   tensor_5->shape = {};
-  tensor_5->type = TensorType_INT8;
+  tensor_5->type = quantization_type;
 
   auto tensor_6 = absl::make_unique<TensorT>();
   tensor_6->name = "tensor_6";
@@ -286,8 +291,141 @@ std::unique_ptr<ModelT> CreateFloatModel() {
   return model;
 }
 
+struct ModelInterface : ::testing::TestWithParam<tflite::TensorType> {};
+
+TEST_P(ModelInterface, SingleInputOutput) {
+  TensorType quantization_type = GetParam();
+
+  auto model = CreateQuantizedModelSingleInputOutput(quantization_type);
+
+  // Change model type.
+  flatbuffers::FlatBufferBuilder builder;
+  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), quantization_type,
+                                 quantization_type),
+            kTfLiteOk);
+
+  // Verify results.
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  // TODO(mnatraj): The float input tensor has not been removed.
+  // EXPECT_EQ(model->subgraphs[0]->tensors.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
+  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->inputs[0], 1);
+  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->outputs[0], 2);
+  EXPECT_EQ(model->operator_codes.size(), 3);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 1);
+
+  auto fc_op = model->subgraphs[0]->operators[0].get();
+
+  auto input = model->subgraphs[0]->tensors[fc_op->inputs[0]].get();
+  EXPECT_EQ(input->name, "tensor_1");
+  EXPECT_EQ(input->type, quantization_type);
+  EXPECT_FLOAT_EQ(input->quantization->scale[0], 0.35);
+  EXPECT_EQ(input->quantization->zero_point[0], 28);
+
+  auto output = model->subgraphs[0]->tensors[fc_op->outputs[0]].get();
+  EXPECT_EQ(output->name, "tensor_2");
+  EXPECT_EQ(output->type, quantization_type);
+  EXPECT_FLOAT_EQ(output->quantization->scale[0], 0.12);
+  EXPECT_EQ(output->quantization->zero_point[0], 50);
+}
+
+TEST_P(ModelInterface, MutipleInputOutput) {
+  TensorType quantization_type = GetParam();
+
+  auto model = CreateQuantizedModelMultipleInputOutput(quantization_type);
+
+  // Change model type.
+  flatbuffers::FlatBufferBuilder builder;
+  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), quantization_type,
+                                 quantization_type),
+            kTfLiteOk);
+
+  // Verify results.
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  // TODO (b/158254056): Remove unused inputs and outputs from tensor list
+  // EXPECT_EQ(model->subgraphs[0]->tensors.size(), 4);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 6);
+  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->inputs[0], 2);
+  EXPECT_EQ(model->subgraphs[0]->inputs[1], 3);
+  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->outputs[0], 4);
+  EXPECT_EQ(model->subgraphs[0]->outputs[1], 5);
+  EXPECT_EQ(model->operator_codes.size(), 3);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 1);
+
+  auto fc_op = model->subgraphs[0]->operators[0].get();
+
+  auto input_1 = model->subgraphs[0]->tensors[fc_op->inputs[0]].get();
+  EXPECT_EQ(input_1->name, "tensor_2");
+  EXPECT_EQ(input_1->type, quantization_type);
+  EXPECT_FLOAT_EQ(input_1->quantization->scale[0], 0.35);
+  EXPECT_EQ(input_1->quantization->zero_point[0], 28);
+
+  auto input_2 = model->subgraphs[0]->tensors[fc_op->inputs[1]].get();
+  EXPECT_EQ(input_2->name, "tensor_3");
+  EXPECT_EQ(input_2->type, quantization_type);
+  EXPECT_FLOAT_EQ(input_2->quantization->scale[0], 0.12);
+  EXPECT_EQ(input_2->quantization->zero_point[0], 50);
+
+  auto output_1 = model->subgraphs[0]->tensors[fc_op->outputs[0]].get();
+  EXPECT_EQ(output_1->name, "tensor_4");
+  EXPECT_EQ(output_1->type, quantization_type);
+  EXPECT_FLOAT_EQ(output_1->quantization->scale[0], 0.45);
+  EXPECT_EQ(output_1->quantization->zero_point[0], 28);
+
+  auto output_2 = model->subgraphs[0]->tensors[fc_op->outputs[1]].get();
+  EXPECT_EQ(output_2->name, "tensor_5");
+  EXPECT_EQ(output_2->type, quantization_type);
+  EXPECT_FLOAT_EQ(output_2->quantization->scale[0], 0.22);
+  EXPECT_EQ(output_2->quantization->zero_point[0], 50);
+}
+
+INSTANTIATE_TEST_SUITE_P(MultipleInputOutputTests, ModelInterface,
+                         ::testing::Values(TensorType_INT8, TensorType_INT16));
+
+TEST(ModelInterface, MixedTypeSingleInputOutput) {
+  auto model = CreateQuantizedModelSingleInputOutput(TensorType_INT8);
+
+  // Change model type.
+  flatbuffers::FlatBufferBuilder builder;
+  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), TensorType_UINT8,
+                                 TensorType_INT8),
+            kTfLiteOk);
+
+  // Verify results.
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
+  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->inputs[0], 0);
+  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->outputs[0], 2);
+  EXPECT_EQ(model->operator_codes.size(), 3);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 0);
+  EXPECT_EQ(model->subgraphs[0]->operators[1]->opcode_index, 1);
+
+  auto quant_op = model->subgraphs[0]->operators[0].get();
+  auto input = model->subgraphs[0]->tensors[quant_op->inputs[0]].get();
+  EXPECT_EQ(input->name, "tensor_0");
+  EXPECT_EQ(input->type, TensorType_UINT8);
+  EXPECT_FLOAT_EQ(input->quantization->scale[0], 0.35);
+  EXPECT_EQ(input->quantization->zero_point[0], 156);
+
+  auto fc_op = model->subgraphs[0]->operators[1].get();
+  auto output = model->subgraphs[0]->tensors[fc_op->outputs[0]].get();
+  EXPECT_EQ(output->name, "tensor_2");
+  EXPECT_EQ(output->type, TensorType_INT8);
+  EXPECT_FLOAT_EQ(output->quantization->scale[0], 0.12);
+  EXPECT_EQ(output->quantization->zero_point[0], 50);
+}
+
 TEST(ModelInterface, Uint8SingleInputOutput) {
-  auto model = CreateQuantizedModelSingleInputOutput();
+  auto model = CreateQuantizedModelSingleInputOutput(TensorType_INT8);
 
   // Change model type.
   flatbuffers::FlatBufferBuilder builder;
@@ -323,81 +461,8 @@ TEST(ModelInterface, Uint8SingleInputOutput) {
   EXPECT_EQ(output->quantization->zero_point[0], 178);
 }
 
-TEST(ModelInterface, Int8SingleInputOutput) {
-  auto model = CreateQuantizedModelSingleInputOutput();
-
-  // Change model type.
-  flatbuffers::FlatBufferBuilder builder;
-  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), TensorType_INT8,
-                                 TensorType_INT8),
-            kTfLiteOk);
-
-  // Verify results.
-  EXPECT_EQ(model->subgraphs.size(), 1);
-  // TODO(mnatraj): The float input tensor has not been removed.
-  // EXPECT_EQ(model->subgraphs[0]->tensors.size(), 2);
-  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
-  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->inputs[0], 1);
-  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->outputs[0], 2);
-  EXPECT_EQ(model->operator_codes.size(), 3);
-  EXPECT_EQ(model->subgraphs[0]->operators.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 1);
-
-  auto fc_op = model->subgraphs[0]->operators[0].get();
-
-  auto input = model->subgraphs[0]->tensors[fc_op->inputs[0]].get();
-  EXPECT_EQ(input->name, "tensor_1");
-  EXPECT_EQ(input->type, TensorType_INT8);
-  EXPECT_FLOAT_EQ(input->quantization->scale[0], 0.35);
-  EXPECT_EQ(input->quantization->zero_point[0], 28);
-
-  auto output = model->subgraphs[0]->tensors[fc_op->outputs[0]].get();
-  EXPECT_EQ(output->name, "tensor_2");
-  EXPECT_EQ(output->type, TensorType_INT8);
-  EXPECT_FLOAT_EQ(output->quantization->scale[0], 0.12);
-  EXPECT_EQ(output->quantization->zero_point[0], 50);
-}
-
-TEST(ModelInterface, MixedTypeSingleInputOutput) {
-  auto model = CreateQuantizedModelSingleInputOutput();
-
-  // Change model type.
-  flatbuffers::FlatBufferBuilder builder;
-  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), TensorType_UINT8,
-                                 TensorType_INT8),
-            kTfLiteOk);
-
-  // Verify results.
-  EXPECT_EQ(model->subgraphs.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
-  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->inputs[0], 0);
-  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->outputs[0], 2);
-  EXPECT_EQ(model->operator_codes.size(), 3);
-  EXPECT_EQ(model->subgraphs[0]->operators.size(), 2);
-  EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 0);
-  EXPECT_EQ(model->subgraphs[0]->operators[1]->opcode_index, 1);
-
-  auto quant_op = model->subgraphs[0]->operators[0].get();
-  auto input = model->subgraphs[0]->tensors[quant_op->inputs[0]].get();
-  EXPECT_EQ(input->name, "tensor_0");
-  EXPECT_EQ(input->type, TensorType_UINT8);
-  EXPECT_FLOAT_EQ(input->quantization->scale[0], 0.35);
-  EXPECT_EQ(input->quantization->zero_point[0], 156);
-
-  auto fc_op = model->subgraphs[0]->operators[1].get();
-  auto output = model->subgraphs[0]->tensors[fc_op->outputs[0]].get();
-  EXPECT_EQ(output->name, "tensor_2");
-  EXPECT_EQ(output->type, TensorType_INT8);
-  EXPECT_FLOAT_EQ(output->quantization->scale[0], 0.12);
-  EXPECT_EQ(output->quantization->zero_point[0], 50);
-}
-
 TEST(ModelInterface, Uint8MutipleInputOutput) {
-  auto model = CreateQuantizedModelMultipleInputOutput();
+  auto model = CreateQuantizedModelMultipleInputOutput(TensorType_INT8);
 
   // Change model type.
   flatbuffers::FlatBufferBuilder builder;
@@ -454,7 +519,7 @@ TEST(ModelInterface, Uint8MutipleInputOutput) {
 }
 
 TEST(ModelInterface, Int8MutipleInputOutput) {
-  auto model = CreateQuantizedModelMultipleInputOutput();
+  auto model = CreateQuantizedModelMultipleInputOutput(TensorType_INT8);
 
   // Change model type.
   flatbuffers::FlatBufferBuilder builder;

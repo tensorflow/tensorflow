@@ -15,19 +15,44 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
 namespace micro {
 namespace activations {
+namespace {
 
-TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus CalculatePreluParams(const TfLiteTensor* input,
+                                  const TfLiteTensor* alpha,
+                                  TfLiteTensor* output, PreluParams* params) {
+  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8 ||
+      output->type == kTfLiteInt16) {
+    double real_multiplier_1 = static_cast<double>(input->params.scale) /
+                               static_cast<double>(output->params.scale);
+    double real_multiplier_2 = static_cast<double>(input->params.scale) *
+                               static_cast<double>(alpha->params.scale) /
+                               static_cast<double>(output->params.scale);
+    QuantizeMultiplier(real_multiplier_1, &params->output_multiplier_1,
+                       &params->output_shift_1);
+    QuantizeMultiplier(real_multiplier_2, &params->output_multiplier_2,
+                       &params->output_shift_2);
+
+    params->input_offset = -input->params.zero_point;
+    params->alpha_offset = -alpha->params.zero_point;
+    params->output_offset = output->params.zero_point;
+  }
+
   return kTfLiteOk;
 }
+
+}  // namespace
 
 inline void BroadcastPrelu4DSlowFloat(
     const RuntimeShape& unextended_input1_shape, const float* input1_data,
@@ -60,67 +85,67 @@ inline void BroadcastPrelu4DSlowFloat(
   }
 }
 
-TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
+void* PreluInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(PreluParams));
+}
+
+TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  PreluParams* params = static_cast<PreluParams*>(node->user_data);
+
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
+  TF_LITE_ENSURE(context, alpha != nullptr);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  int32_t output_multiplier_1 = 0;
-  int output_shift_1 = 0;
-  int32_t output_multiplier_2 = 0;
-  int output_shift_2 = 0;
-  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8 ||
-      output->type == kTfLiteInt16) {
-    double real_multiplier_1 = static_cast<double>(input->params.scale) /
-                               static_cast<double>(output->params.scale);
-    double real_multiplier_2 = static_cast<double>(input->params.scale) *
-                               static_cast<double>(alpha->params.scale) /
-                               static_cast<double>(output->params.scale);
-    QuantizeMultiplier(real_multiplier_1, &output_multiplier_1,
-                       &output_shift_1);
-    QuantizeMultiplier(real_multiplier_2, &output_multiplier_2,
-                       &output_shift_2);
-  }
+  TF_LITE_ENSURE(context, output != nullptr);
+
+  return CalculatePreluParams(input, alpha, output, params);
+}
+
+TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const PreluParams& params =
+      *(static_cast<const PreluParams*>(node->user_data));
+
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor* alpha = tflite::micro::GetEvalInput(context, node, 1);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+
   switch (input->type) {
     case kTfLiteFloat32: {
-      BroadcastPrelu4DSlowFloat(
-          GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(alpha), GetTensorData<float>(alpha),
-          GetTensorShape(output), GetTensorData<float>(output));
+      BroadcastPrelu4DSlowFloat(tflite::micro::GetTensorShape(input),
+                                tflite::micro::GetTensorData<float>(input),
+                                tflite::micro::GetTensorShape(alpha),
+                                tflite::micro::GetTensorData<float>(alpha),
+                                tflite::micro::GetTensorShape(output),
+                                tflite::micro::GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
-      PreluParams op_params;
-      op_params.input_offset = -input->params.zero_point;
-      op_params.alpha_offset = -alpha->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier_1 = output_multiplier_1;
-      op_params.output_shift_1 = output_shift_1;
-      op_params.output_multiplier_2 = output_multiplier_2;
-      op_params.output_shift_2 = output_shift_2;
       reference_ops::BroadcastPrelu4DSlow(
-          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+          params, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<uint8_t>(input),
+          tflite::micro::GetTensorShape(alpha),
+          tflite::micro::GetTensorData<uint8_t>(alpha),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<uint8_t>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteInt8: {
-      PreluParams op_params;
-      op_params.input_offset = -input->params.zero_point;
-      op_params.alpha_offset = -alpha->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier_1 = output_multiplier_1;
-      op_params.output_shift_1 = output_shift_1;
-      op_params.output_multiplier_2 = output_multiplier_2;
-      op_params.output_shift_2 = output_shift_2;
       reference_ops::BroadcastPrelu4DSlow(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
+          params, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(alpha),
+          tflite::micro::GetTensorData<int8_t>(alpha),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output));
       return kTfLiteOk;
     } break;
     default:
       TF_LITE_KERNEL_LOG(
-          context, "Only float32 and uint8 are supported currently, got %d.",
+          context, "Only float32 and uint8_t are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -128,16 +153,15 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace activations
 
-TfLiteRegistration* Register_PRELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::PreluPrepare,
-                                 /*invoke=*/activations::PreluEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_PRELU() {
+  return {/*init=*/activations::PreluInit,
+          /*free=*/nullptr,
+          /*prepare=*/activations::PreluPrepare,
+          /*invoke=*/activations::PreluEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

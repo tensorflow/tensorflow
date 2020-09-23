@@ -1518,7 +1518,7 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
   This can always be checked statically, so this method returns nothing.
 
   Args:
-    tensor: A `Tensor`.
+    tensor: A `Tensor` or `SparseTensor`.
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1537,7 +1537,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
   """Statically asserts that the given `Tensor` is of the specified type.
 
   Args:
-    tensor: A `Tensor`.
+    tensor: A `Tensor` or `SparseTensor`.
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1551,13 +1551,15 @@ def assert_type(tensor, tf_type, message=None, name=None):
   """
   message = message or ''
   with ops.name_scope(name, 'assert_type', [tensor]):
-    tensor = ops.convert_to_tensor(tensor, name='tensor')
+    if not isinstance(tensor, sparse_tensor.SparseTensor):
+      tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
       if context.executing_eagerly():
         raise TypeError('%s tensor must be of type %s' % (message, tf_type))
       else:
-        raise TypeError('%s  %s must be of type %s' % (message, tensor.name,
-                                                       tf_type))
+        raise TypeError(
+            '%s  %s must be of type %s' %
+            (message, tensor.name if hasattr(tensor, 'name') else '', tf_type))
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 

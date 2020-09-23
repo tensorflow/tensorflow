@@ -2,7 +2,7 @@
 
 // Test case: Invalid session.
 // expected-error @+1 {{'module' op no session provided}}
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   func @serving_default(%arg0: tensor<!tf.resource<tensor<100x50xf32>>> {tf.resource_name = "dense/kernel"}, %arg1: tensor<!tf.resource<tensor<50xf32>>> {tf.resource_name = "dense/bias"}) -> (tensor<100x50xf32> {tf_saved_model.index_path = ["dense_2"]})
   attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "dense_2/Add:0"}, tf_saved_model.exported_names = ["serving_default"]} {
@@ -18,7 +18,7 @@ module attributes {tf_saved_model.semantics} {
 // -----
 
 // Test case: No errors on no resource arguments.
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
 	// CHECK-LABEL: @serving_default
   func @serving_default() -> (tensor<100x50xf32> {tf_saved_model.index_path = ["dense_2"]})

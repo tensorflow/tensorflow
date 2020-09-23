@@ -16,7 +16,7 @@
 set -ex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON="${PYTHON:-python3}"
+PYTHON="${CI_BUILD_PYTHON:-python3}"
 VERSION_SUFFIX=${VERSION_SUFFIX:-}
 export TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
 TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"
@@ -67,7 +67,11 @@ case "${TENSORFLOW_TARGET}" in
       --define tensorflow_mkldnn_contraction_kernel=0
       --copt=-O3"
     ;;
+  native)
+    BAZEL_FLAGS="--copt=-O3 --copt=-march=native"
+    ;;
   *)
+    BAZEL_FLAGS="--copt=-O3"
     ;;
 esac
 

@@ -530,9 +530,9 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
     tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                  op_kernel->name_view());
     profiler::AnnotatedTraceMe activity(
-        [&] {
+        [op_kernel, &ctx] {
           return op_kernel->TraceString(
-              &ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
+              ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
         profiler::GetTFTraceMeLevel(is_expensive));
     device->Compute(op_kernel, &ctx);
@@ -597,9 +597,9 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
   nodestats::SetOpStart(stats);
   {
     profiler::AnnotatedTraceMe activity(
-        [&] {
+        [async_kernel, state] {
           return async_kernel->TraceString(
-              &state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
+              state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
         profiler::GetTFTraceMeLevel(kernel_stats_->IsExpensive(item)));
     immutable_state_.params().device->ComputeAsync(async_kernel, &state->ctx,
@@ -629,8 +629,8 @@ template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
                                                  int64 scheduled_nsec) {
   profiler::TraceMeConsumer activity(
-      // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
-      // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
+      // From TraceMeProducer in DirectSession::RunInternal,
+      // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
       [&] {
         // NOTE: This tracing uses the iteration number from the first tagged
         // node that executes during this call to `Process()`. In principle,

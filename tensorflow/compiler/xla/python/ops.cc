@@ -23,6 +23,7 @@ limitations under the License.
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
+#include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
@@ -114,24 +115,26 @@ void BuildOpsSubmodule(py::module* m) {
       "CustomCall",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape,
-         const py::bytes& opaque) -> XlaOp {
-        return CustomCall(builder, call_target_name, operands, shape, opaque);
+         const py::bytes& opaque, bool has_side_effect) -> XlaOp {
+        return CustomCall(builder, call_target_name, operands, shape, opaque,
+                          has_side_effect);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("shape"), py::arg("opaque") = py::bytes(""));
+      py::arg("shape"), py::arg("opaque") = py::bytes(""),
+      py::arg("has_side_effect") = false);
   ops.def(
       "CustomCallWithLayout",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
-         const py::bytes& opaque) -> XlaOp {
-        return CustomCallWithLayout(builder, call_target_name, operands,
-                                    shape_with_layout,
-                                    operand_shapes_with_layout, opaque);
+         const py::bytes& opaque, bool has_side_effect) -> XlaOp {
+        return CustomCallWithLayout(
+            builder, call_target_name, operands, shape_with_layout,
+            operand_shapes_with_layout, opaque, has_side_effect);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
-      py::arg("opaque") = py::bytes(""));
+      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
@@ -184,6 +187,13 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_pair(qr.q, qr.r);
       },
       py::arg("operand"), py::arg("full_matrices"));
+  ops.def(
+      "LU",
+      [](XlaOp a) -> StatusOr<std::tuple<XlaOp, XlaOp, XlaOp>> {
+        LuDecompositionResult lu = LuDecomposition(a);
+        return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
+      },
+      py::arg("operand"));
   ops.def(
       "Eigh",
       [](XlaOp a, bool lower, int64 max_iter,
@@ -281,6 +291,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("RandomGammaGrad", &RandomGammaGrad, py::arg("a"), py::arg("x"));
   ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, py::arg("a"),
           py::arg("b"), py::arg("x"));
+  ops.def("Zeta", &Zeta, py::arg("x"), py::arg("q"));
 
 #define BINARY_OP(op)                                                 \
   ops.def(                                                            \

@@ -115,9 +115,12 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
   }
   // Ops reading variables are marked as stateful, but are safe to remove if
   // redundant.
-  const bool is_variable_read = IsReadVariableOp(node) ||
-                                IsReadVariablesOp(node) ||
-                                absl::StrContains(node.op(), "Gather");
+  static const absl::flat_hash_set<string>* gather_ops =
+      new absl::flat_hash_set<string>{"Gather", "GatherV2", "GatherNd",
+                                      "ResourceGather", "ResourceGatherNd"};
+  const bool is_variable_read =
+      IsReadVariableOp(node) || IsReadVariablesOp(node) ||
+      gather_ops->find(node.op()) != gather_ops->end();
   if (!is_variable_read && !IsFreeOfSideEffect(node)) {
     VLOG(3) << "Not safe to convert '" << node.name()
             << " to NoOp. Node has side effect.";
@@ -314,7 +317,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       ++pos;
     }
     node->set_op("NoOp");
-    node->clear_attr();
+    EraseRegularNodeAttributes(node);
     DedupControlInputs(node);
     nodes_to_simplify->PushBack(node_to_idx_[node]);
     return;

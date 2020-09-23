@@ -30,14 +30,9 @@ namespace cl {
 class ConverterToConvWeights : public GPUOperation {
  public:
   ConverterToConvWeights(const OperationDef& definition,
-                         const ConvWeightsDescription& conv_weights_desc)
-      : GPUOperation(definition),
-        conv_weights_desc_(conv_weights_desc),
-        work_group_size_(8, 4, 1) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
+                         const ConvWeightsDescription& conv_weights_desc);
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConverterToConvWeights(ConverterToConvWeights&& operation);
@@ -46,12 +41,11 @@ class ConverterToConvWeights : public GPUOperation {
   ConverterToConvWeights& operator=(const ConverterToConvWeights&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
+  std::string GetConverterToConvWeightsCode(
+      const OperationDef& op_def,
+      const ConvWeightsDescription& conv_weights_desc);
 
   ConvWeightsDescription conv_weights_desc_;
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 // We expect src BHWC tensor and we assume that B is O, H = H, W = W, C is I

@@ -76,7 +76,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
         with self.cached_session() as sess:
           unused_a = variables.Variable(0.0)  # So that Saver saves something.
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
 
           # Should fail.
           saver = saver_module.Saver(sharded=False)
@@ -123,7 +123,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           save = saver_module.Saver({"v0": v0})
 
           # Record a short training history.
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           save.save(sess, filepath, global_step=0)
           self.evaluate(inc)
           save.save(sess, filepath, global_step=1)
@@ -136,7 +136,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
           # Create a new saver.
           save = saver_module.Saver({"v0": v0})
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
 
           # Get the most recent checkpoint name from the training history file.
           name = checkpoint_management.latest_checkpoint(traindir)
@@ -278,7 +278,7 @@ class SaverUtilsTest(test.TestCase):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
         with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           saver = saver_module.Saver(sharded=sharded, write_version=version)
 
           path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
@@ -297,7 +297,7 @@ class SaverUtilsTest(test.TestCase):
     for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
       with self.session(graph=ops_lib.Graph()) as sess:
         unused_v = variables.Variable(1.0, name="v")
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         saver = saver_module.Saver(write_version=version)
         prefixes.append(
             saver.save(sess, os.path.join(self._base_dir, str(version))))
@@ -312,7 +312,7 @@ class SaverUtilsTest(test.TestCase):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
         with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           saver = saver_module.Saver(sharded=sharded, write_version=version)
 
           path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))

@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -223,8 +225,8 @@ string DebugString(const CondArgNodes& nodes) {
 }
 
 StateMap::CondId StateMap::LookupCondId(const Node* node) const {
-  if (node->id() < node_to_condid_map_.size())
-    return node_to_condid_map_[node->id()];
+  const int64 map_size = node_to_condid_map_.size();
+  if (node->id() < map_size) return node_to_condid_map_[node->id()];
   return added_node_condid_mapping_.at(node->id());
 }
 
@@ -234,15 +236,16 @@ StateMap::CondId StateMap::GetCondId(const StateMap::CondState& state) {
 }
 
 void StateMap::ResetCondId(const Node* node, StateMap::CondId id) {
-  if (node->id() < node_to_condid_map_.size())
+  const int64 map_size = node_to_condid_map_.size();
+  if (node->id() < map_size)
     node_to_condid_map_[node->id()] = id;
   else
     added_node_condid_mapping_[node->id()] = id;
 }
 
 StateMap::AncestorId StateMap::LookupAncestorId(const Node* node) const {
-  if (node->id() < node_to_ancestorid_map_.size())
-    return node_to_ancestorid_map_[node->id()];
+  const int64 map_size = node_to_ancestorid_map_.size();
+  if (node->id() < map_size) return node_to_ancestorid_map_[node->id()];
   return added_node_ancestorid_mapping_.at(node->id());
 }
 
@@ -253,7 +256,8 @@ StateMap::AncestorId StateMap::GetAncestorId(
 }
 
 void StateMap::ResetAncestorId(const Node* node, StateMap::AncestorId id) {
-  if (node->id() < node_to_ancestorid_map_.size())
+  const int64 map_size = node_to_ancestorid_map_.size();
+  if (node->id() < map_size)
     node_to_ancestorid_map_[node->id()] = id;
   else
     added_node_ancestorid_mapping_[node->id()] = id;
@@ -811,12 +815,14 @@ Status Conditional::BuildIfNode(Graph* graph,
           << PartialTensorShapeUtils::PartialShapeListString(output_shapes);
 
   builder.Attr("Tcond", DT_BOOL);
-  // Add all underscore attributes, these need to be propagated.
-  for (const auto& attr : predicate_.node->def().attr()) {
-    const string& name(attr.first);
-    const AttrValue& value(attr.second);
-    if (absl::StartsWith(name, "_")) {
-      builder.Attr(name, value);
+  // Add some internal attributes which need to be propagated.
+  // TODO(b/160275126): attributes shouldn't be hard-coded here
+  for (const char* attr_name :
+       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
+        kTpuReplicateAttrName}) {
+    string attr_val;
+    if (GetNodeAttr(predicate_.node->def(), attr_name, &attr_val).ok()) {
+      builder.Attr(attr_name, attr_val);
     }
   }
   builder.Device(predicate_.node->assigned_device_name());

@@ -1578,9 +1578,9 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testListSourceWithCompiledPythonSourceWorks(self):
     def fake_list_source_files_against_dump(dump,
-                                            path_regex_whitelist=None,
-                                            node_name_regex_whitelist=None):
-      del dump, path_regex_whitelist, node_name_regex_whitelist
+                                            path_regex_allowlist=None,
+                                            node_name_regex_allowlist=None):
+      del dump, path_regex_allowlist, node_name_regex_allowlist
       return [("compiled_1.pyc", False, 10, 20, 30, 4),
               ("compiled_2.pyo", False, 10, 20, 30, 5),
               ("uncompiled.py", False, 10, 20, 30, 6)]

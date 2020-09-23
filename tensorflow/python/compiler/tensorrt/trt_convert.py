@@ -154,7 +154,7 @@ class TrtConversionParams(
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
     max_batch_size: max size for the input batch. This parameter is only
-      effective when is_dynamic_op=False which is not supported in TF 2.0.
+      effective when use_implicit_batch is true.
     allow_build_at_runtime: whether to build TensorRT engines during runtime.
       If no TensorRT engine can be found in cache that can handle the given
       inputs during runtime, then a new TensorRT engine is built at runtime if
@@ -341,9 +341,8 @@ def get_tensorrt_rewriter_config(conversion_params,
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
     optimizer.parameter_map[
         "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
-    if not is_v2:
-      optimizer.parameter_map[
-          "max_batch_size"].i = conversion_params.max_batch_size
+    optimizer.parameter_map[
+        "max_batch_size"].i = conversion_params.max_batch_size
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
@@ -432,7 +431,7 @@ class TrtGraphConverter(object):
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
                input_graph_def=None,
-               nodes_blacklist=None,
+               nodes_denylist=None,
                session_config=None,
                max_batch_size=1,
                max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
@@ -452,7 +451,7 @@ class TrtGraphConverter(object):
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
-      nodes_blacklist: list of node names to prevent the converter from
+      nodes_denylist: list of node names to prevent the converter from
         touching.
       session_config: the ConfigProto used to create a Session. It's also used
         as a template to create a TRT-enabled ConfigProto for conversion. If not
@@ -497,7 +496,7 @@ class TrtGraphConverter(object):
     _check_trt_version_compatibility()
 
     self._input_graph_def = input_graph_def
-    self._nodes_blacklist = nodes_blacklist
+    self._nodes_denylist = nodes_denylist
 
     self._input_saved_model_dir = input_saved_model_dir
     self._converted = False
@@ -558,15 +557,15 @@ class TrtGraphConverter(object):
         graph_id=b"tf_graph")
     self._converted = True
 
-  def _add_nodes_blacklist(self):
-    if self._nodes_blacklist:
+  def _add_nodes_denylist(self):
+    if self._nodes_denylist:
       collection_def = self._grappler_meta_graph_def.collection_def["train_op"]
-      blacklist = collection_def.node_list.value
-      for i in self._nodes_blacklist:
+      denylist = collection_def.node_list.value
+      for i in self._nodes_denylist:
         if isinstance(i, ops.Tensor):
-          blacklist.append(_to_bytes(i.name))
+          denylist.append(_to_bytes(i.name))
         else:
-          blacklist.append(_to_bytes(i))
+          denylist.append(_to_bytes(i))
 
   def _convert_graph_def(self):
     """Convert the input GraphDef."""
@@ -575,7 +574,7 @@ class TrtGraphConverter(object):
       importer.import_graph_def(self._input_graph_def, name="")
     self._grappler_meta_graph_def = saver.export_meta_graph(
         graph_def=graph.as_graph_def(add_shapes=True), graph=graph)
-    self._add_nodes_blacklist()
+    self._add_nodes_denylist()
 
     self._run_conversion()
 
@@ -629,7 +628,7 @@ class TrtGraphConverter(object):
         self._grappler_meta_graph_def.collection_def[collection_key].CopyFrom(
             input_meta_graph_def.collection_def[collection_key])
 
-      self._add_nodes_blacklist()
+      self._add_nodes_denylist()
 
       # Copy other information.
       self._grappler_meta_graph_def.meta_info_def.CopyFrom(
@@ -1342,7 +1341,7 @@ def create_inference_graph(
       input_saved_model_tags=input_saved_model_tags,
       input_saved_model_signature_key=input_saved_model_signature_key,
       input_graph_def=input_graph_def,
-      nodes_blacklist=outputs,
+      nodes_denylist=outputs,
       session_config=session_config,
       max_batch_size=max_batch_size,
       max_workspace_size_bytes=max_workspace_size_bytes,

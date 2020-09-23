@@ -2,6 +2,7 @@
 # For keeping the history of OpDefs for every major version of TensorFlow,
 # to validate that we don't make backwards-incompatible changes.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -32,11 +33,14 @@ cc_library(
 tf_cc_test(
     name = "backwards_compatibility_test",
     size = "small",
-    srcs = ["backwards_compatibility_test.cc"],
+    srcs = [
+        "backwards_compatibility_test.cc",
+    ],
     data = [
         "//tensorflow/core:ops/ops.pbtxt",
+        "//tensorflow/core/ops/compat/ops_history_v1:ops_history_v1_srcs",
+        "//tensorflow/core/ops/compat/ops_history_v2:ops_history_v2_srcs",
     ] + glob([
-        "ops_history_v*/*.pbtxt",
         "ops_history.v*.pbtxt",
     ]),
     tags = [

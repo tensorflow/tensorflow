@@ -118,13 +118,17 @@ class SparseFillEmptyRowsOp : public OpKernel {
       return;
     }
 
+    bool rows_are_ordered = true;
+    int64 last_indices_row = 0;
     std::vector<int64> csr_offset(dense_rows, 0);
     for (int i = 0; i < N; ++i) {
       const int64 row = indices(i, 0);
       OP_REQUIRES(context, row >= 0 && row < dense_rows,
                   errors::InvalidArgument("indices(", i, ", 0) is invalid: ",
                                           row, " >= ", dense_rows));
-      ++csr_offset[indices(i, 0)];
+      ++csr_offset[row];
+      rows_are_ordered = rows_are_ordered & (row >= last_indices_row);
+      last_indices_row = row;
     }
     bool all_rows_full = true;
     for (int row = 0; row < dense_rows; ++row) {
@@ -147,7 +151,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
       }
     }
 
-    if (all_rows_full) {
+    if (all_rows_full && rows_are_ordered) {
       context->set_output(kOutputIndicesOutput, indices_t);
       context->set_output(kOutputValuesOutput, values_t);
       if (reverse_index_map) {
@@ -232,6 +236,9 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
         context, TensorShapeUtils::IsVector(reverse_index_map_t->shape()),
         errors::InvalidArgument("reverse_index_map must be a vector, saw: ",
                                 reverse_index_map_t->shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(grad_values_t->shape()),
+                errors::InvalidArgument("grad_values must be a vector, saw: ",
+                                        grad_values_t->shape().DebugString()));
 
     const auto reverse_index_map = reverse_index_map_t->vec<int64>();
     const auto grad_values = grad_values_t->vec<T>();
@@ -260,8 +267,13 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
       // Locate the index of the output of the forward prop associated
       // with this location in the input of the forward prop.  Copy
       // the gradient into it.  Mark it as visited.
-      d_values(i) = grad_values(reverse_index_map(i));
-      visited(reverse_index_map(i)) = true;
+      int64 reverse_index = reverse_index_map(i);
+      OP_REQUIRES(
+          context, 0 <= reverse_index && reverse_index < N_full,
+          errors::InvalidArgument("Elements in reverse index must be in [0, ",
+                                  N_full, ") but got ", reverse_index));
+      d_values(i) = grad_values(reverse_index);
+      visited(reverse_index) = true;
     }
     for (int j = 0; j < N_full; ++j) {
       // The default value gradient gets the accumulated remainder of

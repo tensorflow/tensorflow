@@ -90,8 +90,8 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
               retrain_flag_value=["true", "false"],
               regularization_loss_multiplier=[None, 2],  # Test for b/134528831.
           )),
-      test_combinations=(distribute_combinations.NamedGPUCombination(),
-                         distribute_combinations.NamedTPUCombination()))
+      test_combinations=(distribute_combinations.GPUCombination(),
+                         distribute_combinations.TPUCombination()))
 
   @combinations.generate(**TEST_MNIST_CNN_GENERATE_KWARGS)
   def test_mnist_cnn(self, use_keras_save_api, named_strategy,

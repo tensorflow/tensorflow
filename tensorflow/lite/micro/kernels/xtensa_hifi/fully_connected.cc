@@ -1,24 +1,24 @@
-/******************************************************************************
- * Copyright (C) 2019 Cadence Design Systems, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to use this Software with Cadence processor cores only and
- * not with any other processors and platforms, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- ******************************************************************************/
+/*******************************************************************************
+* Copyright (c) 2019-2020 Cadence Design Systems, Inc.
+*
+* Permission is hereby granted, free of charge, to any person obtaining
+* a copy of this software and associated documentation files (the
+* "Software"), to use this Software with Cadence processor cores only and
+* not with any other processors and platforms, subject to
+* the following conditions:
+*
+* The above copyright notice and this permission notice shall be included
+* in all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+******************************************************************************/
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "xtensa_tf_micro_common.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifi/xtensa_tf_micro_common.h"
 
 namespace tflite {
 namespace ops {
@@ -70,7 +70,7 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus CalculateOpData(TfLiteContext* context,
-                             TfLiteFullyConnectedParams* params,
+                             TfLiteFusedActivation activation,
                              TfLiteType data_type, const TfLiteTensor* input,
                              const TfLiteTensor* filter,
                              const TfLiteTensor* bias, TfLiteTensor* output,
@@ -84,7 +84,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
     QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
     data->output_shift = -exponent;
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
-        context, params->activation, output, &data->output_activation_min,
+        context, activation, output, &data->output_activation_min,
         &data->output_activation_max));
   }
   return status;
@@ -92,20 +92,50 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 
 }  // namespace
 
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
+  }
+  return data;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
+
+  OpData* data = static_cast<OpData*>(node->user_data);
+  const auto params =
+      static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_MSG(context, input->type == filter->type,
+                     "Hybrid models are not supported on TFLite Micro.");
+
+  return CalculateOpData(context, params->activation, input->type, input,
+                         filter, bias, output, data);
+}
+
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
-                               TfLiteFullyConnectedParams* params, OpData* data,
-                               const TfLiteTensor* input,
+                               const OpData& data, const TfLiteTensor* input,
                                const TfLiteTensor* filter,
                                const TfLiteTensor* bias, TfLiteTensor* output) {
-  FullyConnectedParams op_params;
+  tflite::FullyConnectedParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = -filter->params.zero_point;
   op_params.output_offset = output->params.zero_point;
-  op_params.output_multiplier = data->output_multiplier;
-  // (b/138810107): Figure out whether output shift should be inverted
-  op_params.output_shift = -data->output_shift;
-  op_params.quantized_activation_min = data->output_activation_min;
-  op_params.quantized_activation_max = data->output_activation_max;
+  op_params.output_multiplier = data.output_multiplier;
+  // TODO(b/138810107): Figure out whether output shift should be inverted
+  op_params.output_shift = -data.output_shift;
+  op_params.quantized_activation_min = data.output_activation_min;
+  op_params.quantized_activation_max = data.output_activation_max;
 
   reference_integer_ops::FullyConnected(
       op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
@@ -116,8 +146,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                           TfLiteFullyConnectedParams* params, OpData* data,
-                           const TfLiteTensor* input,
+                           const OpData& data, const TfLiteTensor* input,
                            const TfLiteTensor* filter, const TfLiteTensor* bias,
                            TfLiteTensor* output) {
   const int32_t input_offset = -input->params.zero_point;
@@ -128,11 +157,11 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.input_offset = input_offset;
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
-  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_multiplier = data.output_multiplier;
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.output_shift = -data->output_shift;
-  op_params.quantized_activation_min = data->output_activation_min;
-  op_params.quantized_activation_max = data->output_activation_max;
+  op_params.output_shift = -data.output_shift;
+  op_params.quantized_activation_min = data.output_activation_min;
+  op_params.quantized_activation_max = data.output_activation_max;
 
 #define TF_LITE_FULLY_CONNECTED(output_data_type)                      \
   reference_ops::FullyConnected(                                       \
@@ -162,11 +191,12 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         CHECK_ERR_HIFI_NNLIB_KER(
             ret, "xa_nn_fully_connected_asym8xasym8_asym8 failed");
       }
-      for (int i = 0; i < batches * out_depth; i++) {
-        ACTIVATION_MIN_MAX_ASYM8(p_out[i], p_out[i],
-                                 data->output_activation_min,
-                                 data->output_activation_max)
-      }
+      ret = xa_nn_vec_activation_min_max_asym8_asym8(
+          p_out, p_out, data.output_activation_min, data.output_activation_max,
+          batches * out_depth);
+
+      CHECK_ERR_HIFI_NNLIB_KER(
+          ret, "xa_nn_vec_activation_min_max_asym8_asym8 failed");
       break;
     }
     case kTfLiteInt16:
@@ -182,15 +212,16 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
-                       TfLiteFullyConnectedParams* params, OpData* data,
+                       TfLiteFusedActivation activation,
                        const TfLiteTensor* input, const TfLiteTensor* filter,
                        const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRange(params->activation, &output_activation_min,
+  CalculateActivationRange(activation, &output_activation_min,
                            &output_activation_max);
   tflite::FullyConnectedParams op_params;
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
+#if HIFI_VFPU
   int ret, b, weight_depth, out_depth, batches;
   weight_depth =
       GetTensorShape(filter).Dims(GetTensorShape(filter).DimensionsCount() - 1);
@@ -208,43 +239,48 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     CHECK_ERR_HIFI_NNLIB_KER(ret, "xa_nn_fully_connected_f32 failed.");
   }
   float* p_out = GetTensorData<float>(output);
-  for (int i = 0; i < batches * out_depth; i++) {
-    ACTIVATION_MIN_MAX(float, p_out[i], p_out[i], output_activation_min,
-                       output_activation_max)
-  }
+  ret = xa_nn_vec_activation_min_max_f32_f32(
+      p_out, p_out, output_activation_min, output_activation_max,
+      batches * out_depth);
+  CHECK_ERR_HIFI_NNLIB_KER(ret, "xa_nn_vec_activation_min_max_f32_f32 failed");
+#else
+  tflite::reference_ops::FullyConnected(
+      op_params, GetTensorShape(input), GetTensorData<float>(input),
+      GetTensorShape(filter), GetTensorData<float>(filter),
+      GetTensorShape(bias), GetTensorData<float>(bias), GetTensorShape(output),
+      GetTensorData<float>(output));
+#endif /* HIFI_VFPU */
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params =
-      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
+  const auto* params =
+      static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TfLiteType data_type = input->type;
-  OpData local_data_object;
-  OpData* data = &local_data_object;
-  TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
-                                        filter, bias, output, data));
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
-  switch (filter->type) {  // Already know in/out types are same.
+  // Checks in Prepare ensure input, output and filter types are all the same.
+  switch (input->type) {
     case kTfLiteFloat32:
-      return EvalFloat(context, node, params, data, input, filter, bias,
+      return EvalFloat(context, node, params->activation, input, filter, bias,
                        output);
     case kTfLiteInt8:
-      return EvalQuantizedInt8(context, node, params, data, input, filter, bias,
+      return EvalQuantizedInt8(context, node, data, input, filter, bias,
                                output);
 
     case kTfLiteUInt8:
-      return EvalQuantized(context, node, params, data, input, filter, bias,
-                           output);
+      return EvalQuantized(context, node, data, input, filter, bias, output);
 
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(filter->type), filter->type);
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -252,16 +288,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace fully_connected
 
-TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/fully_connected::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_FULLY_CONNECTED() {
+  return {/*init=*/fully_connected::Init,
+          /*free=*/nullptr,
+          /*prepare=*/fully_connected::Prepare,
+          /*invoke=*/fully_connected::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

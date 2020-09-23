@@ -143,7 +143,7 @@ class SequenceFeatures(kfc._BaseFeaturesLayer):
     sequence_lengths = []
 
     for column in self._feature_columns:
-      with ops.name_scope(column.name):
+      with backend.name_scope(column.name):
         try:
           dense_tensor, sequence_length = column.get_sequence_dense_tensor(
               transformation_cache, self._state_manager, training=training)
@@ -164,7 +164,7 @@ class SequenceFeatures(kfc._BaseFeaturesLayer):
 
 def _assert_all_equal_and_return(tensors, name=None):
   """Asserts that all tensors are equal and returns the first one."""
-  with ops.name_scope(name, 'assert_all_equal', values=tensors):
+  with backend.name_scope(name or 'assert_all_equal'):
     if len(tensors) == 1:
       return tensors[0]
     assert_equal_ops = []

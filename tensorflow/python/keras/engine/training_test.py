@@ -29,7 +29,6 @@ import six
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -987,17 +986,17 @@ class TrainingTest(keras_parameterized.TestCase):
       # Test with eager execution and iterator
       model.fit(dataset, epochs=1, steps_per_epoch=2)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_losses_in_defun(self):
-    with context.eager_mode():
-      layer = layers_module.Dense(1, kernel_regularizer='l1')
-      layer(array_ops.ones([1, 10]))
+    layer = layers_module.Dense(1, kernel_regularizer='l1')
+    layer(array_ops.ones([1, 10]))
 
-      @function.defun
-      def get_losses():
-        return layer.losses
+    @def_function.function
+    def get_losses():
+      return layer.losses
 
-      self.assertAllEqual(
-          self.evaluate(layer.losses), self.evaluate(get_losses()))
+    self.assertAllEqual(
+        self.evaluate(layer.losses), self.evaluate(get_losses()))
 
   @keras_parameterized.run_all_keras_modes
   def test_logging(self):
@@ -1118,70 +1117,70 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllEqual([[6], [8], [10], [12]],
                         model.predict(dataset_two, steps=2))
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_training_on_sparse_categorical_crossentropy_loss_with_softmax(self):
-    with context.eager_mode():
-      np.random.seed(1337)
-      train_x = np.ones((100, 4))
-      train_y = np.random.randint(0, 1, size=(100, 1))
+    np.random.seed(1337)
+    train_x = np.ones((100, 4))
+    train_y = np.random.randint(0, 1, size=(100, 1))
 
-      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
-                                                               input_dim=4)
-      reference_model.compile(loss='sparse_categorical_crossentropy',
-                              optimizer=RMSPropOptimizer(learning_rate=0.001),
-                              run_eagerly=True)
-      fixed_weights = reference_model.get_weights()
-      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+    reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                             input_dim=4)
+    reference_model.compile(loss='sparse_categorical_crossentropy',
+                            optimizer=RMSPropOptimizer(learning_rate=0.001),
+                            run_eagerly=True)
+    fixed_weights = reference_model.get_weights()
+    reference_model_loss = reference_model.train_on_batch(train_x, train_y)
 
-      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
-      test_model.compile(loss='sparse_categorical_crossentropy',
-                         optimizer=RMSPropOptimizer(learning_rate=0.001),
-                         run_eagerly=False)
-      test_model.set_weights(fixed_weights)
-      test_model_loss = test_model.train_on_batch(train_x, train_y)
-      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+    test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+    test_model.compile(loss='sparse_categorical_crossentropy',
+                       optimizer=RMSPropOptimizer(learning_rate=0.001),
+                       run_eagerly=False)
+    test_model.set_weights(fixed_weights)
+    test_model_loss = test_model.train_on_batch(train_x, train_y)
+    self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_training_on_categorical_crossentropy_loss_with_softmax(self):
-    with context.eager_mode():
-      np.random.seed(1337)
-      train_x = np.ones((100, 4))
-      train_y = np_utils.to_categorical(
-          np.random.randint(0, 1, size=(100, 1)), 2)
+    np.random.seed(1337)
+    train_x = np.ones((100, 4))
+    train_y = np_utils.to_categorical(
+        np.random.randint(0, 1, size=(100, 1)), 2)
 
-      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
-                                                               input_dim=4)
-      reference_model.compile(loss='categorical_crossentropy',
-                              optimizer=RMSPropOptimizer(learning_rate=0.001),
-                              run_eagerly=True)
-      fixed_weights = reference_model.get_weights()
-      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+    reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                             input_dim=4)
+    reference_model.compile(loss='categorical_crossentropy',
+                            optimizer=RMSPropOptimizer(learning_rate=0.001),
+                            run_eagerly=True)
+    fixed_weights = reference_model.get_weights()
+    reference_model_loss = reference_model.train_on_batch(train_x, train_y)
 
-      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
-      test_model.compile(loss='categorical_crossentropy',
-                         optimizer=RMSPropOptimizer(learning_rate=0.001),
-                         run_eagerly=False)
-      test_model.set_weights(fixed_weights)
-      test_model_loss = test_model.train_on_batch(train_x, train_y)
-      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+    test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+    test_model.compile(loss='categorical_crossentropy',
+                       optimizer=RMSPropOptimizer(learning_rate=0.001),
+                       run_eagerly=False)
+    test_model.set_weights(fixed_weights)
+    test_model_loss = test_model.train_on_batch(train_x, train_y)
+    self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_training_on_binary_crossentropy_loss(self):
-    with context.eager_mode():
-      train_x = np.ones((100, 4), dtype=np.float32)
-      train_y = np.ones((100, 1), dtype=np.float32)
-      reference_model = testing_utils.get_small_sequential_mlp(16, 1,
-                                                               input_dim=4)
-      reference_model.compile(loss='binary_crossentropy',
-                              optimizer=RMSPropOptimizer(learning_rate=0.001),
-                              run_eagerly=True)
-      fixed_weights = reference_model.get_weights()
-      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+    train_x = np.ones((100, 4), dtype=np.float32)
+    train_y = np.ones((100, 1), dtype=np.float32)
+    reference_model = testing_utils.get_small_sequential_mlp(16, 1,
+                                                             input_dim=4)
+    reference_model.compile(loss='binary_crossentropy',
+                            optimizer=RMSPropOptimizer(learning_rate=0.001),
+                            run_eagerly=True)
+    fixed_weights = reference_model.get_weights()
+    reference_model_loss = reference_model.train_on_batch(train_x, train_y)
 
-      test_model = testing_utils.get_small_sequential_mlp(16, 1, input_dim=4)
-      test_model.compile(loss='binary_crossentropy',
-                         optimizer=RMSPropOptimizer(learning_rate=0.001),
-                         run_eagerly=False)
-      test_model.set_weights(fixed_weights)
-      test_model_loss = test_model.train_on_batch(train_x, train_y)
-      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+    test_model = testing_utils.get_small_sequential_mlp(16, 1, input_dim=4)
+    test_model.compile(loss='binary_crossentropy',
+                       optimizer=RMSPropOptimizer(learning_rate=0.001),
+                       run_eagerly=False)
+    test_model.set_weights(fixed_weights)
+    test_model_loss = test_model.train_on_batch(train_x, train_y)
+    self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -1618,6 +1617,64 @@ class TrainingTest(keras_parameterized.TestCase):
     model.evaluate(x, batch_size=batch_size)
     model.predict(x, batch_size=batch_size)
 
+  @keras_parameterized.run_all_keras_modes(
+      always_skip_v1=True)
+  @parameterized.named_parameters(
+      ('custom_metrics', False, True),
+      ('compiled_metrics', True, False),
+      ('both_compiled_and_custom_metrics', True, True))
+  def test_evaluate_with_custom_test_step(
+      self, use_compiled_metrics, use_custom_metrics):
+
+    class MyModel(training_module.Model):
+
+      def test_step(self, data):
+        x, y = data
+        pred = self(x)
+        metrics = {}
+        if use_compiled_metrics:
+          self.compiled_metrics.update_state(y, pred)
+          self.compiled_loss(y, pred)
+          for metric in self.metrics:
+            metrics[metric.name] = metric.result()
+        if use_custom_metrics:
+          custom_metrics = {
+              'mean': math_ops.reduce_mean(pred),
+              'sum': math_ops.reduce_sum(pred)
+          }
+          metrics.update(custom_metrics)
+        return metrics
+
+    inputs = layers_module.Input((2,))
+    outputs = layers_module.Dense(3)(inputs)
+    model = MyModel(inputs, outputs)
+    if use_compiled_metrics:
+      model.compile('adam', 'mse', metrics=['mae', 'mape'],
+                    run_eagerly=testing_utils.should_run_eagerly())
+    else:
+      model.compile('adam', 'mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+    x = np.random.random((4, 2))
+    y = np.random.random((4, 3))
+    results_list = model.evaluate(x, y)
+    results_dict = model.evaluate(x, y, return_dict=True)
+    self.assertLen(results_list, len(results_dict))
+    if use_compiled_metrics and use_custom_metrics:
+      self.assertLen(results_list, 5)
+      self.assertEqual(results_list,
+                       [results_dict['loss'],
+                        results_dict['mae'], results_dict['mape'],
+                        results_dict['mean'], results_dict['sum']])
+    if use_compiled_metrics and not use_custom_metrics:
+      self.assertLen(results_list, 3)
+      self.assertEqual(results_list,
+                       [results_dict['loss'],
+                        results_dict['mae'], results_dict['mape']])
+    if not use_compiled_metrics and use_custom_metrics:
+      self.assertLen(results_list, 2)
+      self.assertEqual(results_list,
+                       [results_dict['mean'], results_dict['sum']])
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
@@ -1644,13 +1701,21 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
           run_eagerly=testing_utils.should_run_eagerly())
 
   @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_sparse_op_with_op_layer(self):
-    inputs = layers_module.Input(shape=(2,), sparse=True, name='sparse_tensor')
-    output = sparse_ops.sparse_minimum(inputs, inputs)
-    with self.assertRaisesRegex(ValueError,
-                                'not supported by Keras automatic op wrapping'):
-      training_module.Model([inputs], output)
+    with testing_utils.use_keras_tensors_scope(False):
+      # The meaningful error is only raised w/o KerasTensors.
+      # It's tricky to raise the exact same error w/ KerasTensors enabled.
+      # We may want to add dispatching to the sparse_ops and have dispatch
+      # trigger on attributeerror so that these ops fully work w/ KerasTensors.
+      # This may need to wait until dispatch v2
+      inputs = layers_module.Input(
+          shape=(2,), sparse=True, name='sparse_tensor')
+      output = sparse_ops.sparse_minimum(inputs, inputs)
+      with self.assertRaisesRegex(
+          ValueError, 'not supported by Keras automatic '
+          'op wrapping'):
+        training_module.Model([inputs], output)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_predict_error_with_empty_x(self):
@@ -2906,7 +2971,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     scores = model.train_on_batch(x, y, sample_weight=w)
     self.assertArrayNear(scores, [0.3328, 0.8], 0.001)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_add_metric_with_tensor_on_model(self):
     x = layers_module.Input(shape=(1,))
     y = layers_module.Dense(1, kernel_initializer='ones')(x)
@@ -2920,11 +2985,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError, 'Expected a symbolic Tensor for the metric value'):
         model.add_metric(mean_result, name='metric_2')
-
-    with self.assertRaisesRegex(
-        ValueError, 'Using the result of calling a `Metric` object '):
-      with backend.get_graph().as_default():
-        model.add_metric(metrics_module.Mean(name='metric_2')(y))
+    else:
+      with self.assertRaisesRegex(
+          ValueError, 'Using the result of calling a `Metric` object '):
+        with backend.get_graph().as_default():
+          model.add_metric(metrics_module.Mean(name='metric_2')(y))
 
     model.compile(
         'sgd',
@@ -3021,8 +3086,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     self.assertEqual(history.history['metric_1'][-1], 5)
     self.assertAlmostEqual(history.history['val_metric_1'][-1], 5, 0)
 
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True,
-                                           skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_model_metrics_list(self):
 
     class LayerWithAddMetric(layers_module.Layer):
@@ -3063,10 +3127,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
           ValueError, 'Expected a symbolic Tensor for the metric value'):
         model.add_metric(mean_result, name='metric_4')
 
-    with self.assertRaisesRegex(
-        ValueError, 'Using the result of calling a `Metric` object '):
-      with backend.get_graph().as_default():
-        model.add_metric(metrics_module.Mean(name='metric_4')(y))
+    else:
+      with self.assertRaisesRegex(
+          ValueError, 'Using the result of calling a `Metric` object '):
+        with backend.get_graph().as_default():
+          model.add_metric(metrics_module.Mean(name='metric_4')(y))
 
     model.compile(
         'sgd',
@@ -3594,6 +3659,53 @@ class TestFunctionTracing(keras_parameterized.TestCase):
 
     new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'
     self.assertEqual(sum(new_func_graph in log for log in logs.output), 9)
+
+
+class TestBuildCustomModel(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_all_keras_modes
+  def test_build_list_of_inputs(self):
+
+    class MyModel(training_module.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.l1 = layers_module.Dense(1)
+        self.l2 = layers_module.Dense(2)
+
+      def call(self, x):
+        a, b = x
+        return self.l1(a) + self.l2(b)
+
+    # List of tuples
+    model = MyModel()
+    model.build([(None, 1), (None, 2)])
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+    self.assertEqual(model.l2.kernel.shape.as_list(), [2, 2])
+    # List of lists
+    model = MyModel()
+    model.build([[None, 1], [None, 2]])
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+    self.assertEqual(model.l2.kernel.shape.as_list(), [2, 2])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_build_single_inputs(self):
+
+    class MyModel(training_module.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.l1 = layers_module.Dense(1)
+
+      def call(self, x):
+        return self.l1(x)
+
+    model = MyModel()
+    model.build((None, 1))
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+    model = MyModel()
+    model.build([None, 1])
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
 
 
 if __name__ == '__main__':
