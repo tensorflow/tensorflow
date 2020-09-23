@@ -2442,7 +2442,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   for (auto ws : wsinfo_) {
     if (orig_node->type_string() == ws.fwd_op &&
-        mkl_op_registry::IsMklLayoutDependentOp(
+        mkl_op_registry::IsMklOp(
             mkl_op_registry::GetMklOpName(orig_node->type_string()), T)) {
       // If this op is a fwd op, then we need to check if there is an
       // edge from this node's fwd_slot to bwdop's bwd_slot. If there is
@@ -2469,7 +2469,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
         nb->Attr("workspace_enabled", false);
       }
     } else if (orig_node->type_string() == ws.bwd_op &&
-               mkl_op_registry::IsMklLayoutDependentOp(
+               mkl_op_registry::IsMklOp(
                    mkl_op_registry::GetMklOpName(orig_node->type_string()),
                    T)) {
       // If this op is a bwd op, then we need to add workspace edge and
@@ -2493,10 +2493,14 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
           CHECK_NOTNULL(ws_tensors);
           // Add workspace edge between fwd op and bwd op.
           ws_tensors->push_back(NodeBuilder::NodeOut(e->src(), ws.ws_fwd_slot));
-          // Add Mkl tensor edge for workspace edge between fwd op and bwd op.
-          ws_tensors->push_back(NodeBuilder::NodeOut(
-              e->src(), DataIndexToMetaDataIndex(ws.ws_fwd_slot,
-                                                 e->src()->num_outputs())));
+          // Check if we are running in native format mode. If so,
+          // we don't need to have an Mkl metadata tensor for the workspace.
+          if (!NativeFormatEnabled()) {
+            // Add Mkl tensor edge for workspace edge between fwd op and bwd op.
+            ws_tensors->push_back(NodeBuilder::NodeOut(
+                e->src(), DataIndexToMetaDataIndex(ws.ws_fwd_slot,
+                                                   e->src()->num_outputs())));
+          }
           *are_ws_tensors_added = true;
           // In terms of input ordering, we add these calls to add Input
           // here because workspace edge (and its Mkl tensor) is the last
@@ -3645,6 +3649,15 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   Status s = CopyInputs(orig_node, inputs, &nb);
   if (s != Status::OK()) {
     return s;
+  }
+
+  std::vector<NodeBuilder::NodeOut> workspace_tensors;
+  bool are_workspace_tensors_available = false;
+  AddWorkSpaceEdgeIfNeeded(g, orig_node, &nb, &workspace_tensors,
+                           &are_workspace_tensors_available);
+  if (are_workspace_tensors_available) {
+    CHECK_EQ(workspace_tensors.size(), 1);
+    nb.Input(workspace_tensors[0].node, workspace_tensors[0].index);
   }
 
   if (!NativeFormatEnabled()) {
