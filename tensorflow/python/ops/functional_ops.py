@@ -838,27 +838,13 @@ def If(cond, inputs, then_branch, else_branch, name=None):
     or else_branch(inputs).
   """
   # pylint: disable=protected-access
-  # Handle the Defun case until users have transitioned to tf.function. Note
-  # that composites may need to be re-packed by the caller.
   if isinstance(then_branch, function._DefinedFunction):
     tlist = [_.type for _ in then_branch.definition.signature.output_arg]
-    return gen_functional_ops._if(
-        cond, inputs, tlist, then_branch, else_branch, name=name)
-
-  # We assume that `then_branch` is a ConcreteFunction here.
-  then_out = then_branch.structured_outputs
-  else_out = else_branch.structured_outputs
-
-  # Ensure then/else are the same type of composites to avoid an invalid call
-  # to pack_sequence_as later on.
-  nest.assert_same_structure(then_out, else_out, expand_composites=True)
-
-  tlist = nest.flatten(then_branch.output_dtypes)
-  ret = gen_functional_ops._if(
+  else:
+    # We assume that `then_branch` is a ConcreteFunction here.
+    tlist = nest.flatten(then_branch.output_dtypes)
+  return gen_functional_ops._if(
       cond, inputs, tlist, then_branch, else_branch, name=name)
-
-  # Re-pack the outputs to restore any CompositeTensors
-  return nest.pack_sequence_as(then_out, ret, expand_composites=True)
 
 
 def Gradient(inputs, f, name=None):
@@ -978,8 +964,7 @@ def While(input_, cond, body, name=None, hostmem=None):
     # Slice off the loop-carried captured inputs.
     ret = ret[:-len(body.captured_inputs)]
   else:
-    ret = gen_functional_ops._while(
-        nest.flatten(input_, expand_composites=True), cond, body, name=name)
+    ret = gen_functional_ops._while(input_, cond, body, name=name)
   if hostmem:
     input_attr = attr_value_pb2.AttrValue()
     input_attr.list.i.extend(hostmem)
@@ -988,14 +973,7 @@ def While(input_, cond, body, name=None, hostmem=None):
     output_attr = attr_value_pb2.AttrValue()
     output_attr.list.i.extend(hostmem)
     ret[0].op._set_attr("_output_hostmem", output_attr)  # pylint: disable=protected-access
-
-  # Handle the Defun case until users have transitioned to tf.function. Note
-  # that composites may need to be re-packed by the caller.
-  if isinstance(body, function._DefinedFunction):
-    return ret
-
-  return nest.pack_sequence_as(
-      body.structured_outputs, ret, expand_composites=True)
+  return ret
 
 
 # b/36459430
