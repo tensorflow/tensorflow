@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "rocm/rocm_config.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -430,9 +431,21 @@ class RocmApiCallbackImpl {
             data->args.hipHccModuleLaunchKernel.blockDimY;
         event.kernel_info.block_z =
             data->args.hipHccModuleLaunchKernel.blockDimZ;
+#if TF_ROCM_VERSION >= 30800
+        event.kernel_info.grid_x =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeX /
+            event.kernel_info.block_x;
+        event.kernel_info.grid_y =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeY /
+            event.kernel_info.block_y;
+        event.kernel_info.grid_z =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeZ /
+            event.kernel_info.block_z;
+#else
         event.kernel_info.grid_x = data->args.hipHccModuleLaunchKernel.gridDimX;
         event.kernel_info.grid_y = data->args.hipHccModuleLaunchKernel.gridDimY;
         event.kernel_info.grid_z = data->args.hipHccModuleLaunchKernel.gridDimZ;
+#endif
         event.kernel_info.dynamic_shared_memory_usage =
             data->args.hipHccModuleLaunchKernel.sharedMemBytes;
 #else
