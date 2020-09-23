@@ -163,7 +163,7 @@ tf_cc_binary(
 tf_cc_binary(
     name = "kernel-gen-opt",
     srcs = ["tools/kernel-gen-opt/kernel-gen-opt.cc"],
-    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
+    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__subpackages__"],
     deps = [
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
