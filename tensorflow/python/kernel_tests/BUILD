@@ -697,6 +697,7 @@ cuda_py_test(
     name = "logging_ops_test",
     size = "small",
     srcs = ["logging_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -981,6 +982,7 @@ tf_py_test(
     name = "save_restore_ops_test",
     size = "small",
     srcs = ["save_restore_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",

@@ -997,6 +997,7 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":cross_device_utils",

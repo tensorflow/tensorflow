@@ -138,6 +138,7 @@ cuda_py_test(
     srcs = ["worker_training_state_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":multi_worker_testing_utils",
         ":worker_training_state",
@@ -598,6 +599,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "tf_integration_test",
     ],
+    tfrt_enabled = True,
     deps = [
         ":keras_test_lib",
     ],
@@ -643,6 +645,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:training_lib",

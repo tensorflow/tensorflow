@@ -92,6 +92,7 @@ cuda_py_test(
     size = "small",
     srcs = ["copy_to_device_test.py"],
     tags = ["no_windows_gpu"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -405,6 +406,7 @@ tf_py_test(
     size = "small",
     srcs = ["map_defun_op_test.py"],
     tags = ["no_pip"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -576,6 +578,7 @@ cuda_py_test(
     size = "small",
     srcs = ["prefetch_to_device_test.py"],
     tags = ["no_windows_gpu"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -742,6 +745,7 @@ tf_py_test(
 tf_py_test(
     name = "sleep_test",
     srcs = ["sleep_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
