@@ -29,7 +29,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -43,6 +42,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_arrays_v1
@@ -57,6 +57,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -993,7 +994,7 @@ class Model(training_lib.Model):
 
     # Reset metrics on all the distributed (cloned) models.
     if self._distribution_strategy:
-      distributed_training_utils._reset_metrics(self)  # pylint: disable=protected-access
+      distributed_training_utils_v1._reset_metrics(self)  # pylint: disable=protected-access
 
   def train_on_batch(self,
                      x,
@@ -1398,7 +1399,7 @@ class Model(training_lib.Model):
             'We currently do not support enabling `run_eagerly` with '
             'distribution strategy.')
 
-      if (distributed_training_utils.is_distributing_by_cloning(self) and
+      if (distributed_training_utils_v1.is_distributing_by_cloning(self) and
           (not self.built or not self.inputs or not self.outputs)):
         raise ValueError(
             'We currently do not support distribution strategy with a '
@@ -2378,7 +2379,7 @@ class Model(training_lib.Model):
 
       def _type_spec_from_value(value):
         """Grab type_spec without converting array-likes to tensors."""
-        if isinstance(value, composite_tensor.CompositeTensor):
+        if tf_utils.is_extension_type(value):
           return value._type_spec  # pylint: disable=protected-access
         # Get a TensorSpec for array-like data without
         # converting the data to a Tensor
@@ -2856,7 +2857,7 @@ class DistributedCallbackModel(Model):
     self._original_model.load_weights(filepath, by_name=False)
     # Copy the weights from the original model to each of the replicated models.
     orig_model_weights = self._original_model.get_weights()
-    distributed_training_utils.set_weights(
+    distributed_training_utils_v1.set_weights(
         self._original_model._distribution_strategy, self,  # pylint: disable=protected-access
         orig_model_weights)
 

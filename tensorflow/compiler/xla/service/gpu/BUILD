@@ -1179,8 +1179,8 @@ cc_library(
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
-        ":horizontal_fusion",
         ":horizontal_input_fusion",
+        ":horizontal_loop_fusion",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
@@ -1230,6 +1230,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:logistic_expander",
+        "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
@@ -1759,9 +1760,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "horizontal_fusion",
-    srcs = ["horizontal_fusion.cc"],
-    hdrs = ["horizontal_fusion.h"],
+    name = "horizontal_loop_fusion",
+    srcs = ["horizontal_loop_fusion.cc"],
+    hdrs = ["horizontal_loop_fusion.h"],
     deps = [
         ":gpu_fusible",
         "//tensorflow/compiler/xla:shape_util",
@@ -1776,11 +1777,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "horizontal_fusion_test",
-    srcs = ["horizontal_fusion_test.cc"],
+    name = "horizontal_loop_fusion_test",
+    srcs = ["horizontal_loop_fusion_test.cc"],
     deps = [
         ":fusion_merger",
-        ":horizontal_fusion",
+        ":horizontal_loop_fusion",
         ":instruction_fusion",
         ":multi_output_fusion",
         "//tensorflow/compiler/jit:xla_gpu_jit",

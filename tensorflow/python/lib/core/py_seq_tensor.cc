@@ -880,13 +880,10 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_INVALID:  // Only occurs for empty tensors.
     {
-      AbstractTensorInterface* t = tensorflow::unwrap(ctx)->CreateTensor(
-          requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
-          state.inferred_shape);
-      auto* result =
-          tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(t));
-      t->Release();
-      return result;
+      Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
+                    TensorShape(state.inferred_shape));
+      TensorInterface t(std::move(tensor));
+      return tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(&t));
     }
 
     default:

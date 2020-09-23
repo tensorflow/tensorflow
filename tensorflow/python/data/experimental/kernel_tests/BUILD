@@ -139,6 +139,53 @@ tf_py_test(
     ],
 )
 
+py_library(
+    name = "data_service_test_base",
+    srcs = ["data_service_test_base.py"],
+    deps = [
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "data_service_ops_test",
+    size = "medium",
+    srcs = ["data_service_ops_test.py"],
+    shard_count = 10,
+    deps = [
+        ":data_service_test_base",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+tf_py_test(
+    name = "data_service_ops_ft_test",
+    srcs = ["data_service_ops_ft_test.py"],
+    deps = [
+        ":data_service_test_base",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
 tf_py_test(
     name = "dense_to_sparse_batch_test",
     srcs = ["dense_to_sparse_batch_test.py"],

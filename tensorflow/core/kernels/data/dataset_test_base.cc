@@ -402,7 +402,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
-      /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+      /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {

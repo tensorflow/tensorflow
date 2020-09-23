@@ -27,11 +27,11 @@ namespace gpu {
 
 // This optimization pass horizontally fuses kInput fusions to both reduce the
 // kernel launch overhead and increase parallelism degree. See
-// GpuHorizontalFusion for general description and motivation about horizontal
-// fusion. GpuHorizontalFusion deals with kLoop fusions while this pass deals
-// with kInput fusions.
+// GpuHorizontalLoopFusion for general description and motivation about
+// horizontal fusion. GpuHorizontalLoopFusion deals with kLoop fusions while
+// this pass deals kInput fusions.
 //
-// Following GpuHorizontalFusion, a simple yet effective heuristic is used
+// Following GpuHorizontalLoopFusion, a simple yet effective heuristic is used
 // to search the fusion candidates while avoiding creating cycles. That is,
 // we simply search for fusion candidates by looking for instructions whose
 // outputs are all consumed by the same instruction. This catches the typical

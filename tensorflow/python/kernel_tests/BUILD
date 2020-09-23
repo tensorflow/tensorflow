@@ -720,9 +720,12 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
     ],
 )
 
@@ -1834,6 +1837,7 @@ cuda_py_test(
     name = "constant_op_eager_test",
     size = "small",
     srcs = ["constant_op_eager_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3173,6 +3177,7 @@ cuda_py_test(
     srcs = ["rnn_cell_test.py"],
     shard_count = 15,
     tags = ["no_windows"],  # b/139739217
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3634,6 +3639,7 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

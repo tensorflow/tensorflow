@@ -8775,6 +8775,14 @@ func PrefetchDatasetLegacyAutotune(value bool) PrefetchDatasetAttr {
 	}
 }
 
+// PrefetchDatasetBufferSizeMin sets the optional buffer_size_min attribute to value.
+// If not specified, defaults to 0
+func PrefetchDatasetBufferSizeMin(value int64) PrefetchDatasetAttr {
+	return func(m optionalAttr) {
+		m["buffer_size_min"] = value
+	}
+}
+
 // Creates a dataset that asynchronously prefetches elements from `input_dataset`.
 //
 // Arguments:
@@ -49947,7 +49955,15 @@ func OptionalGetValue(scope *Scope, optional tf.Output, output_types []tf.DataTy
 //
 // This operation converts Unicode code points to script codes corresponding to
 // each code point. Script codes correspond to International Components for
-// Unicode (ICU) UScriptCode values. See http://icu-project.org/apiref/icu4c/uscript_8h.html.
+// Unicode (ICU) UScriptCode values.
+//
+// See
+// [ICU project docs](http://icu-project.org/apiref/icu4c/uscript_8h.html)
+// for more details on script codes.
+//
+// For an example, see the unicode strings guide on [unicode scripts]
+// (https://www.tensorflow.org/tutorials/load_data/unicode#representing_unicode).
+//
 // Returns -1 (USCRIPT_INVALID_CODE) for invalid codepoints. Output shape will
 // match input shape.
 //

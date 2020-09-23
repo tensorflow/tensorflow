@@ -29,6 +29,7 @@ py_library(
     srcs = [
         "__init__.py",
         "distributed_training_utils.py",
+        "distributed_training_utils_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

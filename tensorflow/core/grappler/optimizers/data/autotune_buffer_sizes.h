@@ -13,24 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_INJECT_PREFETCH_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_INJECT_PREFETCH_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
 
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
 
-// This optimization adds `Prefetch(AUTOTUNE)` after all asynchronous tf.data
-// transformations. This reduces the problem of tuning buffer sizes of these
-// asynchronous transformations to tuning buffer sizes of the prefetch
-// transformation.
-class InjectPrefetch : public TFDataOptimizerBase {
+// This optimization does the following:
+//
+// 1. Adds `prefetch(AUTOTUNE)` after all asynchronous tf.data transformations
+// (e.g. parallel map, parallel interleave, and map + batch) if they are not
+// followed by a `prefetch` yet.
+//
+// 2. If there exists any `prefetch(buffer_size=N)` for `N>=0`,  it will replace
+// the transformation with autotunable version of `prefetch` which uses N as
+// the minimum size of the buffer.
+//
+// 3. Switches from using legacy autotuning for `prefetch` to using an algorithm
+// based on the performance model.
+class AutotuneBufferSizes : public TFDataOptimizerBase {
  public:
-  InjectPrefetch() = default;
-  ~InjectPrefetch() override = default;
+  AutotuneBufferSizes() = default;
+  ~AutotuneBufferSizes() override = default;
 
-  string name() const override { return "inject_prefetch"; };
+  string name() const override { return "autotune_buffer_sizes"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -50,4 +58,4 @@ class InjectPrefetch : public TFDataOptimizerBase {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_INJECT_PREFETCH_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_

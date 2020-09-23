@@ -58,7 +58,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/rpc:grpc",
         tf_grpc_cc_dependency(),
     ],
     alwayslink = True,

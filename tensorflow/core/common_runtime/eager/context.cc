@@ -76,7 +76,6 @@ EagerContext::EagerContext(
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
     const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
     bool device_mgr_owned, Rendezvous* rendezvous,
-    const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
@@ -85,7 +84,6 @@ EagerContext::EagerContext(
       host_cpu_device_(device_mgr->HostCPU()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
-      custom_kernel_creator_(custom_kernel_creator),
       cluster_flr_(cluster_flr),
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
@@ -99,7 +97,7 @@ EagerContext::EagerContext(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr, custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr);
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
@@ -185,8 +183,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options,
                              thread::ThreadPool* thread_pool,
-                             DistributedFunctionLibraryRuntime* cluster_flr,
-                             const CustomKernelCreator* custom_kernel_creator) {
+                             DistributedFunctionLibraryRuntime* cluster_flr) {
   Rendezvous::Factory rendezvous_factory{
       [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
         *r = CreateRendezvous(step_id);
@@ -194,7 +191,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
       }};
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-      thread_pool, cluster_flr, custom_kernel_creator,
+      thread_pool, cluster_flr,
       /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
 }
 
@@ -1328,7 +1325,7 @@ Status EagerContext::SetMasterContextState(
   const auto* config = pflr_->config();
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr_.Get());
 
   keep_alive_secs_ = keep_alive_secs;
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
@@ -1430,7 +1427,7 @@ Status EagerContext::InitializeRemoteWorker(
   const auto* config = pflr_->config();
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr_.Get());
   InitPrioritizedDeviceTypeList();
 
   ClearCachesAndThreadExecutors();

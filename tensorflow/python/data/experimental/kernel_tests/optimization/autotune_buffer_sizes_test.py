@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the `AutotuneBuffers` rewrite."""
+"""Tests for the `AutotuneBufferSizes` rewrite."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,8 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
+class AutotuneBufferSizesTest(test_base.DatasetTestBase,
+                              parameterized.TestCase):
 
   def _enable_autotune_buffers(self, dataset):
     options = dataset_ops.Options()
@@ -74,11 +75,18 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
         testing.assert_next([
-            "ParallelMap", "Prefetch", "ParallelInterleave", "Prefetch",
-            "MapAndBatch", "Prefetch", "FiniteTake"
+            "ParallelMap", "Prefetch", "ParallelMap", "Prefetch", "ParallelMap",
+            "Prefetch", "ParallelInterleave", "Prefetch", "MapAndBatch",
+            "Prefetch", "FiniteTake"
         ]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.prefetch(buffer_size=3)
+    dataset = dataset.map(
+        lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.map(
+        lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = dataset.interleave(
         lambda x: dataset_ops.Dataset.from_tensors(x + 1),
         num_parallel_calls=dataset_ops.AUTOTUNE)
@@ -87,7 +95,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.batch(1)
     dataset = dataset.take(50)
     dataset = self._enable_autotune_buffers(dataset)
-    self.assertDatasetProduces(dataset, [[i] for i in range(3, 53)])
+    self.assertDatasetProduces(dataset, [[i] for i in range(5, 55)])
 
   @combinations.generate(test_base.default_test_combinations())
   def testNoRegularMap(self):

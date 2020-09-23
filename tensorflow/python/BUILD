@@ -5146,11 +5146,29 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "image_grad_deterministic_test",
+    size = "medium",
+    srcs = ["ops/image_grad_deterministic_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":image_grad_test_base",
+    ],
+)
+
+cuda_py_test(
     name = "image_grad_test",
     size = "medium",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
     tfrt_enabled = True,
+    deps = [
+        ":image_grad_test_base",
+    ],
+)
+
+py_library(
+    name = "image_grad_test_base",
+    srcs = ["ops/image_grad_test_base.py"],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -5264,7 +5282,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
-        "notsan",  # b/168815578
     ],
     deps = [
         ":framework_for_generated_wrappers",

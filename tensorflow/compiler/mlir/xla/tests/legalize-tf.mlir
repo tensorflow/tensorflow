@@ -3054,6 +3054,15 @@ func @max(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   return %0 : tensor<4x1xf16>
 }
 
+// CHECK-LABEL: func @max_qint
+// Regression test to ensure we don't crash getting the initial value for
+// tf.Max when using quantized integer types.
+func @max_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  %0 = "tf.Max"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
+  return %0 : tensor<4x1x!tf.qint8>
+}
+
 // CHECK-LABEL: func @max_dynamic
 func @max_dynamic(%arg0: tensor<4x?xf16>) -> tensor<4x1xf16> {
     // CHECK: %[[CAST:.*]] = "mhlo.convert"(%arg0) : (tensor<4x?xf16>) -> tensor<4x?xf16>
@@ -3088,6 +3097,15 @@ func @min(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   return %0 : tensor<4x1xf16>
 }
 
+// CHECK-LABEL: func @min_qint
+// Regression test to ensure we don't crash getting the initial value for
+// tf.Min when using quantized integer types.
+func @min_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  %0 = "tf.Min"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
+  return %0 : tensor<4x1x!tf.qint8>
+}
+
 // CHECK-LABEL: func @prod
 func @prod(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK: %[[CAST:.*]] = "mhlo.convert"(%arg0) : (tensor<4x8xf16>) -> tensor<4x8xf32>
@@ -3103,6 +3121,15 @@ func @prod(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Prod"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<1xi64>) -> tensor<4x1xf16>
   return %0 : tensor<4x1xf16>
+}
+
+// CHECK-LABEL: func @prod_qint
+// Regression test to ensure we don't crash getting the initial value for
+// tf.Prod when using quantized integer types.
+func @prod_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  %0 = "tf.Prod"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
+  return %0 : tensor<4x1x!tf.qint8>
 }
 
 // CHECK-LABEL: @all

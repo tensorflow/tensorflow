@@ -52,7 +52,7 @@ constexpr std::array<const char*, 17> kTFDataOptimizations = {
     "parallel_batch",
     "reorder_data_discarding_ops",
     "slack",
-    "inject_prefetch"};
+    "autotune_buffer_sizes"};
 
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.

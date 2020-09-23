@@ -41,7 +41,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device_spec
@@ -1268,7 +1267,8 @@ def is_placeholder(x):
   try:
     if keras_tensor.keras_tensors_enabled():
       return hasattr(x, '_is_backend_placeholder')
-    if isinstance(x, composite_tensor.CompositeTensor):
+    from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
+    if tf_utils.is_extension_type(x):
       flat_components = nest.flatten(x, expand_composites=True)
       return py_any(is_placeholder(c) for c in flat_components)
     else:
@@ -3881,7 +3881,8 @@ class GraphExecutionFunction(object):
     # CompositeTensors. E.g., if output_structure contains a SparseTensor, then
     # this ensures that we return its value as a SparseTensorValue rather than
     # a SparseTensor.
-    if isinstance(tensor, composite_tensor.CompositeTensor):
+    from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
+    if tf_utils.is_extension_type(tensor):
       return self._session.run(tensor)
     else:
       return tensor

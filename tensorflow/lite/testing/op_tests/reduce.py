@@ -160,6 +160,14 @@ def make_reduce_tests(reduce_op,
             "keepdims": [True, False],
             "fully_quantize": [True],
         },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[2, 0, 2]],
+            "axis": [0],
+            "const_axis": [True],
+            "keepdims": [True, False],
+            "fully_quantize": [False],
+        },
     ]
     # test_parameters include fully_quantize option only when
     # allow_fully_quantize is True.

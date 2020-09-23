@@ -602,6 +602,20 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('multiply',
                     f.experimental_get_compiler_ir(b=a, a=b)(stage='hlo'))
 
+  def testGetCompilerIrDot(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        return a + b
+
+      a = constant_op.constant([1.1, 1.1])
+      b = constant_op.constant([2.2, 2.2])
+
+      self.assertIn(
+          'label',
+          f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo_dot'))
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

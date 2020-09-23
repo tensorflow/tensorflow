@@ -91,25 +91,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "data_service_ops_test",
-    size = "medium",
-    srcs = ["data_service_ops_test.py"],
-    shard_count = 10,
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/experimental/service:server_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-    ],
-)
-
-tf_py_test(
     name = "dataset_test",
     size = "small",
     srcs = ["dataset_test.py"],
