@@ -178,6 +178,23 @@ cc_library(
 )
 
 cc_library(
+    name = "tracing_utils",
+    srcs = ["tracing_utils.cc"],
+    hdrs = [
+        "tracing_utils.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_operation",
+        ":c_api_unified_internal",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "gradients_internal",
     srcs = [
         "gradients.cc",
@@ -1037,6 +1054,8 @@ filegroup(
             "gradients.cc",  # Uses RTTI.
             "gradients_util.cc",
             "gradients_util.h",
+            "tracing_utils.h",
+            "tracing_utils.cc",
             "*test*",
             "*dlpack*",
         ],
