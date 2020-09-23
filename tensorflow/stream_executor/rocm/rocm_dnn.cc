@@ -1197,7 +1197,7 @@ class ScopedFusionPlanBase {
       const int op_idx, const float* alpha, const float* beta,
       const void* scale, const void* offset, void* running_mean,
       void* running_variance, void* saved_mean, void* saved_inv_variance,
-      double epsilon, double exponential_average_factor) {
+      double exponential_average_factor, double epsilon) {
     miopenFusionOpDescriptor_t batchnorm_op;
     auto status =
         wrap::miopenFusionPlanGetOp(fusion_plan_, op_idx, &batchnorm_op);
@@ -1208,8 +1208,8 @@ class ScopedFusionPlanBase {
 
     status = wrap::miopenSetOpArgsBatchNormForward(
         fusion_args_, batchnorm_op, alpha, beta, scale, offset, saved_mean,
-        saved_inv_variance, running_mean, running_variance, epsilon,
-        exponential_average_factor);
+        saved_inv_variance, running_mean, running_variance,
+        exponential_average_factor, epsilon);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenSetOpArgsBatchNormForward failed: "
                  << ToString(status);
@@ -1568,7 +1568,7 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
     float beta = 0.0;
     return ScopedFusionPlanBase::SetBatchNormForwardArgs(
         k_batchnorm_op_idx, &alpha, &beta, scale, offset, batch_mean, batch_var,
-        saved_mean, saved_var, epsilon, /*exponential_average_factor=*/1.0);
+        saved_mean, saved_var, /*exponential_average_factor=*/1.0, epsilon);
   }
 
   miopenStatus_t SetActivationForwardArgs(

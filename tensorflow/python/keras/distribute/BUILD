@@ -523,6 +523,7 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", # Times out on ROCM
     ],
     deps = [
         ":saved_model_test_base",
