@@ -5160,6 +5160,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     tfrt_enabled = True,
     deps = [
         ":image_grad_test_base",
