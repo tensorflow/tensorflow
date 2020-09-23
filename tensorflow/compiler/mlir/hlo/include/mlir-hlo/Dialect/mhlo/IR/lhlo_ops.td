@@ -16,19 +16,19 @@ limitations under the License.
 // This is the operation definition file for LMHLO, the "late" MHLO variant of
 // the dialect, which operates on buffers instead of tensors.
 //
-// This file largely overlaps with mhlo_ops.td at a logic level. It's tempting to
-// merge these two files together, but we need to consider the following
+// This file largely overlaps with hlo_ops.td at a logical level. It's tempting
+// to merge these two files together, but we need to consider the following
 // obstacles:
 // * We need to have a common representation for arguments. That is to say,
-// HLO_Array<X> translates to HLO_Tensor<X> in HLO dialect, and
-// Arg<LHLO_Buffer<X>, "", [Mem(Read|Write)]> in LHLO. Array types within tuples
-// also need to be transformed.
+//   HLO_Array<X> translates to HLO_Tensor<X> in HLO dialect, and
+//   Arg<LHLO_Buffer<X>, "", [Mem(Read|Write)]> in LHLO. Array types within
+//   tuples also need to be transformed.
 // * As of now, TableGen's dag functions are not sufficient to accomplish the
-// one above.
-// * Traits aren't identical, but need to be coped. For example,
-// SameOperandAndResultType in HLO corresponds to SameTypeOperands in LHLO.
+//   one above.
+// * Traits aren't identical, but need to be copied. For example,
+//   SameOperandAndResultType in HLO corresponds to SameTypeOperands in LHLO.
 // * Also, currently HLO describes the API in XLA's client side, not service
-// side. LHLO aims for the service side.
+//   side. LHLO aims for the service side.
 
 #ifndef LHLO_OPS
 #define LHLO_OPS
