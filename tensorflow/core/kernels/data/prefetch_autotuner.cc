@@ -25,7 +25,7 @@ PrefetchAutotuner::PrefetchAutotuner(int64 initial_buffer_size,
     : buffer_limit_(initial_buffer_size) {
   if (initial_buffer_size == model::kAutotune) {
     mode_ = Mode::kUpswing;
-    buffer_limit_ = std::max(1LL, buffer_size_min);
+    buffer_limit_ = std::max(int64{1}, buffer_size_min);
   }
 }
 
