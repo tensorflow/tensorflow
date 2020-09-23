@@ -187,7 +187,8 @@ TEST_P(CSavedModelAPITest, LoadsAssetSavedModel) {
   EXPECT_EQ(TF_NumDims(result), 0);
   tensorflow::tstring* output_value =
       static_cast<tensorflow::tstring*>(TF_TensorData(result));
-  EXPECT_EQ(std::string(*output_value), "TEST ASSET FILE CONTENTS\n");
+  std::string file_contents(*output_value);
+  EXPECT_NE(file_contents.find("TEST ASSET FILE CONTENTS"), std::string::npos);
 
   TF_DeleteTensor(result);
   TFE_DeleteTensorHandle(read_file_fn_outputs[0]);
