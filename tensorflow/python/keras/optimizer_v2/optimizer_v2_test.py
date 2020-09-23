@@ -377,6 +377,16 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, '>= 0'):
       gradient_descent.SGD(learning_rate=1.0, clipnorm=-1.0)
 
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph', 'eager'],
+          clip_type=['clipnorm', 'global_clipnorm', 'clipvalue']))
+  def testConfigWithCliping(self, clip_type):
+    opt = gradient_descent.SGD(learning_rate=1.0, **{clip_type: 2.0})
+    config = opt.get_config()
+    opt = gradient_descent.SGD.from_config(config)
+    self.assertEqual(getattr(opt, clip_type), 2.0)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidKwargs(self):
     with self.assertRaisesRegex(TypeError, 'Unexpected keyword argument'):
