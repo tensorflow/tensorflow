@@ -156,7 +156,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   }
   // Approximate Tanh using standard operations.
   pm.addNestedPass<::mlir::FuncOp>(
-      ::mlir::mhlo::createLegalizeTanhToApproximationPass());
+      ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(xla::mlir_gpu::createMoveScalarComputationsIntoGpuLaunchPass());
   // Take launches to launches with kernels.

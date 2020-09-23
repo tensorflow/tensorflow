@@ -126,12 +126,13 @@ class ApproximateTanhLowering : public OpRewritePattern<TanhOp> {
   }
 };
 
-struct LegalizeTanhToApproximationPass
-    : public PassWrapper<LegalizeTanhToApproximationPass, FunctionPass> {
+struct LegalizeTrigonometricToApproximationPass
+    : public PassWrapper<LegalizeTrigonometricToApproximationPass,
+                         FunctionPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnFunction() override {
     OwningRewritePatternList patterns;
-    PopulateTanhToApproximationPatterns(&getContext(), &patterns);
+    PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
     applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
@@ -139,12 +140,12 @@ struct LegalizeTanhToApproximationPass
 }  // anonymous namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
-createLegalizeTanhToApproximationPass() {
-  return std::make_unique<LegalizeTanhToApproximationPass>();
+createLegalizeTrigonometricToApproximationPass() {
+  return std::make_unique<LegalizeTrigonometricToApproximationPass>();
 }
 
-void PopulateTanhToApproximationPatterns(mlir::MLIRContext *context,
-                                         OwningRewritePatternList *patterns) {
+void PopulateTrigonometricToApproximationPatterns(
+    mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
   patterns->insert<ApproximateTanhLowering>(context);
 }
 
