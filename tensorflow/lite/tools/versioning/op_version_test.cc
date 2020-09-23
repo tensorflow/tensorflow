@@ -306,6 +306,14 @@ TEST(OpVersionTest, VersioningSumTest) {
   SimpleVersioningTest(BuiltinOperator_SUM);
 }
 
+TEST(OpVersionTest, VersioningReduceMinTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MIN);
+}
+
+TEST(OpVersionTest, VersioningReduceMaxTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MAX);
+}
+
 TEST(OpVersionTest, VersioningAddTest) {
   SimpleVersioningTest(BuiltinOperator_ADD);
 }
