@@ -41,7 +41,7 @@ AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
 AM_SDK_DEST := AmbiqSuite-Rel2.2.0
 
 SF_BSPS_URL := "https://github.com/sparkfun/SparkFun_Apollo3_AmbiqSuite_BSPs/archive/v0.0.9.zip"
-SF_BSPS_MD5 := "53c851ffaf710b7cd1bcaab8ddf8ba07"
+SF_BSPS_MD5 := "e42376144834c0edbd7a8f600dcd3552"
 SF_BSPS_DEST := boards_sfe
 
 STM32_BARE_LIB_URL := "http://mirror.tensorflow.org/github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
