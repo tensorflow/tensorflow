@@ -45,6 +45,12 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
 
   endif
 
+  ifeq ($(TARGET),$(filter $(TARGET),\
+    sparkfun_edge\
+    ))
+    ALL_TAGS+= sfe-apollo3-hm01b0
+  endif
+
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
     -DAM_PACKAGE_BGA \

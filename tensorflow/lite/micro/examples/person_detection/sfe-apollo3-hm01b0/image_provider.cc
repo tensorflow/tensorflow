@@ -155,14 +155,18 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
 
   burst_mode_enable(error_reporter, true);
 
+#if defined(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN)
   // Turn on the 1.8V regulator for DVDD on the camera.
   am_hal_gpio_pinconfig(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN,
                         g_AM_HAL_GPIO_OUTPUT_12);
   am_hal_gpio_output_set(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN);
+#endif
 
+#if defined(AM_BSP_LED_RED)
   // Configure Red LED for debugging.
   am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_RED));
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_RED);
+#endif
 
   hm01b0_power_up(&s_HM01B0Cfg);
 
@@ -194,7 +198,10 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
   if (!g_is_camera_initialized) {
     TfLiteStatus init_status = InitCamera(error_reporter);
     if (init_status != kTfLiteOk) {
+      error_reporter->Report("\nerror initializing camera!\n");
+#if defined(AM_BSP_GPIO_LED_RED)
       am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
+#endif
       return init_status;
     }
     // Drop a few frames until auto exposure is calibrated.
