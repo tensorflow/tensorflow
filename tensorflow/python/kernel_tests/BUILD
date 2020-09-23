@@ -284,13 +284,14 @@ tf_py_test(
 
 tf_py_test(
     name = "collective_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["collective_ops_test.py"],
-    tfrt_enabled = True,
+    tfrt_enabled = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops_gen",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/compat:v2_compat",
     ],
 )
 
