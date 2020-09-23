@@ -77,6 +77,8 @@ REGISTER_OP("_MklNativeFusedConv2D")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
@@ -144,6 +146,8 @@ REGISTER_OP("_MklNativeFusedDepthwiseConv2dNative")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
@@ -248,6 +252,8 @@ REGISTER_OP("_MklNativePadWithFusedConv2D")
     .Attr("Tpaddings: {int32, int64} = DT_INT32")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
