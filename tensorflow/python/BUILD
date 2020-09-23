@@ -4460,6 +4460,7 @@ cuda_py_test(
         ":platform",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(

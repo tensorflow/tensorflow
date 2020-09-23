@@ -232,6 +232,7 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
+        "no_windows_gpu",
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
 )
@@ -711,7 +712,10 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["optonly"],
+    tags = [
+        "no_windows_gpu",
+        "optonly",
+    ],
 )
 
 cuda_py_test(
@@ -726,6 +730,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -1628,6 +1633,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2183,6 +2189,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 20,
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -3295,6 +3302,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -3337,6 +3345,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
+    tags = ["no_windows_gpu"],
     # b/140155706: nans in result
     xla_enable_strict_auto_jit = False,
 )
@@ -3807,7 +3816,10 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows_gpu",
+    ],
 )
 
 cuda_py_test(
@@ -3820,7 +3832,10 @@ cuda_py_test(
     ],
     main = "sparse_csr_matrix_ops_test.py",
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows_gpu",
+    ],
 )
 
 cuda_py_test(
@@ -3831,7 +3846,10 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg/sparse",
     ],
     main = "csr_sparse_matrix_test.py",
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows_gpu",
+    ],
 )
 
 cuda_py_test(
@@ -3855,7 +3873,10 @@ cuda_py_test(
     ],
     main = "sparse_csr_matrix_dense_mat_mul_grad_test.py",
     shard_count = 50,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows_gpu",
+    ],
 )
 
 cuda_py_test(
@@ -3867,5 +3888,8 @@ cuda_py_test(
     ],
     main = "sparse_csr_matrix_sparse_mat_mul_grad_test.py",
     shard_count = 50,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows_gpu",
+    ],
 )

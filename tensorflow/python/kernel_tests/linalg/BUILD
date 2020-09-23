@@ -57,6 +57,7 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "noasan",  # times out, b/63678675
+        "no_windows_gpu",
         "optonly",  # times out
     ],
 )
@@ -140,6 +141,7 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_rocm",  # calls BLAS ops for complex types
+        "no_windows_gpu",
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],

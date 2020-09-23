@@ -172,6 +172,7 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_rocm",
+        "no_windows_gpu",
         "optonly",  # Too slow in non-opt mode
     ],
 )

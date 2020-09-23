@@ -48,6 +48,7 @@ cuda_py_tests(
     shard_count = 8,
     tags = [
         "no_rocm",
+        "no_windows_gpu",
         "optonly",
     ],
 )
