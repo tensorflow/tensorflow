@@ -508,7 +508,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     Returns:
       A dict of lists of tensors, keyed by the table names, containing the
-    gradients in the correct order with None gradients repalaced by zeros.
+    gradients in the correct order with None gradients replaced by zeros.
     """
 
     nest.assert_same_structure(self._feature_config, gradients)
@@ -1295,11 +1295,21 @@ def _load_variables_impl(config, hosts, variables, table_config):
     table_config: A list of tf.tpu.experimental.embedding.TableConfig objects.
   """
   def select_fn(host_id):
-    return lambda x: x.variables[host_id]
+
+    def select_or_zeros(x):
+      if host_id >= len(x.variables):
+        # In the edge case where we have more hosts than variables, due to using
+        # a small number of rows, we load zeros for the later hosts. We copy
+        # the shape of the first host's variables, which we assume is defined
+        # because TableConfig guarantees at least one row.
+        return array_ops.zeros_like(x.variables[0])
+      return x.variables[host_id]
+
+    return select_or_zeros
 
   for host_id, host in enumerate(hosts):
-    host_variables = nest.map_structure(select_fn(host_id), variables)
     with ops.device(host):
+      host_variables = nest.map_structure(select_fn(host_id), variables)
       for table in table_config:
         table.optimizer._load()(  # pylint: disable=protected-access
             table_name=table.name,
@@ -1343,8 +1353,11 @@ def _retrieve_variables_impl(config, hosts, variables, table_config):
                                  table.optimizer._slot_names()):  # pylint: disable=protected-access
           # We must assign the CPU variables the values of tensors that were
           # returned from the TPU.
-          variables[table.name][slot].variables[host_id].assign(
-              retrieved[i])
+          sharded_var = variables[table.name][slot]
+          if host_id < len(sharded_var.variables):
+            # In the edge case where we have more hosts than variables, due to
+            # using a small number of rows, we skip the later hosts.
+            sharded_var.variables[host_id].assign(retrieved[i])
         # Ensure that only the first table/first host gets a config so that we
         # don't bloat graph by attaching this large string to each op.
         # We have num tables * num hosts of these so for models with a large
@@ -1575,10 +1588,15 @@ def make_sharded_variable_creator(hosts):
     initial_value = kwargs["initial_value"]
     rows = shape[0]
     cols = shape[1]
-    missing = rows % num_hosts
-    # we partition as if we were using MOD sharding.
-    partitions = ([rows // num_hosts + 1] * missing + [rows // num_hosts] *
-                  (num_hosts - missing))
+    partial_partition = rows % num_hosts
+    full_rows_per_host = rows // num_hosts
+    # We partition as if we were using MOD sharding: at least
+    # `full_rows_per_host` rows to `num_hosts` hosts, where the first
+    # `partial_partition` hosts get an additional row when the number of rows
+    # is not cleanly divisible. Note that `full_rows_per_host` may be zero.
+    partitions = (
+        [full_rows_per_host + 1] * partial_partition
+        + [full_rows_per_host] * (num_hosts - partial_partition))
     variables = []
     sharding_aware = "shard_info" in tf_inspect.getargspec(initial_value).args
 
@@ -1586,6 +1604,11 @@ def make_sharded_variable_creator(hosts):
     offset = 0
     kwargs["dtype"] = dtype
     for i, p in enumerate(partitions):
+      if p == 0:
+        # Skip variable creation for empty partitions, resulting from the edge
+        # case of 'rows < num_hosts'. This is safe because both load/restore
+        # can handle the missing values.
+        continue
       with ops.device(hosts[i]):
         kwargs["name"] = "{}_{}".format(name, i)
         kwargs["shape"] = (p, cols)
