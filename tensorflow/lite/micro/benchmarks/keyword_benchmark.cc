@@ -38,25 +38,18 @@ alignas(16) uint8_t tensor_arena[tensor_arena_size];
 // A random number generator seed to generate input values.
 constexpr int kRandomSeed = 42;
 
-MicroBenchmarkRunner<int16_t>* benchmark_runner = nullptr;
-
-void InitializeBenchmarkRunner() {
-  // NOLINTNEXTLINE
-  static MicroBenchmarkRunner<int16_t> runner(g_keyword_scrambled_model_data,
-                                              tensor_arena, tensor_arena_size);
-  benchmark_runner = &runner;
-}
+static MicroBenchmarkRunner<int16_t> benchmark_runner(
+    g_keyword_scrambled_model_data, tensor_arena, tensor_arena_size);
 
 // Initializes keyword runner and sets random inputs.
 void InitializeKeywordRunner() {
-  InitializeBenchmarkRunner();
-  benchmark_runner->SetRandomInput(kRandomSeed);
+  benchmark_runner.SetRandomInput(kRandomSeed);
 }
 
 // This method assumes InitializeKeywordRunner has already been run.
 void KeywordRunNIerations(int iterations) {
   for (int i = 0; i < iterations; i++) {
-    benchmark_runner->RunSingleIteration();
+    benchmark_runner.RunSingleIteration();
   }
 }
 
