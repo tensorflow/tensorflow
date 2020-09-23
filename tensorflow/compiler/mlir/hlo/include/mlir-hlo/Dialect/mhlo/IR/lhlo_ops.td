@@ -477,7 +477,8 @@ def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
   let results = (outs AnyRankedOrUnrankedMemRef:$result);
 
   let extraClassDeclaration = [{
-    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+    BaseMemRefType getType() {
+        return getResult().getType().cast<BaseMemRefType>(); }
   }];
 
   let verifier = [{ return Verify(*this); }];
