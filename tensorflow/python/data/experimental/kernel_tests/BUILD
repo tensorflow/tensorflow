@@ -142,6 +142,7 @@ tf_py_test(
 py_library(
     name = "data_service_test_base",
     srcs = ["data_service_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/service:server_lib",
@@ -155,6 +156,7 @@ tf_py_test(
     size = "medium",
     srcs = ["data_service_ops_test.py"],
     shard_count = 10,
+    srcs_version = "PY3",
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",
@@ -172,6 +174,7 @@ tf_py_test(
 tf_py_test(
     name = "data_service_ops_ft_test",
     srcs = ["data_service_ops_ft_test.py"],
+    srcs_version = "PY3",
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",
