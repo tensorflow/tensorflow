@@ -47,6 +47,8 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
 
   ifeq ($(TARGET),$(filter $(TARGET),\
     sparkfun_edge\
+    sparkfun_edge2\
+    sparkfun_artemis_dk\
     ))
     ALL_TAGS+= sfe-apollo3-hm01b0
   endif
@@ -108,6 +110,10 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     BOARD_BSP_PATH := $(APOLLO3_SDK)/$(SF_BSPS_DEST)/$(subst sparkfun_,,$(TARGET))/bsp
     INCLUDES+= \
       -I$(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/hm01b0
+    
+    # person_detection_SRCS += \
+    #   $(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/hm01b0/HM01B0.c \
+    
   endif
   MICROLITE_LIBS := \
     $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \

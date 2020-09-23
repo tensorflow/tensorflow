@@ -1,4 +1,4 @@
-ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
+ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge sparkfun_edge2 sparkfun_artemis_dk))
   person_detection_SRCS += \
   tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0.c \
   tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_debug.c \
