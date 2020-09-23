@@ -122,6 +122,8 @@ REGISTER(CPU, float, int32)
 REGISTER(CPU, float, int64)
 REGISTER(CPU, double, int32)
 REGISTER(CPU, double, int64)
+REGISTER(CPU, Eigen::bfloat16, int32)
+REGISTER(CPU, Eigen::bfloat16, int64)
 REGISTER(CPU, Eigen::half, int32)
 REGISTER(CPU, Eigen::half, int64)
 
