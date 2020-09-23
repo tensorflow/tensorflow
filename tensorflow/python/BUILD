@@ -5607,6 +5607,7 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # b/168621686
+        "no_windows",  # b/169275019
     ],
     tfrt_enabled = True,
     deps = [
