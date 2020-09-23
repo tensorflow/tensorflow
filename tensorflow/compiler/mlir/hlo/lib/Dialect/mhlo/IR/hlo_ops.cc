@@ -2501,8 +2501,108 @@ LogicalResult CompareOp::reifyReturnTypeShapes(
                                      &reifiedReturnShapes);
 }
 
+template <typename T>
+struct less : std::less<T> {};
+
+template <>
+struct less<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.slt(b); }
+};
+
+template <typename T>
+struct less_equal : std::less_equal<T> {};
+
+template <>
+struct less_equal<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.sle(b); }
+};
+
+template <typename T>
+struct greater : std::greater<T> {};
+
+template <>
+struct greater<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.sgt(b); }
+};
+
+template <typename T>
+struct greater_equal : std::greater_equal<T> {};
+
+template <>
+struct greater_equal<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.sge(b); }
+};
+
+template <typename Op, typename ElementType, typename SrcType, typename Convert>
+static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
+  if (!attrs[0] || !attrs[1]) return {};
+
+  DenseElementsAttr lhs = attrs[0].dyn_cast<DenseElementsAttr>();
+  DenseElementsAttr rhs = attrs[1].dyn_cast<DenseElementsAttr>();
+  if (!lhs || !rhs) return {};
+
+  ShapedType operand_type =
+      op.getOperand(0).getType().template cast<ShapedType>();
+  if (!operand_type.hasStaticShape()) {
+    return {};
+  }
+
+  if (!operand_type.getElementType().isa<ElementType>()) {
+    return {};
+  }
+
+  SmallVector<bool, 6> values;
+  values.reserve(lhs.getNumElements());
+  for (const auto zip :
+       llvm::zip(lhs.getValues<SrcType>(), rhs.getValues<SrcType>())) {
+    values.push_back(Convert()(std::get<0>(zip), std::get<1>(zip)));
+  }
+
+  auto result_ty = op.getType().cast<ShapedType>();
+  return DenseElementsAttr::get(result_ty, values);
+}
+
+OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
+  auto result_ty = getType().cast<ShapedType>();
+  if (!result_ty.hasStaticShape()) return {};
+
+  auto direction = comparison_direction();
+  if (lhs() == rhs()) {
+    if (direction == "LE" || direction == "EQ" || direction == "GE") {
+      return DenseIntElementsAttr::get(result_ty, {true});
+    }
+
+    return DenseIntElementsAttr::get(result_ty, {false});
+  }
+
+  if (!operands[0] || !operands[1]) {
+    return {};
+  }
+
+#define COMPARE_FOLDER(Op, comparison, Func)                                \
+  if (direction == comparison) {                                            \
+    if (auto folded = CompareFolder<Op, FloatType, APFloat, Func<APFloat>>( \
+            *this, operands))                                               \
+      return folded;                                                        \
+    if (auto folded = CompareFolder<Op, IntegerType, APInt, Func<APInt>>(   \
+            *this, operands))                                               \
+      return folded;                                                        \
+  }
+
+  COMPARE_FOLDER(CompareOp, "EQ", std::equal_to);
+  COMPARE_FOLDER(CompareOp, "NE", std::not_equal_to);
+  COMPARE_FOLDER(CompareOp, "LT", less);
+  COMPARE_FOLDER(CompareOp, "LE", less_equal);
+  COMPARE_FOLDER(CompareOp, "GT", greater);
+  COMPARE_FOLDER(CompareOp, "GE", greater_equal);
+#undef COMPARE_FOLDER
+
+  return {};
+}
+
 }  // namespace mhlo
 }  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
 
