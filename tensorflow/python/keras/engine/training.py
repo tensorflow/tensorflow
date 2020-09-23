@@ -1078,6 +1078,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_train_batch_end(end_step, logs)
+              if self.stop_training:
+                break
 
         if logs is None:
           raise ValueError('Expect x to be a non-empty array or dataset.')
