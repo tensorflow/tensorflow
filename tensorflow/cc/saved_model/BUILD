@@ -213,6 +213,7 @@ py_binary(
     srcs = ["testdata/generate_saved_models.py"],
     data = [
         ":saved_model_asset_data",
+        ":saved_model_static_hashtable_asset_data",
     ],
     python_version = "PY3",
     srcs_version = "PY3",
@@ -220,6 +221,7 @@ py_binary(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
@@ -243,6 +245,7 @@ filegroup(
         "testdata/half_plus_two_v2/**",
         "testdata/x_plus_y_v2_debuginfo/**",
         "testdata/CyclicModule/**",
+        "testdata/StaticHashTableModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
     ]),
@@ -257,6 +260,13 @@ filegroup(
     name = "saved_model_asset_data",
     srcs = [
         "testdata/test_asset.txt",
+    ],
+)
+
+filegroup(
+    name = "saved_model_static_hashtable_asset_data",
+    srcs = [
+        "testdata/static_hashtable_asset.txt",
     ],
 )
 
