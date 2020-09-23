@@ -20,6 +20,8 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import functools
+from typing import Any, Dict, Callable, List, Optional, Text, Tuple
+
 from absl import logging
 
 from tensorflow.core.framework import attr_value_pb2
@@ -49,6 +51,8 @@ from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.types import core
+from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -237,8 +241,11 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   """
 
-  def __init__(self, feature_config, optimizer,
-               pipeline_execution_with_tensor_core=False):
+  def __init__(
+      self,
+      feature_config: Any,
+      optimizer: Optional[tpu_embedding_v2_utils._Optimizer],  # pylint:disable=protected-access
+      pipeline_execution_with_tensor_core: bool = False):
     """Creates the TPUEmbedding mid level API object.
 
     ```python
@@ -330,7 +337,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     self._built = False
 
-  def build(self, per_replica_batch_size=None):
+  def build(self, per_replica_batch_size: Optional[int] = None):
     """Create the underlying variables and initializes the TPU for embeddings.
 
     This method creates the underlying variables (including slot variables). If
@@ -385,7 +392,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     # This is internally conditioned self._built and self._using_tpu
     self._load_variables()
 
-  def _maybe_build(self, batch_size):
+  def _maybe_build(self, batch_size: Optional[int]):
     if not self._built:
       # This can be called while tracing a function, so we wrap the
       # initialization code with init_scope so it runs eagerly, this means that
@@ -396,7 +403,9 @@ class TPUEmbedding(tracking.AutoTrackable):
         self.build(batch_size)
 
   @property
-  def embedding_tables(self):
+  def embedding_tables(
+      self
+  ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
     """Returns a dict of embedding tables, keyed by `TableConfig`.
 
     This property only works when the `TPUEmbedding` object is created under a
@@ -428,7 +437,9 @@ class TPUEmbedding(tracking.AutoTrackable):
     return {table: self._variables[table.name]["parameters"]
             for table in self._table_config}
 
-  def _create_config_proto(self):
+  def _create_config_proto(
+      self
+  ) -> tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration:
     """Creates the TPUEmbeddingConfiguration proto.
 
     This proto is used to initialize the TPU embedding engine.
@@ -499,7 +510,10 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return config_proto
 
-  def _compute_per_table_gradients(self, gradients):
+  def _compute_per_table_gradients(
+      self,
+      gradients
+  ) -> Dict[Text, List[core.Tensor]]:
     """Computes a dict of lists of gradients, keyed by table name.
 
     Args:
@@ -554,7 +568,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return per_table_gradients
 
-  def apply_gradients(self, gradients, name=None):
+  def apply_gradients(self, gradients, name: Text = None):
     """Applies the gradient update to the embedding tables.
 
     If a gradient of `None` is passed in any position of the nested structure,
@@ -649,7 +663,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     if name is not None:
       _add_key_attr(op, name)
 
-  def dequeue(self, name=None):
+  def dequeue(self, name: Text = None):
     """Get the embedding results.
 
     Returns a nested structure of `tf.Tensor` objects, matching the structure of
@@ -762,7 +776,9 @@ class TPUEmbedding(tracking.AutoTrackable):
     # Pack the list back into the same nested structure as the features.
     return nest.pack_sequence_as(self._feature_config, per_feature_activations)
 
-  def _create_variables_and_slots(self):
+  def _create_variables_and_slots(
+      self
+  ) -> Dict[Text, Dict[Text, tf_variables.Variable]]:
     """Create variables for TPU embeddings.
 
     Note under TPUStrategy this will ensure that all creations happen within a
@@ -854,7 +870,9 @@ class TPUEmbedding(tracking.AutoTrackable):
                                self._variables,
                                self._table_config)
 
-  def _gather_saveables_for_checkpoint(self):
+  def _gather_saveables_for_checkpoint(
+      self
+  ) -> Dict[Text, Callable[[Text], "TPUEmbeddingSaveable"]]:
     """Overrides default Trackable implementation to add load/retrieve hook."""
     # This saveable should be here in both TPU and CPU checkpoints, so when on
     # CPU, we add the hook with no functions.
@@ -907,8 +925,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     else:
       weights.append(float_zeros)
 
-  def _generate_enqueue_op(self, flat_inputs, flat_weights, flat_features,
-                           device_ordinal, mode_override):
+  def _generate_enqueue_op(
+      self,
+      flat_inputs: List[internal_types.NativeObject],
+      flat_weights: List[Optional[internal_types.NativeObject]],
+      flat_features: List[tpu_embedding_v2_utils.FeatureConfig],
+      device_ordinal: int,
+      mode_override: Text
+  ) -> ops.Operation:
     """Outputs a the enqueue op given the inputs and weights.
 
     Args:
@@ -1088,7 +1112,12 @@ class TPUEmbedding(tracking.AutoTrackable):
       else:
         check_device(path, input_tensor.device)
 
-  def enqueue(self, features, weights=None, training=True, name=None):
+  def enqueue(
+      self,
+      features,
+      weights=None,
+      training: bool = True,
+      name: Optional[Text] = None):
     """Enqueues id tensors for embedding lookup.
 
     This function enqueues a structure of features to be looked up in the
@@ -1254,7 +1283,7 @@ class TPUEmbedding(tracking.AutoTrackable):
           enqueue_ops.append(enqueue_op)
       ops.get_default_graph().control_outputs.extend(enqueue_ops)
 
-  def _get_batch_size(self, tensors, in_tpu_context):
+  def _get_batch_size(self, tensors, in_tpu_context: bool):
     """Gets the batch size from a nested structure of features."""
     batch_size = None
     for path, maybe_tensor in nest.flatten_with_joined_string_paths(tensors):
@@ -1284,7 +1313,11 @@ class TPUEmbedding(tracking.AutoTrackable):
 
 
 @def_function.function
-def _load_variables_impl(config, hosts, variables, table_config):
+def _load_variables_impl(
+    config: Text,
+    hosts: List[Tuple[int, Text]],
+    variables: Dict[Text, Dict[Text, tf_variables.Variable]],
+    table_config: tpu_embedding_v2_utils.TableConfig):
   """Load embedding tables to onto TPU for each table and host.
 
   Args:
@@ -1325,7 +1358,11 @@ def _load_variables_impl(config, hosts, variables, table_config):
 
 
 @def_function.function
-def _retrieve_variables_impl(config, hosts, variables, table_config):
+def _retrieve_variables_impl(
+    config: Text,
+    hosts: List[Tuple[int, Text]],
+    variables: Dict[Text, Dict[Text, tf_variables.Variable]],
+    table_config: tpu_embedding_v2_utils.TableConfig):
   """Retrieve embedding tables from TPU to host memory.
 
   Args:
@@ -1368,7 +1405,11 @@ def _retrieve_variables_impl(config, hosts, variables, table_config):
 class TPUEmbeddingSaveable(saveable_hook.SaveableHook):
   """Save/Restore hook to Retrieve/Load TPUEmbedding variables."""
 
-  def __init__(self, name, load, retrieve):
+  def __init__(
+      self,
+      name: Text,
+      load: Callable[[], Any],
+      retrieve: Callable[[], Any]):
     self._load = load
     self._retrieve = retrieve
     super(TPUEmbeddingSaveable, self).__init__(name=name)
@@ -1382,7 +1423,11 @@ class TPUEmbeddingSaveable(saveable_hook.SaveableHook):
       self._load()
 
 
-def _ragged_embedding_lookup_with_reduce(table, ragged, weights, combiner):
+def _ragged_embedding_lookup_with_reduce(
+    table: tf_variables.Variable,
+    ragged: ragged_tensor.RaggedTensor,
+    weights: ragged_tensor.RaggedTensor,
+    combiner: Text) -> core.Tensor:
   """Compute a ragged lookup followed by a reduce on axis 1.
 
   Args:
@@ -1515,7 +1560,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
   return nest.pack_sequence_as(feature_config, outputs)
 
 
-def get_list_of_hosts(strategy):
+def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
   """Returns a sorted list of CPU devices for the remote jobs.
 
   Args:
@@ -1534,7 +1579,8 @@ def get_list_of_hosts(strategy):
   return list_of_hosts
 
 
-def extract_variable_info(kwargs):
+def extract_variable_info(
+    kwargs) -> Tuple[Text, Tuple[int, ...], dtypes.DType, Callable[[], Any]]:
   """Extracts the variable creation attributes from the kwargs.
 
   Args:
@@ -1542,7 +1588,7 @@ def extract_variable_info(kwargs):
       scope.
 
   Returns:
-    A tuple of variable name, initialization function, shape, and dtype.
+    A tuple of variable name, shape, dtype, initialization function.
   """
   if (isinstance(kwargs["initial_value"], functools.partial) and (
       "shape" in kwargs["initial_value"].keywords or
@@ -1569,7 +1615,8 @@ def extract_variable_info(kwargs):
             kwargs["initial_value"])
 
 
-def make_sharded_variable_creator(hosts):
+def make_sharded_variable_creator(
+    hosts: List[Text]) -> Callable[..., TPUShardedVariable]:
   """Makes a sharded variable creator given a list of hosts.
 
   Args:
@@ -1579,7 +1626,8 @@ def make_sharded_variable_creator(hosts):
     A variable creator function.
   """
 
-  def sharded_variable_creator(next_creator, *args, **kwargs):
+  def sharded_variable_creator(
+      next_creator: Callable[..., tf_variables.Variable], *args, **kwargs):
     """The sharded variable creator."""
     kwargs["skip_mirrored_creator"] = True
 
