@@ -97,6 +97,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND:
