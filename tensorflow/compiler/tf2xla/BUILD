@@ -8,7 +8,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_tensor_coding_deps",
     "tf_proto_library",
-    "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
@@ -105,7 +104,7 @@ xla_py_proto_library(
     deps = [":tf2xla_proto"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "host_compute_metadata_proto",
     srcs = ["host_compute_metadata.proto"],
     cc_api_version = 2,
