@@ -189,6 +189,7 @@ cc_library(
     deps = [
         ":abstract_operation",
         ":c_api_unified_internal",
+        "//tensorflow/c/experimental/gradients/tape:tape_operation",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
     ],
@@ -229,6 +230,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":abstract_context",
         ":abstract_tensor_handle",
         ":c_api_experimental",
         ":c_api_test_util",
@@ -239,7 +241,8 @@ tf_cuda_cc_test(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/gradients:array_grad",
         "//tensorflow/c/experimental/gradients:math_grad",
-        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/ops",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tracing_utils.h"
 
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/experimental/gradients/tape/tape_operation.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -24,6 +25,11 @@ namespace tracing {
 Status MaybeSetOpName(AbstractOperation* op, const char* op_name) {
   if (isa<TracingOperation>(op)) {
     TF_RETURN_IF_ERROR(dyn_cast<TracingOperation>(op)->SetOpName(op_name));
+  }
+  if (isa<gradients::TapeOperation>(op)) {
+    TF_RETURN_IF_ERROR(MaybeSetOpName(
+        dyn_cast<gradients::TapeOperation>(op)->GetBackingOperation(),
+        op_name));
   }
   return Status::OK();
 }

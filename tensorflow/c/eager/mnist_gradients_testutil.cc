@@ -46,7 +46,6 @@ Status Add(AbstractContext* ctx, Tape* tape,
            const GradientRegistry& registry) {
   AbstractOperationPtr add_op(ctx->CreateOperation());
   ForwardOperation forward_op;
-  forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(add_op.get(), "Add", /*raw_device_name=*/nullptr, &forward_op));
   if (isa<TracingOperation>(add_op.get())) {
@@ -68,7 +67,6 @@ Status MatMul(AbstractContext* ctx, Tape* tape,
               const GradientRegistry& registry) {
   AbstractOperationPtr matmul_op(ctx->CreateOperation());
   ForwardOperation forward_op;
-  forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(Reset(matmul_op.get(), "MatMul",
                            /*raw_device_name=*/nullptr, &forward_op));
   if (isa<TracingOperation>(matmul_op.get())) {
@@ -94,7 +92,6 @@ Status Mul(AbstractContext* ctx, Tape* tape,
            const GradientRegistry& registry) {
   AbstractOperationPtr mul_op(ctx->CreateOperation());
   ForwardOperation forward_op;
-  forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(mul_op.get(), "Mul", /*raw_device_name=*/nullptr, &forward_op));
   if (isa<TracingOperation>(mul_op.get())) {
@@ -117,7 +114,6 @@ Status Relu(AbstractContext* ctx, Tape* tape,
             const GradientRegistry& registry) {
   AbstractOperationPtr relu_op(ctx->CreateOperation());
   ForwardOperation forward_op;
-  forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(relu_op.get(), "Relu", /*raw_device_name=*/nullptr, &forward_op));
   if (isa<TracingOperation>(relu_op.get())) {
@@ -142,7 +138,6 @@ Status SparseSoftmaxCrossEntropyWithLogits(
 
   AbstractOperationPtr sm_op(ctx->CreateOperation());
   ForwardOperation forward_op;
-  forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(Reset(sm_op.get(), "SparseSoftmaxCrossEntropyWithLogits",
                            /*raw_device_name=*/nullptr, &forward_op));
   if (isa<TracingOperation>(sm_op.get())) {

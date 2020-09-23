@@ -80,7 +80,6 @@ struct ForwardOperation {
   std::vector<AbstractTensorHandle*> inputs;
   std::vector<AbstractTensorHandle*> outputs;
   AttrBuilder attrs;
-  AbstractContext* ctx;
 };
 
 // Interface for building default zeros gradients for op outputs which are
