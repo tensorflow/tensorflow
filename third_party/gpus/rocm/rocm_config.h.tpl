@@ -18,4 +18,8 @@ limitations under the License.
 
 #define TF_ROCM_TOOLKIT_PATH "%{rocm_toolkit_path}"
 
+#define TF_ROCM_VERSION %{rocm_version_number}
+#define TF_MIOPEN_VERSION %{miopen_version_number}
+#define TF_HIPRUNTIME_VERSION %{hipruntime_version_number}
+
 #endif  // ROCM_ROCM_CONFIG_H_
