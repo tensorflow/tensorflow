@@ -38,8 +38,21 @@ alignas(16) uint8_t tensor_arena[tensor_arena_size];
 // A random number generator seed to generate input values.
 constexpr int kRandomSeed = 42;
 
-static MicroBenchmarkRunner<int16_t> benchmark_runner(
-    g_keyword_scrambled_model_data, tensor_arena, tensor_arena_size);
+static tflite::MicroMutableOpResolver<6> op_resolver;
+
+MicroBenchmarkRunner<int16_t> CreateBenchmarkRunner() {
+  op_resolver.AddDequantize();
+  op_resolver.AddFullyConnected();
+  op_resolver.AddQuantize();
+  op_resolver.AddSoftmax();
+  op_resolver.AddSvdf();
+
+  return MicroBenchmarkRunner<int16_t>(g_keyword_scrambled_model_data,
+                                       &op_resolver, tensor_arena,
+                                       tensor_arena_size);
+}
+
+static MicroBenchmarkRunner<int16_t> benchmark_runner = CreateBenchmarkRunner();
 
 // Initializes keyword runner and sets random inputs.
 void InitializeKeywordRunner() { benchmark_runner.SetRandomInput(kRandomSeed); }

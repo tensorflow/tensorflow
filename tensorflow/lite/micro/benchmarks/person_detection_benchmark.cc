@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
 #include "tensorflow/lite/micro/examples/person_detection/model_settings.h"
 #include "tensorflow/lite/micro/examples/person_detection/no_person_image_data.h"
@@ -21,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection/person_image_data.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -40,8 +40,9 @@ constexpr int kTensorArenaSize = 95 * 1024;
 constexpr int kRandomSeed = 42;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
+static tflite::AllOpsResolver op_resolver;
 static MicroBenchmarkRunner<uint8_t> benchmark_runner(
-    g_person_detect_model_data, tensor_arena, kTensorArenaSize);
+    g_person_detect_model_data, &op_resolver, tensor_arena, kTensorArenaSize);
 
 void PersonDetectionTenIterationsWithRandomInput() {
   benchmark_runner.SetRandomInput(kRandomSeed);
