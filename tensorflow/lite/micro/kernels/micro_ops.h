@@ -42,6 +42,7 @@ TfLiteRegistration Register_CONCATENATION();
 TfLiteRegistration Register_COS();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration Register_DEQUANTIZE();
+TfLiteRegistration Register_DETECTION_POSTPROCESS();
 TfLiteRegistration Register_EQUAL();
 TfLiteRegistration Register_FLOOR();
 TfLiteRegistration Register_FULLY_CONNECTED();
