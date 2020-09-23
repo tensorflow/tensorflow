@@ -79,7 +79,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  int32_t length = input->bytes / sizeof(int16_t);
 
   RequantizeOpData* op = reinterpret_cast<RequantizeOpData*>(node->user_data);
   Dispatcher* dispatcher = GetDispatcher();

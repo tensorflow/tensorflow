@@ -284,7 +284,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   Conv2DDeepOpData *op = reinterpret_cast<Conv2DDeepOpData *>(node->user_data);
-  Dispatcher *dispatcher = GetDispatcher();
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];
@@ -476,7 +475,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   Conv2D1x1OpData *op = reinterpret_cast<Conv2D1x1OpData *>(node->user_data);
-  Dispatcher *dispatcher = GetDispatcher();
 
   // setup kernel parameters
   nn_image_params_t in_params = {(uint32_t)input->dims->data[1],
@@ -663,7 +661,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
   Conv2DDepthwiseOpData *op =
       reinterpret_cast<Conv2DDepthwiseOpData *>(node->user_data);
-  Dispatcher *dispatcher = GetDispatcher();
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[0];

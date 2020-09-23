@@ -156,7 +156,7 @@ size_t Dispatcher::FetchBuffer(int8_t **dest, int8_t const *src, size_t size) {
     *dest = (int8_t *)src;
     return 0;
   } else {
-    memload((void **)dest, (void *)src, size);
+    memload((void **)*dest, (void *)src, size);
     return size;
   }
 }
