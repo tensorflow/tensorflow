@@ -5282,7 +5282,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
-        "notsan",  # b/168815578
     ],
     deps = [
         ":framework_for_generated_wrappers",
