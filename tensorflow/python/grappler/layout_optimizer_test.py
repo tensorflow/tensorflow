@@ -1203,8 +1203,6 @@ class LayoutOptimizerTest(test.TestCase):
       random_seed.set_random_seed(0)
       x = random_ops.truncated_normal([1, 4, 2, 3, 3], seed=0)
       w = random_ops.truncated_normal([2, 2, 2, 3, 3], seed=0)
-      gamma = random_ops.truncated_normal([1, 1, 1, 1, 3], seed=0)
-      beta = random_ops.truncated_normal([1, 1, 1, 1, 3], seed=0)
       conv3d = gen_nn_ops.conv3d(x, w, [1, 1, 1, 1, 1], 'SAME')
       y = math_ops.reduce_mean(conv3d, [0, 1, 2, 3], keepdims=True)
       output = array_ops.identity(y)
