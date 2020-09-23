@@ -110,6 +110,9 @@ tf_cc_binary(
 # using it. This only tests that the headers containing the hex dump of the
 # generated GPU binaries are built successfully, but this is better than
 # nothing.
+# If this test fails, use the build flag --verbose_failures to see a full
+# command line of the failing build command, then copy the command line and run
+# it for further debugging.
 tf_cc_test(
     name = "tf_to_gpu_binary_test",
     srcs = [],
