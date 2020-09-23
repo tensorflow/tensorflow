@@ -238,7 +238,7 @@ def map_structure(func, *structure, **check_types_dict):
   for other in structure[1:]:
     assert_same_structure(structure[0], other, check_types=check_types)
 
-  flat_structure = [flatten(s) for s in structure]
+  flat_structure = (flatten(s) for s in structure)
   entries = zip(*flat_structure)
 
   return pack_sequence_as(
@@ -316,8 +316,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
             "The two structures don't have the same keys. Input "
             "structure has keys %s, while shallow structure has keys %s." %
             (list(input_tree), list(shallow_tree)))
-      input_tree = list(sorted(_six.iteritems(input_tree)))
-      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
+      input_tree = sorted(_six.iteritems(input_tree))
+      shallow_tree = sorted(_six.iteritems(shallow_tree))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -465,8 +465,8 @@ def map_structure_up_to(shallow_tree, func, *inputs):
 
   # Flatten each input separately, apply the function to corresponding elements,
   # then repack based on the structure of the first input.
-  all_flattened_up_to = [flatten_up_to(shallow_tree, input_tree)
-                         for input_tree in inputs]
+  all_flattened_up_to = (
+      flatten_up_to(shallow_tree, input_tree) for input_tree in inputs)
 
   results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
