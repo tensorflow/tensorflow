@@ -169,6 +169,92 @@ REGISTER_OP("_MklPadWithFusedConv2D")
  is expected to create these operators.
 )doc");
 
+REGISTER_OP("_MklNativeAvgPool")
+    .Input("value: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn(shape_inference::AvgPoolShape)
+    .Doc(R"doc(
+MKL version of AvgPool operator that does not depend
+on layout propagation. Uses oneDNN APIs to perform average pooling
+on the input.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeAvgPoolGrad")
+    .Input("orig_input_shape: int32")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of AvgPoolGrad operator that does not depend
+on layout propagation. Uses oneDNN APIs to compute gradients
+of AvgPool operator.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeAvgPool3D")
+    .Input("value: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn(shape_inference::Pool3DShape)
+    .Doc(R"doc(
+MKL version of AvgPool3D operator that does not depend
+on layout propagation. Uses oneDNN APIs to perform 3D average pooling
+on the input.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeAvgPool3DGrad")
+    .Input("orig_input_shape: int32")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of AvgPool3DGrad operator that does not depend
+on layout propagation. Uses oneDNN APIs to compute gradients
+of AvgPool3D function.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklQuantizedMaxPool")
     .Input("input:         T")
     .Input("min_input:     float")
