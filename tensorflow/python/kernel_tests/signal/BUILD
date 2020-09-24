@@ -59,6 +59,7 @@ cuda_py_tests(
     name = "mel_ops_test",
     srcs = ["mel_ops_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":test_util",
         "//tensorflow/python:client_testlib",

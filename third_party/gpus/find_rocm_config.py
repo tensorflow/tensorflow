@@ -142,7 +142,15 @@ def _find_miopen_config(rocm_install_path):
 def _find_rocblas_config(rocm_install_path):
 
   def rocblas_version_numbers(path):
-    version_file = os.path.join(path, "rocblas/include/rocblas-version.h")
+    possible_version_files = [
+      "rocblas/include/rocblas-version.h", # ROCm 3.7 and prior
+      "rocblas/include/internal/rocblas-version.h", # ROCm 3.8
+    ]
+    version_file = None
+    for f in possible_version_files:
+      version_file = os.path.join(path, f)
+      if  os.path.exists(version_file):
+        break
     if not os.path.exists(version_file):
       raise ConfigError(
         'rocblas version file "{}" not found'.format(version_file))

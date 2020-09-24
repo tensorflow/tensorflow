@@ -7326,6 +7326,7 @@ tf_py_test(
         "no_cuda_on_cpu_tap",
         "no_mac",
         "no_pip",
+        "no_rocm",
         "no_windows",  # TODO(b/151942037)
     ],
     tfrt_enabled = True,
