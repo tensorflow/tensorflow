@@ -1597,9 +1597,9 @@ class ConcreteFunction(object):
     function_spec = self._pre_initialized_function_spec
     args = function_spec.fullargspec.args
     arg_specs, kwarg_specs = self.structured_input_signature
+    vararg_indices = range(len(function_spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(
-        args=list(args) +
-        ["<arg{}>".format(i + 1) for i in range(len(args), len(arg_specs))],
+        args=list(args) + ["<arg{}>".format(i + 1) for i in vararg_indices],
         varargs=None,
         varkw=None,
         defaults=[_BOUND_VALUE] * len(arg_specs),
