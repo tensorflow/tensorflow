@@ -5338,6 +5338,7 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
