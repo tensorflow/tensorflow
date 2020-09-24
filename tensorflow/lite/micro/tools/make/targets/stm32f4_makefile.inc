@@ -71,8 +71,8 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/recording_micro_allocator_test.cc \
     tensorflow/lite/micro/kernels/circular_buffer_test.cc \
     tensorflow/lite/micro/kernels/conv_test.cc \
-    tensorflow/lite/micro/kernels/fully_connected_test.cc \
-    tensorflow/lite/micro/kernels/detection_postprocess_test.cc
+    tensorflow/lite/micro/kernels/fully_connected_test.cc
+
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 
   EXCLUDED_EXAMPLE_TESTS := \

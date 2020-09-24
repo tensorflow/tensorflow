@@ -884,11 +884,7 @@ TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
   TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteFloat32;
   result.data.f = const_cast<float*>(data);
-  if (dims == nullptr) {
-    result.bytes = 0;
-  } else {
-    result.bytes = ElementCount(*dims) * sizeof(float);
-  }
+  result.bytes = ElementCount(*dims) * sizeof(float);
   return result;
 }
 

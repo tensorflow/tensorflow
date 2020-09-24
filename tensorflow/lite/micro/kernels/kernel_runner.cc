@@ -23,16 +23,16 @@ constexpr size_t kBufferAlignment = 16;
 }  // namespace
 
 // TODO(b/161841696): Consider moving away from global arena buffers:
-constexpr int KernelRunner::kNumScratchBuffers;
-constexpr int KernelRunner::kKernelRunnerBufferSize;
-uint8_t KernelRunner::kernel_runner_buffer_[];
+constexpr int KernelRunner::kNumScratchBuffers_;
+constexpr int KernelRunner::kKernelRunnerBufferSize_;
+uint8_t KernelRunner::kKernelRunnerBuffer_[];
 
 KernelRunner::KernelRunner(const TfLiteRegistration& registration,
                            TfLiteTensor* tensors, int tensors_size,
                            TfLiteIntArray* inputs, TfLiteIntArray* outputs,
                            void* builtin_data, ErrorReporter* error_reporter)
     : allocator_(SimpleMemoryAllocator::Create(
-          error_reporter, kernel_runner_buffer_, kKernelRunnerBufferSize)),
+          error_reporter, kKernelRunnerBuffer_, kKernelRunnerBufferSize_)),
       registration_(registration),
       tensors_(tensors),
       error_reporter_(error_reporter) {
@@ -52,10 +52,9 @@ KernelRunner::KernelRunner(const TfLiteRegistration& registration,
   node_.builtin_data = builtin_data;
 }
 
-TfLiteStatus KernelRunner::InitAndPrepare(const char* init_data,
-                                          size_t length) {
+TfLiteStatus KernelRunner::InitAndPrepare(const char* init_data) {
   if (registration_.init) {
-    node_.user_data = registration_.init(&context_, init_data, length);
+    node_.user_data = registration_.init(&context_, init_data, /*length=*/0);
   }
   if (registration_.prepare) {
     TF_LITE_ENSURE_STATUS(registration_.prepare(&context_, &node_));
@@ -118,11 +117,11 @@ TfLiteStatus KernelRunner::RequestScratchBufferInArena(TfLiteContext* context,
   KernelRunner* runner = reinterpret_cast<KernelRunner*>(context->impl_);
   TFLITE_DCHECK(runner != nullptr);
 
-  if (runner->scratch_buffer_count_ == kNumScratchBuffers) {
+  if (runner->scratch_buffer_count_ == kNumScratchBuffers_) {
     TF_LITE_REPORT_ERROR(
         runner->error_reporter_,
         "Exceeded the maximum number of scratch tensors allowed (%d).",
-        kNumScratchBuffers);
+        kNumScratchBuffers_);
     return kTfLiteError;
   }
 
@@ -143,7 +142,7 @@ void* KernelRunner::GetScratchBuffer(TfLiteContext* context, int buffer_index) {
   KernelRunner* runner = reinterpret_cast<KernelRunner*>(context->impl_);
   TFLITE_DCHECK(runner != nullptr);
 
-  TFLITE_DCHECK(runner->scratch_buffer_count_ <= kNumScratchBuffers);
+  TFLITE_DCHECK(runner->scratch_buffer_count_ <= kNumScratchBuffers_);
   if (buffer_index >= runner->scratch_buffer_count_) {
     return nullptr;
   }

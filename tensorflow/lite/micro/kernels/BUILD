@@ -36,7 +36,6 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "dequantize.cc",
-        "detection_postprocess.cc",
         "elementwise.cc",
         "ethosu.cc",
         "floor.cc",
@@ -116,7 +115,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
-        "@flatbuffers",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
@@ -165,20 +163,6 @@ tflite_micro_cc_test(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-tflite_micro_cc_test(
-    name = "detection_postprocess_test",
-    srcs = [
-        "detection_postprocess_test.cc",
-    ],
-    deps = [
-        ":kernel_runner",
-        ":micro_ops",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro/testing:micro_test",
-        "@flatbuffers",
     ],
 )
 
