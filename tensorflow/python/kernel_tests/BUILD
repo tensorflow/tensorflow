@@ -2206,6 +2206,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linalg_ops_test.py"],
     tags = ["no_windows_gpu"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
