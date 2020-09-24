@@ -145,11 +145,7 @@ def set_parameters(tensor_tracer_params=None):
           - full_tensor_summary: Writes the full tensors as binary event files.
             The outputs can be read using: trace =
               tensor_tracer.read_tensor_tracer_event_file(event_file_path)
-          - trace-back-if-nan: This mode will write the full tensor content only
-            when the tensor has a NaN or Inf in it. It is possible to also print
-            the inputs coming to this op using 'trace_stack_size' parameter.
-            E.g., if trace_stack_size=2, then the tensor with NaN/Inf, its
-            inputs, and its inputs' inputs will also be printed.
+
         - report_file: Path to the metadata file that is written during graph
           construction. If not set, metadata will be printed to stdout during
           graph construction.
@@ -181,32 +177,14 @@ def set_parameters(tensor_tracer_params=None):
           '--included_optypes=some_op_type --excluded_optypes=*.' will trace
           only the ops with type 'some_op_type'
         Advanced Flags:
-        - compact_trace: If not set, statistics per tensor is written as soon as
-          they are executed. If set, then statistics for all traced tensors will
-          be stored in a cache and will be written only once per step. This flag
-          is ignored for full-tensor and part-tensor trace modes. If the
-          trace_dir is a remote directory, compact_trace will be forced.
         - trace_scalar: Scalar values are not traced by default. If this flag is
           set, scalar values will also be traced.
-        - included_cores: Accepts a list string. Tracing will only be dumped for
-          these cores. E.g, setting it to '[0,2,4,6]' will result in a trace
-          only for those cores.
         - op_range: In the form of '%d:%d' that limits the tracing to the ops
           within this limit. --op_range='5:10' will trace only the ops that have
             topological order between 5-10.
-        - trace_before_included_ops: If set to a number-k, it will also trace
-          distance-k inputs of each traced tensor. E.g., k=1, then in addition
-          to each traced_tensor, their input tensors will also be traced.
-        - trace_after_included_ops: Same as trace_before_included_ops, where it
-          will also trace distance-k outputs of each traced tensor.
         - submode: 'brief' or 'detailed'. If the trace mode is not compact,
           brief mode will print only the id of each traced tensor to save some
           space. 'detailed' mode prints the full tensor name.
-        - trace_stack_size: Used only for trace_mode=trace-back-if-nan mode. It
-          determines how many ops to print back from a nan op. E.g, op4 -> op3
-          -> op2 -> op1 -> op0, if op0 has a NaN and trace_stack_size is 1, the
-          result of op1 will also be printed. trace_stack_size is 2, the result
-          of op1 and op2 will be printed.
         - use_fingerprint_subdirectory: The trace directory will be chosen as
           using the fingerprint of the trace metadata under the provided
           trace_dir.
@@ -527,9 +505,6 @@ class TensorTracer(object):
 
   def _is_interesting_op(self, op):
     """Returns True if the given op is not an interesting one to be traced."""
-    # If flag is set to include less interesting ops, then include everything.
-    if self._parameters.include_less_interesting_ops:
-      return True
     return op_priority(op.type) <= self._parameters.trace_level
 
   @staticmethod
@@ -655,34 +630,14 @@ class TensorTracer(object):
       - The op is at most _trace_ops_before_included hops before an included op
       - The op is at most _trace_ops_after_included hops after an included op
     """
+    for opname_re in self._parameters.included_opname_re_list:
+      if opname_re.match(op.name):
+        return True
 
-    def _is_op_or_any_neighbor_included(op, check_before=0, check_after=0):
-      """Helper function to check if op is included or not."""
-      for opname_re in self._parameters.included_opname_re_list:
-        if opname_re.match(op.name):
-          return True
-
-      for optype_re in self._parameters.included_optype_re_list:
-        if optype_re.match(op.type):
-          return True
-
-      if check_after > 0:
-        for out_tensor in op.outputs:
-          for consumer in out_tensor.consumers():
-            if _is_op_or_any_neighbor_included(consumer, check_after - 1, 0):
-              return True
-      if check_before > 0:
-        for input_tensor in op.inputs:
-          if _is_op_or_any_neighbor_included(input_tensor.op,
-                                             0,
-                                             check_before - 1):
-            return True
-      return False
-    # check_after and check_before are swapped below, as below operation
-    # checks the distance from an arbitrary op to included ops.
-    return _is_op_or_any_neighbor_included(
-        op, self._parameters.trace_ops_after_included,
-        self._parameters.trace_ops_before_included)
+    for optype_re in self._parameters.included_optype_re_list:
+      if optype_re.match(op.type):
+        return True
+    return False
 
   def _is_user_excluded_op(self, op):
     for opname_re in self._parameters.excluded_opname_re_list:
@@ -726,20 +681,6 @@ class TensorTracer(object):
 
   def _use_tensor_values_cache(self):
     """Returns True if immediate tensors should be first saved to a cache."""
-    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
-      # For summary tace mode only compact format is supported.
-      return True
-
-    if self._parameters.trace_mode not in set([
-        tensor_tracer_flags.TRACE_MODE_NAN_INF,
-        tensor_tracer_flags.TRACE_MODE_NORM,
-        tensor_tracer_flags.TRACE_MODE_MAX_ABS,
-        tensor_tracer_flags.TRACE_MODE_SUMMARY
-    ]):
-      return False
-    if (self._parameters.trace_dir and
-        _trace_files_need_precreated(self._parameters.trace_dir)):
-      return True
     return self._parameters.use_compact_trace
 
   def _use_tensor_buffer(self):
@@ -898,26 +839,6 @@ class TensorTracer(object):
       output_tensor = array_ops.reshape(output_tensor, [1])
       return output_tensor
 
-    def _detect_inf_nan_producer(tensor):
-      """Checks if the tensor is the first NaN/Inf tensor in the computation path."""
-      if tensor.op.inputs:
-        inp_check = [
-            _detect_nan_inf(inp_tensor) for inp_tensor in tensor.op.inputs
-        ]
-        is_any_input_inf_nan = math_ops.add_n(inp_check)
-      else:
-        is_any_input_inf_nan = constant_op.constant(0, dtypes.bool)
-      is_current_tensor_inf_nan = _detect_nan_inf(tensor)
-      # An op is NaN/INF producer only when all inputs are nan/inf free (
-      # is_any_input_inf_nan = 0), and its output has nan/inf (
-      # is_current_tensor_inf_nan=1). Below will be 1 if op nan/inf is producer.
-      is_nan_producer = is_current_tensor_inf_nan - is_any_input_inf_nan
-      is_nan_producer = math_ops.reduce_any(is_nan_producer > 0)
-      return is_nan_producer
-
-    if (self._parameters.trace_mode ==
-        tensor_tracer_flags.TRACE_MODE_FULL_IF_NAN):
-      return {self._parameters.trace_mode: _detect_inf_nan_producer(tensor)}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
       return {self._parameters.trace_mode: _detect_nan_inf(tensor)}
     if (self._parameters.trace_mode ==
@@ -993,14 +914,15 @@ class TensorTracer(object):
 
       Raises:
         ValueError: If tensor_name is not already in
-                    tensor_trace_order.tensorname_idx_map.
+                    tensor_trace_order.tensorname_to_cache_idx.
       """
 
       if self._parameters.is_brief_mode():
-        if tensor_name not in tensor_trace_order.tensorname_idx_map:
+        if tensor_name not in tensor_trace_order.tensorname_to_cache_idx:
           raise ValueError(
-              'Tensor name %s is not in the tensorname_idx_map'%tensor_name)
-        msg = '%d' % tensor_trace_order.tensorname_idx_map[tensor_name]
+              'Tensor name %s is not in the tensorname_to_cache_idx' %
+              tensor_name)
+        msg = '%d' % tensor_trace_order.tensorname_to_cache_idx[tensor_name]
       else:
         msg = '"%s"' % tensor_name
 
@@ -1026,38 +948,6 @@ class TensorTracer(object):
 
       return _print_tensor(tensor_name, -1, tensor, tensor)
 
-    def _show_full_tensors(tensor):
-      """Prints the full tensor values for the tensors that are _trace_stack_size hops away from a given tensor."""
-
-      def _get_distance_k_tensors(k_before=0):
-        """Returns the tensors that are at most k_before hops away from the tensor."""
-        if k_before < 0:
-          return []
-        visited_tensors = {tensor: 0}
-        visitor_queue = [tensor]
-        head = 0
-        while head < len(visitor_queue):
-          current_tensor = visitor_queue[head]
-          head += 1
-          distance = visited_tensors[current_tensor]
-          if distance == k_before:
-            break
-          for input_tensor in current_tensor.op.inputs:
-            if input_tensor in visited_tensors:
-              continue
-            visitor_queue.append(input_tensor)
-            visited_tensors[input_tensor] = distance + 1
-        return visitor_queue
-
-      tensors_to_print = _get_distance_k_tensors(
-          self._parameters.trace_stack_size)
-      print_ops = [_print_tensor(t.name, -1, t, t) for t in tensors_to_print]
-      with ops.control_dependencies(print_ops):
-        return constant_op.constant(True)
-
-    if (self._parameters.trace_mode ==
-        tensor_tracer_flags.TRACE_MODE_FULL_IF_NAN):
-      return _show_full_tensors
     if (self._parameters.trace_mode ==
         tensor_tracer_flags.TRACE_MODE_PART_TENSOR):
       return _show_part_tensor
@@ -1891,13 +1781,6 @@ class TensorTracer(object):
             else:
               return tensor_trace_fn(tensor)
 
-          def conditional_trace_fn(predicate_tensor, out_tensor, trace_fn,
-                                   out_tensor_name):
-            """Creates a cond op that traces the out_tensor if predicate is satisfied."""
-            return control_flow_ops.cond(
-                predicate_tensor, lambda: trace_fn(out_tensor, out_tensor_name),
-                lambda: constant_op.constant(False)).op
-
           if len(processed_tensors) != 1:
             raise RuntimeError('Multiple stats are only allowed in compact '
                                'mode.')
@@ -1905,20 +1788,7 @@ class TensorTracer(object):
           # mode that uses compact format(self._use_tensor_values_cache = true).
           # Non-compact mode currently allows single stat per tensor.
           processed_out_tensor = six.next(six.itervalues(processed_tensors))
-
-          if self._parameters.is_conditional_trace:
-            trace_op = conditional_trace_fn(processed_out_tensor, out_tensor,
-                                            tpu_wrap_trace_fn, tensor_name)
-          elif self._parameters.included_cores:
-            should_print = constant_op.constant(False)
-            for core in self._parameters.included_cores:
-              should_print = gen_math_ops.logical_or(
-                  should_print, gen_math_ops.equal(self._replica_id, core))
-            trace_op = conditional_trace_fn(should_print, processed_out_tensor,
-                                            tpu_wrap_trace_fn, tensor_name)
-
-          else:
-            trace_op = tpu_wrap_trace_fn(processed_out_tensor, tensor_name)
+          trace_op = tpu_wrap_trace_fn(processed_out_tensor, tensor_name)
 
         if op_control_flow_context:
           # pylint: disable=protected-access
