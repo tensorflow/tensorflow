@@ -126,7 +126,7 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
                             size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
-    LOG(FATAL) << "Labels file " << file_name << " not found\n";
+    LOG(ERROR) << "Labels file " << file_name << " not found\n";
     return kTfLiteError;
   }
   result->clear();
@@ -170,7 +170,7 @@ void RunInference(Settings* s) {
   std::unique_ptr<tflite::Interpreter> interpreter;
   model = tflite::FlatBufferModel::BuildFromFile(s->model_name.c_str());
   if (!model) {
-    LOG(FATAL) << "\nFailed to mmap model " << s->model_name << "\n";
+    LOG(ERROR) << "\nFailed to mmap model " << s->model_name << "\n";
     exit(-1);
   }
   s->model = model.get();
@@ -182,7 +182,7 @@ void RunInference(Settings* s) {
 
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
-    LOG(FATAL) << "Failed to construct interpreter\n";
+    LOG(ERROR) << "Failed to construct interpreter\n";
     exit(-1);
   }
 
@@ -230,14 +230,16 @@ void RunInference(Settings* s) {
   for (const auto& delegate : delegates_) {
     if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
         kTfLiteOk) {
-      LOG(FATAL) << "Failed to apply " << delegate.first << " delegate.";
+      LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+      exit(-1);
     } else {
       LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to allocate tensors!";
+    LOG(ERROR) << "Failed to allocate tensors!";
+    exit(-1);
   }
 
   if (s->verbose) PrintInterpreterState(interpreter.get());
@@ -267,7 +269,7 @@ void RunInference(Settings* s) {
                       wanted_width, wanted_channels, s);
       break;
     default:
-      LOG(FATAL) << "cannot handle input type "
+      LOG(ERROR) << "cannot handle input type "
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
@@ -279,7 +281,8 @@ void RunInference(Settings* s) {
   if (s->loop_count > 1)
     for (int i = 0; i < s->number_of_warmup_runs; i++) {
       if (interpreter->Invoke() != kTfLiteOk) {
-        LOG(FATAL) << "Failed to invoke tflite!\n";
+        LOG(ERROR) << "Failed to invoke tflite!\n";
+        exit(-1);
       }
     }
 
@@ -287,7 +290,8 @@ void RunInference(Settings* s) {
   gettimeofday(&start_time, nullptr);
   for (int i = 0; i < s->loop_count; i++) {
     if (interpreter->Invoke() != kTfLiteOk) {
-      LOG(FATAL) << "Failed to invoke tflite!\n";
+      LOG(ERROR) << "Failed to invoke tflite!\n";
+      exit(-1);
     }
   }
   gettimeofday(&stop_time, nullptr);
@@ -336,7 +340,7 @@ void RunInference(Settings* s) {
                          &top_results, s->input_type);
       break;
     default:
-      LOG(FATAL) << "cannot handle output type "
+      LOG(ERROR) << "cannot handle output type "
                  << interpreter->tensor(output)->type << " yet";
       exit(-1);
   }
