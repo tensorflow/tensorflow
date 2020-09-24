@@ -3642,19 +3642,14 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     if use_tensor_inputs:
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
-
-    y = image_ops.resize_image_with_pad_v1(x_tensor, target_height,
-                                           target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(
+          image_ops.resize_image_with_pad_v1(x_tensor, target_height,
+                                             target_width))
 
   def _assertReturns(self,
                      x,
@@ -3683,28 +3678,53 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._ResizeImageWithPad(x, target_height, target_width,
                                  use_tensor_inputs)
-      except Exception as e:  # pylint: disable=broad-except
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
     y = image_ops.resize_image_with_pad_v1(image, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
-  @test_util.run_deprecated_v1
+  def testShapeInference(self):
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Test with 3-D tensors.
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
+
+      # Test with 4-D tensors.
+      self._assertShapeInference([5, 55, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, 66, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, 50, 60, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, None, None, None], 55, 66,
+                                 [5, 55, 66, None])
+      self._assertShapeInference([None, None, None, None], 55, 66,
+                                 [None, 55, 66, None])
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension
     x = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -3742,19 +3762,14 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     if use_tensor_inputs:
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
-
-    y = image_ops.resize_image_with_pad_v2(x_tensor, target_height,
-                                           target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(
+          image_ops.resize_image_with_pad_v2(x_tensor, target_height,
+                                             target_width))
 
   def _assertReturns(self,
                      x,
@@ -3783,29 +3798,53 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._ResizeImageWithPad(x, target_height, target_width,
                                  use_tensor_inputs)
-      except Exception as e:  # pylint: disable=broad-except
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
     y = image_ops.resize_image_with_pad_v1(image, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
+  def testShapeInference(self):
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Test with 3-D tensors.
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
 
-  @test_util.run_deprecated_v1
+      # Test with 4-D tensors.
+      self._assertShapeInference([5, 55, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, 66, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, 50, 60, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, None, None, None], 55, 66,
+                                 [5, 55, 66, None])
+      self._assertShapeInference([None, None, None, None], 55, 66,
+                                 [None, 55, 66, None])
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension
     x = [1, 2, 3, 4, 5, 6, 7, 8]
