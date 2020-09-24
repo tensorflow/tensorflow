@@ -2012,6 +2012,7 @@ cuda_py_test(
     name = "denormal_test",
     size = "small",
     srcs = ["denormal_test.py"],
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
