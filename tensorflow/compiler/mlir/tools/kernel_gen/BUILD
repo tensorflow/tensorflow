@@ -94,7 +94,7 @@ tf_cc_binary(
     name = "tf_to_gpu_binary",
     srcs = ["tf_to_gpu_binary.cc"],
     visibility = [
-        "//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/tests/tf_to_gpu_binary:__pkg__",
         "//tensorflow/core/kernels/mlir_generated:__pkg__",
     ],
     deps = [

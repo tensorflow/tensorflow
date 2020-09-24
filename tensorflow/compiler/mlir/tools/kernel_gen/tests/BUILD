@@ -7,10 +7,6 @@ glob_lit_tests(
         ":test_utilities",
         "@llvm-project//mlir:run_lit.sh",
     ],
-    default_tags = [
-        # MSAN does not work with JIT: b/139082472
-        "nomsan",
-    ],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     test_file_exts = ["mlir"],
 )
@@ -23,7 +19,6 @@ filegroup(
         "//tensorflow/compiler/mlir:tf-opt",
         "//tensorflow/compiler/mlir/hlo:mlir-hlo-opt",
         "//tensorflow/compiler/mlir/tools/kernel_gen:kernel-gen-opt",
-        "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_gpu_binary",
         "@llvm-project//llvm:FileCheck",
     ],
 )
