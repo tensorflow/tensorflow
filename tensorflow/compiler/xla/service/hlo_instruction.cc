@@ -568,19 +568,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           std::max(static_cast<int64>(proto.batch_group_count()), int64{1}));
       custom_call_instr->set_custom_call_has_side_effect(
           proto.custom_call_has_side_effect());
-      std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_to_operand_aliasing;
-      for (const auto& aliasing : proto.custom_call_output_operand_aliasing()) {
-        output_to_operand_aliasing.emplace_back(
-            ShapeIndex(aliasing.output_shape_index().begin(),
-                       aliasing.output_shape_index().end()),
-            std::pair<int64, ShapeIndex>{
-                aliasing.operand_index(),
-                ShapeIndex(aliasing.operand_shape_index().begin(),
-                           aliasing.operand_shape_index().end())});
-      }
-      custom_call_instr->set_output_to_operand_aliasing(
-          std::move(output_to_operand_aliasing));
       break;
     }
     case HloOpcode::kPad:

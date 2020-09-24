@@ -801,28 +801,6 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
     }
   }
-  for (const auto& pair : custom_call->output_to_operand_aliasing()) {
-    TF_RET_CHECK(pair.second.first < custom_call->operand_count())
-        << "Invalid aliasing operand index.";
-    TF_RET_CHECK(ShapeUtil::IndexIsValid(
-        custom_call->operand(pair.second.first)->shape(), pair.second.second))
-        << "Invalid aliasing operand shape index.";
-    TF_RET_CHECK(ShapeUtil::IndexIsValid(custom_call->shape(), pair.first))
-        << "Invalid aliasing output shape index.";
-    const Shape& output_subshape =
-        ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
-    const Shape& operand_subshape = ShapeUtil::GetSubshape(
-        custom_call->operand(pair.second.first)->shape(), pair.second.second);
-    if (layout_sensitive_) {
-      TF_RET_CHECK(operand_subshape == output_subshape)
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
-    } else {
-      TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
-    }
-  }
   return Status::OK();
 }
 

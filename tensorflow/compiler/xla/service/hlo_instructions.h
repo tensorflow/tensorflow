@@ -1430,20 +1430,6 @@ class HloCustomCallInstruction : public HloInstruction {
     CHECK(layout_constrained());
     return operand_shapes_with_layout_;
   }
-  // Gets a list of output/operand buffer pairs that alias each other, where the
-  // output buffer is represented as a ShapeIndex, and the operand buffer is
-  // represented as the operand index and the ShapeIndex. By default this list
-  // is empty.
-  const std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>&
-  output_to_operand_aliasing() const {
-    return output_to_operand_aliasing_;
-  }
-  // Sets the list of output/operand buffer pairs that alias each other.
-  void set_output_to_operand_aliasing(
-      std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          aliasing) {
-    output_to_operand_aliasing_ = std::move(aliasing);
-  }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1472,10 +1458,6 @@ class HloCustomCallInstruction : public HloInstruction {
   std::vector<Shape> operand_shapes_with_layout_;
   // Whether this custom call has a side-effect.
   bool custom_call_has_side_effect_;
-  // A list of output/operand buffer pairs that alias each other. See comment of
-  // output_to_operand_aliasing().
-  std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-      output_to_operand_aliasing_;
 };
 
 class HloPadInstruction : public HloInstruction {

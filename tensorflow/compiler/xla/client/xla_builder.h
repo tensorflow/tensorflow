@@ -593,9 +593,7 @@ class XlaBuilder {
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-      bool has_side_effect,
-      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+      bool has_side_effect);
 
   // Internal version of CustomCall without computation that doesn't do op
   // specific error handling and expects arguments to be legal. CustomCall
@@ -604,18 +602,14 @@ class XlaBuilder {
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-      bool has_side_effect,
-      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+      bool has_side_effect);
 
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const XlaComputation& computation, const Shape& shape_with_layout,
       const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-      bool has_side_effect,
-      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+      bool has_side_effect);
 
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
@@ -1064,25 +1058,18 @@ class XlaBuilder {
                       const string& outfeed_config);
   friend XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
                     absl::Span<const XlaOp> operands);
-  friend XlaOp CustomCall(
-      XlaBuilder* builder, const string& call_target_name,
-      absl::Span<const XlaOp> operands, const Shape& shape,
-      const string& opaque, bool has_side_effect,
-      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+  friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
+                          absl::Span<const XlaOp> operands, const Shape& shape,
+                          const string& opaque, bool has_side_effect);
   friend XlaOp CustomCallWithComputation(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const XlaComputation& computation,
-      const Shape& shape, const string& opaque, bool has_side_effect,
-      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+      const Shape& shape, const string& opaque, bool has_side_effect);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
       absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
-      bool has_side_effect,
-      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+      bool has_side_effect);
   friend XlaOp Complex(XlaOp real, XlaOp imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(XlaOp operand);
@@ -1818,39 +1805,30 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 // backend, a call instruction is emitted which targets a symbol with the name
 // |call_target_name|.  |call_target_name| and |opaque| can arbitrary strings,
 // but |call_target_name| should be short as it may be used in labels. |opaque|
-// can encode arbitrarily large amounts of information. |has_side_effect|
-// specifies whether the instruction can have side effects.
-// |output_operand_aliasing| specifies a list of output/operand buffer pairs
-// that alias each other, where the output buffer is represented as a
-// ShapeIndex, and the operand buffer is represented as the operand index and
-// the ShapeIndex.
-XlaOp CustomCall(
-    XlaBuilder* builder, const string& call_target_name,
-    absl::Span<const XlaOp> operands, const Shape& shape,
-    const string& opaque = "", bool has_side_effect = false,
-    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+// can encode arbitrarily large amounts of information.
+XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
+                 absl::Span<const XlaOp> operands, const Shape& shape,
+                 const string& opaque = "", bool has_side_effect = false);
 
 // Overload which constructs a custom call that applies an Xla computation.
-XlaOp CustomCallWithComputation(
-    XlaBuilder* builder, const string& call_target_name,
-    absl::Span<const XlaOp> operands, const XlaComputation& computation,
-    const Shape& shape, const string& opaque = "", bool has_side_effect = false,
-    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+XlaOp CustomCallWithComputation(XlaBuilder* builder,
+                                const string& call_target_name,
+                                absl::Span<const XlaOp> operands,
+                                const XlaComputation& computation,
+                                const Shape& shape, const string& opaque = "",
+                                bool has_side_effect = false);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to
 // external code, and the external code is expected to produce a result with the
 // layout specified by |shape_with_layout|. All shapes in |shape_with_layout|
 // and |operand_shapes_with_layout| must have layouts.
-XlaOp CustomCallWithLayout(
-    XlaBuilder* builder, const string& call_target_name,
-    absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
-    absl::Span<const Shape> operand_shapes_with_layout,
-    const string& opaque = "", bool has_side_effect = false,
-    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
+                           absl::Span<const XlaOp> operands,
+                           const Shape& shape_with_layout,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           const string& opaque = "",
+                           bool has_side_effect = false);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
