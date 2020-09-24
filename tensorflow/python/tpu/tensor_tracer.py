@@ -552,6 +552,7 @@ class TensorTracer(object):
     self._report_proto = None
     self._temp_cache_var = []
     self._report_proto_path = ''
+    self._outmost_context = None
 
   def report_proto(self):
     """Getter for tensor_tracer.proto object for summary and full_tensor_summary modes.
@@ -1086,6 +1087,12 @@ class TensorTracer(object):
     """
     return control_flow_util.IsInCond(op)
 
+  def _is_in_outmost_while_loop(self, op):
+    ctxt = self._get_op_control_flow_context(op)
+    outer_while_context = control_flow_util.GetContainingWhileContext(ctxt)
+    return outer_while_context == control_flow_util.GetContainingWhileContext(
+        self._outmost_context)
+
   def _should_trace_in_control_flow(self):
     """Returns false incase it is not safe to trace ops in tf.cond or tf.while_loop."""
     # As different from the other trace modes, TRACE_MODE_OPTIONAL_SUMMARY
@@ -1131,7 +1138,7 @@ class TensorTracer(object):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_NOT_EXECUTED))
       return True
-    if self._is_in_control_flow(op):
+    if self._is_in_control_flow(op) or not self._is_in_outmost_while_loop(op):
       if not self._should_trace_in_control_flow():
         report_handler.instrument_op(
             op, TensorTracer.reason(op_id, _REASON_IN_CONTROL_FLOW))
@@ -1360,6 +1367,7 @@ class TensorTracer(object):
     report_handler = tensor_tracer_report.TTReportHandle()
     traced_tensors = self._determine_and_instrument_traced_tensors(
         graph_order, ops_in_exec_path, tensor_trace_points, report_handler)
+    logging.info('TensorTracer is tracing %d tensors.', len(traced_tensors))
 
     tensor_trace_order = tensor_tracer_report.TensorTraceOrder(graph_order,
                                                                traced_tensors)
@@ -1773,6 +1781,9 @@ class TensorTracer(object):
 
     trace_mode = self._parameters.trace_mode
     device_type = self._tt_config.device_type
+    # pylint: disable=protected-access
+    self._outmost_context = graph._get_control_flow_context()
+    # pylint: enable=protected-access
 
     analytics.track_usage('tensor_tracer', [trace_mode, device_type])
     TensorTracer.check_device_type(device_type)
@@ -1792,10 +1803,6 @@ class TensorTracer(object):
 
     tensor_fetch_set = set(processed_t_fetches)
     tracing_ops = []
-
-    # pylint: disable=protected-access
-    current_control_flow_context = graph._get_control_flow_context()
-    # pylint: enable=protected-access
 
     sorted_exec_op_list = list(exec_op_set)
     sorted_exec_op_list.sort(key=lambda op: op.name)
@@ -1894,7 +1901,7 @@ class TensorTracer(object):
 
         if op_control_flow_context:
           # pylint: disable=protected-access
-          graph._set_control_flow_context(current_control_flow_context)
+          graph._set_control_flow_context(self._outmost_context)
           # pylint: enable=protected-access
         if trace_op:
           if is_a_fetched_tensor:
@@ -1908,7 +1915,7 @@ class TensorTracer(object):
             # pylint: enable=protected-access
 
     # pylint: disable=protected-access
-    graph._set_control_flow_context(current_control_flow_context)
+    graph._set_control_flow_context(self._outmost_context)
     # pylint: enable=protected-access
     if tracing_ops:
       # If we are tracing a fetched tensor, their dependency is stored in
