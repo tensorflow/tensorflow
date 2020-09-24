@@ -2566,6 +2566,8 @@ class CSVLogger(Callback):
         delimiter = self.sep
 
       fieldnames = ['epoch'] + self.keys
+      if six.PY2:
+        fieldnames = [unicode(x) for x in fieldnames]
 
       self.writer = csv.DictWriter(
           self.csv_file,
