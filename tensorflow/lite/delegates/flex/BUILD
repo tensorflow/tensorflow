@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 #
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
@@ -247,6 +248,7 @@ cc_library(
         "allowlisted_flex_ops.h",
         "allowlisted_flex_ops_internal.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",

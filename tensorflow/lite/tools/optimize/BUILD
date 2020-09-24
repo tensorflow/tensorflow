@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -102,6 +103,7 @@ cc_library(
     name = "quantization_utils",
     srcs = ["quantization_utils.cc"],
     hdrs = ["quantization_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":model_utils",
         "//tensorflow/lite:framework",
@@ -123,6 +125,7 @@ cc_library(
     name = "model_utils",
     srcs = ["model_utils.cc"],
     hdrs = ["model_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":operator_property",
         "//tensorflow/lite:framework",
@@ -157,6 +160,7 @@ cc_library(
     name = "operator_property",
     srcs = ["operator_property.cc"],
     hdrs = ["operator_property.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:types",
@@ -196,6 +200,7 @@ cc_library(
     name = "quantize_weights",
     srcs = ["quantize_weights.cc"],
     hdrs = ["quantize_weights.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":quantization_utils",
         ":model_utils",
