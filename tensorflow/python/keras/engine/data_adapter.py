@@ -61,13 +61,6 @@ try:
 except ImportError:
   pd = None
 
-try:
-  # In Python2 unicode is a scalar type
-  scalar_types = (float, int, str, unicode)
-except NameError:
-  # In Python3 unicode is not present, it always uses string
-  scalar_types = (float, int, str)
-
 
 @six.add_metaclass(abc.ABCMeta)
 class DataAdapter(object):
@@ -617,7 +610,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
 
   @staticmethod
   def _is_list_of_scalars(inp):
-    if isinstance(inp, scalar_types):
+    if isinstance(inp, (float, int, str)):
       return True
     if isinstance(inp, (list, tuple)):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
