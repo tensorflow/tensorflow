@@ -16,9 +16,11 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_HADOOP_HADOOP_FILESYSTEM_H_
 
 #include <string>
+#include <map>
 
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
+#include "third_party/hadoop/hdfs.h"
 
 void ParseHadoopPath(const std::string& fname, std::string* scheme,
                      std::string* namenode, std::string* path);
@@ -43,6 +45,11 @@ void Close(const TF_WritableFile* file, TF_Status* status);
 }  // namespace tf_writable_file
 
 namespace tf_hadoop_filesystem {
+typedef struct HadoopFile {
+  LibHDFS* libhdfs;
+  std::map<std::string, hdfsFS> connection_cache;
+} HadoopFile;
+
 void Init(TF_Filesystem* filesystem, TF_Status* status);
 void Cleanup(TF_Filesystem* filesystem);
 void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
