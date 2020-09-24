@@ -207,11 +207,10 @@ hdfsFS Connect(tf_hadoop_filesystem::HadoopFile* hadoop_file,
         builder, namenode.empty() ? "default" : namenode.c_str());
     cacheKey += namenode;
   }
-  auto connection_cache = hadoop_file->connection_cache;
-  if (connection_cache.find(cacheKey) == connection_cache.end()) {
-    connection_cache[cacheKey] = libhdfs->hdfsBuilderConnect(builder);
+  if (hadoop_file->connection_cache.find(cacheKey) == hadoop_file->connection_cache.end()) {
+    hadoop_file->connection_cache[cacheKey] = libhdfs->hdfsBuilderConnect(builder);
   }
-  auto fs = connection_cache[cacheKey];
+  auto fs = hadoop_file->connection_cache[cacheKey];
   if (fs == nullptr)
     TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
   else
@@ -419,8 +418,11 @@ void Init(TF_Filesystem* filesystem, TF_Status* status) {
 }
 
 void Cleanup(TF_Filesystem* filesystem) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto connection_cache = &hadoop_file->connection_cache;
   delete libhdfs;
+  delete connection_cache;
 }
 
 void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
