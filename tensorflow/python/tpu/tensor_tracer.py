@@ -1088,6 +1088,16 @@ class TensorTracer(object):
     return control_flow_util.IsInCond(op)
 
   def _is_in_outmost_while_loop(self, op):
+    """Returns true if the op is at the same level with the training loop.
+
+    Returns false if the op is in an inner while loop or if it is outside of the
+    training loop.
+    Args:
+      op: tf.Operation
+
+    Returns:
+      A boolean.
+    """
     ctxt = self._get_op_control_flow_context(op)
     outer_while_context = control_flow_util.GetContainingWhileContext(ctxt)
     return outer_while_context == control_flow_util.GetContainingWhileContext(
@@ -1138,6 +1148,17 @@ class TensorTracer(object):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_NOT_EXECUTED))
       return True
+    # TensorTracer will not trace the operations that are in an inner while loop
+    # or tf.cond when a temporary cache is used. Temporary cache adds direct
+    # data dependencies to traced operations, and needs a static number of
+    # traced operations. For these cases,
+    # - We do not know the number of slots required when there are inner while
+    # loops. TensorTracer can only trace the result of a while loop.
+    # - We do not know ahead of time which branch of the tf.cond
+    # will be taken, so we avoid introducing data dependencies for the
+    # operations inside a tf.cond.
+    # - We also cannot have a data dependency to an operation in a different
+    # while context.
     if self._is_in_control_flow(op) or not self._is_in_outmost_while_loop(op):
       if not self._should_trace_in_control_flow():
         report_handler.instrument_op(
