@@ -21,6 +21,7 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <map>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/c/env.h"
@@ -169,13 +170,15 @@ class LibHDFS {
   void* handle_;
 };
 
-// We rely on HDFS connection caching here. The HDFS client calls
-// org.apache.hadoop.fs.FileSystem.get(), which caches the connection
-// internally.
+static std::map<std::string, hdfsFS> connectionCache_;
+
+// We implement connection caching in Tensorflow, which can significantly
+// improve performance. Fixes #43187
 hdfsFS Connect(LibHDFS* libhdfs, const std::string& path, TF_Status* status) {
   std::string scheme, namenode, hdfs_path;
   ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
 
+  std::string cacheKey(scheme);
   hdfsBuilder* builder = libhdfs->hdfsNewBuilder();
   if (scheme == "file") {
     libhdfs->hdfsBuilderSetNameNode(builder, nullptr);
@@ -200,11 +203,16 @@ hdfsFS Connect(LibHDFS* libhdfs, const std::string& path, TF_Status* status) {
     SplitArchiveNameAndPath(&path_har, &namenode, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
     libhdfs->hdfsBuilderSetNameNode(builder, namenode.c_str());
+    cacheKey += namenode;
   } else {
     libhdfs->hdfsBuilderSetNameNode(
         builder, namenode.empty() ? "default" : namenode.c_str());
+    cacheKey += namenode;
   }
-  auto fs = libhdfs->hdfsBuilderConnect(builder);
+  if (connectionCache_.find(cacheKey) == connectionCache_.end()) {
+    connectionCache_[cacheKey] = libhdfs->hdfsBuilderConnect(builder);
+  }
+  auto fs = connectionCache_[cacheKey];
   if (fs == nullptr)
     TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
   else
