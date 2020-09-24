@@ -340,7 +340,7 @@ class DistributionTestBase(test.TestCase):
       self, strategy, input_fn, expected_values, ignore_order=False):
     assert_same = self.assertCountEqual if ignore_order else self.assertEqual
 
-    iterable = strategy.experimental_distribute_datasets_from_function(input_fn)
+    iterable = strategy.distribute_datasets_from_function(input_fn)
     if context.executing_eagerly():
       iterator = iter(iterable)
 

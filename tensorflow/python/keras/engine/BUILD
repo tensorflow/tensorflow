@@ -74,6 +74,7 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/keras/utils:version_utils",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -178,6 +179,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
 
@@ -297,6 +299,7 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         ":engine",
         "//tensorflow/python:client_testlib",
@@ -335,6 +338,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -350,6 +354,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -544,6 +549,7 @@ tf_py_test(
         "no_oss",  # TODO(b/135021748) reenable
         "notsan",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -614,6 +620,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         ":base_layer",
         ":engine",

@@ -40,6 +40,7 @@ tf_py_test(
     srcs = ["client_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tfrt_enabled = True,
     deps = [
         ":client",
         "//tensorflow/python:client_testlib",

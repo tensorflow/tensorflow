@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -118,9 +119,9 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   return Status::OK();
 }
 
-Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    string* result) {
+Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
+                                           const toco::TocoFlags& toco_flags,
+                                           string* result) {
   mlir::MLIRContext context;
   mlir::TFL::QuantizationSpecs quant_specs;
 
@@ -156,9 +157,12 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   tensorflow::GraphImportConfig specs;
   specs.upgrade_legacy = true;
 
+  std::vector<std::string> custom_opdefs(toco_flags.custom_opdefs().begin(),
+                                         toco_flags.custom_opdefs().end());
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
+                                       absl::MakeSpan(custom_opdefs),
                                        exported_names, specs, &context));
 
   if (!model_flags.input_arrays().empty() ||

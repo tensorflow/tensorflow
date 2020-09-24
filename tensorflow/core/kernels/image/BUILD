@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -6,13 +7,20 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
-    "tf_kernel_library",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # TODO(rmlarsen): Remove ASAP.
 package_group(

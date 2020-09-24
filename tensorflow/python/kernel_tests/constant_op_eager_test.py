@@ -149,6 +149,8 @@ class ConstantTest(test.TestCase):
             [2, 3, 5]).astype(np.complex128))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex128))
 
+  @test_util.disable_tfrt("support creating string tensors from empty "
+                          "numpy arrays.")
   def testString(self):
     val = [compat.as_bytes(str(x)) for x in np.arange(-15, 15)]
     self._testCpu(np.array(val).reshape([2, 3, 5]))
@@ -168,6 +170,19 @@ class ConstantTest(test.TestCase):
     # NOTE(mrry): Do not use assertAllEqual, because it converts nested to a
     #   numpy array, which loses the null terminators.
     self.assertEqual(val.tolist(), nested)
+
+  def testStringConstantOp(self):
+    s = constant_op.constant("uiuc")
+    self.assertEqual(s.numpy().decode("utf-8"), "uiuc")
+    s_array = constant_op.constant(["mit", "stanford"])
+    self.assertAllEqual(s_array.numpy(), ["mit", "stanford"])
+
+    with ops.device("/cpu:0"):
+      s = constant_op.constant("cmu")
+      self.assertEqual(s.numpy().decode("utf-8"), "cmu")
+
+      s_array = constant_op.constant(["berkeley", "ucla"])
+      self.assertAllEqual(s_array.numpy(), ["berkeley", "ucla"])
 
   def testExplicitShapeNumPy(self):
     c = constant_op.constant(
@@ -412,6 +427,7 @@ class ZerosLikeTest(test.TestCase):
     self.assertFalse(np.any(z_value))
     self.assertEqual((2, 3), z_value.shape)
 
+  @test_util.disable_tfrt("b/169112823: unsupported dtype for Op:ZerosLike.")
   def testZerosLikeCPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
@@ -422,6 +438,7 @@ class ZerosLikeTest(test.TestCase):
     ]:
       self._compareZeros(dtype, use_gpu=False)
 
+  @test_util.disable_tfrt("b/169112823: unsupported dtype for Op:ZerosLike.")
   def testZerosLikeGPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
@@ -431,6 +448,7 @@ class ZerosLikeTest(test.TestCase):
     ]:
       self._compareZeros(dtype, use_gpu=True)
 
+  @test_util.disable_tfrt("b/169112823: unsupported dtype for Op:ZerosLike.")
   def testZerosLikeDtype(self):
     # Make sure zeros_like works even for dtypes that cannot be cast between
     shape = (3, 5)
@@ -563,11 +581,13 @@ class FillTest(test.TestCase):
     tf_ans = array_ops.fill([2, 3], np_ans[0][0], name="fill").numpy()
     self.assertAllEqual(np_ans, tf_ans)
 
+  @test_util.disable_tfrt("support error code in TFRT.")
   def testFillNegative(self):
     for shape in (-1,), (2, -1), (-1, 2), (-2), (-3):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         array_ops.fill(shape, 7)
 
+  @test_util.disable_tfrt("support error code in TFRT.")
   def testShapeFunctionEdgeCases(self):
     # Non-vector dimensions.
     with self.assertRaises(errors_impl.InvalidArgumentError):

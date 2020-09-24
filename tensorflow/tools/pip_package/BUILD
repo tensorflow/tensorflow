@@ -36,7 +36,7 @@ transitive_hdrs(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
-        "//tensorflow/c/experimental/filesystem:modular_filesystem",
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.
@@ -117,6 +117,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
+    "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
     "//tensorflow/python/data/experimental/ops:testing",
@@ -144,6 +145,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python/tpu",
+    "//tensorflow/python:image_grad_test_base",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/common:public_api",

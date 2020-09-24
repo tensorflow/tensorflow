@@ -1,5 +1,6 @@
 # TPU Kernel Implementations
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",

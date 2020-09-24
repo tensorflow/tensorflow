@@ -69,6 +69,7 @@ cc_library(
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",

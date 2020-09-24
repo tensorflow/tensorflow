@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_enable_mlir_bridge", "tf_gen_op_wrapper_py")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
 
 # buildifier: disable=same-origin-load
@@ -34,7 +37,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
+load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_profiler_deps", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load(
@@ -416,6 +419,7 @@ cc_library(
     name = "cost_analyzer_lib",
     srcs = ["grappler/cost_analyzer.cc"],
     hdrs = ["grappler/cost_analyzer.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
@@ -530,6 +534,7 @@ tf_python_pybind_extension(
 # Necessary for the pywrap inclusion below.
 tf_pybind_cc_library_wrapper(
     name = "tfcompile_headers_lib",
+    compatible_with = [],
     deps = [
         "//tensorflow/compiler/aot:tfcompile_lib",
     ],
@@ -2417,7 +2422,7 @@ py_library(
 )
 
 py_test(
-    name = "ops/functional_ops_test",
+    name = "functional_ops_test",
     srcs = ["ops/functional_ops_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
@@ -5141,11 +5146,30 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "image_grad_deterministic_test",
+    size = "medium",
+    srcs = ["ops/image_grad_deterministic_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":image_grad_test_base",
+    ],
+)
+
+cuda_py_test(
     name = "image_grad_test",
     size = "medium",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     tfrt_enabled = True,
+    deps = [
+        ":image_grad_test_base",
+    ],
+)
+
+py_library(
+    name = "image_grad_test_base",
+    srcs = ["ops/image_grad_test_base.py"],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -5259,7 +5283,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
-        "notsan",  # b/168815578
     ],
     deps = [
         ":framework_for_generated_wrappers",
@@ -5584,6 +5607,7 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # b/168621686
+        "no_windows",  # b/169275019
     ],
     tfrt_enabled = True,
     deps = [
@@ -5808,7 +5832,7 @@ tf_proto_library(
     visibility = visibility,
 )
 
-tf_proto_library_py(
+tf_proto_library(
     name = "compare_test_proto",
     testonly = 1,
     srcs = ["util/protobuf/compare_test.proto"],
@@ -5929,6 +5953,7 @@ tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
     hdrs = ["client/tf_session_helper.h"],
+    compatible_with = [],
     deps = [
         ":construction_fails_op",
         ":ndarray_tensor",

@@ -299,9 +299,9 @@ class OptimizationOptions(options.OptionsBase):
       # prefetch transformations will be autotuned, though this is practically
       # equivalent to tuning the buffer sizes of the other asynchronous
       # transformations.
-      result.enabled.append("inject_prefetch")
+      result.enabled.append("autotune_buffer_sizes")
     if self.autotune is False:  # pylint: disable=g-bool-id-comparison
-      result.disabled.append("inject_prefetch")
+      result.disabled.append("autotune_buffer_sizes")
 
     return result
 

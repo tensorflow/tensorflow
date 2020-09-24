@@ -34,12 +34,17 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 class ProcessingMode(object):
+  """tf.data service processing modes."""
+
   PARALLEL_EPOCHS = "parallel_epochs"
+  DISTRIBUTED_EPOCH = "distributed_epoch"
 
   @staticmethod
   def validate(mode):
     """Raises a ValueError if the given object is not a valid processing mode."""
-    valid_modes = [ProcessingMode.PARALLEL_EPOCHS]
+    valid_modes = [
+        ProcessingMode.PARALLEL_EPOCHS, ProcessingMode.DISTRIBUTED_EPOCH
+    ]
     if mode not in valid_modes:
       raise ValueError(
           "{0} is not a valid processing mode. Valid modes: {1}".format(
@@ -62,8 +67,10 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     Args:
       dataset_id: The dataset id for the dataset to read from.
       processing_mode: A string specifying the policy for how data should be
-        processed by tf.data workers. Currently, the only supported value is
-        "parallel_epochs".
+        processed by tf.data workers. Can be either "parallel_epochs" to have
+        each tf.data worker process a copy of the dataset, or
+        "distributed_epoch" to split a single iteration of the dataset across
+        all the workers.
       address: The tf.data service address, e.g. "localhost:5000".
       protocol: The protocol to use for communicating with the tf.data service,
         e.g. "grpc".
@@ -186,8 +193,10 @@ def _from_dataset_id(processing_mode,
 
   Args:
     processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Currently, the only supported value is
-      "parallel_epochs".
+      processed by tf.data workers. Can be either "parallel_epochs" to have
+      each tf.data worker process a copy of the dataset, or
+      "distributed_epoch" to split a single iteration of the dataset across
+      all the workers.
     service: A string indicating how to connect to the tf.data service. The
       string should be in the format "<protocol>://<address>", e.g.
       "grpc://localhost:5000".
@@ -257,8 +266,10 @@ def _distribute(processing_mode,
 
   Args:
     processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Currently, the only supported value is
-      "parallel_epochs".
+      processed by tf.data workers. Can be either "parallel_epochs" to have
+      each tf.data worker process a copy of the dataset, or
+      "distributed_epoch" to split a single iteration of the dataset across
+      all the workers.
     service: A string indicating how to connect to the tf.data service. The
       string should be in the format "<protocol>://<address>", e.g.
       "grpc://localhost:5000".
@@ -302,21 +313,67 @@ def distribute(processing_mode,
   the tf.data service creates a "job" which produces data for the dataset
   iteration.
 
-  The `processing_mode` argument controls what data is produced by a tf.data
-  service job. Currently, the only supported mode is "parallel_epochs".
+  The tf.data service uses a cluster of workers to prepare data for training
+  your model.
+  The `processing_mode` argument to `tf.data.experimental.service.distribute`
+  describes how to leverage multiple workers to process the input dataset.
+  Currently, there are two processing modes to choose from: "distributed_epoch"
+  and "parallel_epochs".
 
-  processing_mode="parallel_epochs" means that multiple tf.data workers will
-  iterate through the dataset in parallel, each producing all elements of the
-  dataset. For example, if the dataset contains {0, 1, 2}, every tf.data worker
-  used for execution will produce {0, 1, 2}. If there are 3 workers, the job
-  will produce the elements {0, 0, 0, 1, 1, 1, 2, 2, 2} (though not necessarily
-  in that order). To account for this, it is recommended to randomly shuffle
-  your dataset, so that different tf.data workers will iterate through the
-  dataset in different orders.
+  "distributed_epoch" means that the dataset will be split across all tf.data
+  service workers.
+  The dispatcher produces "splits" for the dataset and sends them to workers for
+  further processing. For example, if a dataset begins with a list of filenames,
+  the dispatcher will iterate through the filenames and send the filenames to
+  tf.data workers, which will perform the rest of the dataset transformations on
+  those files. "distributed_epoch" is useful when your model needs to see each
+  element of the dataset exactly once, or if it needs to see the data in a
+  generally-sequential order. "distributed_epoch" only works for datasets with
+  splittable sources, such as `Dataset.from_tensor_slices`,
+  `Dataset.list_files`, or `Dataset.range`.
 
-  In the future, there will be additional processing modes. For example,
-  a "one_epoch" mode which partitions the dataset across the tf.data
-  workers, so that the consumers see each element of the dataset only once.
+  "parallel_epochs" means that the entire input dataset will be processed
+  independently by each of the tf.data service workers.
+  For this reason, it is important to shuffle data (e.g. filenames)
+  non-deterministically, so that each worker will process the elements of the
+  dataset in a different order. "parallel_epochs" can be used to distribute
+  datasets that aren't splittable.
+
+  With two workers, "parallel_epochs" will produce every element of the dataset
+  twice:
+
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
+  >>> dispatcher_address = dispatcher.target.split("://")[1]
+  >>> # Start two workers
+  >>> workers = [
+  ...     tf.data.experimental.service.WorkerServer(
+  ...         tf.data.experimental.service.WorkerConfig(
+  ...             dispatcher_address=dispatcher_address)) for _ in range(2)
+  ... ]
+  >>> dataset = tf.data.Dataset.range(10)
+  >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
+  ...     processing_mode="parallel_epochs", service=dispatcher.target))
+  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9]
+
+  "distributed_epoch", on the other hand, will still produce each element once:
+
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
+  >>> dispatcher_address = dispatcher.target.split("://")[1]
+  >>> workers = [
+  ...     tf.data.experimental.service.WorkerServer(
+  ...         tf.data.experimental.service.WorkerConfig(
+  ...             dispatcher_address=dispatcher_address)) for _ in range(2)
+  ... ]
+  >>> dataset = tf.data.Dataset.range(10)
+  >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
+  ...     processing_mode="distributed_epoch", service=dispatcher.target))
+  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+  When using `apply(tf.data.experimental.service.distribute(...))`, the dataset
+  before the `apply` transformation executes within the tf.data service, while
+  the operations after `apply` happen within the local process.
 
   ```
   dataset = tf.data.Dataset.range(5)
@@ -397,8 +454,10 @@ def distribute(processing_mode,
 
   Args:
     processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Currently, the only supported value is
-      "parallel_epochs".
+      processed by tf.data workers. Can be either "parallel_epochs" to have
+      each tf.data worker process a copy of the dataset, or
+      "distributed_epoch" to split a single iteration of the dataset across
+      all the workers.
     service: A string indicating how to connect to the tf.data service. The
       string should be in the format "protocol://address", e.g.
       "grpc://localhost:5000".
@@ -537,8 +596,10 @@ def from_dataset_id(processing_mode,
 
   Args:
     processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Currently, the only supported value is
-      "parallel_epochs".
+      processed by tf.data workers. Can be either "parallel_epochs" to have
+      each tf.data worker process a copy of the dataset, or
+      "distributed_epoch" to split a single iteration of the dataset across
+      all the workers.
     service: A string indicating how to connect to the tf.data service. The
       string should be in the format "protocol://address", e.g.
       "grpc://localhost:5000".

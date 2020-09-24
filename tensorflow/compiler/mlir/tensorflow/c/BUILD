@@ -19,6 +19,7 @@ tf_cuda_library(
     srcs = [
         "c_api_unified_experimental_mlir.cc",
     ],
+    compatible_with = [],
     copts = tf_copts(),
     deps = [
         "//tensorflow/c:c_api",
@@ -34,6 +35,7 @@ tf_cuda_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",

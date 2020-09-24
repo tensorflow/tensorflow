@@ -3252,11 +3252,12 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     SmallVector<Value, 4> slice_begin_indices;
     // For the dimensions that are to be sliced, all have slice sizes of 1.
     SmallVector<int64_t, 4> slice_sizes(slicing_dim_size, 1);
-    auto input_element_ty = input_ty.getElementType();
+    auto begin_element_ty =
+        op.begin().getType().cast<ShapedType>().getElementType();
     // Scalar tensor type.
-    TensorType type = RankedTensorType::get(/*shape=*/{}, input_element_ty);
+    TensorType type = RankedTensorType::get(/*shape=*/{}, begin_element_ty);
     Location loc = op.getLoc();
-    auto zero = GetScalarConstOfType(input_element_ty, loc, 0, &rewriter);
+    auto zero = GetScalarConstOfType(begin_element_ty, loc, 0, &rewriter);
     for (int d = 0; d < slicing_dim_size; ++d) {
       auto index = rewriter.create<SliceOp>(
           loc, op.begin(), GetI64ElementsAttr({d}, &rewriter),
@@ -3267,7 +3268,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
       // If the index is negative, wrap it around with dimension size.
       auto index_negative =
           rewriter.create<TF::LessOp>(loc, reshaped_index, zero);
-      auto input_val = GetScalarConstOfType(input_element_ty, loc,
+      auto input_val = GetScalarConstOfType(begin_element_ty, loc,
                                             input_shape[d], &rewriter);
       auto wrapped_index =
           rewriter.create<TF::AddOp>(loc, input_val, reshaped_index);
@@ -3606,6 +3607,13 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
 /// `is_accumulation` controls whether it uses higher precision for the actual
 /// reduction. This is set to false for ops like max where there is no precision
 /// concerns.
+//
+// The Derived class should have a static method to return the initial value to
+// use for reduction:
+//   static Value GetInitialValue(Type reduce_element_type, Location loc,
+//                                PatternRewriter *rewriter);
+// The reduce_element_type is guaranteed to be a float, int, or complex type
+// suitable for use with GetScalarConstOfType or GetScalarLimitConstOfType.
 template <typename Derived, typename OpTy, typename ReductionOp,
           bool is_accumulation = true>
 class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
@@ -3639,6 +3647,14 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
     Location loc = op.getLoc();
     Type element_type = input_ty.getElementType();
+
+    // Only float, int, and complex types are currently supported.
+    if (!element_type.isa<FloatType>() && !element_type.isa<IntegerType>() &&
+        !element_type.isa<ComplexType>()) {
+      return rewriter.notifyMatchFailure(
+          op, "element type must be float, int, or complex type");
+    }
+
     // Convert to an accumulation type to not lose precision when doing
     // repeated arithmetic operations.
     Type reduce_element_type =

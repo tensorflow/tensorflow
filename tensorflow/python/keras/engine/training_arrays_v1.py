@@ -29,7 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
@@ -145,7 +145,7 @@ def model_iteration(model,
 
   # Enter tf.distribute.Strategy scope.
   if model._distribution_strategy:
-    scope = distributed_training_utils.distributed_scope(
+    scope = distributed_training_utils_v1.distributed_scope(
         strategy=model._distribution_strategy,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
@@ -251,7 +251,8 @@ def model_iteration(model,
         steps=steps_per_epoch)
 
   if model._compile_distribution:
-    distributed_training_utils._copy_weights_to_distributed_model(model, mode)
+    distributed_training_utils_v1._copy_weights_to_distributed_model(
+        model, mode)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -288,9 +289,9 @@ def model_iteration(model,
         # Get outputs.
         try:
           # `ins` can be callable in tf.distribute.Strategy + eager case.
-          if not callable(ins) or (
-              model._distribution_strategy and
-              not distributed_training_utils.is_distributing_by_cloning(model)):
+          if not callable(ins) or (model._distribution_strategy and
+                                   not distributed_training_utils_v1
+                                   .is_distributing_by_cloning(model)):
             actual_inputs = ins
           else:
             actual_inputs = ins()
@@ -329,8 +330,9 @@ def model_iteration(model,
           batch_outs = [batch_outs]
 
         if model._distribution_strategy:
-          batch_outs = distributed_training_utils._per_replica_aggregate_batch(
-              model._distribution_strategy, batch_outs, model, mode)
+          batch_outs = (
+              distributed_training_utils_v1._per_replica_aggregate_batch(
+                  model._distribution_strategy, batch_outs, model, mode))
 
         # Aggregate results.
         if step == 0:
@@ -413,7 +415,7 @@ def model_iteration(model,
       if model._compile_distribution:
         # Since we create a new clone from the original model we need to copy
         # the weights back to the original model before we can run validation.
-        distributed_training_utils._copy_weights_to_original_model(
+        distributed_training_utils_v1._copy_weights_to_original_model(
             model, ModeKeys.TRAIN)
 
       val_results = model_iteration(
@@ -450,7 +452,7 @@ def model_iteration(model,
   if model._distribution_strategy:
     if model._compile_distribution:
       # TODO(priyag, psv): Copy back metrics to the original model as well?
-      distributed_training_utils._copy_weights_to_original_model(model, mode)
+      distributed_training_utils_v1._copy_weights_to_original_model(model, mode)
     scope.__exit__(None, None, None)
 
   if mode == ModeKeys.TRAIN:
@@ -500,11 +502,11 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   if model._distribution_strategy:
     if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
-      inputs = distributed_training_utils.get_iterator(
+      inputs = distributed_training_utils_v1.get_iterator(
           inputs, model._distribution_strategy)
 
     def get_distributed_inputs():
-      return distributed_training_utils._prepare_feed_values(
+      return distributed_training_utils_v1._prepare_feed_values(
           model, inputs, targets, sample_weights, mode)
 
     # In the eager case, we want to call the input method per step, so return
@@ -537,14 +539,14 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 
 def _get_iterator(inputs, distribution_strategy=None):
   if distribution_strategy:
-    return distributed_training_utils.get_iterator(
+    return distributed_training_utils_v1.get_iterator(
         inputs, distribution_strategy)
   return training_utils.get_iterator(inputs)
 
 
 def _reinitialize_iterator(iterator, distribution_strategy=None):
   if distribution_strategy:
-    distributed_training_utils.initialize_iterator(
+    distributed_training_utils_v1.initialize_iterator(
         iterator, distribution_strategy)
   else:
     training_utils.initialize_iterator(iterator)
@@ -553,7 +555,7 @@ def _reinitialize_iterator(iterator, distribution_strategy=None):
 def _make_execution_function(model, mode):
   """Makes function to run one step of model execution."""
   if model._distribution_strategy:
-    return distributed_training_utils._make_execution_function(model, mode)
+    return distributed_training_utils_v1._make_execution_function(model, mode)
   return model._make_execution_function(mode)
 
 
@@ -580,8 +582,8 @@ def _update_sample_weight_mode(model, mode, inputs):
   # Call the DistributionStrategy specific function to update the
   # sample_weight_mode on the model.
   if model._distribution_strategy:
-    distributed_training_utils._update_sample_weight_modes(model, mode,
-                                                           sample_weights)
+    distributed_training_utils_v1._update_sample_weight_modes(model, mode,
+                                                              sample_weights)
 
 # For backwards compatibility for internal users of these loops.
 fit_loop = functools.partial(model_iteration, mode=ModeKeys.TRAIN)

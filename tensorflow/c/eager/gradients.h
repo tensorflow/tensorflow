@@ -80,7 +80,6 @@ struct ForwardOperation {
   std::vector<AbstractTensorHandle*> inputs;
   std::vector<AbstractTensorHandle*> outputs;
   AttrBuilder attrs;
-  AbstractContext* ctx;
 };
 
 // Interface for building default zeros gradients for op outputs which are
@@ -193,20 +192,19 @@ int64 ToId(AbstractTensorHandle* t);
 // TODO(srbs): Should ZerosLike check-fail instead of returning nullptr?
 class TapeTensor {
  public:
-  TapeTensor(AbstractTensorHandle* handle, AbstractContext* ctx);
+  explicit TapeTensor(AbstractTensorHandle* handle);
   TapeTensor(const TapeTensor& other);
   ~TapeTensor();
 
   tensorflow::int64 GetID() const;
   tensorflow::DataType GetDType() const;
 
-  AbstractTensorHandle* OnesLike() const;
   AbstractTensorHandle* ZerosLike() const;
+
+  AbstractTensorHandle* GetHandle() const;
 
  private:
   AbstractTensorHandle* handle_;
-  // The context where OnesLike ops are to be created.
-  AbstractContext* ctx_;
 };
 
 // Vector space for actually computing gradients. Implements methods for calling
@@ -233,6 +231,10 @@ class TapeVSpace
       const std::vector<int64>& unneeded_gradients,
       gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
       std::vector<AbstractTensorHandle*>* result) const override;
+
+  // Builds a tensor filled with ones with the same shape and dtype as `t`.
+  Status BuildOnesLike(TapeTensor t,
+                       AbstractTensorHandle** result) const override;
 
   // Looks up the ID of a Gradient.
   int64 TensorId(AbstractTensorHandle* tensor) const override;

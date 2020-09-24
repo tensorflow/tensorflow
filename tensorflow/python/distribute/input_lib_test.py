@@ -120,7 +120,7 @@ class DistributedIteratorTestBase(test.TestCase):
             split_batch_by=split_batch_by,
             input_context=input_context)
     else:
-      return strategy.experimental_distribute_datasets_from_function(dataset)
+      return strategy.distribute_datasets_from_function(dataset)
 
   def _assert_iterator_values(self,
                               iterator,
@@ -1158,8 +1158,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       ds = distribution.experimental_distribute_dataset(
           dataset_fn(distribute_lib.InputContext()))
     else:
-      ds = distribution.experimental_distribute_datasets_from_function(
-          dataset_fn)
+      ds = distribution.distribute_datasets_from_function(dataset_fn)
     iterator = iter(ds)
 
     self.assertEqual(iterator._enable_get_next_as_optional,
@@ -1208,8 +1207,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       ds = distribution.experimental_distribute_dataset(
           dataset_fn(distribute_lib.InputContext()))
     else:
-      ds = distribution.experimental_distribute_datasets_from_function(
-          dataset_fn)
+      ds = distribution.distribute_datasets_from_function(dataset_fn)
 
     # Iterate through all the batches and sum them up.
     def sum_batch(per_replica_features):

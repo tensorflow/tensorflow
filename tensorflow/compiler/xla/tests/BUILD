@@ -6,7 +6,14 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "genrule")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -177,6 +184,7 @@ cc_library(
 tf_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
+    compatible_with = [],
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -239,6 +247,7 @@ cc_library(
     testonly = True,
     srcs = ["llvm_irgen_test_base.cc"],
     hdrs = ["llvm_irgen_test_base.h"],
+    compatible_with = [],
     deps = [
         ":codegen_test_base",
         ":filecheck",
@@ -266,6 +275,7 @@ cc_library(
     testonly = True,
     srcs = ["filecheck.cc"],
     hdrs = ["filecheck.h"],
+    compatible_with = [],
     data = [
         "@llvm-project//llvm:FileCheck",
     ],

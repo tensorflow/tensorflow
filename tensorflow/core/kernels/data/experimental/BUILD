@@ -1,11 +1,9 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_kernel_library",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -616,6 +614,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:hash_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
@@ -754,7 +753,7 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "dataset_kernels",
+    name = "experimental",
     deps = [
         ":assert_cardinality_dataset_op",
         ":assert_next_dataset_op",

@@ -324,6 +324,7 @@ Status ConvertMLIRToXlaComputation(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   mlir::PassManager tf2xla(module_op.getContext());
+  SetCrashReproducer(tf2xla);
   CreateConvertMlirToXlaHloPipeline(tf2xla, device_type,
                                     custom_legalization_passes);
 
@@ -512,6 +513,7 @@ Status CompileGraphToXlaHlo(
   }
 
   mlir::PassManager pm(module_op.getContext());
+  SetCrashReproducer(pm);
   mlir::TF::StandardPipelineOptions tf_options;
   mlir::TF::CreateTFStandardPipeline(pm, tf_options);
   {

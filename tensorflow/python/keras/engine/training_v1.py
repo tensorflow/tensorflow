@@ -29,7 +29,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -41,8 +40,10 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_arrays_v1
@@ -54,14 +55,15 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale_opti
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -321,8 +323,8 @@ class Model(training_lib.Model):
 
     self._set_optimizer(optimizer)
     is_any_keras_optimizer_v1 = any(
-        (isinstance(opt, optimizers.Optimizer)
-         and not isinstance(opt, optimizers.TFOptimizer)
+        (isinstance(opt, optimizer_v1.Optimizer)
+         and not isinstance(opt, optimizer_v1.TFOptimizer)
         ) for opt in nest.flatten(self.optimizer))
 
     if is_any_keras_optimizer_v1 and ops.executing_eagerly_outside_functions():
@@ -993,7 +995,7 @@ class Model(training_lib.Model):
 
     # Reset metrics on all the distributed (cloned) models.
     if self._distribution_strategy:
-      distributed_training_utils._reset_metrics(self)  # pylint: disable=protected-access
+      distributed_training_utils_v1._reset_metrics(self)  # pylint: disable=protected-access
 
   def train_on_batch(self,
                      x,
@@ -1398,7 +1400,7 @@ class Model(training_lib.Model):
             'We currently do not support enabling `run_eagerly` with '
             'distribution strategy.')
 
-      if (distributed_training_utils.is_distributing_by_cloning(self) and
+      if (distributed_training_utils_v1.is_distributing_by_cloning(self) and
           (not self.built or not self.inputs or not self.outputs)):
         raise ValueError(
             'We currently do not support distribution strategy with a '
@@ -1706,7 +1708,7 @@ class Model(training_lib.Model):
 
     # Avoids the override in Sequential.layers which filters Input layers.
     # (Which are often the very layers that we're after.)
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    layers = layer_utils.filter_empty_layer_containers(self._layers)
     first_layer = next(layers, None)
     if first_layer:
       # The per-replica static batch size.
@@ -2378,7 +2380,7 @@ class Model(training_lib.Model):
 
       def _type_spec_from_value(value):
         """Grab type_spec without converting array-likes to tensors."""
-        if isinstance(value, composite_tensor.CompositeTensor):
+        if tf_utils.is_extension_type(value):
           return value._type_spec  # pylint: disable=protected-access
         # Get a TensorSpec for array-like data without
         # converting the data to a Tensor
@@ -2856,7 +2858,7 @@ class DistributedCallbackModel(Model):
     self._original_model.load_weights(filepath, by_name=False)
     # Copy the weights from the original model to each of the replicated models.
     orig_model_weights = self._original_model.get_weights()
-    distributed_training_utils.set_weights(
+    distributed_training_utils_v1.set_weights(
         self._original_model._distribution_strategy, self,  # pylint: disable=protected-access
         orig_model_weights)
 
@@ -3187,7 +3189,7 @@ def _get_metrics_from_layers(layers):
     List of metrics.
   """
   metrics = []
-  layers = trackable_layer_utils.filter_empty_layer_containers(layers)
+  layers = layer_utils.filter_empty_layer_containers(layers)
   for layer in layers:
     if isinstance(layer, Model):
       # We cannot call 'metrics' on the model because we do not want to

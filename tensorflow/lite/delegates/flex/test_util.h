@@ -80,6 +80,9 @@ class FlexModelTest : public ::testing::Test {
   // Returns the tensor's type at the given index.
   TfLiteType GetType(int tensor_index);
 
+  // Returns if the tensor at the given index is dynamic.
+  bool IsDynamicTensor(int tensor_index);
+
   const TestErrorReporter& error_reporter() const { return error_reporter_; }
 
   // Adds `num_tensor` tensors to the model. `inputs` contains the indices of

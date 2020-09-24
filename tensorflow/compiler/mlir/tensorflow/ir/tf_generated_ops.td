@@ -16,11 +16,12 @@ limitations under the License.
 // This is the operation definition file for TensorFlow.
 //
 // This file contains TensorFlow ops whose definitions are programmatically
-// generated from the TensorFlow codebase. The generated fields for an op
-// includes name, summary, description, traits, arguments, results, derived
-// attributes. Therefore, modifications to these fields will **not** be
-// respected upon subsequent refreshes. However, additional fields after those
-// fields will be retained.
+// generated from the api-def-files in the following folder:
+// tensorflow/core/api_def/base_api
+// The generated fields for an op include name, summary, description, traits,
+// arguments, results, derived attributes. Therefore, modifications to these
+// fields will **not** be respected upon subsequent refreshes. However,
+// additional fields after those fields will be retained.
 //
 // If you absolutely need to modify the generated fields of an op, move the
 // definition to `tf_ops.td` and perform the modification there.
@@ -310,8 +311,8 @@ def TF_AnonymousRandomSeedGeneratorOp : TF_Op<"AnonymousRandomSeedGenerator", []
   let summary = "";
 
   let arguments = (ins
-    I64Tensor:$seed,
-    I64Tensor:$seed2
+    TF_Int64Tensor:$seed,
+    TF_Int64Tensor:$seed2
   );
 
   let results = (outs
@@ -324,9 +325,9 @@ def TF_AnonymousSeedGeneratorOp : TF_Op<"AnonymousSeedGenerator", []> {
   let summary = "";
 
   let arguments = (ins
-    I64Tensor:$seed,
-    I64Tensor:$seed2,
-    I1Tensor:$reshuffle
+    TF_Int64Tensor:$seed,
+    TF_Int64Tensor:$seed2,
+    TF_BoolTensor:$reshuffle
   );
 
   let results = (outs
@@ -8410,6 +8411,24 @@ Resize `images` to `size` using nearest neighbor interpolation.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ResizeNearestNeighborGradOp : TF_Op<"ResizeNearestNeighborGrad", [NoSideEffect]> {
+  let summary = "Computes the gradient of nearest neighbor interpolation.";
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int8, TF_Uint8]>:$grads,
+    TF_Int32Tensor:$size,
+
+    DefaultValuedAttr<BoolAttr, "false">:$align_corners,
+    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int8, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ResourceApplyAdaMaxOp : TF_Op<"ResourceApplyAdaMax", []> {
   let summary = "Update '*var' according to the AdaMax algorithm.";
 
@@ -10275,10 +10294,10 @@ def TF_ShuffleAndRepeatDatasetV2Op : TF_Op<"ShuffleAndRepeatDatasetV2", []> {
 
   let arguments = (ins
     TF_VariantTensor:$input_dataset,
-    I64Tensor:$buffer_size,
-    I64Tensor:$seed,
-    I64Tensor:$seed2,
-    I64Tensor:$count,
+    TF_Int64Tensor:$buffer_size,
+    TF_Int64Tensor:$seed,
+    TF_Int64Tensor:$seed2,
+    TF_Int64Tensor:$count,
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
@@ -10296,7 +10315,7 @@ def TF_ShuffleDatasetV2Op : TF_Op<"ShuffleDatasetV2", []> {
 
   let arguments = (ins
     TF_VariantTensor:$input_dataset,
-    I64Tensor:$buffer_size,
+    TF_Int64Tensor:$buffer_size,
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
@@ -10313,9 +10332,9 @@ def TF_ShuffleDatasetV3Op : TF_Op<"ShuffleDatasetV3", []> {
 
   let arguments = (ins
     TF_VariantTensor:$input_dataset,
-    I64Tensor:$buffer_size,
-    I64Tensor:$seed,
-    I64Tensor:$seed2,
+    TF_Int64Tensor:$buffer_size,
+    TF_Int64Tensor:$seed,
+    TF_Int64Tensor:$seed2,
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
@@ -11963,10 +11982,11 @@ Given an input tensor, this function computes hyperbolic tangent of every
   element in the tensor. Input range is `[-inf, inf]` and
   output range is `[-1,1]`.
 
-  ```python
-  x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
-  tf.math.tanh(x) ==> [-1. -0.99990916 -0.46211717 0.7615942 0.8336547 0.9640276 0.9950547 1.]
-  ```
+  >>> x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
+  >>> tf.math.tanh(x)
+  <tf.Tensor: shape=(8,), dtype=float32, numpy=
+  array([-1.        , -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
+          0.9640276 ,  0.9950547 ,  1.        ], dtype=float32)>
   }];
 
   let arguments = (ins

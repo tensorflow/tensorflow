@@ -262,6 +262,29 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
       return forward_over_back_hvp, back_over_back_hvp
     self.assertAllClose(*_compute_hvps(), rtol=1e-5, atol=1e-5)
 
+  def testEmbeddingLayerInFunction(self):
+
+    class M(tf.keras.Model):
+
+      def __init__(self):
+        super(M, self).__init__()
+        self.embed = tf.keras.layers.Embedding(5, 1)
+        self.proj = tf.keras.layers.Dense(1)
+
+      @tf.function
+      def call(self, x):
+        return self.proj(self.embed(x))
+
+    model = M()
+    model(tf.zeros([3, 3], dtype=tf.int32))  # pylint: disable=not-callable
+    parameters = model.embed.variables
+    tangents = [tf.ones_like(v) for v in parameters]
+    with tf.autodiff.ForwardAccumulator(parameters, tangents):
+      # Note that forwardprop runs alongside the original computation. This test
+      # is just checking that it doesn't crash; correctness is tested in core
+      # TF.
+      model(tf.zeros([3, 3], dtype=tf.int32))  # pylint: disable=not-callable
+
 
 class HessianTests(tf.test.TestCase, parameterized.TestCase):
 

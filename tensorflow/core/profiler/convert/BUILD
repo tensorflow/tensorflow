@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -231,6 +232,7 @@ cc_library(
     hdrs = ["xplane_to_op_stats.h"],
     deps = [
         ":op_metrics_db_combiner",
+        ":op_stats_combiner",
         ":step_events_to_steps_db",
         ":xplane_to_kernel_stats_db",
         ":xplane_to_op_metrics_db",
@@ -248,6 +250,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
+        "//tensorflow/core/profiler/utils:step_intersection",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",

@@ -690,7 +690,7 @@ body: A function that takes a list of tensors and returns another
   }];
 }
 
-def TL_WhileRegionOp : TF_Op<"WhileRegion",
+def TF_WhileRegionOp : TF_Op<"WhileRegion",
       [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "while operation";

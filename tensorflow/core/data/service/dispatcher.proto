@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
+import "tensorflow/core/framework/tensor.proto";
 
 message TaskProgress {
   // The task that this message is about.
@@ -34,6 +35,16 @@ message GetDatasetDefRequest {
 
 message GetDatasetDefResponse {
   DatasetDef dataset_def = 1;
+}
+
+message GetSplitRequest {
+  int64 job_id = 1;
+  int64 repetition = 2;
+}
+
+message GetSplitResponse {
+  TensorProto split = 1;
+  bool end_of_splits = 2;
 }
 
 message GetOrRegisterDatasetRequest {
@@ -118,6 +129,9 @@ service DispatcherService {
 
   // Gets a dataset defintion.
   rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
+
+  // Gets the next split for a given job.
+  rpc GetSplit(GetSplitRequest) returns (GetSplitResponse);
 
   // Registers a dataset with the server, or returns its id if it is already
   // registered.

@@ -901,6 +901,7 @@ cc_library(
         ":decompose_resource_ops",
         ":decompose_resource_ops_inc_gen",
         ":device_util",
+        ":dump_mlir_util",
         ":error_util",
         ":export_tf_dialect_op",
         ":lower_tf_lib",
@@ -982,6 +983,7 @@ cc_library(
     srcs = ["transforms/graph_optimization_pass.cc"],
     hdrs = ["transforms/graph_optimization_pass.h"],
     deps = [
+        ":dump_mlir_util",
         ":error_util",
         ":tensorflow_passes",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
@@ -1017,6 +1019,7 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":dump_mlir_util",
         ":error_util",
         ":export_tf_dialect_op",
         ":export_utils",
@@ -1838,6 +1841,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
 

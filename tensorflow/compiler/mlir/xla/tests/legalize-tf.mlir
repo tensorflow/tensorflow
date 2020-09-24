@@ -3054,6 +3054,15 @@ func @max(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   return %0 : tensor<4x1xf16>
 }
 
+// CHECK-LABEL: func @max_qint
+// Regression test to ensure we don't crash getting the initial value for
+// tf.Max when using quantized integer types.
+func @max_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  %0 = "tf.Max"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
+  return %0 : tensor<4x1x!tf.qint8>
+}
+
 // CHECK-LABEL: func @max_dynamic
 func @max_dynamic(%arg0: tensor<4x?xf16>) -> tensor<4x1xf16> {
     // CHECK: %[[CAST:.*]] = "mhlo.convert"(%arg0) : (tensor<4x?xf16>) -> tensor<4x?xf16>
@@ -3088,6 +3097,15 @@ func @min(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   return %0 : tensor<4x1xf16>
 }
 
+// CHECK-LABEL: func @min_qint
+// Regression test to ensure we don't crash getting the initial value for
+// tf.Min when using quantized integer types.
+func @min_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  %0 = "tf.Min"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
+  return %0 : tensor<4x1x!tf.qint8>
+}
+
 // CHECK-LABEL: func @prod
 func @prod(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK: %[[CAST:.*]] = "mhlo.convert"(%arg0) : (tensor<4x8xf16>) -> tensor<4x8xf32>
@@ -3103,6 +3121,15 @@ func @prod(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Prod"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<1xi64>) -> tensor<4x1xf16>
   return %0 : tensor<4x1xf16>
+}
+
+// CHECK-LABEL: func @prod_qint
+// Regression test to ensure we don't crash getting the initial value for
+// tf.Prod when using quantized integer types.
+func @prod_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
+  %0 = "tf.Prod"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
+  return %0 : tensor<4x1x!tf.qint8>
 }
 
 // CHECK-LABEL: @all
@@ -4970,4 +4997,21 @@ func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) ->
 
   %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\01\01\12\01\00\1A\01\00 \01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi32>) -> tensor<10x1x300xf32>
   return %0 : tensor<10x1x300xf32>
+}
+
+
+// CHECK: func @stridedslice_with_i32
+func @stridedslice_with_i32(%arg0: tensor<i32>) -> tensor<4xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "const_0_arg", outputs = "identity_0_retval_RetVal"}} {
+// CHECK-NOT: tf.StridedSlice
+// CHECK: [[DYNSLICE:%.*]] = "mhlo.dynamic-slice
+// CHECK: [[RESHAPE:%.*]] = "mhlo.reshape"([[DYNSLICE]])
+// CHECK: return [[RESHAPE]]
+  %0 = "tf.Const"() {value = dense<[[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00]]> : tensor<2x4xf32>} : () -> tensor<2x4xf32>
+  %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %2 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %3 = "tf.AddV2"(%arg0, %1) {_xla_inferred_shapes = [#tf.shape<>], device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %4 = "tf.Pack"(%3) {_xla_inferred_shapes = [#tf.shape<1>], axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
+  %5 = "tf.Pack"(%arg0) {_xla_inferred_shapes = [#tf.shape<1>], axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
+  %6 = "tf.StridedSlice"(%0, %5, %4, %2) {_xla_inferred_shapes = [#tf.shape<4>], begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<2x4xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xf32>
+  return %6 : tensor<4xf32>
 }

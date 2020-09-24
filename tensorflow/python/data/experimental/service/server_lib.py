@@ -293,6 +293,7 @@ class WorkerServer(object):
     """
     if config.dispatcher_address is None:
       raise ValueError("must specify a dispatcher_address")
+    self._config = config
     config_proto = service_config_pb2.WorkerConfig(
         dispatcher_address=config.dispatcher_address,
         worker_address=config.worker_address,

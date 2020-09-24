@@ -3,9 +3,11 @@
 # to be distributed and performed in parallel across multiple
 # processes.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
 
 # For platform specific build config
 load(
