@@ -1,6 +1,7 @@
 # Description:
 #   MLIR-GPU-specific components in XLA service implementation.
 
+load("//third_party/mlir:tblgen.bzl", "gentbl")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -159,11 +160,20 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "passes_inc_gen",
+    tbl_outs = [("-gen-pass-decls -name XlaMlirGpu", "passes.h.inc")],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
 cc_library(
     name = "passes",
     srcs = ["passes.cc"],
     hdrs = ["passes.h"],
     deps = [
+        ":passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
@@ -257,6 +267,23 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "xla-mlir-gpu-opt",
+    srcs = ["xla_mlir_gpu_opt.cc"],
+    visibility = ["//tensorflow/compiler/xla/service/mlir_gpu/tests:__subpackages__"],
+    deps = [
+        ":passes",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],

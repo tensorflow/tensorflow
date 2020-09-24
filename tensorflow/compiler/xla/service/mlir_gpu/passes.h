@@ -57,8 +57,11 @@ std::unique_ptr<mlir::FunctionPass> createFuseInnerParallelLoopsPass();
 std::unique_ptr<mlir::FunctionPass> createMapParallelLoopsPass();
 
 /// Collapses all loop dimension into the first one.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+std::unique_ptr<mlir::FunctionPass>
 createParallelLoopCollapsingToFirstDimPass();
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/xla/service/mlir_gpu/passes.h.inc"
 
 }  // namespace mlir_gpu
 }  // namespace xla
