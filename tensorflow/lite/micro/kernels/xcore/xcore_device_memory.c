@@ -9,18 +9,20 @@
 #include <xcore/swmem_fill.h>
 #include <xmos_flash.h>
 
+#define WORDS_TO_BYTES(w) ((w) * sizeof(uint32_t))
+#define BYTES_TO_WORDS(b) (((b) + sizeof(uint32_t) - 1) / sizeof(uint32_t))
+
+#define WORD_TO_BYTE_ADDRESS(w) WORDS_TO_BYTES(w)
+#define BYTE_TO_WORD_ADDRESS(b) ((b) / sizeof(uint32_t))
+
 #ifdef USE_SWMEM
+
 #ifdef USE_QSPI_SWMEM_DEV
 #include "qspi_flash_dev.h"
 #include "soc.h"
 
 static chanend_t swmem_c;
 
-#define WORDS_TO_BYTES(w) ((w) * sizeof(uint32_t))
-#define BYTES_TO_WORDS(b) (((b) + sizeof(uint32_t) - 1) / sizeof(uint32_t))
-
-#define WORD_TO_BYTE_ADDRESS(w) WORDS_TO_BYTES(w)
-#define BYTE_TO_WORD_ADDRESS(b) ((b) / sizeof(uint32_t))
 #else
 flash_ports_t flash_ports_0 = {PORT_SQI_CS, PORT_SQI_SCLK, PORT_SQI_SIO,
                                XS1_CLKBLK_5};
@@ -112,8 +114,10 @@ void memload(void *dest, void *src, size_t size) {
     soc_peripheral_varlist_rx(swmem_c, 1, size * sizeof(uint32_t *),
                               (unsigned int *)dest);
 #else
-    flash_read_quad(&flash_handle, ((uintptr_t)src - XS1_SWMEM_BASE) >> 2,
-                    (unsigned int *)dest, size);
+    flash_read_quad(
+        &flash_handle,
+        WORD_TO_BYTE_ADDRESS(((uintptr_t)src - XS1_SWMEM_BASE) >> 2),
+        (unsigned int *)dest, BYTES_TO_WORDS(size));
 #endif /* USE_QSPI_SWMEM_DEV */
   } else
 #endif /* USE_SWMEM */
