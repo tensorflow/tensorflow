@@ -498,6 +498,7 @@ def tf_proto_library(
         visibility = None,
         testonly = 0,
         cc_libs = [],
+        cc_stubby_versions = None,
         cc_api_version = 2,
         cc_grpc_version = None,
         use_grpc_namespace = False,
@@ -514,7 +515,14 @@ def tf_proto_library(
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports, create_service, create_java_proto, create_grpc_library)
+    _ignore = (
+        js_codegen,
+        exports,
+        create_service,
+        create_java_proto,
+        create_grpc_library,
+        cc_stubby_versions,
+    )
 
     native.proto_library(
         name = name,
