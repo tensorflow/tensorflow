@@ -57,7 +57,7 @@ drun rocm/tensorflow:latest
 We maintain `tensorflow-rocm` whl packages on PyPI [here](https://pypi.org/project/tensorflow-rocm), to install tensorflow-rocm package using pip:
 ```
 # Install some ROCm dependencies
-sudo apt install rocm-libs hipcub miopen-hip
+sudo apt install rocm-libs rccl
 
 # Pip3 install the whl package from PyPI
 pip3 install --user tensorflow-rocm --upgrade
