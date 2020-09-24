@@ -222,6 +222,7 @@ typedef struct HDFSFile {
   LibHDFS* libhdfs;
   absl::Mutex mu;
   hdfsFile handle ABSL_GUARDED_BY(mu);
+  bool disable_eof_retried;
   HDFSFile(std::string path, std::string hdfs_path, hdfsFS fs, LibHDFS* libhdfs,
            hdfsFile handle)
       : path(std::move(path)),
@@ -229,7 +230,14 @@ typedef struct HDFSFile {
         fs(fs),
         libhdfs(libhdfs),
         mu(),
-        handle(handle) {}
+        handle(handle) {
+          const char* disable_eof_retried_str = getenv("HDFS_DISABLE_READ_EOF_RETRIED");
+          if (disable_eof_retried_str && disable_eof_retried_str[0] == '1') {
+            disable_eof_retried = true;
+          } else {
+            disable_eof_retried = false;
+          }
+        }
 } HDFSFile;
 
 void Cleanup(TF_RandomAccessFile* file) {
@@ -253,6 +261,10 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
 
   char* dst = buffer;
   bool eof_retried = false;
+  if (hdfs_file->disable_eof_retried) {
+    // eof_retried = true, avoid calling hdfsOpenFile in Read, Fixes #42597
+    eof_retried = true;
+  }
   int64_t read = 0;
   while (TF_GetCode(status) == TF_OK && n > 0) {
     // We lock inside the loop rather than outside so we don't block other
