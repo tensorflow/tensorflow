@@ -79,7 +79,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   if (s->gl_backend) {
     auto delegate = CreateGPUDelegate(s);
     if (!delegate) {
-      LOG(INFO) << "GPU acceleration is unsupported on this platform.";
+      LOG(INFO) << "GPU acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("GPU", std::move(delegate));
     }
@@ -88,7 +88,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   if (s->accel) {
     auto delegate = evaluation::CreateNNAPIDelegate();
     if (!delegate) {
-      LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
+      LOG(INFO) << "NNAPI acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("NNAPI", std::move(delegate));
     }
@@ -100,7 +100,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
         evaluation::CreateHexagonDelegate(libhexagon_path, s->profiling);
 
     if (!delegate) {
-      LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
+      LOG(INFO) << "Hexagon acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("Hexagon", std::move(delegate));
     }
@@ -109,7 +109,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   if (s->xnnpack_delegate) {
     auto delegate = evaluation::CreateXNNPACKDelegate(s->number_of_threads);
     if (!delegate) {
-      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
+      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("XNNPACK", std::move(delegate));
     }
@@ -230,15 +230,15 @@ void RunInference(Settings* s) {
   for (const auto& delegate : delegates_) {
     if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
         kTfLiteOk) {
-      LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+      LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.\n";
       exit(-1);
     } else {
-      LOG(INFO) << "Applied " << delegate.first << " delegate.";
+      LOG(INFO) << "Applied " << delegate.first << " delegate.\n";
     }
   }
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(ERROR) << "Failed to allocate tensors!";
+    LOG(ERROR) << "Failed to allocate tensors!\n";
     exit(-1);
   }
 
@@ -270,7 +270,7 @@ void RunInference(Settings* s) {
       break;
     default:
       LOG(ERROR) << "cannot handle input type "
-                 << interpreter->tensor(input)->type << " yet";
+                 << interpreter->tensor(input)->type << " yet\n";
       exit(-1);
   }
   auto profiler =
@@ -295,7 +295,7 @@ void RunInference(Settings* s) {
     }
   }
   gettimeofday(&stop_time, nullptr);
-  LOG(INFO) << "invoked \n";
+  LOG(INFO) << "invoked\n";
   LOG(INFO) << "average time: "
             << (get_us(stop_time) - get_us(start_time)) / (s->loop_count * 1000)
             << " ms \n";
@@ -341,7 +341,7 @@ void RunInference(Settings* s) {
       break;
     default:
       LOG(ERROR) << "cannot handle output type "
-                 << interpreter->tensor(output)->type << " yet";
+                 << interpreter->tensor(output)->type << " yet\n";
       exit(-1);
   }
 
