@@ -23,9 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Graph* SparseXent(int batch_size, int num_classes) {
+static Graph* SparseXent(int batch_size, int num_classes, DataType value_type) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor logits(DT_FLOAT, TensorShape({batch_size, num_classes}));
+  Tensor logits(value_type, TensorShape({batch_size, num_classes}));
   logits.flat<float>().setRandom();
   Tensor labels(DT_INT64, TensorShape({batch_size}));
   std::random_device rd;
@@ -41,40 +41,52 @@ static Graph* SparseXent(int batch_size, int num_classes) {
   return g;
 }
 
-#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                          \
+#define BM_SparseXentDev(BATCH, CLASS, DEVICE, DTType)                          \
   static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(int iters) { \
     testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS); \
-    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS)).Run(iters);      \
+    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS, DTType)).Run(iters);      \
   }                                                                     \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE);
 
 /// The representative tests for ptb_word on GPU
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-BM_SparseXentDev(8, 1000000, gpu);
+BM_SparseXentDev(8, 1000000, gpu, DT_FLOAT);
 
-BM_SparseXentDev(16, 10000, gpu);
-BM_SparseXentDev(16, 30000, gpu);
-BM_SparseXentDev(16, 100000, gpu);
+BM_SparseXentDev(16, 10000, gpu, DT_FLOAT);
+BM_SparseXentDev(16, 30000, gpu, DT_FLOAT);
+BM_SparseXentDev(16, 100000, gpu, DT_FLOAT);
 
-BM_SparseXentDev(32, 10000, gpu);
-BM_SparseXentDev(32, 30000, gpu);
-BM_SparseXentDev(32, 100000, gpu);
+BM_SparseXentDev(32, 10000, gpu, DT_FLOAT);
+BM_SparseXentDev(32, 30000, gpu, DT_FLOAT);
+BM_SparseXentDev(32, 100000, gpu, DT_FLOAT);
 
-BM_SparseXentDev(64, 10000, gpu);
-BM_SparseXentDev(64, 30000, gpu);
-BM_SparseXentDev(64, 100000, gpu);
+BM_SparseXentDev(64, 10000, gpu, DT_FLOAT);
+BM_SparseXentDev(64, 30000, gpu, DT_FLOAT);
+BM_SparseXentDev(64, 100000, gpu, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // CPU
-BM_SparseXentDev(8, 1000000, cpu);
+BM_SparseXentDev(8, 1000000, cpu, DT_FLOAT);
 
-BM_SparseXentDev(16, 10000, cpu);
-BM_SparseXentDev(16, 100000, cpu);
+BM_SparseXentDev(16, 10000, cpu, DT_FLOAT);
+BM_SparseXentDev(16, 100000, cpu, DT_FLOAT);
 
-BM_SparseXentDev(32, 10000, cpu);
-BM_SparseXentDev(32, 100000, cpu);
+BM_SparseXentDev(32, 10000, cpu, DT_FLOAT);
+BM_SparseXentDev(32, 100000, cpu, DT_FLOAT);
 
-BM_SparseXentDev(64, 10000, cpu);
-BM_SparseXentDev(64, 100000, cpu);
+BM_SparseXentDev(64, 10000, cpu, DT_FLOAT);
+BM_SparseXentDev(64, 100000, cpu, DT_FLOAT);
+
+BM_SparseXentDev(8, 1000000, cpu, DT_BFLOAT16);
+
+BM_SparseXentDev(16, 10000, cpu, DT_BFLOAT16);
+BM_SparseXentDev(16, 100000, cpu, DT_BFLOAT16);
+
+BM_SparseXentDev(32, 10000, cpu, DT_BFLOAT16);
+BM_SparseXentDev(32, 100000, cpu, DT_BFLOAT16;
+
+BM_SparseXentDev(64, 10000, cpu, DT_BFLOAT16);
+BM_SparseXentDev(64, 100000, cpu, DT_BFLOAT16);
+
 
 }  // end namespace tensorflow
