@@ -35,7 +35,7 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import losses
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
@@ -739,42 +739,42 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
                           rtol=1e-5, atol=1e-5)
 
   def testAdadeltaCompatibility(self):
-    opt_v1 = optimizers.Adadelta(lr=0.01)
+    opt_v1 = optimizer_v1.Adadelta(lr=0.01)
     opt_v2 = adadelta.Adadelta(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testAdagradCompatibility(self):
-    opt_v1 = optimizers.Adagrad(lr=0.01)
+    opt_v1 = optimizer_v1.Adagrad(lr=0.01)
     opt_v2 = adagrad.Adagrad(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testAdamCompatibility(self):
-    opt_v1 = optimizers.Adam()
+    opt_v1 = optimizer_v1.Adam()
     opt_v2 = adam.Adam()
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testAdamaxCompatibility(self):
-    opt_v1 = optimizers.Adamax(lr=0.01)
+    opt_v1 = optimizer_v1.Adamax(lr=0.01)
     opt_v2 = adamax.Adamax(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testNadamCompatibility(self):
-    opt_v1 = optimizers.Nadam(lr=0.001)
+    opt_v1 = optimizer_v1.Nadam(lr=0.001)
     opt_v2 = nadam.Nadam(learning_rate=0.001)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testMomentumCompatibility(self):
-    opt_v1 = optimizers.SGD(lr=0.01, momentum=0.9)
+    opt_v1 = optimizer_v1.SGD(lr=0.01, momentum=0.9)
     opt_v2 = gradient_descent.SGD(learning_rate=0.01, momentum=0.9)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testRMSpropCompatibility(self):
-    opt_v1 = optimizers.RMSprop()
+    opt_v1 = optimizer_v1.RMSprop()
     opt_v2 = rmsprop.RMSprop()
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testSGDCompatibility(self):
-    opt_v1 = optimizers.SGD(lr=0.01)
+    opt_v1 = optimizer_v1.SGD(lr=0.01)
     opt_v2 = gradient_descent.SGD(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2, False)
 
@@ -804,7 +804,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_tf.set_weights(model_k_v2.get_weights())
 
-      opt_k_v1 = optimizers.SGD(momentum=0.9, nesterov=True)
+      opt_k_v1 = optimizer_v1.SGD(momentum=0.9, nesterov=True)
       opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
       opt_tf = momentum.MomentumOptimizer(
           learning_rate=0.01, momentum=0.9, use_nesterov=True)
@@ -858,7 +858,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_k_v2.set_weights(model_k_v1.get_weights())
 
-      opt_k_v1 = optimizers.Adam(amsgrad=True)
+      opt_k_v1 = optimizer_v1.Adam(amsgrad=True)
       opt_k_v2 = adam.Adam(amsgrad=True)
 
       model_k_v1.compile(

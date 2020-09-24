@@ -287,6 +287,7 @@ py_library(
 py_library(
     name = "optimizers",
     srcs = [
+        "optimizer_v1.py",
         "optimizers.py",
     ],
     srcs_version = "PY2AND3",

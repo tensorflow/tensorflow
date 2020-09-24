@@ -36,7 +36,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -779,7 +779,7 @@ def _clone_and_build_model(model, mode, inputs=None, targets=None):
   cloned_model = models.clone_model(model, input_tensors=inputs)
 
   # Compile and build model.
-  if isinstance(model.optimizer, optimizers.TFOptimizer):
+  if isinstance(model.optimizer, optimizer_v1.TFOptimizer):
     optimizer = model.optimizer
   else:
     optimizer_config = model.optimizer.get_config()
