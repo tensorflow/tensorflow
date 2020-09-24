@@ -67,6 +67,7 @@ cc_library(
         ":graph_utils",
         ":optimizer_base",
         "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",

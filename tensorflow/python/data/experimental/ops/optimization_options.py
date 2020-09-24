@@ -305,7 +305,19 @@ class OptimizationOptions(options.OptionsBase):
 
     return result
 
-  def _graph_rewrite_configs(self):
+  def _graph_rewrite_configs(self, autotune):
     if self.map_vectorization is not None:
-      return self.map_vectorization._graph_rewrite_configs()  # pylint: disable=protected-access
-    return []
+      graph_rewrite_configs = self.map_vectorization._graph_rewrite_configs()  # pylint: disable=protected-access
+    else:
+      graph_rewrite_configs = []
+    autotune_only_optimizations = [
+        "map_parallelization", "autotune_buffer_sizes"
+    ]
+    if autotune is False:  # pylint: disable=g-bool-id-comparison
+      for optimization in autotune_only_optimizations:
+        graph_rewrite_configs.append(optimization + ":autotune:false")
+    else:
+      for optimization in autotune_only_optimizations:
+        graph_rewrite_configs.append(optimization + ":autotune:true")
+
+    return graph_rewrite_configs

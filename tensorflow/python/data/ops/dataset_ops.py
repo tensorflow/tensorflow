@@ -381,7 +381,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     # (3) Apply graph rewrite options
     # pylint: disable=protected-access
     graph_rewrites = options._graph_rewrites()
-    graph_rewrite_configs = options._graph_rewrite_configs()
+    graph_rewrite_configs = options._graph_rewrite_configs(autotune)
     # pylint: enable=protected-access
     if self._has_captured_ref():
       if graph_rewrites.enabled or graph_rewrites.default:
@@ -2979,11 +2979,12 @@ class Options(options_lib.OptionsBase):
                           disabled=list(set(result.disabled)),
                           default=list(set(result.default)))
 
-  def _graph_rewrite_configs(self):
+  def _graph_rewrite_configs(self, autotune):
     """Produces the list of configurations for enabled graph optimizations."""
     result = []
     if self.experimental_optimization:
-      result.extend(self.experimental_optimization._graph_rewrite_configs())  # pylint: disable=protected-access
+      result.extend(
+          self.experimental_optimization._graph_rewrite_configs(autotune))  # pylint: disable=protected-access
 
     if self.experimental_slack:
       num_devices = self.experimental_distribute.num_devices
