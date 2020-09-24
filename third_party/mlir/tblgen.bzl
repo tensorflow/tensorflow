@@ -1,6 +1,6 @@
 """BUILD extensions for MLIR table generation."""
 
-def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_relative_includes = [], strip_include_prefix = None, test = False):
+def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_relative_includes = [], strip_include_prefix = None, test = False, **kwargs):
     """gentbl() generates tabular code from a table definition file.
 
     Args:
@@ -13,8 +13,9 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
       td_srcs: A list of table definition files included transitively.
       td_includes: A list of include paths for relative includes, provided as build targets.
       td_relative_includes: A list of include paths for relative includes, provided as relative path.
-      strip_include_prefix: attribute to pass through to cc_library.
-      test: whether to create a test to invoke the tool too.
+      strip_include_prefix: Attribute to pass through to cc_library.
+      test: Whether to create a test to invoke the tool too.
+      **kwargs: Extra keyword arguments to pass to native rules such as cc_library below.
     """
     srcs = []
     srcs += td_srcs
@@ -47,6 +48,7 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
             outs = ["%s.gen.sh" % name],
             cmd = ("echo \"\\$$1\" %s \\$${@:2} -o /dev/null > $@" % local_inc),
             executable = 1,
+            **kwargs
         )
 
     for (opts, out) in tbl_outs:
@@ -68,6 +70,7 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
             tools = [tblgen],
             message = "Generating code from table: %s" % td_file,
             cmd = (" ".join(base_args) + " %s -o $@" % local_inc),
+            **kwargs
         )
 
         # Optionally generate rule to test tblgen invocation.
@@ -80,6 +83,7 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
                 args = base_args,
                 data = srcs + [tblgen],
                 tags = ["no_windows"],
+                **kwargs
             )
 
     # List of opts that do not generate cc files.
@@ -91,4 +95,5 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
         hdrs = hdrs if strip_include_prefix else [],
         strip_include_prefix = strip_include_prefix,
         textual_hdrs = hdrs,
+        **kwargs
     )
