@@ -753,7 +753,7 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "dataset_kernels",
+    name = "experimental",
     deps = [
         ":assert_cardinality_dataset_op",
         ":assert_next_dataset_op",
