@@ -186,7 +186,6 @@ void RunInference(Settings* s) {
     exit(-1);
   }
 
-  interpreter->UseNNAPI(s->old_accel);
   interpreter->SetAllowFp16PrecisionForFp32(s->allow_fp16);
 
   if (s->verbose) {
@@ -359,7 +358,6 @@ void display_usage() {
   LOG(INFO)
       << "label_image\n"
       << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-      << "--old_accelerated, -d: [0|1], use old Android NNAPI delegate or not\n"
       << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
       << "--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
@@ -385,7 +383,6 @@ int Main(int argc, char** argv) {
   while (true) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
-        {"old_accelerated", required_argument, nullptr, 'd'},
         {"allow_fp16", required_argument, nullptr, 'f'},
         {"count", required_argument, nullptr, 'c'},
         {"verbose", required_argument, nullptr, 'v'},
@@ -423,10 +420,6 @@ int Main(int argc, char** argv) {
         break;
       case 'c':
         s.loop_count =
-            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
-        break;
-      case 'd':
-        s.old_accel =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'e':
