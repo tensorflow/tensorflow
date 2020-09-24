@@ -509,10 +509,9 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
 
     sparse, result = sparse_lookup(dataset)
 
@@ -560,10 +559,9 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
 
     output = sparse_lookup(dataset)
 
@@ -616,7 +614,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
             options=distribute_lib.InputOptions(
                 experimental_prefetch_to_device=False)))
@@ -730,7 +728,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
       return dataset.batch(strategy.num_replicas_in_sync)
 
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
-      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+      iter(strategy.distribute_datasets_from_function(dataset_fn))
 
   def test_prefetch_to_device_ragged_dataset_fn(self):
     strategy = get_tpu_strategy()
@@ -745,7 +743,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
       return dataset.batch(strategy.num_replicas_in_sync)
 
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
-      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+      iter(strategy.distribute_datasets_from_function(dataset_fn))
 
 
 class TPUStrategyDistributionTest(

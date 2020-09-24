@@ -605,7 +605,7 @@ class DistributedCollectiveAllReduceStrategyTest(
 
     expected_sum_on_workers = {'chief': 10, 'worker': 35}
     input_iterator = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+        strategy.distribute_datasets_from_function(dataset_fn))
 
     @def_function.function
     def run(iterator):
@@ -648,7 +648,7 @@ class DistributedCollectiveAllReduceStrategyTest(
                            input_context.input_pipeline_id)
 
     input_iterator = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+        strategy.distribute_datasets_from_function(dataset_fn))
 
     @def_function.function
     def run(input_iterator):

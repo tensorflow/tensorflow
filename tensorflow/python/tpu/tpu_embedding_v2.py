@@ -152,7 +152,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   ```python
   distributed_dataset = (
-      strategy.experimental_distribute_datasets_from_function(
+      strategy.distribute_datasets_from_function(
           dataset_fn=...,
           options=tf.distribute.InputOptions(
               experimental_prefetch_to_device=False))
@@ -583,7 +583,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
     distributed_dataset = (
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
                 experimental_prefetch_to_device=False))
@@ -680,7 +680,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
     distributed_dataset = (
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
                 experimental_prefetch_to_device=False))
@@ -1125,7 +1125,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     features matches the per core batch size. This will automatically happen if
     your input dataset is batched to the global batch size and you use
     `tf.distribute.TPUStrategy`'s `experimental_distribute_dataset`
-    or if you use `experimental_distribute_datasets_from_function` and batch
+    or if you use `distribute_datasets_from_function` and batch
     to the per core batch size computed by the context passed to your input
     function.
 
@@ -1135,7 +1135,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
     distributed_dataset = (
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
                 experimental_prefetch_to_device=False))
