@@ -420,9 +420,8 @@ void Init(TF_Filesystem* filesystem, TF_Status* status) {
 void Cleanup(TF_Filesystem* filesystem) {
   auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
   auto libhdfs = hadoop_file->libhdfs;
-  auto connection_cache = &hadoop_file->connection_cache;
   delete libhdfs;
-  delete connection_cache;
+  delete hadoop_file;
 }
 
 void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
