@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#ifndef TENSORFLOW_LITE_MICRO_CORTEX_M4F_GENERIC_DEBUG_LOG_H_
-#define TENSORFLOW_LITE_MICRO_CORTEX_M4F_GENERIC_DEBUG_LOG_H_
+#ifndef TENSORFLOW_LITE_MICRO_CORTEX_M_GCC_GENERIC_DEBUG_LOG_H_
+#define TENSORFLOW_LITE_MICRO_CORTEX_M_GCC_GENERIC_DEBUG_LOG_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,17 +21,17 @@ extern "C" {
 
 // This function is used to register a callback for debug logging.
 // It must be called before the first call to DebugLog().
-extern void DebugLog_register_callback(void (*cb)(const char* s));
+void DebugLog_register_callback(void (*cb)(const char* s));
 
 // This function should be implemented by each target platform, and provide a
 // way for strings to be output to some text stream. For more information, see
 // tensorflow/lite/micro/debug_log.cc.
 // Note that before the first call to DebugLog()
 // a callback function must be registered by calling DebugLog_register_callback().
-extern void DebugLog(const char* s);
+void DebugLog(const char* s);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_MICRO_CORTEX_M4F_GENERIC_DEBUG_LOG_H_
+#endif  // TENSORFLOW_LITE_MICRO_CORTEX_M_GCC_GENERIC_DEBUG_LOG_H_

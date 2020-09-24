@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,24 +14,26 @@ limitations under the License.
 ==============================================================================*/
 
 // Implementation for the DebugLog() function that prints to the debug logger on an
-// generic cortex-m4f device.
+// generic cortex-m device.
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-#include "tensorflow/lite/micro/cortex-m4f-gcc-generic/debug_log.h"
+#include "tensorflow/lite/micro/cortex_m_gcc_generic/debug_log.h"
 
 static void (*DebugLog_callback)(const char* s) = nullptr;
 
-extern void DebugLog_register_callback(void (*cb)(const char* s)) {
+extern "C" void DebugLog_register_callback(void (*cb)(const char* s)) {
   DebugLog_callback = cb;
 }
 
-extern void DebugLog(const char* s) {
+extern "C" void DebugLog(const char* s) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   if (DebugLog_callback) {
 	  DebugLog_callback(s);
   }
+#endif
 }
 
 #ifdef __cplusplus
