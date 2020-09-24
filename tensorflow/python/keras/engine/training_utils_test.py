@@ -35,7 +35,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import keras_tensor
-from tensorflow.python.keras.engine import training_utils_v1
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -45,7 +45,7 @@ class ModelInputsTest(test.TestCase):
 
   def test_single_thing(self):
     a = np.ones(10)
-    model_inputs = training_utils_v1.ModelInputs(a)
+    model_inputs = training_utils.ModelInputs(a)
     self.assertEqual(['input_1'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals))
@@ -59,7 +59,7 @@ class ModelInputsTest(test.TestCase):
       self.skipTest('Run in eager mode only.')
     with testing_utils.use_keras_tensors_scope(False):
       a = np.ones(10, dtype=np.int32)
-      model_inputs = training_utils_v1.ModelInputs(a)
+      model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1'], model_inputs.get_input_names())
       val = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(val))
@@ -69,7 +69,7 @@ class ModelInputsTest(test.TestCase):
       self.assertEqual(dtypes.int32, vals[0].dtype)
     with testing_utils.use_keras_tensors_scope(True):
       a = np.ones(10, dtype=np.int32)
-      model_inputs = training_utils_v1.ModelInputs(a)
+      model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1'], model_inputs.get_input_names())
       val = model_inputs.get_symbolic_inputs()
       self.assertIsInstance(val, keras_tensor.KerasTensor)
@@ -80,7 +80,7 @@ class ModelInputsTest(test.TestCase):
 
   def test_list(self):
     a = [np.ones(10), np.ones(20)]
-    model_inputs = training_utils_v1.ModelInputs(a)
+    model_inputs = training_utils.ModelInputs(a)
     self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals[0]))
@@ -91,14 +91,14 @@ class ModelInputsTest(test.TestCase):
       self.skipTest('Run in eager mode only.')
     with testing_utils.use_keras_tensors_scope(False):
       a = [np.ones(10), np.ones(20)]
-      model_inputs = training_utils_v1.ModelInputs(a)
+      model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[1]))
     with testing_utils.use_keras_tensors_scope(True):
       a = [np.ones(10), np.ones(20)]
-      model_inputs = training_utils_v1.ModelInputs(a)
+      model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertIsInstance(vals[0], keras_tensor.KerasTensor)
@@ -106,7 +106,7 @@ class ModelInputsTest(test.TestCase):
 
   def test_dict(self):
     a = {'b': np.ones(10), 'a': np.ones(20)}
-    model_inputs = training_utils_v1.ModelInputs(a)
+    model_inputs = training_utils.ModelInputs(a)
     self.assertEqual(['a', 'b'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals['a']))
@@ -117,14 +117,14 @@ class ModelInputsTest(test.TestCase):
       self.skipTest('Run in eager mode only.')
     with testing_utils.use_keras_tensors_scope(False):
       a = {'b': np.ones(10), 'a': np.ones(20)}
-      model_inputs = training_utils_v1.ModelInputs(a)
+      model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['a', 'b'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['a']))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['b']))
     with testing_utils.use_keras_tensors_scope(True):
       a = {'b': np.ones(10), 'a': np.ones(20)}
-      model_inputs = training_utils_v1.ModelInputs(a)
+      model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['a', 'b'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertIsInstance(vals['a'], keras_tensor.KerasTensor)
@@ -182,12 +182,12 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
 
     if not expect_shuffled:
       with test.mock.patch.object(logging, 'warning') as mock_log:
-        shuffled = training_utils_v1.verify_dataset_shuffled(dataset)
+        shuffled = training_utils.verify_dataset_shuffled(dataset)
         self.assertRegex(
             str(mock_log.call_args), 'input dataset `x` is not shuffled.')
         self.assertFalse(shuffled)
     else:
-      self.assertTrue(training_utils_v1.verify_dataset_shuffled(dataset))
+      self.assertTrue(training_utils.verify_dataset_shuffled(dataset))
 
 
 class StandardizeWeightsTest(keras_parameterized.TestCase):
@@ -195,22 +195,21 @@ class StandardizeWeightsTest(keras_parameterized.TestCase):
   def test_sample_weights(self):
     y = np.array([0, 1, 0, 0, 2])
     sample_weights = np.array([0.5, 1., 1., 0., 2.])
-    weights = training_utils_v1.standardize_weights(y, sample_weights)
+    weights = training_utils.standardize_weights(y, sample_weights)
     self.assertAllClose(weights, sample_weights)
 
   def test_class_weights(self):
     y = np.array([0, 1, 0, 0, 2])
     class_weights = {0: 0.5, 1: 1., 2: 1.5}
-    weights = training_utils_v1.standardize_weights(
-        y, class_weight=class_weights)
+    weights = training_utils.standardize_weights(y, class_weight=class_weights)
     self.assertAllClose(weights, np.array([0.5, 1., 0.5, 0.5, 1.5]))
 
   def test_sample_weights_and_class_weights(self):
     y = np.array([0, 1, 0, 0, 2])
     sample_weights = np.array([0.5, 1., 1., 0., 2.])
     class_weights = {0: 0.5, 1: 1., 2: 1.5}
-    weights = training_utils_v1.standardize_weights(y, sample_weights,
-                                                    class_weights)
+    weights = training_utils.standardize_weights(y, sample_weights,
+                                                 class_weights)
     expected = sample_weights * np.array([0.5, 1., 0.5, 0.5, 1.5])
     self.assertAllClose(weights, expected)
 
@@ -277,35 +276,32 @@ class AggregationTest(keras_parameterized.TestCase):
 
   def setUp(self):
     super(AggregationTest, self).setUp()
-    self._old_pool = training_utils_v1._COPY_POOL
-    self._old_threshold = (
-        training_utils_v1.SliceAggregator._BINARY_SIZE_THRESHOLD)
-    self._old_timeout = training_utils_v1.SliceAggregator._MAX_COPY_SECONDS
-    training_utils_v1._COPY_POOL = MonitoredPool(
-        training_utils_v1._COPY_THREADS)
+    self._old_pool = training_utils._COPY_POOL
+    self._old_threshold = training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD
+    self._old_timeout = training_utils.SliceAggregator._MAX_COPY_SECONDS
+    training_utils._COPY_POOL = MonitoredPool(training_utils._COPY_THREADS)
 
   def tearDown(self):
     super(AggregationTest, self).tearDown()
-    training_utils_v1._COPY_POOL = self._old_pool
-    training_utils_v1.SliceAggregator._BINARY_SIZE_THRESHOLD = (
-        self._old_threshold)
-    training_utils_v1.SliceAggregator._MAX_COPY_SECONDS = self._old_timeout
+    training_utils._COPY_POOL = self._old_pool
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = self._old_threshold
+    training_utils.SliceAggregator._MAX_COPY_SECONDS = self._old_timeout
 
   def _run_with_steps(self):
-    aggregator = training_utils_v1.OutputsAggregator(use_steps=True)
+    aggregator = training_utils.OutputsAggregator(use_steps=True)
     for i, batch in enumerate(np.array_split(_TEST_DATA, 4)):
       if i == 0:
         aggregator.create(batch)
       aggregator.aggregate(batch)
 
     assert len(aggregator.results) == 1
-    assert isinstance(aggregator.results[0], training_utils_v1.ConcatAggregator)
+    assert isinstance(aggregator.results[0], training_utils.ConcatAggregator)
 
     aggregator.finalize()
     return aggregator.results
 
   def _run_without_steps(self):
-    aggregator = training_utils_v1.OutputsAggregator(
+    aggregator = training_utils.OutputsAggregator(
         use_steps=False, num_samples=6)
 
     batch_start = 0
@@ -318,7 +314,7 @@ class AggregationTest(keras_parameterized.TestCase):
       batch_start = batch_end
 
     assert len(aggregator.results) == 1
-    assert isinstance(aggregator.results[0], training_utils_v1.SliceAggregator)
+    assert isinstance(aggregator.results[0], training_utils.SliceAggregator)
 
     aggregator.finalize()
     return aggregator.results
@@ -330,7 +326,7 @@ class AggregationTest(keras_parameterized.TestCase):
     self.assertAllEqual(self._run_without_steps(), _TEST_DATA)
 
   def test_nested_aggregation(self):
-    aggregator = training_utils_v1.OutputsAggregator(
+    aggregator = training_utils.OutputsAggregator(
         use_steps=False, num_samples=6)
 
     batches = np.array_split(_TEST_DATA, 4)
@@ -348,46 +344,46 @@ class AggregationTest(keras_parameterized.TestCase):
     self.assertAllEqual(aggregator.results, (_TEST_DATA, _TEST_DATA))
 
   def test_concat_single_batch(self):
-    aggregator = training_utils_v1.OutputsAggregator(use_steps=True)
+    aggregator = training_utils.OutputsAggregator(use_steps=True)
     data = _TEST_DATA.copy()
     aggregator.create(data)
     assert len(aggregator.results) == 1
-    assert isinstance(aggregator.results[0], training_utils_v1.ConcatAggregator)
+    assert isinstance(aggregator.results[0], training_utils.ConcatAggregator)
 
     aggregator.aggregate(data)
     aggregator.finalize()
     assert aggregator.results is data  # No copy.
 
   def test_slice_single_batch(self):
-    aggregator = training_utils_v1.OutputsAggregator(
+    aggregator = training_utils.OutputsAggregator(
         use_steps=False, num_samples=6)
     data = _TEST_DATA.copy()
     aggregator.create(data)
     assert len(aggregator.results) == 1
-    assert isinstance(aggregator.results[0], training_utils_v1.SliceAggregator)
+    assert isinstance(aggregator.results[0], training_utils.SliceAggregator)
 
     aggregator.aggregate(data, 0, 6)
     aggregator.finalize()
     assert aggregator.results is data  # No copy.
 
   def test_async_copy(self):
-    training_utils_v1.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
     self.assertAllEqual(self._run_without_steps(), _TEST_DATA)
 
     # Two of the four batches will have 20 elements and two will have 10.
-    self.assertEqual(training_utils_v1._COPY_POOL._apply_counter, 2)
+    self.assertEqual(training_utils._COPY_POOL._apply_counter, 2)
 
   def test_async_copy_timeout(self):
-    training_utils_v1.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
-    training_utils_v1.SliceAggregator._MAX_COPY_SECONDS = 0.1
-    training_utils_v1._COPY_POOL._func_wrapper = add_sleep
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
+    training_utils.SliceAggregator._MAX_COPY_SECONDS = 0.1
+    training_utils._COPY_POOL._func_wrapper = add_sleep
     with self.assertRaisesRegex(ValueError, 'Timed out waiting for copy'):
       self._run_without_steps()
 
   def test_async_copy_reraise(self):
-    training_utils_v1.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
-    training_utils_v1.SliceAggregator._MAX_COPY_SECONDS = 1.
-    training_utils_v1._COPY_POOL._func_wrapper = cause_error
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
+    training_utils.SliceAggregator._MAX_COPY_SECONDS = 1.
+    training_utils._COPY_POOL._func_wrapper = cause_error
     with self.assertRaisesRegex(TypeError, 'NoneType'):
       self._run_without_steps()
 

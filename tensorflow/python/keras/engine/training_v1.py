@@ -51,7 +51,6 @@ from tensorflow.python.keras.engine import training_distributed_v1
 from tensorflow.python.keras.engine import training_eager_v1
 from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
@@ -414,7 +413,7 @@ class Model(training_lib.Model):
     base_layer.keras_api_gauge.get_cell('compile').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
-    self.loss_functions = training_utils_v1.prepare_loss_functions(
+    self.loss_functions = training_utils.prepare_loss_functions(
         self.loss, self.output_names)
 
     target_tensors = self._process_target_tensor_for_compile(target_tensors)
@@ -426,8 +425,7 @@ class Model(training_lib.Model):
       self._training_endpoints.append(endpoint)
 
     # Prepare list loss weights, same size of model outputs.
-    training_utils_v1.prepare_loss_weights(self._training_endpoints,
-                                           loss_weights)
+    training_utils.prepare_loss_weights(self._training_endpoints, loss_weights)
 
     # Initialization for Eager mode execution.
     if self.run_eagerly:
@@ -449,7 +447,7 @@ class Model(training_lib.Model):
           masks=self._prepare_output_masks())
 
       # Prepare sample weight modes. List with the same length as model outputs.
-      training_utils_v1.prepare_sample_weight_modes(
+      training_utils.prepare_sample_weight_modes(
           self._training_endpoints, sample_weight_mode)
 
       # Creates the model loss and weighted metrics sub-graphs.
@@ -595,7 +593,7 @@ class Model(training_lib.Model):
     # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(inputs):
       return training_generator_v1.GeneratorOrSequenceTrainingLoop()
-    if training_utils_v1.is_eager_dataset_or_iterator(inputs):
+    if training_utils.is_eager_dataset_or_iterator(inputs):
       return training_generator_v1.EagerDatasetOrIteratorTrainingLoop()
 
     # Case 3: Symbolic tensors or Numpy array-like.
@@ -1076,7 +1074,7 @@ class Model(training_lib.Model):
                  + output_dict['metrics'])
       outputs = [_non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
-      x = training_utils_v1.ModelInputs(x).as_list()
+      x = training_utils.ModelInputs(x).as_list()
       ins = x + list(y or []) + list(sample_weights or [])
 
       if not isinstance(K.symbolic_learning_phase(), int):
@@ -1155,7 +1153,7 @@ class Model(training_lib.Model):
                  + output_dict['metrics'])
       outputs = [_non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
-      x = training_utils_v1.ModelInputs(x).as_list()
+      x = training_utils.ModelInputs(x).as_list()
       inputs = x + list(y or []) + list(sample_weights or [])
 
       self._update_sample_weight_modes(sample_weights=sample_weights)
@@ -1200,7 +1198,7 @@ class Model(training_lib.Model):
     # If `self._distribution_strategy` is True, then we are in a replica context
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
-      inputs = training_utils_v1.cast_if_floating_dtype(inputs)
+      inputs = training_utils.cast_if_floating_dtype(inputs)
       if isinstance(inputs, collections_abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
@@ -1372,7 +1370,7 @@ class Model(training_lib.Model):
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):
     """Unpack and check the validation data."""
-    val_x, val_y, val_sample_weights = training_utils_v1.unpack_validation_data(
+    val_x, val_y, val_sample_weights = training_utils.unpack_validation_data(
         validation_data)
     return self._standardize_user_data(
         val_x,
@@ -1451,7 +1449,7 @@ class Model(training_lib.Model):
 
   def _compile_eagerly(self, metrics, weighted_metrics, sample_weight_mode):
     # Prepare sample weight modes. List with the same length as model outputs.
-    training_utils_v1.prepare_sample_weight_modes(
+    training_utils.prepare_sample_weight_modes(
         self._training_endpoints, sample_weight_mode)
     # Prepare sample weights.
     self._prepare_sample_weights()
@@ -1790,10 +1788,10 @@ class Model(training_lib.Model):
         output_shapes.append(None)
       else:
         output_shapes.append(output.shape.as_list())
-    self._per_output_metrics = training_utils_v1.collect_per_output_metric_info(
+    self._per_output_metrics = training_utils.collect_per_output_metric_info(
         metrics, self.output_names, output_shapes, self.loss_functions)
     self._per_output_weighted_metrics = (
-        training_utils_v1.collect_per_output_metric_info(
+        training_utils.collect_per_output_metric_info(
             weighted_metrics,
             self.output_names,
             output_shapes,
@@ -1903,7 +1901,7 @@ class Model(training_lib.Model):
     metric_results = []
     for metric_name, metric_fn in metrics_dict.items():
       with K.name_scope(metric_name):
-        metric_result = training_utils_v1.call_metric_function(
+        metric_result = training_utils.call_metric_function(
             metric_fn, y_true, y_pred, weights=weights, mask=mask)
         metric_results.append(metric_result)
     return metric_results
@@ -2140,7 +2138,7 @@ class Model(training_lib.Model):
     # in the codebase.
     if isinstance(x, dataset_ops.DatasetV2):
       if shuffle:
-        training_utils_v1.verify_dataset_shuffled(x)
+        training_utils.verify_dataset_shuffled(x)
 
     strategy = self._distribution_strategy
     with strategy.scope():
@@ -2192,8 +2190,8 @@ class Model(training_lib.Model):
         x = ds.batch(batch_size, drop_remainder=drop_remainder)
       else:
         assert isinstance(x, dataset_ops.DatasetV2)
-        training_utils_v1.validate_dataset_input(x, y, sample_weight,
-                                                 validation_split)
+        training_utils.validate_dataset_input(x, y, sample_weight,
+                                              validation_split)
     return x
 
   def _standardize_user_data(self,
@@ -2270,28 +2268,28 @@ class Model(training_lib.Model):
       # Graph mode dataset. We'll pass the dataset as-is (unless
       # `extract_tensors_from_dataset` is True, in which case we extract
       # the tensors from the dataset and we output them.
-      training_utils_v1.validate_dataset_input(x, y, sample_weight,
-                                               validation_split)
+      training_utils.validate_dataset_input(x, y, sample_weight,
+                                            validation_split)
       if shuffle:
-        training_utils_v1.verify_dataset_shuffled(x)
+        training_utils.verify_dataset_shuffled(x)
 
       is_dataset = True
       if extract_tensors_from_dataset:
         # We do this for `train_on_batch`/etc.
-        x, y, sample_weight = training_utils_v1.extract_tensors_from_dataset(x)
+        x, y, sample_weight = training_utils.extract_tensors_from_dataset(x)
     elif isinstance(x, iterator_ops.Iterator):
       # Graph mode iterator. We extract the symbolic tensors.
-      training_utils_v1.validate_dataset_input(x, y, sample_weight,
-                                               validation_split)
+      training_utils.validate_dataset_input(x, y, sample_weight,
+                                            validation_split)
       iterator = x
-      x, y, sample_weight = training_utils_v1.unpack_iterator_input(iterator)
+      x, y, sample_weight = training_utils.unpack_iterator_input(iterator)
       is_dataset = True
     else:
       is_dataset = False
 
     # Validates `steps` argument based on x's type.
     if check_steps:
-      training_utils_v1.check_steps_argument(x, steps, steps_name)
+      training_utils.check_steps_argument(x, steps, steps_name)
 
     # First, we build the model on the fly if necessary.
     if not self.inputs:
@@ -2354,7 +2352,7 @@ class Model(training_lib.Model):
     # Standardize the inputs.
     if not isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
       # TODO(fchollet): run static checks with dataset output shape(s).
-      x = training_utils_v1.standardize_input_data(
+      x = training_utils.standardize_input_data(
           x,
           feed_input_names,
           feed_input_shapes,
@@ -2401,8 +2399,8 @@ class Model(training_lib.Model):
     if y is not None:
       # Prepare self._sample_weight_modes. List with the same length as
       # model outputs.
-      training_utils_v1.prepare_sample_weight_modes(self._training_endpoints,
-                                                    self.sample_weight_mode)
+      training_utils.prepare_sample_weight_modes(self._training_endpoints,
+                                                 self.sample_weight_mode)
       feed_output_names = self._feed_output_names
       feed_sample_weight_modes = self._sample_weight_modes
       if not self._is_graph_network:
@@ -2411,7 +2409,7 @@ class Model(training_lib.Model):
         feed_output_shapes = self._feed_output_shapes
 
       # Standardize the outputs.
-      y = training_utils_v1.standardize_input_data(
+      y = training_utils.standardize_input_data(
           y,
           feed_output_names,
           # Don't enforce target shapes to match output shapes.
@@ -2422,22 +2420,22 @@ class Model(training_lib.Model):
 
       # Generate sample-wise weight values given the `sample_weight` and
       # `class_weight` arguments.
-      sample_weights = training_utils_v1.standardize_sample_weights(
+      sample_weights = training_utils.standardize_sample_weights(
           sample_weight, feed_output_names)
-      class_weights = training_utils_v1.standardize_class_weights(
+      class_weights = training_utils.standardize_class_weights(
           class_weight, feed_output_names)
 
       sample_weights = [
-          training_utils_v1.standardize_weights(ref, sw, cw, mode)
+          training_utils.standardize_weights(ref, sw, cw, mode)
           for (ref, sw, cw, mode) in zip(y, sample_weights, class_weights,
                                          feed_sample_weight_modes)
       ]
       # Check that all arrays have the same length.
       if not self._distribution_strategy:
-        training_utils_v1.check_array_lengths(x, y, sample_weights)
+        training_utils.check_array_lengths(x, y, sample_weights)
         if self._is_graph_network and not run_eagerly:
           # Additional checks to avoid users mistakenly using improper loss fns.
-          training_utils_v1.check_loss_and_target_compatibility(
+          training_utils.check_loss_and_target_compatibility(
               y, self._feed_loss_fns, feed_output_shapes)
 
       sample_weights, _, _ = training_utils.handle_partial_sample_weights(
@@ -2472,12 +2470,11 @@ class Model(training_lib.Model):
     # iterator and only one batch of samples is required, we fetch the data
     # tensors from the iterator and then standardize them.
     if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
-      inputs, targets, _ = training_utils_v1.extract_tensors_from_dataset(
-          inputs)
+      inputs, targets, _ = training_utils.extract_tensors_from_dataset(inputs)
     # We type-check that `inputs` and `targets` are either single arrays
     # or lists of arrays, and extract a flat list of inputs from the passed
     # structure.
-    training_utils_v1.validate_input_types(inputs, orig_inputs)
+    training_utils.validate_input_types(inputs, orig_inputs)
 
     if isinstance(inputs, (list, tuple)):
       processed_inputs += list(inputs)
@@ -2512,14 +2509,14 @@ class Model(training_lib.Model):
       if not self.inputs:
         # For subclassed models, a robust input spec is not available so we
         # must cast to the model dtype.
-        inputs = training_utils_v1.cast_if_floating_dtype(inputs, self.dtype)
+        inputs = training_utils.cast_if_floating_dtype(inputs, self.dtype)
 
       def create_tensor_spec(t):
         return tensor_spec.TensorSpec(t.shape, t.dtype)
 
       cast_inputs = nest.map_structure(create_tensor_spec, inputs)
-    elif training_utils_v1.has_tensors(inputs):
-      cast_inputs = training_utils_v1.cast_if_floating_dtype(inputs)
+    elif training_utils.has_tensors(inputs):
+      cast_inputs = training_utils.cast_if_floating_dtype(inputs)
     else:
       cast_inputs = inputs
     self._set_inputs(cast_inputs)
@@ -2528,11 +2525,11 @@ class Model(training_lib.Model):
   def _compile_from_inputs(self, all_inputs, target, orig_inputs, orig_target):
     if target is not None:
       # We need to use `y` to set the model targets.
-      if training_utils_v1.has_tensors(target):
-        target = training_utils_v1.cast_if_floating_dtype_and_mismatch(
+      if training_utils.has_tensors(target):
+        target = training_utils.cast_if_floating_dtype_and_mismatch(
             target, self.outputs)
-      training_utils_v1.validate_input_types(
-          target, orig_target, allow_dict=False, field_name='target')
+      training_utils.validate_input_types(target, orig_target,
+                                          allow_dict=False, field_name='target')
       if isinstance(target, (list, tuple)):
         all_inputs += list(target)
       else:
@@ -2631,7 +2628,7 @@ class Model(training_lib.Model):
         input_shape = (None,) + tuple(inputs.as_list()[1:])
       elif isinstance(inputs, dict):
         # We assert that the first layer is a FeatureLayer.
-        if not training_utils_v1.is_feature_layer(self.layers[0]):
+        if not training_utils.is_feature_layer(self.layers[0]):
           raise ValueError('Passing a dictionary input to a Sequential Model '
                            'which doesn\'t have FeatureLayer as the first layer'
                            ' is an error.')
@@ -2646,7 +2643,7 @@ class Model(training_lib.Model):
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).
-    model_inputs = training_utils_v1.ModelInputs(inputs)
+    model_inputs = training_utils.ModelInputs(inputs)
     inputs = model_inputs.get_symbolic_inputs()
     self.inputs = model_inputs.get_symbolic_inputs(return_single_as_list=True)
     self.input_names = model_inputs.get_input_names()
@@ -2670,7 +2667,7 @@ class Model(training_lib.Model):
     #                    data adapter since it assumes nest.flatten ordering.
     outputs = nest.flatten(outputs)
     self.outputs = outputs
-    self.output_names = training_utils_v1.generic_output_names(outputs)
+    self.output_names = training_utils.generic_output_names(outputs)
     # TODO(scottzhu): Should we cleanup the self._training_endpoints here?
     self.built = True
 

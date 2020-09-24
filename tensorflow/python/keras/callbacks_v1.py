@@ -245,8 +245,8 @@ class TensorBoard(callbacks.TensorBoard):
     # visualize embeddings.
     if self.embeddings_freq and self.embeddings_data is not None:
       # Avoid circular dependency.
-      from tensorflow.python.keras.engine import training_utils_v1  # pylint: disable=g-import-not-at-top
-      self.embeddings_data = training_utils_v1.standardize_input_data(
+      from tensorflow.python.keras.engine import training_utils  # pylint: disable=g-import-not-at-top
+      self.embeddings_data = training_utils.standardize_input_data(
           self.embeddings_data, model.input_names)
 
       # If embedding_layer_names are not provided, get all of the embedding

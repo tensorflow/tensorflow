@@ -35,7 +35,7 @@ from tensorflow.python.keras.distribute import distributed_training_utils as dis
 from tensorflow.python.keras.distribute import distributed_training_utils_v1 as dist_utils
 from tensorflow.python.keras.engine import partial_batch_padding_handler as padding_util
 from tensorflow.python.keras.engine import training_arrays_v1
-from tensorflow.python.keras.engine import training_utils_v1
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
@@ -258,7 +258,7 @@ def experimental_tpu_fit_loop(model,
         break
 
     if (do_validation and
-        training_utils_v1.should_run_validation(validation_freq, epoch)):
+        training_utils.should_run_validation(validation_freq, epoch)):
       logging.info('Running validation at fit epoch: %s', epoch)
 
       if model._compile_distribution:
@@ -575,7 +575,7 @@ def experimental_tpu_predict_loop(model,
   return prediction_result
 
 
-class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
+class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
   """Training loop for distribution strategy with single worker."""
 
   def fit(self,
@@ -630,8 +630,8 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
 
     val_dataset = None
     if validation_data:
-      val_x, val_y, val_sample_weights = (
-          training_utils_v1.unpack_validation_data(validation_data))
+      val_x, val_y, val_sample_weights = training_utils.unpack_validation_data(
+          validation_data)
       dist_utils.validate_inputs(val_x, val_y)
       _, validation_steps = dist_utils.process_batch_and_step_size(
           model._distribution_strategy, val_x, batch_size, validation_steps,
@@ -650,7 +650,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
                        'distribution strategies.')
 
     if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
-      steps_per_epoch = training_utils_v1.infer_steps_for_dataset(
+      steps_per_epoch = training_utils.infer_steps_for_dataset(
           model, dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
       if steps_per_epoch is None:
         raise ValueError('Number of steps could not be inferred from the data, '
@@ -707,7 +707,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
         allow_partial_batch=True)
 
     if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
-      steps = training_utils_v1.infer_steps_for_dataset(
+      steps = training_utils.infer_steps_for_dataset(
           model, dataset, steps, steps_name='steps')
       if steps is None:
         raise ValueError('Number of steps could not be inferred from the data, '
@@ -744,7 +744,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
         batch_size=batch_size,
         allow_partial_batch=True)
     if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
-      steps = training_utils_v1.infer_steps_for_dataset(
+      steps = training_utils.infer_steps_for_dataset(
           model, dataset, steps, steps_name='steps')
       if steps is None:
         raise ValueError('Number of steps could not be inferred from the data, '
@@ -780,7 +780,7 @@ def _train_with_multi_worker(method):
   return wrapper
 
 
-class DistributionMultiWorkerTrainingLoop(training_utils_v1.TrainingLoop):
+class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
   """Training loop for distribution strategy with multiple worker."""
 
   def __init__(self, single_worker_loop):
