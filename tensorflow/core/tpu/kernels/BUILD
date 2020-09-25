@@ -3,7 +3,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
+    "tf_proto_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
@@ -142,7 +142,7 @@ cc_library(
     alwayslink = True,
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_executable_info_proto",
     srcs = ["tpu_executable_info.proto"],
     cc_api_version = 2,
@@ -153,7 +153,7 @@ tf_proto_library_cc(
     ],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_compile_proto",
     srcs = ["tpu_compile.proto"],
     cc_api_version = 2,
@@ -594,7 +594,7 @@ cc_library(
     ],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_compilation_cache_proto",
     srcs = ["tpu_compilation_cache.proto"],
     has_services = True,
@@ -606,7 +606,7 @@ tf_proto_library_cc(
     ],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_compilation_cache_common_proto",
     srcs = ["tpu_compilation_cache_common.proto"],
     cc_api_version = 2,
