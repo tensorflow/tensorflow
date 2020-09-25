@@ -97,6 +97,25 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)CMSIS/NN/Include/arm_nn_tables.h \
       $(CMSIS_PATH)CMSIS/NN/Include/arm_nn_types.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/arm_math.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/arm_common_tables.h
+      $(CMSIS_PATH)CMSIS/DSP/Include/arm_common_tables.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/arm_math_types.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/arm_math_memory.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/none.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/utils.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/basic_math_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/statistics_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/svm_defines.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/svm_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/support_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/transform_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/bayes_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/complex_math_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/controller_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/distance_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/fast_math_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/filtering_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/interpolation_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/matrix_functions.h
+
 
 endif
