@@ -65,7 +65,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   RequantizeOpData* op = reinterpret_cast<RequantizeOpData*>(node->user_data);
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, requantize_16_to_8_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size,
+                                requantize_16_to_8_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.GetNumThreads(),
       &op->stack_scratch_index));

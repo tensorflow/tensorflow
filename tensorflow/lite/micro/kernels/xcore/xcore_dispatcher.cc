@@ -14,6 +14,12 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
+// Default implementation.  Application can provide an alternative,
+//  more sophisticated implementation that supports SwMem and ExtMem
+__attribute__((weak)) void memload(void *dest, void *src, size_t size) {
+  memcpy(dest, src, size);
+}
+
 static Dispatcher *kDispatcher = nullptr;
 
 void SetDispatcher(Dispatcher *dispatcher) { kDispatcher = dispatcher; }
@@ -152,7 +158,7 @@ TfLiteStatus Dispatcher::AddTask(void *argument) {
 }
 
 size_t Dispatcher::FetchBuffer(int8_t **dest, int8_t const *src, size_t size) {
-  if (IS_RAM(src)) {
+  if (is_ram_address((uintptr_t)src)) {
     *dest = (int8_t *)src;
     return 0;
   } else {
@@ -165,7 +171,7 @@ size_t Dispatcher::FetchWeights(int8_t **dest, int8_t const *src, size_t size,
                                 ChannelGroup const &changrp) {
   size_t changrp_bytes = size / changrp_len;
 
-  if (IS_RAM(src)) {
+  if (is_ram_address((uintptr_t)src)) {
     *dest = (int8_t *)&src[changrp.start * changrp_bytes];
     return 0;
   } else {
@@ -182,7 +188,7 @@ size_t Dispatcher::FetchWeights(int8_t **dest, int8_t const *src, size_t size,
 
 size_t Dispatcher::FetchBiases(int16_t **dest, int16_t const *src, size_t size,
                                ChannelGroup const &changrp) {
-  if (IS_RAM(src)) {
+  if (is_ram_address((uintptr_t)src)) {
     *dest = (int16_t *)&src[changrp.index * bso_changrp_len];
     return 0;
   } else {

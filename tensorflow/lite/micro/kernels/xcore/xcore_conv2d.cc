@@ -111,18 +111,18 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
                    op->execution_plan.regions.GetSize();
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, conv2d_shallow_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_shallow_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.GetNumThreads(),
       &op->stack_scratch_index));
 
   // allocate scratch buffers for weights and biases (if necessary)
-  if (IS_NOT_RAM(weights->data.int8)) {
+  if (!is_ram_address((uintptr_t)weights->data.int8)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetWeightsScratchSize(),
         &op->weights_scratch_index));
   }
-  if (IS_NOT_RAM(bso->data.i16)) {
+  if (!is_ram_address((uintptr_t)bso->data.i16)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetBiasScratchSize(),
         &op->bias_scratch_index));
@@ -305,18 +305,18 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
                    op->execution_plan.regions.GetSize();
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, conv2d_deep_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_deep_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.GetNumThreads(),
       &op->stack_scratch_index));
 
   // allocate scratch buffers for weights and biases (if necessary)
-  if (IS_NOT_RAM(weights->data.int8)) {
+  if (!is_ram_address((uintptr_t)weights->data.int8)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetWeightsScratchSize(),
         &op->weights_scratch_index));
   }
-  if (IS_NOT_RAM(bso->data.i16)) {
+  if (!is_ram_address((uintptr_t)bso->data.i16)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetBiasScratchSize(),
         &op->bias_scratch_index));
@@ -488,18 +488,18 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
                    op->execution_plan.regions.GetSize();
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, conv2d_shallow_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_shallow_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.GetNumThreads(),
       &op->stack_scratch_index));
 
   // allocate scratch buffers for weights and biases (if necessary)
-  if (IS_NOT_RAM(weights->data.int8)) {
+  if (!is_ram_address((uintptr_t)weights->data.int8)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetWeightsScratchSize(),
         &op->weights_scratch_index));
   }
-  if (IS_NOT_RAM(bso->data.i16)) {
+  if (!is_ram_address((uintptr_t)bso->data.i16)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetBiasScratchSize(),
         &op->bias_scratch_index));
@@ -682,18 +682,18 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
                    op->execution_plan.regions.GetSize();
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, conv2d_depthwise_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_depthwise_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.regions.GetSize(),
       &op->stack_scratch_index));
 
   // allocate scratch buffers for weights and biases (if necessary)
-  if (IS_NOT_RAM(weights->data.int8)) {
+  if (!is_ram_address((uintptr_t)weights->data.int8)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetWeightsScratchSize(),
         &op->weights_scratch_index));
   }
-  if (IS_NOT_RAM(bso->data.i16)) {
+  if (!is_ram_address((uintptr_t)bso->data.i16)) {
     TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
         context, op->execution_plan.GetBiasScratchSize(),
         &op->bias_scratch_index));

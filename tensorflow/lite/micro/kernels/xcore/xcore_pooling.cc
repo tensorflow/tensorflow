@@ -102,7 +102,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int32_t n_jobs = op->execution_plan.regions.GetSize();
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, maxpool_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, maxpool_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.GetNumThreads(),
       &op->stack_scratch_index));
@@ -231,7 +231,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int32_t n_jobs = op->execution_plan.regions.GetSize();
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, avgpool_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, avgpool_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.GetNumThreads(),
       &op->stack_scratch_index));
@@ -367,7 +367,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int32_t n_jobs = op->execution_plan.changrps.GetSize();
 
   // allocate the stack for thread workers
-  GET_STACKSIZE(op->stack_size, avgpool_global_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, avgpool_global_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, op->stack_size * op->execution_plan.GetNumThreads(),
       &op->stack_scratch_index));
