@@ -1152,5 +1152,31 @@ TEST(RegisteredKernels, GetRegisteredKernelsForOp) {
   EXPECT_EQ(kernel_list.kernel(0).device_type(), "CPU");
 }
 
+struct KernelNameAndBuilderFunction {
+  using FnType = std::unique_ptr<KernelDef const>();
+  char const* name;
+  FnType* builder;
+};
+
+#define EXTRACT_KERNEL_NAME_TO_STRUCT_IMPL(name, kernel_builder, ...)  \
+  KernelNameAndBuilderFunction {                                       \
+    name, +[]() {                                                      \
+      return std::unique_ptr<KernelDef const>(kernel_builder.Build()); \
+    }                                                                  \
+  }
+#define EXTRACT_KERNEL_NAME_TO_STRUCT(kernel_builder) \
+  TF_EXTRACT_KERNEL_NAME(EXTRACT_KERNEL_NAME_TO_STRUCT_IMPL, kernel_builder)
+
+TEST(RegisterKernelMacro, ExtractName) {
+  constexpr char const* kName = "Foo";
+  constexpr char const* kLabel = "Label";
+  constexpr KernelNameAndBuilderFunction kKernelInfo =
+      EXTRACT_KERNEL_NAME_TO_STRUCT(Name(kName).Label(kLabel));
+  EXPECT_THAT(kKernelInfo.name, ::testing::StrEq(kName));
+  std::unique_ptr<KernelDef const> kernel_def = kKernelInfo.builder();
+  EXPECT_THAT(kernel_def->op(), ::testing::StrEq(kName));
+  EXPECT_THAT(kernel_def->label(), ::testing::StrEq(kLabel));
+}
+
 }  // namespace
 }  // namespace tensorflow
