@@ -30,7 +30,6 @@ import re
 import sys
 import threading
 import weakref
-from absl import logging
 from six.moves import queue
 
 from tensorflow.python.data.ops import iterator_ops
@@ -47,6 +46,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 # Maximum time for failed worker to come back is 1 hour
