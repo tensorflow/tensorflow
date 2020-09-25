@@ -533,6 +533,31 @@ _mul.__doc__ = (
 @tf_export("math.subtract", "subtract")
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  """Returns x - y element-wise.
+
+  *Note*: Subtract supports broadcasting. More about broadcasting
+  [here](https://numpy.org/doc/stable/user/basics.broadcasting.html)
+
+  Both input and output have a range `(-inf, inf)`.
+
+  For example:
+
+  >>> x = tf.constant([1.0, -1.0, 5.0, -2.0, 0.0])
+  >>> y = tf.constant([5.0, 1.0, 3.7, -19.9, float("inf")])
+  >>> tf.subtract(x,y)
+  <tf.Tensor: shape=(5,), dtype=float32,
+  numpy= array([-4. , -2. ,  1.3, 17.9, -inf], dtype=float32)>
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
+      `complex64`, `complex128`, `string`.
+    y: A `Tensor`. Must have the same type as x.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as x.
+  """
   return gen_math_ops.sub(x, y, name)
 
 
@@ -4927,3 +4952,59 @@ def rsqrt(x, name=None):
     A `tf.Tensor`. Has the same type as `x`.
   """
   return gen_math_ops.rsqrt(x, name)
+
+
+@tf_export("math.acos", "acos")
+@dispatch.add_dispatch_support
+def acos(x, name=None):
+  """Computes acos of x element-wise.
+
+  Provided an input tensor, the `tf.math.acos` operation
+  returns the inverse cosine of each element of the tensor.
+  If `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`.
+
+  Input range is `[-1, 1]` and the output has a range of `[0, pi]`.
+
+  For example:
+
+  >>> x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2], dtype = tf.float32)
+  >>> tf.math.acos(x)
+  <tf.Tensor: shape=(6,), dtype=float32,
+  numpy= array([0. , 2.0943952, nan, 1.3694383, 1.5707964, nan],
+  dtype=float32)>
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
+      `complex64`, `complex128`, `string`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as x.
+  """
+  return gen_math_ops.acos(x, name)
+
+
+@tf_export("math.floor", "floor")
+@dispatch.add_dispatch_support
+def floor(x, name=None):
+  """Returns element-wise largest integer not greater than x.
+
+  Both input range is `(-inf, inf)` and the
+  ouput range consists of all integer values.
+
+  For example:
+
+  >>> x = tf.constant([1.3324, -1.5, 5.555, -2.532, 0.99, float("inf")])
+  >>> tf.floor(x).numpy()
+  array([ 1., -2.,  5., -3.,  0., inf], dtype=float32)
+
+  Args:
+    x:  A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as x.
+  """
+  return gen_math_ops.floor(x, name)
