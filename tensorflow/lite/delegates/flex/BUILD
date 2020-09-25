@@ -130,6 +130,7 @@ tf_cc_test(
     tags = [
         "no_gpu",  # GPU + flex is not officially supported.
         "no_mac",  # b/169276266
+        "nomsan",  # b/169431678
     ],
     deps = [
         ":delegate",
