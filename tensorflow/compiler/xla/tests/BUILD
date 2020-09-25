@@ -861,7 +861,8 @@ xla_test(
     name = "exhaustive_binary_16_bit_test",
     srcs = ["exhaustive_binary_16_bit_test.cc"],
     backends = [
-        "gpu",
+        # TODO (b/169384515) enable gpu after bug is fixed
+        # "gpu",
         "cpu",
     ],
     shard_count = 48,
