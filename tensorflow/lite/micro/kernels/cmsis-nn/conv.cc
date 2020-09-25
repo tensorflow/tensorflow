@@ -158,16 +158,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   output_dims.c = output_shape.Dims(3);
 
   // Dynamically allocate per-channel quantization parameters.
-  // TODO(#43475): This allocation is done even for non-int8 cases to get around
+  // TODO(#42883): This allocation is done even for non-int8 cases to get around
   // a bug in kernel_utils.cc which incorrectly uses per_channel_output_shift in
   // non-int8 cases. Protect this section with a if (input->type == kTfLiteInt8)
   // when the issue is fixed.
   const int num_channels = filter->dims->data[kConvQuantizedDimension];
   data->per_channel_output_multiplier =
-      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+      static_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
   data->per_channel_output_shift =
-      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+      static_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(
