@@ -1148,7 +1148,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
           try:
             r_op = getattr(y, "__r%s__" % op_name)
             out = r_op(x)
-            if out == NotImplemented:
+            if out is NotImplemented:
               raise
             return out
           except (TypeError, ValueError):
