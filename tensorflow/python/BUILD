@@ -5137,7 +5137,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_deterministic_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/image_grad_deterministic_test.py"],
     python_version = "PY3",
     shard_count = 5,
@@ -5148,7 +5148,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
     shard_count = 5,
