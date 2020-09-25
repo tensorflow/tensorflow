@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-#define LOG(x) std::cerr
+#define LOG(severity) (std::cerr << (#severity) << ": ")
 
 namespace tflite {
 namespace label_image {
