@@ -1349,7 +1349,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     Returns:
       Bool.
     """
-    return self._input_tensors and self._output_tensors
+    return self._input_tensors is not None and self._output_tensors is not None
 
   def _set_batch_size(self, batch_size):
     """Sets the first dimension of the input tensor to `batch_size`.
