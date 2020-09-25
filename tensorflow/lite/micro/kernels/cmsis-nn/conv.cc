@@ -242,9 +242,10 @@ TfLiteStatus EvalQuantizedPerChannel(
   cmsis_nn_conv_params conv_params;
   conv_params.dilation.h = params->dilation_height_factor;
   conv_params.dilation.w = params->dilation_width_factor;
-  // Call to reference implementation can be removed when dilation is supported
-  // in the optimized implementations.
-  if (1 == conv_params.dilation.h && 1 == conv_params.dilation.w) {
+  // TODO(#43557) Remove checks for dilation and call to reference
+  // implementation when dilation is supported in the optimized implementation
+  // by CMSIS-NN.
+  if (conv_params.dilation.h == 1 && conv_params.dilation.w == 1) {
     // Initialize cmsis-nn convolution parameters
     conv_params.input_offset = -data.input_zero_point;
     conv_params.output_offset = data.output_zero_point;
