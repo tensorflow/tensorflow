@@ -44,6 +44,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import _pywrap_stacktrace_handler
+from tensorflow.python import _pywrap_utils
 from tensorflow.python import _pywrap_util_port
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
@@ -1801,6 +1802,12 @@ def _disable_test(execute_func):
 
   return disable_test_impl
 
+
+# The description is just for documentation purposes.
+def disable_nonAVX512f(description):  # pylint: disable=unused-argument
+  """Execute the test method only if avx512f is supported."""
+  execute_func = _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU()
+  return _disable_test(execute_func)
 
 # The description is just for documentation purposes.
 def disable_xla(description):  # pylint: disable=unused-argument
