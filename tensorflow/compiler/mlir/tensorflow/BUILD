@@ -1026,6 +1026,16 @@ cc_library(
 )
 
 cc_library(
+    name = "upgrade_graph",
+    srcs = ["translate/upgrade_graph.cc"],
+    hdrs = ["translate/upgrade_graph.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+    ],
+)
+
+cc_library(
     name = "convert_graphdef",
     srcs = [
         "translate/export_graphdef.cc",
@@ -1050,6 +1060,7 @@ cc_library(
         ":tensorflow_types",
         ":tf_saved_model_passes",
         ":translate_utils",
+        ":upgrade_graph",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader_lite",

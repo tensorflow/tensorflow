@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -180,6 +181,8 @@ class NameUniquifier : public OpOrArgNameMapper {
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
                           bool restrict_functionalization_to_tpu_nodes) {
+  TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(*graph, *flib_def));
+
   // If `restrict_functionalization_to_tpu_nodes` is true let filter function
   // return true for `_tpu_replicate` nodes, otherwise don't set filter.
   NodeFilter node_filter =
