@@ -295,7 +295,10 @@ class TTParameters(object):
 
   def get_signature_to_agg_fn_map(self):
     """Returns a map that contains the aggregate function for each signature."""
-    return {TT_SUMMARY_NORM: linalg_ops.norm,
+    return {TRACE_MODE_NORM: linalg_ops.norm,
+            TRACE_MODE_MAX_ABS: math_ops.reduce_max,
+            TRACE_MODE_NAN_INF: math_ops.reduce_max,
+            TT_SUMMARY_NORM: linalg_ops.norm,
             TT_SUMMARY_MAX: math_ops.reduce_max,
             TT_SUMMARY_MIN: math_ops.reduce_min,
             TT_SUMMARY_MEAN: math_ops.reduce_mean,
