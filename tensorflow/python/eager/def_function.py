@@ -27,11 +27,9 @@ import six
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -430,45 +428,6 @@ def experimental_functions_run_eagerly():
 def functions_run_eagerly():
   """Returns the value of the `run_functions_eagerly` setting."""
   return RUN_FUNCTIONS_EAGERLY
-
-
-def _evaluate_var_is_initialized(variables):
-  """Compute booleans indicating whether each variable is initialized."""
-  with ops.init_scope():
-    var_is_initialized = []
-    for v in variables:
-      var_is_initialized.append(
-          resource_variable_ops.var_is_initialized_op(v.handle))
-    try:
-      # Stack all the var_is_initialized values into one tensor and interpret
-      # the numpy value. This will reduce the number of RPCs between client and
-      # worker in the remote case.
-      return array_ops.stack(var_is_initialized).numpy()
-    except errors.UnimplementedError:
-      # Some devices do not support implicit copy-off to host. Fall back to
-      # variable-by-variable processing.
-      for index, v in enumerate(variables):
-        try:
-          numpy_value = var_is_initialized[index].numpy()
-        except errors.UnimplementedError:
-          # This is a variable on a parallel device; we'll extract its value on
-          # each replica and assert that they're identical.
-          components = parallel_device.unpack(var_is_initialized[index])
-          with ops.device(None):
-            components = array_ops.stack(components)
-            all_initialized = math_ops.reduce_all(components).numpy()
-            any_initialized = math_ops.reduce_any(components).numpy()
-          if all_initialized != any_initialized:
-            raise NotImplementedError(
-                ("Some but not all components of a parallel variable {} were "
-                 "initialized between their creation in a tf.function and "
-                 "the function's trace having completed. This is not yet "
-                 "supported; consider initializing either all or none of the "
-                 "components, or moving initialization out of the function."
-                ).format(repr(v)))
-          numpy_value = all_initialized
-        var_is_initialized[index] = numpy_value
-  return var_is_initialized
 
 
 class FunctionDeleter(object):
@@ -1065,15 +1024,21 @@ class Function(object):
     if not initializers:
       return
 
-    var_is_initialized = _evaluate_var_is_initialized(
-        [v for v, _ in initializers])
-
     # Note: using defun here avoids an infinite recursion.
     # Most of the code in this function runs eagerly with init_scope, where
     # autograph is not necessary.
     @function_lib.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
+      # Stack all the var_is_initialized values into one tensor and interpret
+      # the numpy value. This will reduce the number of RPCs between client and
+      # worker in the remote case.
+      with ops.init_scope():
+        var_is_initialized = []
+        for v, _ in initializers:
+          var_is_initialized.append(
+              resource_variable_ops.var_is_initialized_op(v.handle))
+        var_is_initialized = array_ops.stack(var_is_initialized).numpy()
 
       inits = []
       for (v, init), is_initialized in zip(initializers, var_is_initialized):

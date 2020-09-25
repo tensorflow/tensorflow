@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import contextlib
 import functools
-import six
-import wrapt
 
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -49,26 +47,14 @@ class _ParallelComponentSaveable(saveable_object.SaveableObject):
         resource=self._handle, value=restored_tensor)
 
 
-class VariableProxyMetaClass(  # pylint: disable=duplicate-bases
-    type(wrapt.ObjectProxy), type(resource_variable_ops.BaseResourceVariable)):
-  """A combined MetaClasses for ParallelVariable.
+class ParallelSavingMixin(resource_variable_ops.BaseResourceVariable):
+  """Mixin to to override variable checkpointing, saving each component."""
 
-  Satisfies the requirement "the metaclass of a derived class must be a
-  (non-strict) subclass of the metaclasses of all its bases." At the time of
-  writing these two MetaClasses are compatible (overriding different methods,
-  both relatively trivial).
-  """
-  pass
-
-
-class ParallelVariable(
-    six.with_metaclass(VariableProxyMetaClass, wrapt.ObjectProxy,
-                       resource_variable_ops.BaseResourceVariable)):
-  """Overrides variable checkpointing, saving each component."""
-
-  def __init__(self, parallel_device, wrapped_variable):
-    self._self_parallel_device = parallel_device
-    super(ParallelVariable, self).__init__(wrapped_variable)
+  def __init__(self, parallel_device, expected_shape=None, use_resource=None,
+               **kwargs):
+    del expected_shape, use_resource
+    self._parallel_device = parallel_device
+    super(ParallelSavingMixin, self).__init__(**kwargs)
 
   # TODO(allenl): Consider either adding a boolean argument for
   # save-primary-only or looking at synchronization/aggregation properties.
@@ -77,8 +63,7 @@ class ParallelVariable(
     component_saveables = {}
     # Create one SaveableObject per device, each one of which looks like a
     # regular ResourceVariable saveable.
-    for index, handle in enumerate(
-        self._self_parallel_device.unpack(self.handle)):
+    for index, handle in enumerate(self._parallel_device.unpack(self.handle)):
       if index == 0:
         # This is the name regular tf.Variables use to save. Using it for the
         # component on the first device means non-parallel tf.Variable objects
@@ -95,24 +80,26 @@ class ParallelVariable(
     return component_saveables
 
 
-def _variable_creator(next_creator, parallel_device, **kwargs):
-  """Wraps intercepted variables to add parallel saving."""
-  # Depending on the context (SavedModel loading, tf.function, etc.) we may get
-  # one of several different variable types. For variables placed on the
-  # parallel device we only want to affect saving and otherwise preserve
-  # behavior. This wrapping to override behavior is similar to tf.distribute's
-  # DistributedVariable, but much more limited.
-  variable = next_creator(**kwargs)
-  if variable.device == parallel_device._name:  # Friend access; pylint: disable=protected-access
+class ParallelVariable(
+    ParallelSavingMixin, resource_variable_ops.ResourceVariable):
+  pass
+
+
+class UninitializedParallelVariable(
+    ParallelSavingMixin, resource_variable_ops.UninitializedVariable):
+  pass
+
+
+def _variable_creator(next_creator, parallel_device, initial_value=None,
+                      **kwargs):
+  del next_creator
+  if initial_value is not None:
     return ParallelVariable(
-        parallel_device=parallel_device, wrapped_variable=variable)
+        parallel_device=parallel_device, initial_value=initial_value, **kwargs)
   else:
-    # Variables not placed on the handler (because of a device scope) don't
-    # need wrapping.
-    #
-    # TODO(allenl): Device scopes should merge with parallel devices rather
-    # than overriding them like this.
-    return variable
+    # SavedModel loading does not pass an initial value.
+    return UninitializedParallelVariable(
+        parallel_device=parallel_device, **kwargs)
 
 
 @contextlib.contextmanager
