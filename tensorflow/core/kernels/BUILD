@@ -7464,7 +7464,7 @@ test_suite(
         ":variable_ops_test",
         "//tensorflow/core/kernels/image:crop_and_resize_op_test",
         "//tensorflow/core/kernels/image:non_max_suppression_op_test",
-        "//tensorflow/core/kernels/image:resize_bilinear_op_test",
+        "//tensorflow/core/kernels/image:resize_ops_test",
     ],
 )
 
