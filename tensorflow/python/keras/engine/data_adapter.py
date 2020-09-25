@@ -610,7 +610,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
 
   @staticmethod
   def _is_list_of_scalars(inp):
-    if isinstance(inp, (float, int, str)):
+    if isinstance(inp, (float, int, str, bytes, bytearray)):
       return True
     if isinstance(inp, (list, tuple)):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])

@@ -264,6 +264,7 @@ tf_py_test(
     size = "medium",
     srcs = ["data_adapter_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_oss_py38",  # TODO(b/150615192)
         "nomac",  # TODO(mihaimaruseac): b/127695564
