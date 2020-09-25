@@ -37,6 +37,8 @@ distribute_py_test(
     tags = [
         # Dependencies aren't otherwise included in the pip package yet.
         "no_pip",
+        # MRO broken; needs investigation
+        "no_windows",
     ],
     deps = [
         ":parallel_device",
