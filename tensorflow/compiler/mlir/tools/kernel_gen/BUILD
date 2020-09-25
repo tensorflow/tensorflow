@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -10,10 +11,6 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-)
-load(
-    "//tensorflow/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
 )
 
 package(
@@ -39,8 +36,8 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
-        "//tensorflow/compiler/mlir/hlo:legalize_tanh_to_approximation",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
@@ -97,7 +94,10 @@ cc_library(
 tf_cc_binary(
     name = "tf_to_gpu_binary",
     srcs = ["tf_to_gpu_binary.cc"],
-    visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen/tests/tf_to_gpu_binary:__pkg__",
+        "//tensorflow/core/kernels/mlir_generated:__pkg__",
+    ],
     deps = [
         ":kernel_creator",
         "//tensorflow/compiler/mlir:init_mlir",
@@ -114,6 +114,9 @@ tf_cc_binary(
 # using it. This only tests that the headers containing the hex dump of the
 # generated GPU binaries are built successfully, but this is better than
 # nothing.
+# If this test fails, use the build flag --verbose_failures to see a full
+# command line of the failing build command, then copy the command line and run
+# it for further debugging.
 tf_cc_test(
     name = "tf_to_gpu_binary_test",
     srcs = [],
@@ -123,7 +126,7 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ] + if_gpu_is_configured([
+    ] + if_cuda_is_configured([
         "//tensorflow/core/kernels/mlir_generated:abs_kernels",
         "//tensorflow/core/kernels/mlir_generated:ceil_kernels",
         "//tensorflow/core/kernels/mlir_generated:cos_kernels",
@@ -164,7 +167,7 @@ tf_cc_binary(
 tf_cc_binary(
     name = "kernel-gen-opt",
     srcs = ["tools/kernel-gen-opt/kernel-gen-opt.cc"],
-    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
+    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__subpackages__"],
     deps = [
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",

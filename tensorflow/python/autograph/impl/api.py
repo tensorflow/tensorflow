@@ -296,6 +296,8 @@ def _convert_actual(entity, program_ctx):
 
 
 def autograph_artifact(entity, extras=None):
+  if inspect.ismethod(entity):
+    entity = entity.__func__
   setattr(entity, 'autograph_info__', extras)
   return entity
 

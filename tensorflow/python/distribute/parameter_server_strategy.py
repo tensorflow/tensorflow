@@ -128,12 +128,10 @@ class ParameterServerStrategy(distribute_lib.Strategy):
           self).experimental_distribute_dataset(dataset=dataset,
                                                 options=options)
 
-  def experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                     options=None):
+  def distribute_datasets_from_function(self, dataset_fn, options=None):
     self._raise_pss_error_if_eager()
-    super(ParameterServerStrategy,
-          self).experimental_distribute_datasets_from_function(
-              dataset_fn=dataset_fn, options=options)
+    super(ParameterServerStrategy, self).distribute_datasets_from_function(
+        dataset_fn=dataset_fn, options=options)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     self._raise_pss_error_if_eager()
@@ -387,8 +385,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._input_host_device, session)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     if self._cluster_spec:
       input_pipeline_id = multi_worker_util.id_in_cluster(
           self._cluster_spec, self._task_type, self._task_id)

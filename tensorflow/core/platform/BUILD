@@ -380,6 +380,7 @@ filegroup(
 
 cc_library(
     name = "mutex",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
     # TODO(b/161569340): Short-term fix. Remove this visibility rule.
     visibility = ["//tensorflow:__subpackages__"],

@@ -373,10 +373,15 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
 
-    # (2) Apply graph rewrite options
+    # (2) Apply autotune options
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
+    if autotune:
+      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
+
+    # (3) Apply graph rewrite options
     # pylint: disable=protected-access
     graph_rewrites = options._graph_rewrites()
-    graph_rewrite_configs = options._graph_rewrite_configs()
+    graph_rewrite_configs = options._graph_rewrite_configs(autotune)
     # pylint: enable=protected-access
     if self._has_captured_ref():
       if graph_rewrites.enabled or graph_rewrites.default:
@@ -392,12 +397,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
                                  graph_rewrites.disabled,
                                  graph_rewrites.default, graph_rewrite_configs)
-
-    # (3) Apply autotune options
-    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
-
-    if autotune:
-      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
 
     # (4) Apply stats aggregator options
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
@@ -2980,11 +2979,12 @@ class Options(options_lib.OptionsBase):
                           disabled=list(set(result.disabled)),
                           default=list(set(result.default)))
 
-  def _graph_rewrite_configs(self):
+  def _graph_rewrite_configs(self, autotune):
     """Produces the list of configurations for enabled graph optimizations."""
     result = []
     if self.experimental_optimization:
-      result.extend(self.experimental_optimization._graph_rewrite_configs())  # pylint: disable=protected-access
+      result.extend(
+          self.experimental_optimization._graph_rewrite_configs(autotune))  # pylint: disable=protected-access
 
     if self.experimental_slack:
       num_devices = self.experimental_distribute.num_devices

@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import platform
-import sys
 import time
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
@@ -38,9 +36,6 @@ class MetricUtilsTest(test.TestCase):
     return 'grpc'
 
   def testClientMetrics(self):
-    if sys.version_info >= (3, 8) and platform.system() == 'Windows':
-      # TODO(b/165013260): Fix this
-      self.skipTest('Test is currently broken on Windows with Python 3.8')
 
     metric_utils.enable_metrics = True
 

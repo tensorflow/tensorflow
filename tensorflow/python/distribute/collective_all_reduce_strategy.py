@@ -479,8 +479,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         split_batch_by=self._num_replicas_in_sync,
         input_context=input_context)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_context = self._make_input_context()
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn=dataset_fn,

@@ -25,7 +25,7 @@ class ProcessFunctionLibraryRuntime;
 class Device;
 class Tensor;
 
-enum class IrExportStage { HLO, OPTIMIZED_HLO };
+enum class IrExportStage { HLO, OPTIMIZED_HLO, OPTIMIZED_HLO_DOT };
 
 // Returns HLO text for a given function `func_name` using library runtime
 // `runtime` on a device `dev` with given `inputs`.

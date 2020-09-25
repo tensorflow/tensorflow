@@ -710,6 +710,7 @@ tf_cc_shared_object(
     soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",

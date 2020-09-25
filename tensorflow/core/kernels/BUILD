@@ -509,7 +509,6 @@ tf_cuda_library(
     name = "gpu_utils",
     srcs = if_cuda_or_rocm(["gpu_utils.cc"]),
     hdrs = ["gpu_utils.h"],
-    compatible_with = [],
     deps = [
         ":gpu_util_hdrs",
         "//tensorflow/core:autotuning_proto_cc",
@@ -1485,7 +1484,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cudnn_rnn_kernels",
     srcs = ["cudnn_rnn_ops.cc"],
-    compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
         ":bounds_check_lib",

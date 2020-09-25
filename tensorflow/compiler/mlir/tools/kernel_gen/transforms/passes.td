@@ -58,6 +58,11 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
 
+def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
+  let summary = "Pass to convert scf::ParallelOp to scf::ForOp";
+  let constructor = "transforms::CreateParallelLoopsToSequential()";
+}
+
 def PropagateTensorFlowABIKnowledgePass
     : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
   let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";

@@ -59,7 +59,6 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       device_mgr.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
-      /*custom_kernel_creator=*/nullptr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {

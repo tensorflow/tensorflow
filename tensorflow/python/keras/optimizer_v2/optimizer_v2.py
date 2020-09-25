@@ -949,6 +949,8 @@ class OptimizerV2(trackable.Trackable):
       config["clipnorm"] = self.clipnorm
     if self.clipvalue is not None:
       config["clipvalue"] = self.clipvalue
+    if self.global_clipnorm is not None:
+      config["global_clipnorm"] = self.global_clipnorm
     return config
 
   @classmethod

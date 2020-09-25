@@ -40,8 +40,10 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_arrays_v1
@@ -321,8 +323,8 @@ class Model(training_lib.Model):
 
     self._set_optimizer(optimizer)
     is_any_keras_optimizer_v1 = any(
-        (isinstance(opt, optimizers.Optimizer)
-         and not isinstance(opt, optimizers.TFOptimizer)
+        (isinstance(opt, optimizer_v1.Optimizer)
+         and not isinstance(opt, optimizer_v1.TFOptimizer)
         ) for opt in nest.flatten(self.optimizer))
 
     if is_any_keras_optimizer_v1 and ops.executing_eagerly_outside_functions():
@@ -993,7 +995,7 @@ class Model(training_lib.Model):
 
     # Reset metrics on all the distributed (cloned) models.
     if self._distribution_strategy:
-      distributed_training_utils._reset_metrics(self)  # pylint: disable=protected-access
+      distributed_training_utils_v1._reset_metrics(self)  # pylint: disable=protected-access
 
   def train_on_batch(self,
                      x,
@@ -1398,7 +1400,7 @@ class Model(training_lib.Model):
             'We currently do not support enabling `run_eagerly` with '
             'distribution strategy.')
 
-      if (distributed_training_utils.is_distributing_by_cloning(self) and
+      if (distributed_training_utils_v1.is_distributing_by_cloning(self) and
           (not self.built or not self.inputs or not self.outputs)):
         raise ValueError(
             'We currently do not support distribution strategy with a '
@@ -2856,7 +2858,7 @@ class DistributedCallbackModel(Model):
     self._original_model.load_weights(filepath, by_name=False)
     # Copy the weights from the original model to each of the replicated models.
     orig_model_weights = self._original_model.get_weights()
-    distributed_training_utils.set_weights(
+    distributed_training_utils_v1.set_weights(
         self._original_model._distribution_strategy, self,  # pylint: disable=protected-access
         orig_model_weights)
 

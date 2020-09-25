@@ -97,6 +97,7 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
+    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,
     deps = [
         ":trt_convert_py",
@@ -176,6 +177,7 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
+    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base",

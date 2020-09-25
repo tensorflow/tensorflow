@@ -41,9 +41,9 @@ def LegalizeGatherToTorchIndexSelectPass : Pass<"mhlo-legalize-gather-to-torch-i
 }
 
 
-def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-tanh-to-approximation", "FuncOp"> {
-  let summary = "Legalize tanh from standard dialect to an approximation.";
-  let constructor = "createLegalizeTanhToApproximationPass()";
+def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-trigonometric-to-approximation", "FuncOp"> {
+  let summary = "Legalize trigonometric operations from standard dialect to an approximation.";
+  let constructor = "createLegalizeTrigonometricToApproximationPass()";
 }
 
 

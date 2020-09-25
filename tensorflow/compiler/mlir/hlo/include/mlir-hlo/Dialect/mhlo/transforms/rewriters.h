@@ -88,10 +88,10 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
-// Populates a pattern that translates the standard TanhOp to an approximation
-// that does not use intrinsics.
-void PopulateTanhToApproximationPatterns(MLIRContext *context,
-                                         OwningRewritePatternList *patterns);
+// Populates patterns that translate the trigonometric operations from the
+// standard dialect to approximations that do not use intrinsics.
+void PopulateTrigonometricToApproximationPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace mhlo
 

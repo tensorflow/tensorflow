@@ -273,7 +273,7 @@ include_directories(
 )
 
 # TFLite library
-add_library(tensorflowlite
+add_library(tensorflow-lite
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_SRCS}
   ${TFLITE_C_SRCS}
@@ -295,7 +295,7 @@ add_library(tensorflowlite
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
 )
-target_link_libraries(tensorflowlite
+target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
     NEON_2_SSE
@@ -312,11 +312,11 @@ target_link_libraries(tensorflowlite
     ruy
     ${TFLITE_TARGET_DEPENDENCIES}
 )
-target_compile_options(tensorflowlite
+target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
-add_library(tensorflow::tensorflowlite ALIAS tensorflowlite)
+add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
 
 # Benchmark Tool
 populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
@@ -338,7 +338,7 @@ list(APPEND TFLITE_BENCHMARK_SRCS
 )
 
 list(APPEND TFLITE_BENCHMARK_LIBS
-  tensorflowlite
+  tensorflow-lite
   ${CMAKE_DL_LIBS}
 )
 

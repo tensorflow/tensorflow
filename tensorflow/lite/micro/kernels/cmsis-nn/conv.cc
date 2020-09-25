@@ -333,6 +333,8 @@ TfLiteStatus EvalQuantizedPerChannel(
   } else {
     // TODO(b/154032858): Investigate removing extra copies.
     ConvParams op_params;
+  op_params.input_offset = -data.input_zero_point;
+  op_params.output_offset = data.output_zero_point;
     op_params.stride_height = params->stride_height;
     op_params.stride_width = params->stride_width;
     op_params.dilation_height_factor = params->dilation_height_factor;

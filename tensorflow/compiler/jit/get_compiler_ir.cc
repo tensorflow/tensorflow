@@ -24,12 +24,26 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+
+static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompileOptions& compile_options,
+    const NameAttrList& function, XlaCompilationCache* cache,
+    absl::Span<XlaCompiler::Argument const> args, const XlaCompiler& compiler) {
+  const XlaCompiler::CompilationResult* compilation_result = nullptr;
+  xla::LocalExecutable* executable = nullptr;
+  TF_RETURN_IF_ERROR(cache->Compile(options, function, args, compile_options,
+                                    XlaCompilationCache::CompileMode::kStrict,
+                                    &compilation_result, &executable));
+  return executable;
+}
 
 xla::StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
@@ -100,13 +114,23 @@ xla::StatusOr<std::string> GetCompilerIr(
       return new_module->ToString();
     }
     case IrExportStage::OPTIMIZED_HLO: {
-      const XlaCompiler::CompilationResult* compilation_result = nullptr;
-      xla::LocalExecutable* executable = nullptr;
-      TF_RETURN_IF_ERROR(
-          cache->Compile(options, function, *args, compile_options,
-                         XlaCompilationCache::CompileMode::kStrict,
-                         &compilation_result, &executable));
-      return executable->executable()->module().ToString();
+      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+          options, compile_options, function, cache, *args, compiler);
+      TF_RETURN_IF_ERROR(executable.status());
+      return (*executable)->executable()->module().ToString();
+    }
+    case IrExportStage::OPTIMIZED_HLO_DOT: {
+      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+          options, compile_options, function, cache, *args, compiler);
+      TF_RETURN_IF_ERROR(executable.status());
+      xla::StatusOr<std::string> graph = xla::RenderGraph(
+          *(*executable)->executable()->module().entry_computation(),
+          "Visualization",
+          /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,
+          /*hlo_execution_profile=*/nullptr,
+          /*hlo_render_options=*/{});
+      TF_RETURN_IF_ERROR(graph.status());
+      return *graph;
     }
   }
 }

@@ -72,7 +72,8 @@ static bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
 bool XlaKernelCreator::CanCreateKernel(
     const FunctionLibraryRuntime& flr,
     const std::shared_ptr<const NodeProperties>& props) const {
-  return CanCreateXlaKernel(props->node_def);
+  return CanCreateXlaKernel(props->node_def) &&
+         !XlaOpRegistry::IsCompilationDevice(flr.device()->device_type());
 }
 
 static Status CreateXlaKernel(FunctionLibraryRuntime* flr,

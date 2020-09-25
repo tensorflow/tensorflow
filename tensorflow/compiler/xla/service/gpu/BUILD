@@ -1,6 +1,7 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
@@ -26,6 +27,9 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
@@ -66,7 +70,6 @@ cc_library(
     name = "gpu_executable_run_options",
     srcs = ["gpu_executable_run_options.cc"],
     hdrs = ["gpu_executable_run_options.h"],
-    compatible_with = get_compatible_with_cloud(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -440,7 +443,6 @@ tf_cuda_library(
         ["dummy_all_reduce_thunk.cc"],
     ),
     hdrs = ["nccl_all_reduce_thunk.h"],
-    compatible_with = [],
     deps = [
         ":buffer_allocations",
         ":hlo_execution_profiler",
@@ -477,7 +479,6 @@ cc_library(
     hdrs = [
         "gpu_debug_info_manager.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1179,7 +1180,6 @@ cc_library(
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
-        ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
         ":instruction_fusion",
         ":ir_emission_utils",
@@ -1383,7 +1383,6 @@ cc_library(
 cc_library(
     name = "xfeed_queue",
     hdrs = ["xfeed_queue.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
@@ -1394,7 +1393,6 @@ cc_library(
     name = "infeed_manager",
     srcs = ["infeed_manager.cc"],
     hdrs = ["infeed_manager.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:shape_tree",
@@ -1409,7 +1407,6 @@ cc_library(
     name = "outfeed_manager",
     srcs = ["outfeed_manager.cc"],
     hdrs = ["outfeed_manager.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:literal",
@@ -1764,7 +1761,6 @@ cc_library(
     srcs = ["horizontal_loop_fusion.cc"],
     hdrs = ["horizontal_loop_fusion.h"],
     deps = [
-        ":gpu_fusible",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
@@ -1797,45 +1793,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    ],
-)
-
-cc_library(
-    name = "horizontal_input_fusion",
-    srcs = ["horizontal_input_fusion.cc"],
-    hdrs = ["horizontal_input_fusion.h"],
-    deps = [
-        ":gpu_fusible",
-        ":ir_emission_utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_creation_utils",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "horizontal_input_fusion_test",
-    srcs = ["horizontal_input_fusion_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":horizontal_input_fusion",
-        ":multi_output_fusion",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
-        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
@@ -1965,6 +1922,7 @@ cc_library(
 
 gentbl(
     name = "xla_thunks_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-op-decls", "ir/xla_thunks_ops.h.inc"),
         ("-gen-op-defs", "ir/xla_thunks_ops.cc.inc"),

@@ -73,8 +73,7 @@ void UpdateFuncType(FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
   func.setType(FunctionType::get(
-      arg_types,
-      llvm::to_vector<8>(func.front().getTerminator()->getOperandTypes()),
+      arg_types, func.front().getTerminator()->getOperandTypes(),
       func.getContext()));
 }
 
