@@ -931,13 +931,11 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
 
     FullyConnectedAttributes attr;
     RETURN_IF_ERROR(GetFullyConnectedAttributes(1, 2, reader, &attr));
+    const int weights_width = attr.weights.shape.i;
 
-    Tensor<HW, DataType::FLOAT32> weights;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &weights));
     auto input = graph->FindInputs(node->id)[0];
     int batch_size = input->tensor.shape.b;
-    if (input->tensor.shape.DimensionsProduct() / batch_size !=
-        weights.shape.w) {
+    if (input->tensor.shape.DimensionsProduct() / batch_size != weights_width) {
       return absl::UnimplementedError(
           "Amount of input data should match weights width");
     }
@@ -949,7 +947,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       Value* reshaped_value = graph->NewValue();
       reshaped_value->tensor.type = DataType::FLOAT32;
       reshaped_value->tensor.shape =
-          BHWC(input->tensor.shape.b, 1, 1, weights.shape.w);
+          BHWC(input->tensor.shape.b, 1, 1, weights_width);
       RETURN_IF_ERROR(graph->SetProducer(reshape->id, reshaped_value->id));
       reshape->operation.type = ToString(OperationType::RESHAPE);
       ReshapeAttributes attr;
