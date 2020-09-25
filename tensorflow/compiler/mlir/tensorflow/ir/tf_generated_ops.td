@@ -1762,6 +1762,16 @@ Sets up the centralized structures for a distributed TPU system.
   );
 }
 
+def TF_ConfigureTPUEmbeddingOp : TF_Op<"ConfigureTPUEmbedding", []> {
+  let summary = "Sets up TPUEmbedding in a distributed TPU system.";
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
 def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
