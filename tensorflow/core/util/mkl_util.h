@@ -893,20 +893,36 @@ inline void SetDummyMklDnnShapeOutput(OpKernelContext* context,
   AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);
 }
 
-inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
+// If the input tensor has ref count as 1, it is forwarded to the desired
+// output port and the function reutrns true. In that case, it also allocates
+// the serialized MklDnnShape object. Otherwise, the function returns false.
+inline bool ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
                                                 int idx_in, int idx_out,
-                                                const MklDnnShape& mkl_shape) {
+                                                Tensor** output,
+                                                const MklDnnShape& mkl_shape,
+                                                bool always_forward = true) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
   int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
-
-  AllocateOutputSetMklShape(context, idx_out, mkl_shape);
-
-  if (IsRefType(context->input_dtype(idx_data_in))) {
-    context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+  bool is_forwarded = false;
+  const Tensor& input_tensor = context->input(idx_data_in);
+  const auto output_shape = input_tensor.shape();
+  if (always_forward) {
+    if (IsRefType(context->input_dtype(idx_data_in))) {
+      context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+    } else {
+      context->set_output(idx_data_out, input_tensor);
+    }
   } else {
-    context->set_output(idx_data_out, context->input(idx_data_in));
+    is_forwarded = context->forward_input_to_output_with_shape(
+        idx_data_in, idx_data_out, output_shape, output);
+  }
+  if (is_forwarded || always_forward) {
+    AllocateOutputSetMklShape(context, idx_out, mkl_shape);
+    return true;
+  } else {
+    return false;
   }
 }
 

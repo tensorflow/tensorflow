@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -942,10 +942,11 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
 
       // Check if reorder is needed
-      if (add_mkl_shape == *output_mkl_shape) {
-        ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
-                                            kOutputIndex_Dst, add_mkl_shape);
-        *output_tensor = context->mutable_output(kOutputIndex_Dst);
+      if (add_mkl_shape == *output_mkl_shape &&
+          ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
+                                              kOutputIndex_Dst, output_tensor,
+                                              add_mkl_shape, false)) {
+        return;
       } else {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                                   output_tf_shape, *output_mkl_shape,
@@ -1870,7 +1871,7 @@ class MklQuantizedConv2DSumReluOp
       GetMklShape(context, summand_idx, &summand_mkl_shape);
       auto dst_md = summand_mkl_shape.GetMklLayout();
 
-      // TODO(mdfaijul): handle both non-MKL and MKL tensors
+      // TODO(intel-tf): Handle both non-MKL and MKL tensors
       if (summand_type == DT_QINT8) {
         OP_REQUIRES_OK(
             context, summand.BitcastFrom(summand, DT_QUINT8, summand.shape()));
@@ -1879,9 +1880,13 @@ class MklQuantizedConv2DSumReluOp
         summand_mkl_shape.SetMklLayout(&dst_md);
         summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
       }
-      ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
-                                          summand_mkl_shape);
-      *output_tensor = const_cast<Tensor*>(&summand);
+      // TODO(intel-tf): Support cases when summand cannot be forwarded.
+      OP_REQUIRES(
+          context,
+          ForwardMklTensorInToOutWithMklShape(
+              context, summand_idx, 0, output_tensor, summand_mkl_shape, false),
+          errors::InvalidArgument(
+              "Summand cannot be forwarded in the current fusion."));
       return;
     }
     MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output, int32,
