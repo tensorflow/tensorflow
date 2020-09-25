@@ -157,7 +157,7 @@ class FractionalMaxPoolTest(test.TestCase):
       print("Testing FractionalMaxPool with overlapping = {}".format(
           overlapping))
       rand_mat = self._PRNG.randint(10, size=tensor_shape)
-      pooling_ratio = [1, math.sqrt(2), math.sqrt(2), 1]
+      pooling_ratio = [1.0, math.sqrt(2), math.sqrt(2), 1.0]
       with self.cached_session() as sess:
         p, r, c = nn_ops.fractional_max_pool_v2(
             rand_mat,
@@ -207,7 +207,7 @@ class FractionalMaxPoolTest(test.TestCase):
         # random tensor with value in [-500.0, 500.0)
         rand_mat = self._PRNG.random_sample(tensor_shape) * 1000 - 500
         self._ValidateFractionalMaxPoolResult(
-            rand_mat, [1, math.sqrt(3), math.sqrt(2), 1], pseudo_random,
+            rand_mat, [1.0, math.sqrt(3), math.sqrt(2), 1.0], pseudo_random,
             overlapping)
 
   def testIntegerTensorInput(self):
@@ -222,7 +222,7 @@ class FractionalMaxPoolTest(test.TestCase):
     tensor_shape = (num_batches, num_rows, num_cols, num_channels)
     rand_mat = self._PRNG.randint(1000, size=tensor_shape)
     self._ValidateFractionalMaxPoolResult(rand_mat,
-                                          [1, math.sqrt(3), math.sqrt(2), 1],
+                                          [1.0, math.sqrt(3), math.sqrt(2), 1.0],
                                           pseudo_random, overlapping)
 
   def testDifferentTensorShapes(self):
@@ -240,7 +240,7 @@ class FractionalMaxPoolTest(test.TestCase):
             # random tensor with value in [-500.0, 500.0)
             rand_mat = self._PRNG.random_sample(tensor_shape) * 1000 - 500
             self._ValidateFractionalMaxPoolResult(
-                rand_mat, [1, math.sqrt(3), math.sqrt(2), 1], pseudo_random,
+                rand_mat, [1.0, math.sqrt(3), math.sqrt(2), 1.0], pseudo_random,
                 overlapping)
 
   def testLargePoolingRatio(self):
@@ -258,7 +258,7 @@ class FractionalMaxPoolTest(test.TestCase):
         # random tensor with value in [-500.0, 500.0)
         rand_mat = self._PRNG.random_sample(tensor_shape) * 1000 - 500
         self._ValidateFractionalMaxPoolResult(rand_mat,
-                                              [1, row_ratio, col_ratio, 1],
+                                              [1.0, row_ratio, col_ratio, 1.0],
                                               pseudo_random, overlapping)
 
   def testDivisiblePoolingRatio(self):
@@ -276,7 +276,7 @@ class FractionalMaxPoolTest(test.TestCase):
     tensor_shape = (num_batches, num_rows, num_cols, num_channels)
     # random tensor with value in [-500.0, 500.0)
     rand_mat = self._PRNG.random_sample(tensor_shape) * 1000 - 500
-    self._ValidateFractionalMaxPoolResult(rand_mat, [1, 2, 2, 1], pseudo_random,
+    self._ValidateFractionalMaxPoolResult(rand_mat, [1.0, 2.0, 2.0, 1.0], pseudo_random,
                                           overlapping)
 
   @test_util.run_deprecated_v1
@@ -285,7 +285,7 @@ class FractionalMaxPoolTest(test.TestCase):
     with self.cached_session() as sess:
       input_holder = array_ops.placeholder(dtypes.float32,
                                            [None, None, None, 3])
-      pooling_ratio = [1, 1.5, 1.5, 1]
+      pooling_ratio = [1.0, 1.5, 1.5, 1.0]
       pseudo_random = False
       overlapping = False
       p, r, c = nn_ops.fractional_max_pool_v2(
@@ -438,7 +438,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
     input_data = self._GenerateUniqueRandomInputTensor(input_shape)
     # Add some randomness to make input_data not so 'integer'
     input_data += self._PRNG.random_sample(input_shape)
-    pooling_ratio = [1, math.sqrt(2), math.sqrt(3), 1]
+    pooling_ratio = [1.0, math.sqrt(2), math.sqrt(3), 1.0]
 
     for pseudo_random in True, False:
       for overlapping in True, False:
@@ -467,7 +467,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
   def testDifferentTensorShapesThroughGradientError(self):
     pseudo_random = True
     overlapping = True
-    pooling_ratio = [1, math.sqrt(3), math.sqrt(2), 1]
+    pooling_ratio = [1.0, math.sqrt(3), math.sqrt(2), 1.0]
     for num_batches in [1, 2]:
       for num_rows in [5, 13]:
         for num_cols in [5, 11]:
@@ -503,7 +503,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
     input_data = self._GenerateUniqueRandomInputTensor(input_shape)
     # Add some randomness to make input_data not so 'integer'
     input_data += self._PRNG.random_sample(input_shape)
-    pooling_ratio = (1, math.sqrt(13), math.sqrt(7), 1)
+    pooling_ratio = [1.0, math.sqrt(13), math.sqrt(7), 1.0]
     output_shape = [int(a / b) for a, b in zip(input_shape, pooling_ratio)]
     overlapping = True
     pseudo_random = False
