@@ -197,10 +197,6 @@ inline std::string GpuPlaneName(int32 device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
 }
 
-inline bool IsGpuPlaneName(absl::string_view plane_name) {
-  return absl::StartsWith(plane_name, kGpuPlanePrefix);
-}
-
 absl::string_view GetHostEventTypeStr(HostEventType event_type);
 
 bool IsHostEventType(HostEventType event_type, absl::string_view event_name);
