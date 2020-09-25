@@ -834,6 +834,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
+        "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/training/tracking:base",
     ],
