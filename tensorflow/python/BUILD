@@ -2184,6 +2184,15 @@ py_library(
     visibility = visibility,
 )
 
+# Including this as a dependency will result in tests using
+# :framework_test_lib to NOT use MLIR.
+py_library(
+    name = "is_mlir_bridge_test_false",
+    srcs = ["framework/is_mlir_bridge_test_false.py"],
+    srcs_version = "PY2AND3",
+    visibility = visibility,
+)
+
 # Including this as a dependency will result in tests to use TFRT.
 # TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 py_library(

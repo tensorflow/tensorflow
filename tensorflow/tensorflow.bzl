@@ -2874,6 +2874,9 @@ def tf_enable_mlir_bridge():
         str(Label("//tensorflow:enable_mlir_bridge")): [
             "//tensorflow/python:is_mlir_bridge_test_true",
         ],
+        str(Label("//tensorflow:disable_mlir_bridge")): [
+            "//tensorflow/python:is_mlir_bridge_test_false",
+        ],
         "//conditions:default": [],
     })
 
