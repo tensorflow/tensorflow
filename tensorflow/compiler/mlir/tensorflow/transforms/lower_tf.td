@@ -199,6 +199,25 @@ def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
                           (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
 
 //===----------------------------------------------------------------------===//
+// Round op patterns.
+//===----------------------------------------------------------------------===//
+
+
+// Rounds on integers should just be bypassed.
+def : Pat<(TF_RoundOp:$res TF_IntTensor:$input), (TF_IdentityOp $input)>;
+
+// Implements TF Round on floats using basic operations.
+def : Pat<(TF_RoundOp:$res TF_FloatTensor:$input),
+          (TF_SelectOp
+           (TF_LessOp
+            (TF_SubOp $input, (TF_FloorOp:$floor $input)),
+            (TF_ConstOp (GetScalarOfFloatType<"0.5"> $input))),
+           $floor,
+           (TF_AddOp
+            (TF_ConstOp (GetScalarOfType<1> $input)), $floor))>;
+
+
+//===----------------------------------------------------------------------===//
 // Rsqrt op patterns.
 //===----------------------------------------------------------------------===//
 

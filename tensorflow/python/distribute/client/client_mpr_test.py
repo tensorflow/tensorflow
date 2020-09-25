@@ -18,8 +18,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import time
-from absl import logging
+
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
@@ -33,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 
 
 class ClientMprTest(test.TestCase):

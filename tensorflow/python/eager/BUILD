@@ -766,6 +766,7 @@ cuda_py_test(
     name = "ops_test",
     srcs = ["ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":context",
         ":execute",

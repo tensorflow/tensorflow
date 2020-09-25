@@ -117,6 +117,43 @@ func @floor(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>
 }
 
 
+// CHECK-LABEL: func @caseRegion
+// CHECK-SAME:  ([[BRANCH_INDEX:%.+]]: tensor<i32>, [[ARG0:.+]]: tensor<f32>, [[ARG1:%.+]]: tensor<f32>)
+func @caseRegion(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  // CHECK: [[VAL0:%.+]] = "mhlo.tuple"([[ARG1]])
+  // CHECK: [[VAL1:%.+]] = "mhlo.tuple"([[ARG0]], [[ARG1]])
+  // CHECK: [[VAL2:%.+]] = "mhlo.tuple"([[ARG0]], [[ARG1]])
+  // CHECK: [[VAL3:%.+]]:2 = "mhlo.case"([[BRANCH_INDEX]], [[VAL0]], [[VAL1]], [[VAL2]]) ( {
+  %0:2 = "tf.CaseRegion"(%index) ( {
+  // CHECK: ^{{[a-z0-9]+}}([[BRANCH0_ARG:%.+]]: tuple<tensor<f32>>):
+    // CHECK: [[VAL4:%.+]] = "mhlo.get_tuple_element"([[BRANCH0_ARG]]) {index = 0 : i32}
+    // CHECK: [[VAL5:%.+]] = "mhlo.exponential"([[VAL4]])
+    %1 = "mhlo.exponential"(%arg1) : (tensor<f32>) -> tensor<f32>
+    // CHECK: "mhlo.return"([[VAL5]], [[VAL4]])
+    "tf.Yield"(%1, %arg1) : (tensor<f32>, tensor<f32>) -> ()
+  }, {
+  // CHECK: ^{{[a-z0-9]+}}([[BRANCH1_ARG:%.+]]: tuple<tensor<f32>, tensor<f32>>):
+    // CHECK: [[VAL4:%.+]] = "mhlo.get_tuple_element"([[BRANCH1_ARG]]) {index = 0 : i32}
+    // CHECK: [[VAL5:%.+]] = "mhlo.get_tuple_element"([[BRANCH1_ARG]]) {index = 1 : i32}
+    // CHECK: [[VAL6:%.+]] = "mhlo.log"([[VAL4]])
+    %1 = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
+    // CHECK: "mhlo.return"([[VAL6]], [[VAL5]])
+    "tf.Yield"(%1, %arg1) : (tensor<f32>, tensor<f32>) -> ()
+  }, {
+  // CHECK: ^{{[a-z0-9]+}}([[BRANCH2_ARG:%.+]]: tuple<tensor<f32>, tensor<f32>>):
+    // CHECK: [[VAL4:%.+]] = "mhlo.get_tuple_element"([[BRANCH2_ARG]]) {index = 0 : i32}
+    // CHECK: [[VAL5:%.+]] = "mhlo.get_tuple_element"([[BRANCH2_ARG]]) {index = 1 : i32}
+    // CHECK: [[VAL6:%.+]] = "mhlo.floor"([[VAL4]])
+    %1 = "mhlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
+    // CHECK: "mhlo.return"([[VAL6]], [[VAL5]])
+    "tf.Yield"(%1, %arg1) : (tensor<f32>, tensor<f32>) -> ()
+  // CHECK: }) : (tensor<i32>, tuple<tensor<f32>>, tuple<tensor<f32>, tensor<f32>>, tuple<tensor<f32>, tensor<f32>>) -> (tensor<f32>, tensor<f32>)
+  }) {is_stateless = true} : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
+  // CHECK: return [[VAL3]]#0, [[VAL3]]#1 : tensor<f32>, tensor<f32>
+  return %0#0, %0#1 : tensor<f32>, tensor<f32>
+}
+
+
 // CHECK-LABEL: func @while
 func @while() -> tensor<i32> {
   // CHECK: [[VAL0:%.+]] = mhlo.constant dense<0>

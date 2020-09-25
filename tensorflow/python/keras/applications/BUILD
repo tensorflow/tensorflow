@@ -64,6 +64,7 @@ tf_py_test(
         "no_rocm",
         "notsan",  # b/168814536
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -85,6 +86,7 @@ tf_py_test(
         "no_pip",
         "notsan",  # b/168814536
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -101,6 +103,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -117,6 +120,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -133,6 +137,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -149,6 +154,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -165,6 +171,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -181,6 +188,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -197,6 +205,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -213,6 +222,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -229,6 +239,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -245,6 +256,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -263,6 +275,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -281,6 +294,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -297,6 +311,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -313,6 +328,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -325,6 +341,7 @@ tf_py_test(
     size = "medium",
     srcs = ["imagenet_utils_test.py"],
     shard_count = 2,
+    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",

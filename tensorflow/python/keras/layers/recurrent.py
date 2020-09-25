@@ -183,10 +183,7 @@ class StackedRNNCells(Layer):
   def get_config(self):
     cells = []
     for cell in self.cells:
-      cells.append({
-          'class_name': cell.__class__.__name__,
-          'config': cell.get_config()
-      })
+      cells.append(generic_utils.serialize_keras_object(cell))
     config = {'cells': cells}
     base_config = super(StackedRNNCells, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -977,11 +974,7 @@ class RNN(Layer):
     if self.zero_output_for_mask:
       config['zero_output_for_mask'] = self.zero_output_for_mask
 
-    cell_config = self.cell.get_config()
-    config['cell'] = {
-        'class_name': self.cell.__class__.__name__,
-        'config': cell_config
-    }
+    config['cell'] = generic_utils.serialize_keras_object(self.cell)
     base_config = super(RNN, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 

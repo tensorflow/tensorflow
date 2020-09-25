@@ -1072,6 +1072,7 @@ cc_library(
     name = "orc_jit_memory_mapper",
     srcs = ["orc_jit_memory_mapper.cc"],
     hdrs = ["orc_jit_memory_mapper.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:lib",
         "@llvm-project//llvm:ExecutionEngine",

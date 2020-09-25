@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import functools
 import threading
-from absl import logging
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
@@ -39,6 +38,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.server_lib import ClusterSpec
 
 

@@ -4920,7 +4920,7 @@ def rsqrt(x, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`. `int32`
+      `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:

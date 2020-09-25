@@ -141,21 +141,15 @@ message SavedVariable {
   VariableAggregation aggregation = 5;
   string name = 6;
   string device = 7;
+  // List of component variables for a distributed variable.
+  //
+  // When this field is non-empty, the SavedVariable will be assumed
+  // to be a distributed variable defined by the components listed here.
+  //
+  // This is only supported by experimental loaders at the moment.
+  repeated SavedVariable experimental_distributed_variable_components = 8;
 }
 
-// Whether the function should be compiled by XLA.
-//
-// The public interface to `tf.function` uses an optional boolean to
-// represent three distinct states for this field.  Unfortunately, proto3
-// removes the ability to explicitly check for the presence or absence of a
-// field, so we instead map to an enum.
-//
-// See `tf.function` for details.
-enum ExperimentalCompile {
-  NONE = 0;
-  TRUE = 1;
-  FALSE = 2;
-}
 
 // Represents `FunctionSpec` used in `Function`. This represents a
 // function that has been wrapped as a TensorFlow `Function`.
@@ -166,7 +160,20 @@ message FunctionSpec {
   bool is_method = 2;
   // The input signature, if specified.
   StructuredValue input_signature = 5;
+
   // Whether the function should be compiled by XLA.
+  //
+  // The public interface to `tf.function` uses an optional boolean to
+  // represent three distinct states for this field.  Unfortunately, proto3
+  // removes the ability to explicitly check for the presence or absence of a
+  // field, so we instead map to an enum.
+  //
+  // See `tf.function` for details.
+  enum ExperimentalCompile {
+    DEFAULT = 0;
+    ON = 1;
+    OFF = 2;
+  }
   ExperimentalCompile experimental_compile = 6;
 
   reserved 3, 4;

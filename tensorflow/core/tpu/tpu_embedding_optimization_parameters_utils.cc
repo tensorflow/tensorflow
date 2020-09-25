@@ -94,8 +94,9 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
 // Returns the number of optimization parameter vectors used by the optimization
 // algorithm, excluding the weights themselves and assuming no gradient
 // accumulation.
-Status GetBaseAuxiliaryParameterCount(OptimizationAlgorithm alg, int* count) {
-  switch (alg) {
+Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
+                                      int* count) {
+  switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad:
       *count = 1;
       return Status::OK();
@@ -141,11 +142,11 @@ Status GetBaseAuxiliaryParameterCount(OptimizationAlgorithm alg, int* count) {
   return errors::InvalidArgument("No optimization algorithm specified");
 }
 
-Status GetGradientAccumulationSupport(OptimizationAlgorithm alg,
+Status GetGradientAccumulationSupport(const OptimizationParameters& params,
                                       GradientAccumulationSupport* support) {
   int auxiliary_parameter_count;
   TF_RETURN_IF_ERROR(
-      GetBaseAuxiliaryParameterCount(alg, &auxiliary_parameter_count));
+      GetBaseAuxiliaryParameterCount(params, &auxiliary_parameter_count));
   *support = auxiliary_parameter_count + 1 <= kMaxAuxiliaryParameterCount
                  ? GradientAccumulationSupport::kSupported
                  : GradientAccumulationSupport::kNotSupported;
@@ -168,7 +169,7 @@ StateVariableSpecification MakeStandardStateVariableSpecification(
 }  // namespace
 
 Status GetOptimizationAlgorithmStateVariables(
-    OptimizationAlgorithm alg, bool use_gradient_accumulation,
+    const OptimizationParameters& params, bool use_gradient_accumulation,
     std::vector<StateVariableSpecification>* state_variables) {
   // The first parameter set is always the weights themselves.
   state_variables->push_back(
@@ -176,7 +177,7 @@ Status GetOptimizationAlgorithmStateVariables(
   // The order of the returned parameters needs to match the offsets used by
   // the algorithm implementations in test_util.cc and
   // address_handler_program_creator.cc.
-  switch (alg) {
+  switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad: {
       state_variables->push_back(
           MakeStandardStateVariableSpecification("accumulators", 0.1));
@@ -276,7 +277,8 @@ Status GetOptimizationAlgorithmStateVariables(
   }
   if (state_variables->size() > kMaxAuxiliaryParameterCount + 1) {
     return errors::InvalidArgument(
-        "Optimization algorithm", GetOptimizationAlgorithmName(alg),
+        "Optimization algorithm",
+        GetOptimizationAlgorithmName(params.parameters_case()),
         "does not support gradient accumulation because it "
         "already has too many other accumulators");
   }
@@ -301,21 +303,8 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
   };
 }
 
-LoadOpShapeFunction::LoadOpShapeFunction(OptimizationAlgorithm alg,
-                                         bool is_debug_op)
-    : alg_(alg), is_debug_op_(is_debug_op) {}
-
 Status LoadOpShapeFunction::operator()(
     shape_inference::InferenceContext* c) const {
-  GradientAccumulationSupport grad_accum_support;
-  TF_CHECK_OK(GetGradientAccumulationSupport(alg_, &grad_accum_support));
-
-  std::vector<StateVariableSpecification> state_variable_specs;
-  TF_CHECK_OK(GetOptimizationAlgorithmStateVariables(
-      alg_,
-      grad_accum_support == GradientAccumulationSupport::kSupported &&
-          is_debug_op_,
-      &state_variable_specs));
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
   string table_name;
@@ -329,52 +318,23 @@ Status LoadOpShapeFunction::operator()(
   TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
   int shard_id;
   TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
-  const int user_param_count =
-      std::count_if(state_variable_specs.begin(), state_variable_specs.end(),
-                    [&](const StateVariableSpecification& sv) {
-                      return sv.has_user_defined() || is_debug_op_;
-                    });
-  std::vector<shape_inference::ShapeHandle> inputs(user_param_count);
-  int input_index = 0;
-  for (int i = 0, end = state_variable_specs.size(); i < end; ++i) {
-    if (state_variable_specs[i].has_user_defined() || is_debug_op_) {
-      std::vector<shape_inference::ShapeHandle> input_temp;
-      TF_RETURN_IF_ERROR(c->input(state_variable_specs[i].name(), &input_temp));
-      if (input_temp.size() != 1) {
-        return errors::InvalidArgument("each input to be rank 1");
-      }
-      inputs[input_index] = input_temp[0];
-      ++input_index;
-    }
-  }
+
   // Verify shapes have rank 2 and are compatible when they are
   // required to be valid.
   shape_inference::ShapeHandle parameter_shape;
-  TF_RETURN_IF_ERROR(c->WithRank(inputs[0], 2, &parameter_shape));
-  for (int j = 1; j < user_param_count; ++j) {
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &parameter_shape));
+  for (int j = 1; j < c->num_inputs(); ++j) {
     shape_inference::ShapeHandle accumulator_j_shape;
-    TF_RETURN_IF_ERROR(c->WithRank(inputs[j], 2, &accumulator_j_shape));
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(j), 2, &accumulator_j_shape));
     shape_inference::ShapeHandle merged;
     TF_RETURN_IF_ERROR(c->Merge(parameter_shape, accumulator_j_shape, &merged));
   }
+
   return Status::OK();
 }
 
-RetrieveOpShapeFunction::RetrieveOpShapeFunction(OptimizationAlgorithm alg,
-                                                 bool is_debug_op)
-    : alg_(alg), is_debug_op_(is_debug_op) {}
-
 Status RetrieveOpShapeFunction::operator()(
     shape_inference::InferenceContext* c) const {
-  GradientAccumulationSupport grad_accum_support;
-  TF_CHECK_OK(GetGradientAccumulationSupport(alg_, &grad_accum_support));
-
-  std::vector<StateVariableSpecification> state_variable_specs;
-  TF_CHECK_OK(GetOptimizationAlgorithmStateVariables(
-      alg_,
-      grad_accum_support == GradientAccumulationSupport::kSupported &&
-          is_debug_op_,
-      &state_variable_specs));
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
   string table_name;
@@ -388,14 +348,9 @@ Status RetrieveOpShapeFunction::operator()(
   TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
   int shard_id;
   TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
-  for (int j = 0, end = state_variable_specs.size(); j < end; ++j) {
-    if (state_variable_specs[j].has_user_defined() || is_debug_op_) {
-      auto shape = c->MakeShape(
-          std::vector<shape_inference::DimensionHandle>(2, c->UnknownDim()));
-      TF_RETURN_IF_ERROR(
-          c->set_output(state_variable_specs[j].name(),
-                        std::vector<shape_inference::ShapeHandle>(1, shape)));
-    }
+  for (int j = 0; j < c->num_outputs(); ++j) {
+    c->set_output(j, c->MakeShape(std::vector<shape_inference::DimensionHandle>(
+                         2, c->UnknownDim())));
   }
   return Status::OK();
 }

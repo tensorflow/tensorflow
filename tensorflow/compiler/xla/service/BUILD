@@ -5,8 +5,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",
+    "tf_proto_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -37,7 +36,7 @@ package_group(
     packages = ["//learning/brain/experimental/tf_runtime/..."],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
     cc_api_version = 2,
@@ -45,20 +44,13 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_py(
-    name = "hlo_proto",  # bzl adds a _py suffix only to the OSS target.
-    srcs = ["hlo.proto"],
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/xla:xla_data_proto_py"],
-)
-
-tf_proto_library_cc(
+tf_proto_library(
     name = "hlo_profile_printer_data",
     srcs = ["hlo_profile_printer_data.proto"],
     cc_api_version = 2,
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "hlo_execution_profile_data",
     srcs = ["hlo_execution_profile_data.proto"],
     cc_api_version = 2,
@@ -485,6 +477,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -3500,6 +3493,8 @@ cc_library(
     hdrs = ["memory_space_assignment_utils.h"],
     deps = [
         ":heap_simulator",
+        ":hlo",
+        ":hlo_casting_utils",
     ],
 )
 

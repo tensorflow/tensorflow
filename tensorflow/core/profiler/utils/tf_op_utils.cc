@@ -88,6 +88,8 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
     tf_op = {Category::kTensorFlow, parts[0], parts[1]};
   } else if (IsJaxOpType(parts[1])) {
     tf_op = {Category::kJax, parts[0], parts[1]};
+  } else if (parts[1].empty()) {
+    tf_op.name = parts[0];  // remove trailing ':'
   }
   return tf_op;
 }

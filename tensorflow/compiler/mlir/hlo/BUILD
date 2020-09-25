@@ -608,8 +608,8 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
     deps = [
         ":hlo",
-        ":legalize_tanh_to_approximation",
         ":legalize_to_standard_inc_gen",
+        ":legalize_trigonometric_to_approximation",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -639,8 +639,8 @@ cc_library(
 )
 
 cc_library(
-    name = "legalize_tanh_to_approximation",
-    srcs = ["lib/Dialect/mhlo/transforms/legalize_tanh_to_approximation.cc"],
+    name = "legalize_trigonometric_to_approximation",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_trigonometric_to_approximation.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
@@ -829,9 +829,9 @@ cc_library(
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
         ":legalize_gather_to_torch_index_select",
-        ":legalize_tanh_to_approximation",
         ":legalize_to_linalg",
         ":legalize_to_standard",
+        ":legalize_trigonometric_to_approximation",
         ":lhlo",
         ":lhlo_fuse_linalg",
         ":lhlo_legalize_to_affine",

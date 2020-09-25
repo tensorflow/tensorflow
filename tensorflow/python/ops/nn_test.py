@@ -166,6 +166,8 @@ class LogPoissonLossTest(test_lib.TestCase):
     return lpl
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt("b/163084901: does not support convert ScalarHost "
+                          "tensor to RuntimeFallbackTensor.")
   def testLogPoissonLoss(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)

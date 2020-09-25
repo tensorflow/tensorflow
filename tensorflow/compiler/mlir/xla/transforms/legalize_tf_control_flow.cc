@@ -20,33 +20,24 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <tuple>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/ADT/iterator_range.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 using mlir::PassRegistration;
 
@@ -290,6 +281,34 @@ void LowerIfRegion(TF::IfRegionOp op) {
   op.erase();
 }
 
+void LowerCaseRegion(TF::CaseRegionOp op) {
+  Location loc = op.getLoc();
+  OpBuilder builder(op);
+
+  llvm::SmallVector<Value, 4> branch_inputs;
+  branch_inputs.reserve(op.branches().size());
+  // Tuple implicit inputs per region and update terminators.
+  for (Region& region : op.branches()) {
+    builder.setInsertionPoint(op);
+    Value branch_input = TupleImplicitInputs(region, loc, &builder);
+    branch_inputs.emplace_back(branch_input);
+    ReplaceTerminator(&region.front(), /*extra_results=*/{}, &builder,
+                      /*tuple_return=*/false);
+  }
+
+  // Create the new `mhlo.case` op with tuple inputs and take ownership of
+  // regions from `tf.CaseRegion` op.
+  builder.setInsertionPoint(op);
+  auto case_op =
+      builder.create<mhlo::CaseOp>(loc, op.getResultTypes(), op.branch_index(),
+                                   branch_inputs, branch_inputs.size());
+  for (auto region : llvm::zip(case_op.branches(), op.branches()))
+    std::get<0>(region).takeBody(std::get<1>(region));
+
+  op.replaceAllUsesWith(case_op.getResults());
+  op.erase();
+}
+
 void LowerWhileRegion(TF::WhileRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
@@ -368,6 +387,10 @@ void LegalizeTFControlFlow::runOnOperation() {
     }
     if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
       LowerCase(case_op);
+      return;
+    }
+    if (auto case_region_op = dyn_cast<TF::CaseRegionOp>(op)) {
+      LowerCaseRegion(case_region_op);
       return;
     }
   });
