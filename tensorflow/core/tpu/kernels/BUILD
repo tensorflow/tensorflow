@@ -6,10 +6,7 @@ load(
     "tf_proto_library_cc",
 )
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
-)
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
 
 # Config setting to enable go/libtpu support.
 WITH_TPU_SUPPORT = "//tensorflow:with_tpu_support"
