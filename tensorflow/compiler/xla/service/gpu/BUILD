@@ -1,6 +1,7 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
@@ -26,6 +27,9 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
@@ -66,7 +70,6 @@ cc_library(
     name = "gpu_executable_run_options",
     srcs = ["gpu_executable_run_options.cc"],
     hdrs = ["gpu_executable_run_options.h"],
-    compatible_with = get_compatible_with_cloud(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -440,7 +443,6 @@ tf_cuda_library(
         ["dummy_all_reduce_thunk.cc"],
     ),
     hdrs = ["nccl_all_reduce_thunk.h"],
-    compatible_with = [],
     deps = [
         ":buffer_allocations",
         ":hlo_execution_profiler",
@@ -477,7 +479,6 @@ cc_library(
     hdrs = [
         "gpu_debug_info_manager.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1383,7 +1384,6 @@ cc_library(
 cc_library(
     name = "xfeed_queue",
     hdrs = ["xfeed_queue.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
@@ -1394,7 +1394,6 @@ cc_library(
     name = "infeed_manager",
     srcs = ["infeed_manager.cc"],
     hdrs = ["infeed_manager.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:shape_tree",
@@ -1409,7 +1408,6 @@ cc_library(
     name = "outfeed_manager",
     srcs = ["outfeed_manager.cc"],
     hdrs = ["outfeed_manager.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:literal",
@@ -1965,6 +1963,7 @@ cc_library(
 
 gentbl(
     name = "xla_thunks_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-op-decls", "ir/xla_thunks_ops.h.inc"),
         ("-gen-op-defs", "ir/xla_thunks_ops.cc.inc"),

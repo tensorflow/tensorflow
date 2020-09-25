@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
@@ -19,7 +20,6 @@ tf_cuda_library(
     srcs = [
         "c_api_unified_experimental_mlir.cc",
     ],
-    compatible_with = [],
     copts = tf_copts(),
     deps = [
         "//tensorflow/c:c_api",
