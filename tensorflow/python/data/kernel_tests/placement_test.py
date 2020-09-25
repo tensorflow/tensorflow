@@ -76,6 +76,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(f().numpy(), 45)
 
   def testCondWithPlacement(self):
+    self.skipTest("b/166625126")
     # When the cond op is explicitly placed, there shouldn't be cross-device
     # copies.
     @def_function.function
