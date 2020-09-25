@@ -2525,7 +2525,10 @@ class Conv2DTest(test.TestCase):
   def testOpEdgeCases(self):
     with self.cached_session() as sess:
       # Illegal strides.
-      with self.assertRaisesRegex(errors_impl.UnimplementedError,
+      with_err = errors_impl.UnimplementedError
+      if test_util.IsMklEnabled():
+        with_err = errors_impl.InvalidArgumentError
+      with self.assertRaisesRegex(with_err,
                                   "strides in the batch and depth"):
         input_placeholder = array_ops.placeholder(dtypes.float32)
         input_val = np.ones([10, 10])
@@ -2541,7 +2544,7 @@ class Conv2DTest(test.TestCase):
                 input_placeholder: input_val,
                 filter_placeholder: filter_val
             })
-      with self.assertRaisesRegex(errors_impl.UnimplementedError,
+      with self.assertRaisesRegex(with_err,
                                   "strides in the batch and depth"):
         input_placeholder = array_ops.placeholder(dtypes.float32)
         filter_placeholder = array_ops.placeholder(dtypes.float32)
