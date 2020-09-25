@@ -4258,6 +4258,29 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_DeviceTest) {
             "A->D:2;B->D;B:1->D:1;C->E;D->E:1");
 }
 
+
+TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_idxtest) {
+  InitGraph(
+      "node { name: 'A' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_INT64 } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'B' op: 'InputList'"
+      " attr { key: 'N'                value { i: 2 } }}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'ConcatV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tidx'             value { type: DT_INT64 } }"
+      " attr { key: 'N'                value { i: 2 } }"
+      " input: ['B:0', 'B:1', 'A']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['C', 'D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Const);B(InputList);C(Input);D(ConcatV2);E(Zeta)|"
+            "A->D:2;B->D;B:1->D:1;C->E;D->E:1");
+}
+
 TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNorm_DeviceTest) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
