@@ -929,9 +929,12 @@ class Function(object):
 
     Returns:
       Function callable with the stage at which the compiler IR should be
-      serialized. Allowed values for the `stage` are `hlo` and `optimized_hlo`.
-      When called, the returned function returns string representation of the
-      compiler IR at a given stage.
+      serialized. Allowed values for the `stage` are:
+       - `hlo`: HLO output after conversion from TF
+         (https://www.tensorflow.org/xla/operation_semantics).
+       - `optimized_hlo`: HLO after compiler optimizations.
+       - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
+         Graphviz.
 
       For example, for
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
@@ -64,6 +65,7 @@ namespace data {
 namespace experimental {
 
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kCompression;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kCompressionAuto;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderFunc;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kShardFunc;
 /* static */ constexpr const char* const
@@ -298,7 +300,8 @@ SnapshotDatasetV2Op::Dataset::Dataset(
       input_(input),
       hash_(hash),
       path_(path),
-      compression_(compression),
+      compression_(compression == kCompressionAuto ? io::compression::kSnappy
+                                                   : compression),
       reader_func_(std::move(reader_func)),
       shard_func_(std::move(shard_func)) {
   input_->Ref();

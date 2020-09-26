@@ -37,7 +37,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
+load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_profiler_deps", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load(
@@ -2184,6 +2184,15 @@ py_library(
     visibility = visibility,
 )
 
+# Including this as a dependency will result in tests using
+# :framework_test_lib to NOT use MLIR.
+py_library(
+    name = "is_mlir_bridge_test_false",
+    srcs = ["framework/is_mlir_bridge_test_false.py"],
+    srcs_version = "PY2AND3",
+    visibility = visibility,
+)
+
 # Including this as a dependency will result in tests to use TFRT.
 # TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 py_library(
@@ -2422,7 +2431,7 @@ py_library(
 )
 
 py_test(
-    name = "ops/functional_ops_test",
+    name = "functional_ops_test",
     srcs = ["ops/functional_ops_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
@@ -3502,25 +3511,6 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         ":kernels",
         "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "collective_ops_multi_worker_test",
-    size = "medium",
-    srcs = ["ops/collective_ops_multi_worker_test.py"],
-    python_version = "PY3",
-    tags = ["no_rocm"],
-    tfrt_enabled = False,
-    deps = [
-        ":collective_ops",
-        ":constant_op",
-        ":errors",
-        "//tensorflow/python/distribute:multi_process_runner",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -5146,11 +5136,31 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "image_grad_deterministic_test",
+    size = "large",
+    srcs = ["ops/image_grad_deterministic_test.py"],
+    python_version = "PY3",
+    shard_count = 5,
+    deps = [
+        ":image_grad_test_base",
+    ],
+)
+
+cuda_py_test(
     name = "image_grad_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     tfrt_enabled = True,
+    deps = [
+        ":image_grad_test_base",
+    ],
+)
+
+py_library(
+    name = "image_grad_test_base",
+    srcs = ["ops/image_grad_test_base.py"],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -5264,7 +5274,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
-        "notsan",  # b/168815578
     ],
     deps = [
         ":framework_for_generated_wrappers",
@@ -5320,6 +5329,7 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5589,6 +5599,7 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # b/168621686
+        "no_windows",  # b/169275019
     ],
     tfrt_enabled = True,
     deps = [
@@ -5813,7 +5824,7 @@ tf_proto_library(
     visibility = visibility,
 )
 
-tf_proto_library_py(
+tf_proto_library(
     name = "compare_test_proto",
     testonly = 1,
     srcs = ["util/protobuf/compare_test.proto"],

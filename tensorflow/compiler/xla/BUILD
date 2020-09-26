@@ -3,8 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",
+    "tf_proto_library",
 )
 
 package(
@@ -57,20 +56,14 @@ filegroup(
     visibility = [":friends"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "xla_data_proto",
     srcs = ["xla_data.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_py(
-    name = "xla_data_proto",  # bzl adds a _py suffix
-    srcs = ["xla_data.proto"],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_cc(
+tf_proto_library(
     name = "xla_proto",
     srcs = ["xla.proto"],
     cc_api_version = 2,
@@ -79,16 +72,6 @@ tf_proto_library_cc(
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
     visibility = ["//visibility:public"],
-)
-
-tf_proto_library_py(
-    name = "xla_proto",  # bzl adds a _py suffix
-    srcs = ["xla.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":xla_data_proto_py",
-        "//tensorflow/compiler/xla/service:hlo_proto_py",
-    ],
 )
 
 cc_library(

@@ -170,27 +170,30 @@ class _OptionalImpl(Optional):
   `Optional.__init__()` in the public API.
   """
 
-  def __init__(self, variant_tensor, element_spec):
+  def __init__(self, variant_tensor, element_spec, device=None):
     self._variant_tensor = variant_tensor
     self._element_spec = element_spec
+    self._device = device
 
   def has_value(self, name=None):
-    return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
+    with ops.device(self._device):
+      return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
 
   def get_value(self, name=None):
     # TODO(b/110122868): Consolidate the restructuring logic with similar logic
     # in `Iterator.get_next()` and `StructuredFunctionWrapper`.
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
-      return structure.from_tensor_list(
-          self._element_spec,
-          gen_dataset_ops.optional_get_value(
-              self._variant_tensor,
-              name=scope,
-              output_types=structure.get_flat_tensor_types(
-                  self._element_spec),
-              output_shapes=structure.get_flat_tensor_shapes(
-                  self._element_spec)))
+      with ops.device(self._device):
+        return structure.from_tensor_list(
+            self._element_spec,
+            gen_dataset_ops.optional_get_value(
+                self._variant_tensor,
+                name=scope,
+                output_types=structure.get_flat_tensor_types(
+                    self._element_spec),
+                output_shapes=structure.get_flat_tensor_shapes(
+                    self._element_spec)))
 
   @property
   def element_spec(self):

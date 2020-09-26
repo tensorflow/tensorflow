@@ -52,7 +52,7 @@ from setuptools.dist import Distribution
 _VERSION = '2.4.0'
 
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.7.0',
+    'absl-py >= 0.9.0',
     'astunparse == 1.6.3',
     'flatbuffers >= 1.12',
     'gast == 0.3.3',

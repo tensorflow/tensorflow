@@ -58,6 +58,9 @@
 * A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See [tensorflow/python/ops/numpy_ops/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/numpy_ops/README.md) for details of what operations are supported and what are the differences from NumPy.
 * A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
 
+* `tf.distribute`:
+  * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
+
 ## Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -123,34 +126,39 @@
   * Added `tf.config.experimental.get_memory_usage` to return total memory usage
     of the device.
 * `tf.data`:
+  * tf.data service:
     * Added new `tf.data.experimental.service.register_dataset` and
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
       to register a dataset with the tf.data service, and another process to
       consume data from the dataset.
-    * Added support for tf.data service dispatcher fault tolerance. To enable
-      fault tolerance, configure a `work_dir` when running your dispatcher
-      server and set `dispatcher_fault_tolerance=True`. The dispatcher will
-      store its state to `work_dir`, so that on restart it can continue from its
-      previous state after restart.
-    * Added tf.data service support for sharing dataset graphs via shared
-      filesystem instead of over RPC. This reduces load on the dispatcher,
-      improving performance of distributing datasets. For this to work, the
-      dispatcher's `work_dir` must be accessible from workers. If the worker
-      fails to read from the `work_dir`, it falls back to using RPC for dataset
-      graph transfer.
-    * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
-      the complement of `select_cols`; at most one of these should be specified.
-    * We have implemented an optimization which reorders data-discarding
-      transformations such as `take` and `shard` to happen earlier in the
-      dataset when it is safe to do so. The optimization can be disabled via
-      the `experimental_optimization.reorder_data_discarding_ops` dataset
-      option.
-    * `tf.data.Options` were previously immutable and can now be overriden.
-    * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
-      with a new `output_signature` argument, which allows `from_generator` to
-      produce any type describable by a `tf.TypeSpec`.
-    * `tf.data.experimental.AUTOTUNE` is now available in the core API as
-      `tf.data.AUTOTUNE`.
+    * Added support for dispatcher fault tolerance. To enable fault tolerance,
+      configure a `work_dir` when running your dispatcher server and set
+      `dispatcher_fault_tolerance=True`. The dispatcher will store its state to
+      `work_dir`, so that on restart it can continue from its previous state
+      after restart.
+    * Added support for sharing dataset graphs via shared filesystem instead of
+      over RPC. This reduces load on the dispatcher, improving performance of
+      distributing datasets. For this to work, the dispatcher's `work_dir` must
+      be accessible from workers. If the worker fails to read from the
+      `work_dir`, it falls back to using RPC for dataset graph transfer.
+    * Added support for a new "distributed_epoch" processing mode. This
+      processing mode distributes a dataset across all tf.data workers, instead
+      of having each worker process the full dataset. See
+      [the tf.data service docs](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#understand_processing_mode)
+      to learn more.
+  * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
+    the complement of `select_cols`; at most one of these should be specified.
+  * We have implemented an optimization which reorders data-discarding
+    transformations such as `take` and `shard` to happen earlier in the
+    dataset when it is safe to do so. The optimization can be disabled via
+    the `experimental_optimization.reorder_data_discarding_ops` dataset
+    option.
+  * `tf.data.Options` were previously immutable and can now be overriden.
+  * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
+    with a new `output_signature` argument, which allows `from_generator` to
+    produce any type describable by a `tf.TypeSpec`.
+  * `tf.data.experimental.AUTOTUNE` is now available in the core API as
+    `tf.data.AUTOTUNE`.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op

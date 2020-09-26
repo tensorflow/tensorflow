@@ -4801,8 +4801,14 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """
   target = ops.convert_to_tensor_v2_with_dispatch(target)
   output = ops.convert_to_tensor_v2_with_dispatch(output)
-
   target.shape.assert_is_compatible_with(output.shape)
+
+  # Use logits whenever they are available. `softmax` and `sigmoid`
+  # activations cache logits on the `output` Tensor.
+  if hasattr(output, '_keras_logits'):
+    output = output._keras_logits  # pylint: disable=protected-access
+    from_logits = True
+
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
@@ -4852,9 +4858,14 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   target = ops.convert_to_tensor_v2_with_dispatch(target)
   output = ops.convert_to_tensor_v2_with_dispatch(output)
 
-  if (not from_logits and
-      not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
+  # Use logits whenever they are available. `softmax` and `sigmoid`
+  # activations cache logits on the `output` Tensor.
+  if hasattr(output, '_keras_logits'):
+    output = output._keras_logits  # pylint: disable=protected-access
+    from_logits = True
+  elif (not from_logits and
+        not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+        output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4862,8 +4873,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
     assert len(output.op.inputs) == 1
     output = output.op.inputs[0]
     from_logits = True
-
-  if not from_logits:
+  elif not from_logits:
     epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
     output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
     output = math_ops.log(output)
@@ -4929,6 +4939,12 @@ def binary_crossentropy(target, output, from_logits=False):
   """
   target = ops.convert_to_tensor_v2_with_dispatch(target)
   output = ops.convert_to_tensor_v2_with_dispatch(output)
+
+  # Use logits whenever they are available. `softmax` and `sigmoid`
+  # activations cache logits on the `output` Tensor.
+  if hasattr(output, '_keras_logits'):
+    output = output._keras_logits  # pylint: disable=protected-access
+    from_logits = True
 
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)

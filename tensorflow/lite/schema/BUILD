@@ -72,6 +72,7 @@ flatbuffer_cc_library(
 flatbuffer_cc_library(
     name = "schema_fbs_with_mutable",
     srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--gen-mutable",
         "--gen-object-api",
@@ -83,6 +84,7 @@ flatbuffer_cc_library(
 flatbuffer_cc_library(
     name = "schema_fbs_with_reflection",
     srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--reflect-types",
         "--reflect-names",

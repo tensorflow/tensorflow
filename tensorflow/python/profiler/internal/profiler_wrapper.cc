@@ -18,8 +18,10 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
@@ -114,6 +118,15 @@ class ProfilerSessionWrapper {
   tensorflow::string logdir_;
 };
 
+// Converts a pybind list of XSpace paths to a cpp vector.
+std::vector<std::string> GetXSpacePaths(const py::list& python_paths) {
+  std::vector<std::string> cpp_paths;
+  for (py::handle obj : python_paths) {
+    cpp_paths.push_back(std::string(py::cast<py::str>(obj)));
+  }
+  return cpp_paths;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_pywrap_profiler, m) {
@@ -171,71 +184,121 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     return content;
   });
 
-  m.def("xspace_to_trace_events", [](const py::bytes& serialized_xspace_proto) {
-    tensorflow::string content;
+  m.def("xspace_to_trace_events", [](const py::list& xspace_path_list) {
+    std::vector<std::string> xspace_paths = GetXSpacePaths(xspace_path_list);
+    if (xspace_paths.size() != 1) {
+      LOG(WARNING) << "Trace events tool expects only 1 XSpace path but gets "
+                   << xspace_paths.size();
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
     tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(std::string(serialized_xspace_proto));
+    tensorflow::Status status = tensorflow::ReadBinaryProto(
+        tensorflow::Env::Default(), xspace_paths[0], &xspace);
+    if (!status.ok()) {
+      LOG(WARNING) << "Could not read XSpace for trace events: "
+                   << xspace_paths[0];
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
+    tensorflow::string content;
     tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, &content);
-    return py::bytes(content);
+    return py::make_tuple(py::bytes(content), py::bool_(true));
   });
 
-  m.def("xspace_to_overview_page",
-        [](const py::bytes& serialized_xspace_proto) {
-          tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(std::string(serialized_xspace_proto));
-          tensorflow::profiler::OpStatsOptions options;
-          options.generate_kernel_stats_db = true;
-          options.generate_op_metrics_db = true;
-          options.generate_step_db = true;
-          // TODO(profiler): xspace should tell whether this is sampling mode.
-          tensorflow::profiler::OverviewPage overview_page =
-              tensorflow::profiler::ConvertOpStatsToOverviewPage(
-                  ConvertXSpaceToOpStats(xspace, options));
-          return py::bytes(overview_page.SerializeAsString());
-        });
+  m.def("xspace_to_overview_page", [](const py::list& xspace_path_list) {
+    std::vector<std::string> xspace_paths = GetXSpacePaths(xspace_path_list);
+    tensorflow::profiler::OpStatsOptions options;
+    options.generate_kernel_stats_db = true;
+    options.generate_op_metrics_db = true;
+    options.generate_step_db = true;
+    tensorflow::profiler::OpStats combined_op_stats;
+    tensorflow::Status status = ConvertMultiXSpacesToCombinedOpStats(
+        xspace_paths, options, &combined_op_stats);
+    if (!status.ok()) {
+      LOG(WARNING) << "Could not generate OpStats for overview page. Error: "
+                   << status.error_message();
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
+    // TODO(profiler): xspace should tell whether this is sampling mode.
+    tensorflow::profiler::OverviewPage overview_page =
+        tensorflow::profiler::ConvertOpStatsToOverviewPage(combined_op_stats);
+    return py::make_tuple(py::bytes(overview_page.SerializeAsString()),
+                          py::bool_(true));
+  });
 
-  m.def("xspace_to_input_pipeline",
-        [](const py::bytes& serialized_xspace_proto) {
-          tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(std::string(serialized_xspace_proto));
-          tensorflow::profiler::OpStatsOptions options;
-          options.generate_op_metrics_db = true;
-          options.generate_step_db = true;
-          tensorflow::profiler::InputPipelineAnalysisResult input_pipeline =
-              tensorflow::profiler::ConvertOpStatsToInputPipelineAnalysis(
-                  ConvertXSpaceToOpStats(xspace, options));
-          return py::bytes(input_pipeline.SerializeAsString());
-        });
+  m.def("xspace_to_input_pipeline", [](const py::list& xspace_path_list) {
+    std::vector<std::string> xspace_paths = GetXSpacePaths(xspace_path_list);
+    tensorflow::profiler::OpStatsOptions options;
+    options.generate_op_metrics_db = true;
+    options.generate_step_db = true;
+    tensorflow::profiler::OpStats combined_op_stats;
+    tensorflow::Status status = ConvertMultiXSpacesToCombinedOpStats(
+        xspace_paths, options, &combined_op_stats);
+    if (!status.ok()) {
+      LOG(WARNING) << "Could not generate OpStats for input pipeline. Error: "
+                   << status.error_message();
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
+    tensorflow::profiler::InputPipelineAnalysisResult input_pipeline =
+        tensorflow::profiler::ConvertOpStatsToInputPipelineAnalysis(
+            combined_op_stats);
+    return py::make_tuple(py::bytes(input_pipeline.SerializeAsString()),
+                          py::bool_(true));
+  });
 
-  m.def("xspace_to_tf_stats", [](const py::bytes& serialized_xspace_proto) {
-    tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(std::string(serialized_xspace_proto));
+  m.def("xspace_to_tf_stats", [](const py::list& xspace_path_list) {
+    std::vector<std::string> xspace_paths = GetXSpacePaths(xspace_path_list);
     tensorflow::profiler::OpStatsOptions options;
     options.generate_op_metrics_db = true;
     options.generate_kernel_stats_db = true;
+    tensorflow::profiler::OpStats combined_op_stats;
+    tensorflow::Status status = ConvertMultiXSpacesToCombinedOpStats(
+        xspace_paths, options, &combined_op_stats);
+    if (!status.ok()) {
+      LOG(WARNING) << "Could not generate OpStats for tensorflow stats. Error: "
+                   << status.error_message();
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
     tensorflow::profiler::TfStatsDatabase tf_stats_db =
-        tensorflow::profiler::ConvertOpStatsToTfStats(
-            ConvertXSpaceToOpStats(xspace, options));
-    return py::bytes(tf_stats_db.SerializeAsString());
+        tensorflow::profiler::ConvertOpStatsToTfStats(combined_op_stats);
+    return py::make_tuple(py::bytes(tf_stats_db.SerializeAsString()),
+                          py::bool_(true));
   });
 
-  m.def("xspace_to_kernel_stats", [](const py::bytes& serialized_xspace_proto) {
-    tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(std::string(serialized_xspace_proto));
+  m.def("xspace_to_kernel_stats", [](const py::list& xspace_path_list) {
+    std::vector<std::string> xspace_paths = GetXSpacePaths(xspace_path_list);
     tensorflow::profiler::OpStatsOptions options;
     options.generate_kernel_stats_db = true;
-    tensorflow::profiler::OpStats op_stats =
-        ConvertXSpaceToOpStats(xspace, options);
-    return py::bytes(op_stats.kernel_stats_db().SerializeAsString());
+    tensorflow::profiler::OpStats combined_op_stats;
+    tensorflow::Status status = ConvertMultiXSpacesToCombinedOpStats(
+        xspace_paths, options, &combined_op_stats);
+    if (!status.ok()) {
+      LOG(WARNING) << "Could not generate OpStats for kernel stats. Error: "
+                   << status.error_message();
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
+    return py::make_tuple(
+        py::bytes(combined_op_stats.kernel_stats_db().SerializeAsString()),
+        py::bool_(true));
   });
 
-  m.def("xspace_to_memory_profile",
-        [](const py::bytes& serialized_xspace_proto) {
-          tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(std::string(serialized_xspace_proto));
-          std::string json_output;
-          tensorflow::profiler::ConvertXSpaceToMemoryProfileJson(xspace,
-                                                                 &json_output);
-          return py::bytes(json_output);
-        });
+  m.def("xspace_to_memory_profile", [](const py::list& xspace_path_list) {
+    std::vector<std::string> xspace_paths = GetXSpacePaths(xspace_path_list);
+    if (xspace_paths.size() != 1) {
+      LOG(WARNING) << "Memory profile tool expects only 1 XSpace path but gets "
+                   << xspace_paths.size();
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
+    tensorflow::profiler::XSpace xspace;
+    tensorflow::Status status = tensorflow::ReadBinaryProto(
+        tensorflow::Env::Default(), xspace_paths[0], &xspace);
+    if (!status.ok()) {
+      LOG(WARNING) << "Could not read XSpace for memory profile: "
+                   << xspace_paths[0];
+      return py::make_tuple(py::bytes(), py::bool_(false));
+    }
+    std::string json_output;
+    tensorflow::profiler::ConvertXSpaceToMemoryProfileJson(xspace,
+                                                           &json_output);
+    return py::make_tuple(py::bytes(json_output), py::bool_(true));
+  });
 };

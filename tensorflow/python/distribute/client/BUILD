@@ -29,7 +29,6 @@ py_library(
         "//tensorflow/python/eager:executor",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:remote",
-        "@absl_py//absl/logging",
         "@six_archive//:six",
     ],
 )
@@ -40,13 +39,13 @@ tf_py_test(
     srcs = ["client_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tfrt_enabled = True,
     deps = [
         ":client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -72,7 +71,6 @@ tf_py_test(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "@absl_py//absl/logging",
     ],
 )
 

@@ -890,6 +890,24 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([.2, -.4, .6], x_jvp)
     self.assertAllClose([.1, -.2, .3], x2_jvp)
 
+  def testIndexSlicesGrad(self):
+    x = constant_op.constant([1.])
+
+    with forwardprop.ForwardAccumulator(x, constant_op.constant([3.])) as acc:
+      y = array_ops.gather(x, 0)
+    self.assertAllClose(3., acc.jvp(y))
+
+  def testIndexSlicesGradInFunction(self):
+    @def_function.function
+    def f(a):
+      return array_ops.gather(a, 0)
+
+    x = constant_op.constant([1.])
+
+    with forwardprop.ForwardAccumulator(x, constant_op.constant([3.])) as acc:
+      y = f(x)
+    self.assertAllClose(3., acc.jvp(y))
+
   # NOTE: assert_no_new_pyobjects_executing_eagerly fails flakily on this
   # test... could be something wrong with the test decorator, or some sort of
   # nondeterministic caching.

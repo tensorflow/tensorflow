@@ -216,9 +216,8 @@ REGISTER_CONCAT(qint32);
                               .HostMemory("axis"),       \
                           ConcatV2Op<GPUDevice, type>)
 
+TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU);
 TF_CALL_bfloat16(REGISTER_GPU);
-TF_CALL_uint8(REGISTER_GPU);
-TF_CALL_int64(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 

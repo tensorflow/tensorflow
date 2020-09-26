@@ -181,6 +181,12 @@ cc_library(
     deps = ["//tensorflow/lite/c:common"],
 )
 
+cc_library(
+    name = "builtin_ops",
+    hdrs = ["builtin_ops.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
 exports_files(["builtin_ops.h"])
 
 cc_library(

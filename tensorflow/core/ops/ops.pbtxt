@@ -27072,6 +27072,48 @@ op {
   is_stateful: true
 }
 op {
+  name: "OutfeedDequeueTupleV2"
+  input_arg {
+    name: "device_ordinal"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "outputs"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+  }
+  is_stateful: true
+}
+op {
+  name: "OutfeedDequeueV2"
+  input_arg {
+    name: "device_ordinal"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  is_stateful: true
+}
+op {
   name: "OutfeedEnqueue"
   input_arg {
     name: "input"
@@ -29241,6 +29283,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "buffer_size_min"
+    type: "int"
+    default_value {
+      i: 0
     }
   }
 }

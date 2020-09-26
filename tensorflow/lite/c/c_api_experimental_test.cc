@@ -110,6 +110,55 @@ TEST(CApiExperimentalTest, MissingBuiltin) {
   TfLiteModelDelete(model);
 }
 
+struct OpResolverData {
+  bool called_for_add = false;
+};
+
+const TfLiteRegistration* MyFindBuiltinOp(void* user_data,
+                                          TfLiteBuiltinOperator op,
+                                          int version) {
+  OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
+  if (op == kTfLiteBuiltinAdd && version == 1) {
+    my_data->called_for_add = true;
+    return GetDummyRegistration();
+  }
+  return nullptr;
+}
+
+const TfLiteRegistration* MyFindCustomOp(void*, const char* custom_op,
+                                         int version) {
+  if (absl::string_view(custom_op) == "foo" && version == 1) {
+    return GetDummyRegistration();
+  }
+  return nullptr;
+}
+
+// Test using TfLiteInterpreterCreateWithSelectedOps.
+TEST(CApiExperimentalTest, SetOpResolver) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolver(options, MyFindBuiltinOp,
+                                        MyFindCustomOp, &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(my_data.called_for_add);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {

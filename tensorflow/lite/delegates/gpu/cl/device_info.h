@@ -95,6 +95,8 @@ enum class MaliGPU {
   G76,
   G57,
   G77,
+  G68,
+  G78,
   UNKNOWN
 };
 

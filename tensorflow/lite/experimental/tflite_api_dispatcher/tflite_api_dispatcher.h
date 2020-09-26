@@ -18,33 +18,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_TFLITE_API_DISPATCHER_TFLITE_API_DISPATCHER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_TFLITE_API_DISPATCHER_TFLITE_API_DISPATCHER_H_
 
-#ifndef TFLITE_EXPERIMENTAL_RUNTIME
-#define TFLITE_EXPERIMENTAL_RUNTIME (0)
-#endif
-
 // Import the relevant interpreter and model files.
-#if TFLITE_EXPERIMENTAL_RUNTIME
-#include "tensorflow/lite/experimental/tf_runtime/lib/model.h"
-#include "tensorflow/lite/experimental/tf_runtime/public/interpreter.h"
-#else
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
-#endif
 
 namespace tflite_api_dispatcher {
 
 // Use the correct interpreter.
-#if TFLITE_EXPERIMENTAL_RUNTIME
-using Interpreter = tflrt::TfLiteInterpreterAPI;
-using InterpreterBuilder = tflrt::TfLiteInterpreterBuilderAPI;
-using TfLiteModel = tflrt::BEFModel;
-using TfLiteVerifier = tflrt::TfLiteVerifier;
-#else
 using tflite::Interpreter;
 using tflite::InterpreterBuilder;
 using TfLiteModel = tflite::FlatBufferModel;
 using TfLiteVerifier = tflite::TfLiteVerifier;
-#endif
 
 }  // namespace tflite_api_dispatcher
 

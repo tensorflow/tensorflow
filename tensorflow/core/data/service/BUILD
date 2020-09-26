@@ -190,6 +190,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:standalone",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:hash_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),

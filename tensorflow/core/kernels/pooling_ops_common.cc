@@ -428,7 +428,7 @@ namespace functor {
       const std::array<int, 2>& padding_left,                           \
       const std::array<int, 2>& padding_right,                          \
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format, \
-      T padding_value);                                                 \
+      const T& padding_value);                                          \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);
@@ -742,7 +742,7 @@ void DnnPoolingGradOp<T>::Compute(
         {{static_cast<int>(-input_pad_top), static_cast<int>(-input_pad_left)}},
         {{static_cast<int>(-input_pad_bottom),
           static_cast<int>(-input_pad_right)}},
-        To32Bit(input_backprop->tensor<T, 4>()), data_format);
+        To32Bit(input_backprop->tensor<T, 4>()), data_format, T{});
   }
 }
 

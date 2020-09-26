@@ -117,9 +117,12 @@ tf_cc_test(
         ":core",
         ":eager_operation",
         ":execute",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:cast_op",
     ],
 )
 
@@ -444,6 +447,7 @@ cc_library(
     copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

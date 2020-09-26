@@ -39,27 +39,25 @@ namespace {
 constexpr int tensor_arena_size = 135 * 1024;
 alignas(16) uint8_t tensor_arena[tensor_arena_size];
 
-MicroBenchmarkRunner<int8_t>* runner;
+static MicroBenchmarkRunner<int8_t> benchmark_runner(g_person_detect_model_data,
+                                                     tensor_arena,
+                                                     tensor_arena_size);
 
 void InitializeBenchmarkRunner() {
-  // NOLINTNEXTLINE
-  static MicroBenchmarkRunner<int8_t> benchmark_runner(
-      g_person_detect_model_data, tensor_arena, tensor_arena_size);
-  runner = &benchmark_runner;
-  runner->SetInput(reinterpret_cast<const int8_t*>(g_person_data));
+  benchmark_runner.SetInput(reinterpret_cast<const int8_t*>(g_person_data));
 }
 
 void PersonDetectionTenIerationsWithPerson() {
-  runner->SetInput(reinterpret_cast<const int8_t*>(g_person_data));
+  benchmark_runner.SetInput(reinterpret_cast<const int8_t*>(g_person_data));
   for (int i = 0; i < 10; i++) {
-    runner->RunSingleIteration();
+    benchmark_runner.RunSingleIteration();
   }
 }
 
 void PersonDetectionTenIerationsWithoutPerson() {
-  runner->SetInput(reinterpret_cast<const int8_t*>(g_no_person_data));
+  benchmark_runner.SetInput(reinterpret_cast<const int8_t*>(g_no_person_data));
   for (int i = 0; i < 10; i++) {
-    runner->RunSingleIteration();
+    benchmark_runner.RunSingleIteration();
   }
 }
 
@@ -68,7 +66,7 @@ void PersonDetectionTenIerationsWithoutPerson() {
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
 TF_LITE_MICRO_BENCHMARK(InitializeBenchmarkRunner());
-TF_LITE_MICRO_BENCHMARK(runner->RunSingleIteration());
+TF_LITE_MICRO_BENCHMARK(benchmark_runner.RunSingleIteration());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithPerson());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithoutPerson());
 

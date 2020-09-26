@@ -8,7 +8,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_tensor_coding_deps",
     "tf_proto_library",
-    "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
@@ -105,7 +104,7 @@ xla_py_proto_library(
     deps = [":tf2xla_proto"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "host_compute_metadata_proto",
     srcs = ["host_compute_metadata.proto"],
     cc_api_version = 2,
@@ -171,7 +170,6 @@ cc_library(
     name = "mlir_tf2xla",
     srcs = ["mlir_tf2xla.cc"],
     hdrs = ["tf2xla.h"],
-    compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
         ":tf2xla_proto_cc",
@@ -881,7 +879,6 @@ cc_library(
     name = "mlir_bridge_pass",
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
-    compatible_with = [],
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",

@@ -137,6 +137,7 @@ tf_py_test(
         "no_oss",  # TODO(b/119349471): Re-enable
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -204,6 +205,7 @@ tf_py_test(
     size = "small",
     srcs = ["saved_model/json_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",

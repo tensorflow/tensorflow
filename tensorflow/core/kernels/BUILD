@@ -509,7 +509,6 @@ tf_cuda_library(
     name = "gpu_utils",
     srcs = if_cuda_or_rocm(["gpu_utils.cc"]),
     hdrs = ["gpu_utils.h"],
-    compatible_with = [],
     deps = [
         ":gpu_util_hdrs",
         "//tensorflow/core:autotuning_proto_cc",
@@ -1485,7 +1484,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cudnn_rnn_kernels",
     srcs = ["cudnn_rnn_ops.cc"],
-    compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
         ":bounds_check_lib",
@@ -7466,7 +7464,7 @@ test_suite(
         ":variable_ops_test",
         "//tensorflow/core/kernels/image:crop_and_resize_op_test",
         "//tensorflow/core/kernels/image:non_max_suppression_op_test",
-        "//tensorflow/core/kernels/image:resize_bilinear_op_test",
+        "//tensorflow/core/kernels/image:resize_ops_test",
     ],
 )
 

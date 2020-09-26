@@ -505,6 +505,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   }
 };
 
+// Custom op version of TRANSPOSE_CONV.
 class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -533,13 +534,11 @@ class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
     attr.stride = status.ok()
                       ? HW(tf_options->stride_height, tf_options->stride_width)
                       : HW(1, 1);
-
     RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
     reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
 
     UpdatePadding(status.ok() ? tf_options->padding : kTfLitePaddingUnknown,
                   graph->FindInputs(node->id)[0]->tensor.shape, &attr);
-
     node->operation.attributes = std::move(attr);
     return absl::OkStatus();
   }
@@ -931,13 +930,11 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
 
     FullyConnectedAttributes attr;
     RETURN_IF_ERROR(GetFullyConnectedAttributes(1, 2, reader, &attr));
+    const int weights_width = attr.weights.shape.i;
 
-    Tensor<HW, DataType::FLOAT32> weights;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &weights));
     auto input = graph->FindInputs(node->id)[0];
     int batch_size = input->tensor.shape.b;
-    if (input->tensor.shape.DimensionsProduct() / batch_size !=
-        weights.shape.w) {
+    if (input->tensor.shape.DimensionsProduct() / batch_size != weights_width) {
       return absl::UnimplementedError(
           "Amount of input data should match weights width");
     }
@@ -949,7 +946,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       Value* reshaped_value = graph->NewValue();
       reshaped_value->tensor.type = DataType::FLOAT32;
       reshaped_value->tensor.shape =
-          BHWC(input->tensor.shape.b, 1, 1, weights.shape.w);
+          BHWC(input->tensor.shape.b, 1, 1, weights_width);
       RETURN_IF_ERROR(graph->SetProducer(reshape->id, reshaped_value->id));
       reshape->operation.type = ToString(OperationType::RESHAPE);
       ReshapeAttributes attr;
@@ -1164,8 +1161,8 @@ class MulOperationParser : public TFLiteOperationParser {
     if (tflite_node->inputs->size != 2) {
       return absl::UnimplementedError("MUL requires two input tensors.");
     }
-    auto input0 = tflite::GetInput(context, tflite_node, 0);
-    auto input1 = tflite::GetInput(context, tflite_node, 1);
+    const TfLiteTensor* input0 = GetInput(context, tflite_node, 0);
+    const TfLiteTensor* input1 = GetInput(context, tflite_node, 1);
     if (input0 == nullptr || input1 == nullptr) {
       return absl::InvalidArgumentError("At least one input tensor is null");
     }
@@ -1383,7 +1380,7 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    const TfLiteTensor* pad_tensor = tflite::GetInput(context, tflite_node, 1);
+    const TfLiteTensor* pad_tensor = GetInput(context, tflite_node, 1);
     if (pad_tensor == nullptr) {
       return absl::InvalidArgumentError("Padding tensor was null");
     }
@@ -1775,6 +1772,15 @@ class SliceOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    if (tflite_node->inputs->size < 3) {
+      return absl::UnimplementedError("SLICE requires 3 inputs.");
+    }
+    const TfLiteTensor* input = GetInput(context, tflite_node, 0);
+    if (input->dims->size != 3 && input->dims->size != 4) {
+      return absl::UnimplementedError(
+          "SLICE supports for 3 or 4 dimensional tensors only.");
+    }
+
     return absl::OkStatus();
   }
 
@@ -1823,6 +1829,7 @@ class SliceOperationParser : public TFLiteOperationParser {
           BHWC(in_shape.b, starts.data[0] + sizes.data[0],
                starts.data[1] + sizes.data[1], starts.data[2] + sizes.data[2]);
     } else {
+      // Error: Must be catched in IsSupported()
       return absl::UnimplementedError(
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
@@ -1952,6 +1959,15 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     const TfLiteStridedSliceParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckOptionsSupport(tf_options));
+
+    if (tflite_node->inputs->size < 4) {
+      return absl::UnimplementedError("STRIDED_SLICE requires 4 inputs.");
+    }
+    const TfLiteTensor* input = GetInput(context, tflite_node, 0);
+    if (input->dims->size != 3 && input->dims->size != 4) {
+      return absl::UnimplementedError(
+          "STRIDED_SLICE supports for 3 or 4 dimensional tensors only.");
+    }
     return absl::OkStatus();
   }
 
@@ -1971,6 +1987,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     bool read_without_batch = tmp.data.size() == 3;
     bool read_with_batch = tmp.data.size() == 4;
     if (!read_without_batch && !read_with_batch) {
+      // Error: Must be catched in IsSupported()
       return absl::UnimplementedError(
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
@@ -2122,12 +2139,13 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   }
 };
 
+// Builtin op version of TRANSPOSE_CONV.
 class TransposeConvOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     const TfLiteTransposeConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -2136,8 +2154,8 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
     return absl::OkStatus();
   }
 
-  // TFLite's TRANSPOSE_CONV expects 3 input (output shape, weights, and input)
-  // and allows configurable padding & stride.
+  // TFLite's TRANSPOSE_CONV expects 3-4 input tensors (output shape, weights,
+  // input, and an optional bias) and allows configurable padding & stride.
   // TODO(impjdi): Translate output_shape to attr.adjacent.
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
@@ -2157,8 +2175,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
                       ? HW(tf_options->stride_height, tf_options->stride_width)
                       : HW(1, 1);
     RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
-
-    // TFLite does not support bias.
+    reader->ReadTensor(3, &attr.bias).IgnoreError();  // bias is optional
 
     UpdatePadding(tf_options->padding,
                   graph->FindInputs(node->id)[0]->tensor.shape, &attr);
