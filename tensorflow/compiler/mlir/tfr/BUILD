@@ -147,6 +147,7 @@ tf_cc_binary(
 glob_lit_tests(
     data = [
         ":test_utilities",
+        "@llvm-project//mlir:run_lit.sh",
     ],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     test_file_exts = ["mlir"],
@@ -160,6 +161,5 @@ filegroup(
         "//tensorflow/compiler/mlir/tfr:tfr-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
-        "@llvm-project//mlir:run_lit.sh",
     ],
 )
