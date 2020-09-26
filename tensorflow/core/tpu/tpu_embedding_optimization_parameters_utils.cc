@@ -51,6 +51,8 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "OnlineYogi";
     case OptimizationAlgorithm::kProximalYogi:
       return "ProximalYogi";
+    case OptimizationAlgorithm::kFrequencyEstimator:
+      return "FrequencyEstimator";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "*** Not set ***";
   }
@@ -85,6 +87,8 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "online Yogi";
     case OptimizationAlgorithm::kProximalYogi:
       return "proximal Yogi";
+    case OptimizationAlgorithm::kFrequencyEstimator:
+      return "frequency estimator";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "unknown (not specified)";
   }
@@ -135,6 +139,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
       return Status::OK();
     case OptimizationAlgorithm::kProximalYogi:
       *count = 2;
+      return Status::OK();
+    case OptimizationAlgorithm::kFrequencyEstimator:
+      *count = 1;
       return Status::OK();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
@@ -262,6 +269,11 @@ Status GetOptimizationAlgorithmStateVariables(
           MakeStandardStateVariableSpecification("m", 0.0));
       break;
     }
+    case OptimizationAlgorithm::kFrequencyEstimator: {
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("last_hit_step", 0));
+      break;
+    }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {
       return errors::InvalidArgument("No optimization algorithm specified");
     }
@@ -300,6 +312,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kProximalAdagrad,
       OptimizationAlgorithm::kOnlineYogi,
       OptimizationAlgorithm::kProximalYogi,
+      OptimizationAlgorithm::kFrequencyEstimator,
   };
 }
 
@@ -353,33 +366,6 @@ Status RetrieveOpShapeFunction::operator()(
                          2, c->UnknownDim())));
   }
   return Status::OK();
-}
-
-Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
-                                       bool* internal) {
-  switch (alg) {
-    case OptimizationAlgorithm::kAdagrad:
-    case OptimizationAlgorithm::kStochasticGradientDescent:
-    case OptimizationAlgorithm::kFtrl:
-    case OptimizationAlgorithm::kAdam:
-    case OptimizationAlgorithm::kMomentum:
-    case OptimizationAlgorithm::kRmsProp:
-    case OptimizationAlgorithm::kCenteredRmsProp:
-    case OptimizationAlgorithm::kMdlAdagradLight:
-    case OptimizationAlgorithm::kAdadelta:
-    case OptimizationAlgorithm::kProximalAdagrad:
-    case OptimizationAlgorithm::kProximalYogi: {
-      *internal = false;
-      return Status::OK();
-    }
-    case OptimizationAlgorithm::kBoundedAdagrad:
-    case OptimizationAlgorithm::kOnlineYogi: {
-      *internal = true;
-      return Status::OK();
-    }
-    case OptimizationAlgorithm::PARAMETERS_NOT_SET:
-      return errors::InvalidArgument("No optimization algorithm specified");
-  }
 }
 
 }  // namespace tpu
