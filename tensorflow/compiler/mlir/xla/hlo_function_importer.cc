@@ -46,13 +46,11 @@ limitations under the License.
 
 using llvm::APInt;
 using llvm::makeArrayRef;
-using mlir::DenseElementsAttr;
 using mlir::DenseIntElementsAttr;
 using mlir::FuncOp;
 using mlir::NamedAttribute;
 using mlir::Operation;
 using mlir::RankedTensorType;
-using mlir::ShapedType;
 using mlir::Type;
 using mlir::Value;
 
