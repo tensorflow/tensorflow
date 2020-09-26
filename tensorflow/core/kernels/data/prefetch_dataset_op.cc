@@ -45,6 +45,7 @@ namespace data {
 /* static */ constexpr const char* const PrefetchDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const PrefetchDatasetOp::kSlackPeriod;
 /* static */ constexpr const char* const PrefetchDatasetOp::kLegacyAutotune;
+/* static */ constexpr const char* const PrefetchDatasetOp::kBufferSizeMin;
 
 // Determines the fraction of slack time by which to delay prefetching of data.
 constexpr double kSleepFactor = 0.2;

@@ -18,7 +18,7 @@ load(
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
+    "tf_proto_library",
 )
 
 package(
@@ -70,7 +70,7 @@ cc_library(
     ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "test_proto",
     srcs = ["test.proto"],
     cc_api_version = 2,

@@ -338,13 +338,9 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    // Derived timelines only generated for device traces.
-    if (IsGpuPlaneName(plane.name())) {
-      DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map,
-                                  &plane, step_info_only);
-    }
-  }
+  std::vector<XPlane*> device_traces =
+      FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);
+  GenerateDerivedTimeLines(group_metadata_map, device_traces, step_info_only);
 }
 
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,

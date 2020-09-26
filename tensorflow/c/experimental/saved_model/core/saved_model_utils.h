@@ -27,10 +27,12 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/asset.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/partially_revived_objects.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -84,14 +86,21 @@ absl::optional<int> FindNodeAtPath(StringPiece path,
 
 // Maps each node in `graphdef` to its corresponding Attribute Map.
 // Callers must ensure that `graphdef` outlives the returned map.
-std::unordered_map<StringPiece, const AttrValueMap*, StringPieceHasher>
-NodeToAttrMap(const tensorflow::GraphDef& graphdef);
+gtl::FlatMap<StringPiece, const AttrValueMap*, StringPieceHasher> NodeToAttrMap(
+    const tensorflow::GraphDef& graphdef);
 
 // Maps the name of each FunctionDef in `library` to its corresponding
 // FunctionDef. Callers must ensure `library` outlives the returned map.
-std::unordered_map<StringPiece, const tensorflow::FunctionDef*,
-                   StringPieceHasher>
+gtl::FlatMap<StringPiece, const tensorflow::FunctionDef*, StringPieceHasher>
 FunctionNameToFunctionDefMap(const FunctionDefLibrary& library);
+
+// Walks through the SavedObjectGraph in metagraph, and restores all nodes
+// (except "UserDefinedObjects") with their corresponding type in
+// "PartiallyRevivedObjects".
+Status PartiallyReviveSavedModelObjects(const MetaGraphDef& metagraph,
+                                        ImmediateExecutionContext* context,
+                                        const std::string& directory,
+                                        PartiallyRevivedObjects* objects);
 
 }  // namespace internal
 }  // namespace tensorflow

@@ -36,6 +36,7 @@ py_library(
 tf_py_test(
     name = "server_lib_test",
     srcs = ["server_lib_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":server_lib",
         "//tensorflow/core:protos_all_py",

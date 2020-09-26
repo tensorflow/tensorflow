@@ -44,6 +44,7 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char* const kCompression = "compression";
+  static constexpr const char* const kCompressionAuto = "AUTO";
   static constexpr const char* const kReaderFunc = "reader_func";
   static constexpr const char* const kShardFunc = "shard_func";
   static constexpr const char* const kReaderFuncOtherArgs =

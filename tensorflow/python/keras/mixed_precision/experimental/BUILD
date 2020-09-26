@@ -93,6 +93,7 @@ cuda_py_test(
     name = "device_compatibility_check_test",
     srcs = ["device_compatibility_check_test.py"],
     srcs_version = "PY2AND3",
+    tfrt_enabled = True,
     deps = [
         ":device_compatibility_check",
         "//tensorflow/python:client_testlib",
@@ -204,6 +205,7 @@ cuda_py_test(
     name = "loss_scale_benchmark",
     size = "medium",
     srcs = ["loss_scale_benchmark.py"],
+    tfrt_enabled = True,
     deps = [
         ":loss_scale_optimizer",
         ":test_util",
@@ -221,6 +223,7 @@ cuda_py_test(
     size = "small",
     srcs = ["mixed_precision_graph_rewrite_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":loss_scale_optimizer",
         ":policy",

@@ -92,6 +92,18 @@ void FlexModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
   CHECK_EQ(interpreter_->SetOutputs(outputs), kTfLiteOk);
 }
 
+void FlexModelTest::SetConstTensor(int tensor_index,
+                                   const std::vector<int>& values,
+                                   TfLiteType type, const char* buffer,
+                                   size_t bytes) {
+  TfLiteQuantizationParams quant;
+  CHECK_EQ(interpreter_->SetTensorParametersReadOnly(tensor_index, type,
+                                                     /*name=*/"",
+                                                     /*dims=*/values, quant,
+                                                     buffer, bytes),
+           kTfLiteOk);
+}
+
 void FlexModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
                                    const std::vector<int>& outputs) {
   ++next_op_index_;
@@ -158,6 +170,10 @@ void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
   } else if (op == kMul) {
     string attributes = type_attribute;
     AddTfOp("FlexMul", "Mul", attributes, inputs, outputs);
+  } else if (op == kRfft) {
+    AddTfOp("FlexRFFT", "RFFT", "", inputs, outputs);
+  } else if (op == kImag) {
+    AddTfOp("FlexImag", "Imag", "", inputs, outputs);
   } else if (op == kNonExistent) {
     AddTfOp("NonExistentOp", "NonExistentOp", "", inputs, outputs);
   } else if (op == kIncompatibleNodeDef) {

@@ -102,7 +102,18 @@ REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Negative);
 
 #define REGISTER_TEST(NAME, T, INPUT)                            \
   TEST_F(EagerOpRewriteTest, NAME##_##T) {                       \
-    std::vector<string> ops = {"BatchMatMul", "MatMul"};         \
+    std::vector<string> ops = {"AvgPool",                        \
+                               "AvgPoolGrad",                    \
+                               "AvgPool3D",                      \
+                               "AvgPool3DGrad",                  \
+                               "BatchMatMul",                    \
+                               "FusedBatchNorm",                 \
+                               "FusedBatchNormV2",               \
+                               "FusedBatchNormV3",               \
+                               "FusedBatchNormGrad",             \
+                               "FusedBatchNormGradV2",           \
+                               "FusedBatchNormGradV3",           \
+                               "MatMul"};                        \
     for (int i = 0; i < ops.size(); ++i) {                       \
       auto orig_op = CreateOp(ops[i]);                           \
       orig_op->MutableAttrs()->Set("T", T);                      \

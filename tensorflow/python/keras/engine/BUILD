@@ -264,6 +264,7 @@ tf_py_test(
     size = "medium",
     srcs = ["data_adapter_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_oss_py38",  # TODO(b/150615192)
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -299,6 +300,7 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         ":engine",
         "//tensorflow/python:client_testlib",
@@ -337,6 +339,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -352,6 +355,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -546,6 +550,7 @@ tf_py_test(
         "no_oss",  # TODO(b/135021748) reenable
         "notsan",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -616,6 +621,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         ":base_layer",
         ":engine",

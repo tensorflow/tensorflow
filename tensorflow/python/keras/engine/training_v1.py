@@ -40,6 +40,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
@@ -322,8 +323,8 @@ class Model(training_lib.Model):
 
     self._set_optimizer(optimizer)
     is_any_keras_optimizer_v1 = any(
-        (isinstance(opt, optimizers.Optimizer)
-         and not isinstance(opt, optimizers.TFOptimizer)
+        (isinstance(opt, optimizer_v1.Optimizer)
+         and not isinstance(opt, optimizer_v1.TFOptimizer)
         ) for opt in nest.flatten(self.optimizer))
 
     if is_any_keras_optimizer_v1 and ops.executing_eagerly_outside_functions():

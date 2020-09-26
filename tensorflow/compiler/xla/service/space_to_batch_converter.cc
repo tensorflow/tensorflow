@@ -371,8 +371,8 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   new_dim_numbers.set_output_feature_dimension(dim_count);
 
   int p = 0;
-  for (auto [k, v] : dim_map) {
-    transpose_dims[p] = v;
+  for (const auto& entry : dim_map) {
+    transpose_dims[p] = entry.second;
     p++;
   }
 

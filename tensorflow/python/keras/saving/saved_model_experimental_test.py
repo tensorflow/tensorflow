@@ -31,6 +31,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.engine import training as model_lib
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.keras.optimizer_v2 import rmsprop
@@ -458,7 +459,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       x = keras.layers.Dense(2)(inputs)
       x = keras.layers.Dense(3)(x)
       clone = keras.models.Model(inputs, x)
-      clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
+      clone.compile(loss='mse', optimizer=optimizer_v1.RMSprop(lr=0.0001))
       clone.train_on_batch(input_arr, target_arr)
 
     keras_saved_model._assert_same_non_optimizer_objects(
@@ -487,7 +488,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       x = keras.layers.Dense(4)(x)
       x = keras.layers.Dense(3)(x)
       clone = keras.models.Model(inputs, x)
-      clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
+      clone.compile(loss='mse', optimizer=optimizer_v1.RMSprop(lr=0.0001))
       clone.train_on_batch(input_arr, target_arr)
 
   def testSaveSequentialModelWithoutInputShapes(self):

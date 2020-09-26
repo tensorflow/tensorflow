@@ -689,6 +689,8 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   );
   let results = (outs HLO_PredTensor);
 
+  let hasFolder = 1;
+
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
     "StringAttr comparison_direction"

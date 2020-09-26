@@ -208,12 +208,19 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         _disable_intra_op_parallelism_test_combinations()))
+      combinations.times(
+          test_base.default_test_combinations(),
+          _disable_intra_op_parallelism_test_combinations(),
+          combinations.combine(apply_autotune=[None, True, False])))
   def testOptimizationDisableIntraOpParallelism(self, dataset_fn,
-                                                expected_output):
+                                                expected_output,
+                                                apply_autotune):
     dataset = dataset_fn()
     dataset = dataset.apply(testing.assert_next(["MaxIntraOpParallelism"]))
+    if apply_autotune is not None:
+      options = dataset_ops.Options()
+      options.experimental_optimization.autotune = apply_autotune
+      dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 

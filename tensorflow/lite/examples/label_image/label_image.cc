@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-#define LOG(x) std::cerr
+#define LOG(severity) (std::cerr << (#severity) << ": ")
 
 namespace tflite {
 namespace label_image {
@@ -79,16 +79,18 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   if (s->gl_backend) {
     auto delegate = CreateGPUDelegate(s);
     if (!delegate) {
-      LOG(INFO) << "GPU acceleration is unsupported on this platform.";
+      LOG(INFO) << "GPU acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("GPU", std::move(delegate));
     }
   }
 
   if (s->accel) {
-    auto delegate = evaluation::CreateNNAPIDelegate();
+    StatefulNnApiDelegate::Options options;
+    options.allow_fp16 = s->allow_fp16;
+    auto delegate = evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
-      LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
+      LOG(INFO) << "NNAPI acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("NNAPI", std::move(delegate));
     }
@@ -100,7 +102,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
         evaluation::CreateHexagonDelegate(libhexagon_path, s->profiling);
 
     if (!delegate) {
-      LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
+      LOG(INFO) << "Hexagon acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("Hexagon", std::move(delegate));
     }
@@ -109,7 +111,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   if (s->xnnpack_delegate) {
     auto delegate = evaluation::CreateXNNPACKDelegate(s->number_of_threads);
     if (!delegate) {
-      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
+      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.\n";
     } else {
       delegates.emplace("XNNPACK", std::move(delegate));
     }
@@ -126,7 +128,7 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
                             size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
-    LOG(FATAL) << "Labels file " << file_name << " not found\n";
+    LOG(ERROR) << "Labels file " << file_name << " not found\n";
     return kTfLiteError;
   }
   result->clear();
@@ -170,7 +172,7 @@ void RunInference(Settings* s) {
   std::unique_ptr<tflite::Interpreter> interpreter;
   model = tflite::FlatBufferModel::BuildFromFile(s->model_name.c_str());
   if (!model) {
-    LOG(FATAL) << "\nFailed to mmap model " << s->model_name << "\n";
+    LOG(ERROR) << "\nFailed to mmap model " << s->model_name << "\n";
     exit(-1);
   }
   s->model = model.get();
@@ -182,11 +184,10 @@ void RunInference(Settings* s) {
 
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
-    LOG(FATAL) << "Failed to construct interpreter\n";
+    LOG(ERROR) << "Failed to construct interpreter\n";
     exit(-1);
   }
 
-  interpreter->UseNNAPI(s->old_accel);
   interpreter->SetAllowFp16PrecisionForFp32(s->allow_fp16);
 
   if (s->verbose) {
@@ -231,14 +232,16 @@ void RunInference(Settings* s) {
   for (const auto& delegate : delegates_) {
     if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
         kTfLiteOk) {
-      LOG(FATAL) << "Failed to apply " << delegate.first << " delegate.";
+      LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.\n";
+      exit(-1);
     } else {
-      LOG(INFO) << "Applied " << delegate.first << " delegate.";
+      LOG(INFO) << "Applied " << delegate.first << " delegate.\n";
     }
   }
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to allocate tensors!";
+    LOG(ERROR) << "Failed to allocate tensors!\n";
+    exit(-1);
   }
 
   if (s->verbose) PrintInterpreterState(interpreter.get());
@@ -268,8 +271,8 @@ void RunInference(Settings* s) {
                       wanted_width, wanted_channels, s);
       break;
     default:
-      LOG(FATAL) << "cannot handle input type "
-                 << interpreter->tensor(input)->type << " yet";
+      LOG(ERROR) << "cannot handle input type "
+                 << interpreter->tensor(input)->type << " yet\n";
       exit(-1);
   }
   auto profiler =
@@ -280,7 +283,8 @@ void RunInference(Settings* s) {
   if (s->loop_count > 1)
     for (int i = 0; i < s->number_of_warmup_runs; i++) {
       if (interpreter->Invoke() != kTfLiteOk) {
-        LOG(FATAL) << "Failed to invoke tflite!\n";
+        LOG(ERROR) << "Failed to invoke tflite!\n";
+        exit(-1);
       }
     }
 
@@ -288,11 +292,12 @@ void RunInference(Settings* s) {
   gettimeofday(&start_time, nullptr);
   for (int i = 0; i < s->loop_count; i++) {
     if (interpreter->Invoke() != kTfLiteOk) {
-      LOG(FATAL) << "Failed to invoke tflite!\n";
+      LOG(ERROR) << "Failed to invoke tflite!\n";
+      exit(-1);
     }
   }
   gettimeofday(&stop_time, nullptr);
-  LOG(INFO) << "invoked \n";
+  LOG(INFO) << "invoked\n";
   LOG(INFO) << "average time: "
             << (get_us(stop_time) - get_us(start_time)) / (s->loop_count * 1000)
             << " ms \n";
@@ -337,8 +342,8 @@ void RunInference(Settings* s) {
                          &top_results, s->input_type);
       break;
     default:
-      LOG(FATAL) << "cannot handle output type "
-                 << interpreter->tensor(output)->type << " yet";
+      LOG(ERROR) << "cannot handle output type "
+                 << interpreter->tensor(output)->type << " yet\n";
       exit(-1);
   }
 
@@ -359,7 +364,6 @@ void display_usage() {
   LOG(INFO)
       << "label_image\n"
       << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-      << "--old_accelerated, -d: [0|1], use old Android NNAPI delegate or not\n"
       << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
       << "--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
@@ -385,7 +389,6 @@ int Main(int argc, char** argv) {
   while (true) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
-        {"old_accelerated", required_argument, nullptr, 'd'},
         {"allow_fp16", required_argument, nullptr, 'f'},
         {"count", required_argument, nullptr, 'c'},
         {"verbose", required_argument, nullptr, 'v'},
@@ -423,10 +426,6 @@ int Main(int argc, char** argv) {
         break;
       case 'c':
         s.loop_count =
-            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
-        break;
-      case 'd':
-        s.old_accel =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'e':

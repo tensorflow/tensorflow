@@ -84,6 +84,10 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line), registered_kernels_map_() {
+  InsertMKLEagerOps({"AvgPool", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"AvgPoolGrad", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"AvgPool3D", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"AvgPool3DGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateGenericMklOp});
@@ -101,6 +105,14 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
                      CreateGenericMklOp});
   InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropInput", RewriteConv2D,
                      CreateGenericMklOp});
+  InsertMKLEagerOps({"FusedBatchNorm", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"FusedBatchNormGrad", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"FusedBatchNormGradV2", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"FusedBatchNormGradV3", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"FusedBatchNormV2", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"FusedBatchNormV3", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
 };
 

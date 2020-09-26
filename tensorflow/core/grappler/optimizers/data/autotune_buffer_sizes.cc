@@ -48,6 +48,11 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
                                                     GraphDef* output,
                                                     OptimizationStats* stats) {
   *output = item.graph;
+  if (!autotune_) {
+    VLOG(1) << "The optimization autotune_buffer_sizes is not applied if "
+               "autotune is off.";
+    return Status::OK();
+  }
   MutableGraphView graph(output);
 
   absl::flat_hash_set<string> already_prefetched;

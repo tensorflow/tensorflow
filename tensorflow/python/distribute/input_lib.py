@@ -274,7 +274,7 @@ class DistributedDatasetInterface(collections_abc.Iterable,
 
   There are two APIs to create a `tf.distribute.DistributedDataset` object:
   `tf.distribute.Strategy.experimental_distribute_dataset(dataset)`and
-  `tf.distribute.Strategy.experimental_distribute_datasets_from_function(dataset_fn)`.
+  `tf.distribute.Strategy.distribute_datasets_from_function(dataset_fn)`.
   *When to use which?* When you have a `tf.data.Dataset` instance, and the
   regular batch splitting (i.e. re-batch the input `tf.data.Dataset` instance
   with a new batch size that is equal to the global batch size divided by the

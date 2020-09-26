@@ -278,7 +278,7 @@ TEST(GroupEventsTest, EagerOpTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
   const XEvent& eager_cpu_tf_op = host_plane->lines(0).events(3);
   EXPECT_EQ(eager_cpu_tf_op.stats_size(), 1);
@@ -330,7 +330,7 @@ TEST(GroupEventsTest, FunctionOpTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
   const XEvent& cpu_tf_op = host_plane->lines(1).events(2);
   EXPECT_EQ(cpu_tf_op.stats_size(), 2);
@@ -366,7 +366,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
                {{StatType::kConsumerType, kContextType},
                 {StatType::kConsumerId, kContextId}});
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
@@ -407,7 +407,7 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
                {{StatType::kConsumerType, kContextType},
                 {StatType::kConsumerId, kConsumerId}});
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
@@ -452,7 +452,7 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
                {{StatType::kConsumerType, kContextType},
                 {StatType::kConsumerId, kConsumerId}});
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
@@ -492,7 +492,7 @@ TEST(GroupEventsTest, AsyncEventTest) {
                {{StatType::kIsAsync, kIsAsync}});
   CreateXEvent(&plane, &line, kChild, 20, 80);
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
         EXPECT_EQ(line.NumEvents(), 3);
@@ -545,7 +545,7 @@ TEST(GroupEventsTest, WorkerTest) {
   CreateXEvent(&plane, &line, HostEventType::kFunctionRun,
                kSecondFunctionRunStartTime, kFunctionRunDuration);
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
         EXPECT_EQ(line.NumEvents(), 6);

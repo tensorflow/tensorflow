@@ -28,6 +28,19 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+Status OptimizeWithAutotuneBufferSizes(const GrapplerItem &item,
+                                       GraphDef *output, bool autotune) {
+  AutotuneBufferSizes optimizer;
+  RewriterConfig_CustomGraphOptimizer config;
+  if (autotune) {
+    (*config.mutable_parameter_map())["autotune"].set_s("true");
+  } else {
+    (*config.mutable_parameter_map())["autotune"].set_s("false");
+  }
+  TF_RETURN_IF_ERROR(optimizer.Init(&config));
+  return optimizer.Optimize(nullptr, item, output);
+}
+
 class SimpleInject : public ::testing::TestWithParam<string> {};
 
 TEST_P(SimpleInject, AutotuneBufferSizesTest) {
@@ -86,9 +99,8 @@ TEST_P(SimpleInject, AutotuneBufferSizesTest) {
         });
   }
 
-  AutotuneBufferSizes optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  TF_ASSERT_OK(OptimizeWithAutotuneBufferSizes(item, &output, true));
 
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp("PrefetchDataset", output));
   int index = graph_utils::FindGraphNodeWithOp("PrefetchDataset", output);
@@ -106,6 +118,36 @@ TEST_P(SimpleInject, AutotuneBufferSizesTest) {
 INSTANTIATE_TEST_SUITE_P(Test, SimpleInject,
                          ::testing::Values("map", "interleave",
                                            "map_and_batch"));
+
+class AutotuneSetting : public ::testing::TestWithParam<bool> {};
+
+TEST_P(AutotuneSetting, AutotuneBufferSizesTest) {
+  const bool autotune = GetParam();
+
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("num_parallel_calls", "Const", {},
+            {{"value", 1}, {"dtype", DT_INT32}}),
+       graph_tests_utils::MakeParallelMapNode("map", "range",
+                                              "num_parallel_calls", "XTimesTwo",
+                                              /*sloppy=*/false)},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+      });
+
+  GraphDef output;
+  TF_ASSERT_OK(OptimizeWithAutotuneBufferSizes(item, &output, autotune));
+  EXPECT_EQ(graph_utils::ContainsNodeWithOp("PrefetchDataset", output),
+            autotune);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, AutotuneSetting, ::testing::Values(false, true));
 
 class MultipleNodes : public ::testing::TestWithParam<std::tuple<bool, int64>> {
 };
@@ -166,9 +208,8 @@ TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
 
   EXPECT_EQ(item.graph.node_size(), 9);
 
-  AutotuneBufferSizes optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  TF_ASSERT_OK(OptimizeWithAutotuneBufferSizes(item, &output, true));
   EXPECT_EQ(output.node_size(), 11);
 
   std::vector<int> prefetch_indices =

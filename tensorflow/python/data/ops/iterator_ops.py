@@ -435,13 +435,15 @@ class Iterator(trackable.Trackable):
       return structure.from_tensor_list(self._element_spec, flat_ret)
 
   def get_next_as_optional(self):
+    device = self._iterator_resource.device
     # pylint: disable=protected-access
-    return optional_ops._OptionalImpl(
-        gen_dataset_ops.iterator_get_next_as_optional(
-            self._iterator_resource,
-            output_types=structure.get_flat_tensor_types(self.element_spec),
-            output_shapes=structure.get_flat_tensor_shapes(
-                self.element_spec)), self.element_spec)
+    with ops.device(device):
+      return optional_ops._OptionalImpl(
+          gen_dataset_ops.iterator_get_next_as_optional(
+              self._iterator_resource,
+              output_types=structure.get_flat_tensor_types(self.element_spec),
+              output_shapes=structure.get_flat_tensor_shapes(
+                  self.element_spec)), self.element_spec, device)
 
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.
@@ -719,7 +721,7 @@ class OwnedIterator(IteratorBase):
         self._element_spec)
     self._flat_output_shapes = structure.get_flat_tensor_shapes(
         self._element_spec)
-    with ops.colocate_with(ds_variant):
+    with ops.device(ds_variant.device):
       self._iterator_resource, self._deleter = (
           gen_dataset_ops.anonymous_iterator_v2(
               output_types=self._flat_output_types,
@@ -828,12 +830,13 @@ class OwnedIterator(IteratorBase):
 
   def get_next_as_optional(self):
     # pylint: disable=protected-access
-    return optional_ops._OptionalImpl(
-        gen_dataset_ops.iterator_get_next_as_optional(
-            self._iterator_resource,
-            output_types=structure.get_flat_tensor_types(self.element_spec),
-            output_shapes=structure.get_flat_tensor_shapes(
-                self.element_spec)), self.element_spec)
+    with ops.device(self._device):
+      return optional_ops._OptionalImpl(
+          gen_dataset_ops.iterator_get_next_as_optional(
+              self._iterator_resource,
+              output_types=structure.get_flat_tensor_types(self.element_spec),
+              output_shapes=structure.get_flat_tensor_shapes(
+                  self.element_spec)), self.element_spec, self._device)
 
   def _gather_saveables_for_checkpoint(self):
 
@@ -949,10 +952,4 @@ def get_next_as_optional(iterator):
     A `tf.experimental.Optional` object which either contains the next element
     of the iterator (if it exists) or no value.
   """
-  # pylint: disable=protected-access
-  return optional_ops._OptionalImpl(
-      gen_dataset_ops.iterator_get_next_as_optional(
-          iterator._iterator_resource,
-          output_types=structure.get_flat_tensor_types(iterator.element_spec),
-          output_shapes=structure.get_flat_tensor_shapes(
-              iterator.element_spec)), iterator.element_spec)
+  return iterator.get_next_as_optional()
