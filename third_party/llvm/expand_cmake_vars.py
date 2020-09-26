@@ -25,6 +25,7 @@ import sys
 _CMAKE_DEFINE_REGEX = re.compile(r"\s*#cmakedefine\s+([A-Za-z_0-9]*)(\s.*)?$")
 _CMAKE_DEFINE01_REGEX = re.compile(r"\s*#cmakedefine01\s+([A-Za-z_0-9]*)")
 _CMAKE_VAR_REGEX = re.compile(r"\${([A-Za-z_0-9]*)}")
+_CMAKE_ATVAR_REGEX = re.compile(r"\@([A-Za-z_0-9]*)@")
 
 
 def _parse_args(argv):
@@ -50,7 +51,7 @@ def _expand_variables(input_str, cmake_vars):
     if match.group(1) in cmake_vars:
       return cmake_vars[match.group(1)]
     return ""
-  return _CMAKE_VAR_REGEX.sub(replace, input_str)
+  return _CMAKE_ATVAR_REGEX.sub(replace,_CMAKE_VAR_REGEX.sub(replace, input_str))
 
 
 def _expand_cmakedefines(line, cmake_vars):

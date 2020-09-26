@@ -7,7 +7,7 @@ TODO(chandlerc): Currently this expresses include-based dependencies as
 correctly understood by the build system.
 """
 
-def _dict_add(*dictionaries):
+def dict_add(*dictionaries):
     """Returns a new `dict` that has all the entries of the given dictionaries.
 
     If the same key is present in more than one of the input dictionaries, the
@@ -305,7 +305,7 @@ win32_cmake_vars = {
 # than hardcoding x86_64.
 llvm_all_cmake_vars = select({
     "@org_tensorflow//tensorflow:macos": cmake_var_string(
-        _dict_add(
+        dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-apple-darwin"),
             posix_cmake_vars,
@@ -313,7 +313,7 @@ llvm_all_cmake_vars = select({
         ),
     ),
     "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
-        _dict_add(
+        dict_add(
             cmake_vars,
             llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu"),
             posix_cmake_vars,
@@ -321,21 +321,21 @@ llvm_all_cmake_vars = select({
         ),
     ),
     "@org_tensorflow//tensorflow:windows": cmake_var_string(
-        _dict_add(
+        dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-pc-win32"),
             win32_cmake_vars,
         ),
     ),
     "@org_tensorflow//tensorflow:freebsd": cmake_var_string(
-        _dict_add(
+        dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-unknown-freebsd"),
             posix_cmake_vars,
         ),
     ),
     "@org_tensorflow//tensorflow:linux_s390x": cmake_var_string(
-        _dict_add(
+        dict_add(
             cmake_vars,
             llvm_target_cmake_vars("SystemZ", "systemz-unknown-linux_gnu"),
             posix_cmake_vars,
@@ -343,7 +343,7 @@ llvm_all_cmake_vars = select({
         ),
     ),
     "//conditions:default": cmake_var_string(
-        _dict_add(
+        dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-unknown-linux_gnu"),
             posix_cmake_vars,

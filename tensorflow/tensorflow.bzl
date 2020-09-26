@@ -331,8 +331,7 @@ def tf_copts(
         if_tpu(["-DLIBTFTPU"]) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
-        if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
-        if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
+        if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16","-DINTEL_MKL_DNN_ONLY"]) +
         if_mkldnn_threadpool(["-DENABLE_MKLDNN_THREADPOOL"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_ngraph(["-DINTEL_NGRAPH=1"]) +
