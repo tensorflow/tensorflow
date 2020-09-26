@@ -528,6 +528,10 @@ class MultiProcessRunnerTest(test.TestCase):
       mpr.join(timeout=None)
 
 
+_global_pool = multi_process_runner.MultiProcessPoolRunner(
+    multi_worker_test_base.create_cluster_spec(num_workers=2))
+
+
 class MultiProcessPoolRunnerTest(test.TestCase):
 
   def test_same_process_across_runs(self):
@@ -575,6 +579,18 @@ class MultiProcessPoolRunnerTest(test.TestCase):
         cluster_spec, initializer=lambda: proc_func_that_sets_global(1))
     result = runner.run(proc_func_that_sets_global, args=(2,))
     self.assertAllEqual(result, [1, 1])
+
+  def test_global_pool(self):
+    _global_pool.run(proc_func_that_does_nothing)
+
+  def test_nested_pool(self):
+
+    def proc_func():
+      # This runs in sub processes, so they are each using their own
+      # MultiProcessPoolRunner.
+      _global_pool.run(proc_func_that_does_nothing)
+
+    _global_pool.run(proc_func)
 
 
 if __name__ == '__main__':
