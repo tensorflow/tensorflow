@@ -1,7 +1,6 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = [
@@ -362,19 +361,6 @@ py_binary(
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-    ],
-)
-
-pybind_extension(
-    name = "_pywrap_tensorflow_lite_sanitizers",
-    srcs = [
-        "sanitizers_pybind11.cc",
-    ],
-    link_in_framework = True,
-    module_name = "_pywrap_tensorflow_lite_sanitizers",
-    deps = [
-        "//tensorflow/python:pybind11_lib",
-        "@pybind11",
     ],
 )
 
