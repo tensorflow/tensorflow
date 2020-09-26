@@ -68,11 +68,6 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Downgrade the THUNK to ROCm3.3 as per Peng's recommendation
-# See the following page for details on why :
-# http://confluence.amd.com/display/~pensun/ROCm3.5+multi-GPU+workloads+Seg+faults+on+older+kernel+driver
-RUN cd /root && wget https://www.dropbox.com/s/6kbhm2l1yf589j4/rocm3.3-thunk.sh && bash rocm3.3-thunk.sh
-
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
