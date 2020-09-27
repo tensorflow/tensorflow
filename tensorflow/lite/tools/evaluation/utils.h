@@ -25,11 +25,12 @@ limitations under the License.
 #define TFLITE_SUPPORTS_GPU_DELEGATE 1
 #endif
 
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+
 #if TFLITE_SUPPORTS_GPU_DELEGATE
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #endif

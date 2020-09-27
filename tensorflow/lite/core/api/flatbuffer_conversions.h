@@ -205,6 +205,11 @@ TfLiteStatus ParseRelu6(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseReshape(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseResizeBilinear(const Operator* op,
+                                 ErrorReporter* error_reporter,
+                                 BuiltinDataAllocator* allocator,
+                                 void** builtin_data);
+
 TfLiteStatus ParseResizeNearestNeighbor(const Operator* op,
                                         ErrorReporter* error_reporter,
                                         BuiltinDataAllocator* allocator,

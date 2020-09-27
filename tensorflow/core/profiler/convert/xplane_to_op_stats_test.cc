@@ -64,7 +64,7 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
       absl::StrCat(kComputeCapMinor));
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   OpStats op_stats = ConvertXSpaceToOpStats(space, options);
@@ -81,7 +81,7 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
   XPlaneBuilder device_plane2(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/1));
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
   const RunEnvironment& run_env = op_stats.run_environment();
 
@@ -111,7 +111,7 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
                {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
@@ -151,7 +151,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
@@ -200,7 +200,7 @@ void BuildAndStoreXSpaceForTest(Env* test_env, const std::string& test_dir,
                {{StatType::kStepId, kStepId}});
   // Create a TensorFlow op that runs for 70 ps.
   CreateXEvent(&host_plane_builder, &executor_thread, "aaa:bbb", 30, 70);
-  GroupTfEvents(&xspace, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&xspace);
 
   TF_CHECK_OK(
       WriteBinaryProto(test_env, io::JoinPath(test_dir, xspace_name), xspace))

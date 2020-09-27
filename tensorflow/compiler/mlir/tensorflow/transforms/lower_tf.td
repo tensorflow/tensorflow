@@ -241,7 +241,17 @@ def LowerTanhGradOp :
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
                           (TF_SquareOp $y)))>;
 
+
 //===----------------------------------------------------------------------===//
+// LowerFakeQuantWithMinMaxArgs op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerFakeQuantWithMinMaxArgs :
+  Pat<(TF_FakeQuantWithMinMaxArgsOp TF_FloatTensor: $input,
+       $min, $max, $bits, $narrow_range),
+      (TF_FakeQuantWithMinMaxVarsOp $input,
+         (TF_ConstOp $min), (TF_ConstOp $max), $bits, $narrow_range)>;
+
 // ZerosLike op patterns.
 //===----------------------------------------------------------------------===//
 

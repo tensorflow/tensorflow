@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-#define LOG(x) std::cerr
+#define LOG(severity) (std::cerr << (#severity) << ": ")
 
 namespace tflite {
 namespace label_image {
@@ -86,7 +86,9 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   }
 
   if (s->accel) {
-    auto delegate = evaluation::CreateNNAPIDelegate();
+    StatefulNnApiDelegate::Options options;
+    options.allow_fp16 = s->allow_fp16;
+    auto delegate = evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
       LOG(INFO) << "NNAPI acceleration is unsupported on this platform.\n";
     } else {

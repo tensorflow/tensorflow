@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Including this as a dependency will result in tests NOT using MLIR bridge.
 
-"""Imports mnist tutorial libraries used by tutorial examples."""
+This function is defined by default in test_util.py to None. The test_util then
+attempts to import this module. If this file is made available through the BUILD
+rule, then this function is overridden and will instead cause Tensorflow graphs
+to be always NOT be compiled with MLIR bridge.
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.examples.tutorials.mnist import mnist
+
+def is_mlir_bridge_enabled():
+  """Returns false if the MLIR bridge should be not be enabled for tests."""
+  return False

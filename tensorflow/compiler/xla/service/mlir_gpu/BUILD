@@ -2,6 +2,13 @@
 #   MLIR-GPU-specific components in XLA service implementation.
 
 load("//third_party/mlir:tblgen.bzl", "gentbl")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -162,6 +169,7 @@ cc_library(
 
 gentbl(
     name = "passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [("-gen-pass-decls -name XlaMlirGpu", "passes.h.inc")],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",

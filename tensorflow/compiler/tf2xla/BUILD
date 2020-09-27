@@ -170,7 +170,6 @@ cc_library(
     name = "mlir_tf2xla",
     srcs = ["mlir_tf2xla.cc"],
     hdrs = ["tf2xla.h"],
-    compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
         ":tf2xla_proto_cc",
@@ -880,7 +879,6 @@ cc_library(
     name = "mlir_bridge_pass",
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
-    compatible_with = [],
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",

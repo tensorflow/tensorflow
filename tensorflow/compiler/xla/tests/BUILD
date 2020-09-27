@@ -184,7 +184,6 @@ cc_library(
 tf_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
-    compatible_with = [],
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -247,7 +246,6 @@ cc_library(
     testonly = True,
     srcs = ["llvm_irgen_test_base.cc"],
     hdrs = ["llvm_irgen_test_base.h"],
-    compatible_with = [],
     deps = [
         ":codegen_test_base",
         ":filecheck",
@@ -275,7 +273,6 @@ cc_library(
     testonly = True,
     srcs = ["filecheck.cc"],
     hdrs = ["filecheck.h"],
-    compatible_with = [],
     data = [
         "@llvm-project//llvm:FileCheck",
     ],

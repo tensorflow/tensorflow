@@ -1360,8 +1360,14 @@ class TensorTracer(object):
         return math_ops.equal(replica_id, file_index)
 
       flush_op_cases = {}
-      for i in range(num_replicas):
-        flush_op_cases[_eq(i)] = _f(i)
+      flush_op_cases[_eq(0)] = _f(0)
+      for i in range(1, num_replicas):
+        if on_tpu and not self._parameters.collect_summary_per_core:
+          # If this is the case, the cache is already merged for all cores.
+          # Only first core flushes the cache.
+          flush_op_cases[_eq(i)] = control_flow_ops.no_op
+        else:
+          flush_op_cases[_eq(i)] = _f(i)
       # Each replica needs to determine where to write their output.
       # To do this, we check if replica_id is 0, then 1, ..., and then
       # num_replicas - 1 statically; and return the corresponding static file
@@ -1374,7 +1380,14 @@ class TensorTracer(object):
       cache_val = cache
     else:
       cache_val = cache.value()
+
     if on_tpu:
+      # If we do not need to collect traces for all cores, merge and aggregate
+      # per core trace.
+      if not self._parameters.collect_summary_per_core:
+        cache_val = self.merge_caches_on_tpu(cache_val)
+        cache_val = self.aggregate_global_cache(cache_val)[0]
+
       flush_op = tpu.outside_compilation(_flush_fun,
                                          cache_val, self._replica_id)
     else:
@@ -1492,18 +1505,13 @@ class TensorTracer(object):
     Raises:
       RuntimeError: if there is no aggregate function defined for a signature.
     """
-
-    global_cache_shape = local_tpu_cache_tensor.shape.as_list()
-    global_cache_shape[0] = self._tt_config.num_replicas
-
-    # Each replica will insert their local cache into the
-    # replica_id index of the global replica.
-    indices = array_ops.reshape(self._replica_id, [1, 1])
-    global_cache = array_ops.scatter_nd(indices, local_tpu_cache_tensor,
-                                        global_cache_shape)
-    merged_global_cache = tpu_ops.cross_replica_sum(
-        global_cache, [list(range(self._tt_config.num_replicas))])
-    return merged_global_cache
+    x = array_ops.broadcast_to(
+        local_tpu_cache_tensor,
+        shape=[self._tt_config.num_replicas] +
+        local_tpu_cache_tensor.shape.as_list())
+    return tpu_ops.all_to_all(
+        x, concat_dimension=0, split_dimension=0,
+        split_count=self._tt_config.num_replicas)
 
   def aggregate_global_cache(self, global_tt_summary_cache):
     """Merges the given caches on tpu.

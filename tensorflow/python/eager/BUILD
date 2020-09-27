@@ -359,6 +359,7 @@ cuda_py_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":context",
         ":test",

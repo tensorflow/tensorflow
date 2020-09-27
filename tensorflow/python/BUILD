@@ -2184,6 +2184,15 @@ py_library(
     visibility = visibility,
 )
 
+# Including this as a dependency will result in tests using
+# :framework_test_lib to NOT use MLIR.
+py_library(
+    name = "is_mlir_bridge_test_false",
+    srcs = ["framework/is_mlir_bridge_test_false.py"],
+    srcs_version = "PY2AND3",
+    visibility = visibility,
+)
+
 # Including this as a dependency will result in tests to use TFRT.
 # TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 py_library(
@@ -5128,7 +5137,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_deterministic_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/image_grad_deterministic_test.py"],
     python_version = "PY3",
     shard_count = 5,
@@ -5139,7 +5148,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
     shard_count = 5,
@@ -5405,6 +5414,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_rocm",
         "no_windows_gpu",
         "noasan",  # b/159332048
         "nomsan",  # b/148630708

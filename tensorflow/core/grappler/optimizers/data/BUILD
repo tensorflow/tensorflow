@@ -17,6 +17,7 @@ cc_library(
     deps = [
         ":autotune_buffer_sizes",
         ":disable_intra_op_parallelism",
+        ":enable_gradient_descent",
         ":filter_fusion",
         ":filter_with_random_uniform_fusion",
         ":hoist_random_uniform",
@@ -120,6 +121,41 @@ tf_cc_test(
     srcs = ["disable_intra_op_parallelism_test.cc"],
     deps = [
         ":disable_intra_op_parallelism",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "enable_gradient_descent",
+    srcs = ["enable_gradient_descent.cc"],
+    hdrs = ["enable_gradient_descent.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "enable_gradient_descent_test",
+    srcs = ["enable_gradient_descent_test.cc"],
+    deps = [
+        ":enable_gradient_descent",
         ":graph_test_utils",
         ":graph_utils",
         "//tensorflow/core:framework",

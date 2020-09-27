@@ -497,10 +497,17 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# This flag enables experimental MLIR bridge support.
+# This flag forcibly enables experimental MLIR bridge support.
 config_setting(
     name = "enable_mlir_bridge",
     values = {"define": "enable_mlir_bridge=true"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag forcibly disables experimental MLIR bridge support.
+config_setting(
+    name = "disable_mlir_bridge",
+    values = {"define": "enable_mlir_bridge=false"},
     visibility = ["//visibility:public"],
 )
 

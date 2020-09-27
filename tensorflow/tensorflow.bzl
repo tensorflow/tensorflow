@@ -934,7 +934,8 @@ def tf_gen_op_wrapper_py(
         generated_target_name = None,
         op_whitelist = [],
         cc_linkopts = lrt_if_needed(),
-        api_def_srcs = []):
+        api_def_srcs = [],
+        compatible_with = []):
     _ = require_shape_functions  # Unused.
 
     if (hidden or hidden_file) and op_whitelist:
@@ -995,6 +996,7 @@ def tf_gen_op_wrapper_py(
             exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
+            compatible_with = compatible_with,
         )
     else:
         native.genrule(
@@ -1005,6 +1007,7 @@ def tf_gen_op_wrapper_py(
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
+            compatible_with = compatible_with,
         )
 
     # Make a py_library out of the generated python file.
@@ -1022,6 +1025,7 @@ def tf_gen_op_wrapper_py(
         # creators will provide their own tf_custom_op_py_library based target
         # that wraps this one.
         tags = ["avoid_dep"],
+        compatible_with = compatible_with,
     )
 
 # Define a bazel macro that creates cc_test for tensorflow.
@@ -2870,6 +2874,9 @@ def tf_enable_mlir_bridge():
         str(Label("//tensorflow:enable_mlir_bridge")): [
             "//tensorflow/python:is_mlir_bridge_test_true",
         ],
+        str(Label("//tensorflow:disable_mlir_bridge")): [
+            "//tensorflow/python:is_mlir_bridge_test_false",
+        ],
         "//conditions:default": [],
     })
 
@@ -2926,4 +2933,7 @@ def internal_hlo_deps():
     return []
 
 def internal_tfrt_deps():
+    return []
+
+def internal_cuda_deps():
     return []

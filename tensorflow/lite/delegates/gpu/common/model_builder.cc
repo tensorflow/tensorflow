@@ -505,6 +505,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   }
 };
 
+// Custom op version of TRANSPOSE_CONV.
 class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -533,13 +534,11 @@ class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
     attr.stride = status.ok()
                       ? HW(tf_options->stride_height, tf_options->stride_width)
                       : HW(1, 1);
-
     RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
     reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
 
     UpdatePadding(status.ok() ? tf_options->padding : kTfLitePaddingUnknown,
                   graph->FindInputs(node->id)[0]->tensor.shape, &attr);
-
     node->operation.attributes = std::move(attr);
     return absl::OkStatus();
   }
@@ -2140,12 +2139,13 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   }
 };
 
+// Builtin op version of TRANSPOSE_CONV.
 class TransposeConvOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     const TfLiteTransposeConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -2154,8 +2154,8 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
     return absl::OkStatus();
   }
 
-  // TFLite's TRANSPOSE_CONV expects 3 input (output shape, weights, and input)
-  // and allows configurable padding & stride.
+  // TFLite's TRANSPOSE_CONV expects 3-4 input tensors (output shape, weights,
+  // input, and an optional bias) and allows configurable padding & stride.
   // TODO(impjdi): Translate output_shape to attr.adjacent.
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
@@ -2175,8 +2175,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
                       ? HW(tf_options->stride_height, tf_options->stride_width)
                       : HW(1, 1);
     RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
-
-    // TFLite does not support bias.
+    reader->ReadTensor(3, &attr.bias).IgnoreError();  // bias is optional
 
     UpdatePadding(tf_options->padding,
                   graph->FindInputs(node->id)[0]->tensor.shape, &attr);

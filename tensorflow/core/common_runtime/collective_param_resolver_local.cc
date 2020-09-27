@@ -38,10 +38,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-void CollectiveParamResolverLocal::InstanceRec::WaitForOutMu(mutex_lock& lock) {
-  while (!out_mu_available) out_cv.wait(lock);
-}
-
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     DeviceResolverInterface* dev_resolver, const string& task_name)
@@ -497,8 +493,7 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 }
 
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
-    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
-    const StatusCallback& done) TF_NO_THREAD_SAFETY_ANALYSIS {
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
   std::vector<DeviceAttributes> attributes;
   ir->shared.instance = cp->instance;
   {
@@ -532,34 +527,7 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
   // GetDeviceAttributesAsync will use those fields to launch RPCs.
   CompleteTaskIsLocal(task_name_, &ir->shared);
 
-  // TODO(b/151232436): clean up the following code since we no longer need to
-  // execute it in a callback.
-
-  // Because the callback may execute in a different thread, we release
-  // ir->out_mu here.  Before releasing, we mark it as unavailable for other
-  // threads.
-  ir->out_mu_available = false;
-  const auto device_names = ir->shared.instance.device_names;
-  const auto task_names = ir->shared.instance.task_names;
-  ir->out_mu.unlock();
-  auto complete_init = [this, gr, cp, ir, attributes, done](const Status& s)
-                           TF_EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
-                             // Then we recover the lock in the callback thread
-                             // that will hold it through the rest of the call
-                             // chain.  Signal the cv now, any waiting threads
-                             // will wake only when out_mu is released later.
-                             ir->out_mu.lock();
-                             DCHECK(!ir->out_mu_available);
-                             ir->out_mu_available = true;
-                             ir->out_cv.notify_all();
-                             if (s.ok()) {
-                               CompleteDefaultRanking(gr, cp, ir, attributes);
-                               done(Status::OK());
-                             } else {
-                               done(s);
-                             }
-                           };
-  complete_init(Status::OK());
+  CompleteDefaultRanking(gr, cp, ir, attributes);
 }
 
 // NOTE(ayushd): The DeviceLocality objects in attributes will have LocalLinks
@@ -597,46 +565,27 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(
   }
 }
 
-void CollectiveParamResolverLocal::CallbackWithStatus(
-    const InstanceRecCallback& done, InstanceRec* irec) {
-  Status s;
-  {
-    mutex_lock l(irec->out_mu);
-    irec->WaitForOutMu(l);
-    s = irec->status;
-  }
-  done(s, irec);
-}
-
-void CollectiveParamResolverLocal::FindInstanceRec(
-    const GroupRec* gr, CollectiveParams* cp, const InstanceRecCallback& done) {
+CollectiveParamResolverLocal::InstanceRec*
+CollectiveParamResolverLocal::GetOrCreateInstanceRec(const GroupRec* gr,
+                                                     CollectiveParams* cp) {
   InstanceRec* irec = nullptr;
-  bool exit_outside_locks = false;
   {
-    bool found_instance = false;
     mutex_lock l(instance_mu_);
     auto group_it = instance_table_.find(gr->group.group_key);
     if (group_it != instance_table_.end()) {
       auto instance_it = group_it->second.find(cp->instance.instance_key);
       if (instance_it != group_it->second.end()) {
         irec = instance_it->second.get();
-        {
-          mutex_lock l(irec->in_mu);
-          if (irec->is_init) {
-            exit_outside_locks = true;
-          } else {
-            irec->init_waiters.push_back([this, done](InstanceRec* irec) {
-              CallbackWithStatus(done, irec);
-            });
-            return;
-          }
-        }
-        found_instance = true;
       }
     }
-    if (!found_instance) {
+    if (irec == nullptr) {
       // Create new InstanceRec.
       irec = new InstanceRec;
+      {
+        mutex_lock il(irec->mu);
+        irec->known.resize(cp->group.group_size, false);
+      }
+      InitInstanceSharedParams(gr, cp, irec);
       instance_table_[gr->group.group_key][cp->instance.instance_key].reset(
           irec);
     }
@@ -647,65 +596,10 @@ void CollectiveParamResolverLocal::FindInstanceRec(
     status = status_;
   }
   if (!status.ok()) {
-    mutex_lock il(irec->out_mu);
-    irec->WaitForOutMu(il);
+    mutex_lock l(irec->mu);
     irec->status = status;
   }
-  if (exit_outside_locks) {
-    CallbackWithStatus(done, irec);
-    return;
-  }
-
-  CallInitInstanceSharedParams(gr, cp, irec, done);
-}
-
-void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
-    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
-    const InstanceRecCallback& done) TF_NO_THREAD_SAFETY_ANALYSIS {
-  // This function serves merely to make a function call that should
-  // be thread/mutex safe but violates the simple model applied by
-  // static analysis, so we turn off analysis only within this
-  // function body.
-  //
-  // A lock on ir->out_mu must be held* throughout the _bodies_ of the
-  // chain of function calls initiated here, each of which calls
-  // another as its last action, but it will be dropped within the
-  // callback defined below, which means that the lock can be dropped
-  // before all the function stack frames pop. The static analysis will
-  // not allow that.
-  //
-  // *the lock is dropped just before calling GetDeviceAttributesAsync, because
-  // there is no guarantee that the thread that executes the callback is the
-  // same as the one that locked ir->out_mu.  To prevent other threads from
-  // grabbing ir->out_mu, we mark ir->out_mu_available as false.  Hence, in
-  // principle, the lock is held throughout.
-  ir->out_mu.lock();
-  DCHECK(ir->out_mu_available);
-  ir->known.resize(cp->group.group_size, false);
-  InitInstanceSharedParams(
-      gr, cp, ir,
-      [this, ir, done](const Status& s) TF_UNLOCK_FUNCTION(ir->out_mu) {
-        DCHECK(ir->out_mu_available);
-        ir->status.Update(s);
-        ir->out_mu.unlock();
-        // Prepare to invoke any waiters that accumulated during
-        // initialization.
-        std::vector<IRConsumer> init_waiters;
-        {
-          mutex_lock tl(instance_mu_);
-          {
-            mutex_lock l(ir->in_mu);
-            ir->is_init = true;
-            if (!ir->init_waiters.empty()) {
-              std::swap(init_waiters, ir->init_waiters);
-            }
-          }
-        }
-        CallbackWithStatus(done, ir);
-        for (auto& f : init_waiters) {
-          f(ir);
-        }
-      });
+  return irec;
 }
 
 void CollectiveParamResolverLocal::CompleteParamsAsync(
@@ -766,29 +660,27 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
   DCHECK_EQ(cp->group.device_type, gr->group.device_type);
   cp->group = gr->group;
 
-  // Get the shared InstanceRec for this instance.
-  FindInstanceRec(gr, cp,
-                  [this, device, gr, cp, is_source, done](const Status& s,
-                                                          InstanceRec* ir) {
-                    if (s.ok()) {
-                      CompleteInstanceFromInitializedIRec(device, gr, cp, ir,
-                                                          is_source, done);
-                    } else {
-                      done(s);
-                    }
-                  });
+  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+  CompleteInstanceFromInitializedIRec(device, gr, cp, ir, is_source, done);
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     const string& device, const GroupRec* gr, CollectiveParams* cp,
     InstanceRec* ir, bool is_source, const StatusCallback& done) {
   auto expected_shape = cp->instance.shape;
+  Status status;
   // Populate the fields common across instance.
   {
-    mutex_lock l(ir->out_mu);
-    ir->WaitForOutMu(l);
-    // custom operator= does a deep copy.
-    cp->instance = ir->shared.instance;
+    mutex_lock l(ir->mu);
+    status = ir->status;
+    if (status.ok()) {
+      // custom operator= does a deep copy.
+      cp->instance = ir->shared.instance;
+    }
+  }
+  if (!status.ok()) {
+    done(status);
+    return;
   }
   if (expected_shape != cp->instance.shape) {
     done(errors::InvalidArgument(
@@ -806,7 +698,7 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
   CompleteTaskIsLocal(task_name_, cp);
 
   CollectiveImplementationInterface* col_impl;
-  Status status = CollectiveRegistry::LookupParamResolverInstance(
+  status = CollectiveRegistry::LookupParamResolverInstance(
       cp->instance.impl_details.collective_name, &col_impl);
   if (!status.ok()) {
     done(status);
@@ -823,8 +715,7 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
                      s = errors::Internal("Expected ir ", ir, " and irec ",
                                           irec, " to be equal");
                    } else {
-                     mutex_lock l(irec->out_mu);
-                     irec->WaitForOutMu(l);
+                     mutex_lock l(irec->mu);
                      s = irec->status;
                      cp->source_rank = irec->source_rank;
                    }
@@ -844,8 +735,7 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
                                                 const IRConsumer& f) {
   std::vector<IRConsumer> ready_waiters;
   do {
-    mutex_lock l(ir->out_mu);
-    ir->WaitForOutMu(l);
+    mutex_lock l(ir->mu);
     if (!ir->status.ok()) {
       break;
     }
@@ -933,8 +823,7 @@ void CollectiveParamResolverLocal::StartAbortLocal(const Status& s) {
   for (InstanceRec* ir : instances) {
     std::vector<IRConsumer> known_waiters;
     {
-      mutex_lock il(ir->out_mu);
-      ir->WaitForOutMu(il);
+      mutex_lock il(ir->mu);
       ir->status = s;
       known_waiters.swap(ir->known_waiters);
     }

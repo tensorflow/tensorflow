@@ -14,6 +14,9 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "internal_hlo_deps")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "internal_cuda_deps")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -1018,7 +1021,6 @@ cc_library(
 
 cc_library(
     name = "cpu_plugin",
-    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -1038,7 +1040,6 @@ config_setting(
 # GPU plugin should be used or not.
 cc_library(
     name = "gpu_plugin",
-    compatible_with = [],
     deps = select(
         {
             ":with_mlir_gpu_support": [
@@ -1053,7 +1054,6 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin_no_mlir",
-    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1065,19 +1065,18 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
-    ]),
+    ]) + internal_cuda_deps(),
 )
 
 cc_library(
     name = "gpu_plugin_mlir",
-    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler_impl",
-    ]),
+    ]) + internal_cuda_deps(),
 )
 
 cc_library(
@@ -1198,7 +1197,6 @@ cc_library(
     name = "llvm_compiler",
     srcs = ["llvm_compiler.cc"],
     hdrs = ["llvm_compiler.h"],
-    compatible_with = [],
     deps = [
         ":compiler",
         "//tensorflow/core:lib_internal",
@@ -4108,7 +4106,6 @@ cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
-    compatible_with = [],
     deps = [
         ":hlo",
         ":hlo_casting_utils",
