@@ -308,7 +308,7 @@ TEST_F(DelegateTest, MultiThreaded) {
 TEST_F(DelegateTest, TF_AcquireFlexDelegate) {
   auto TF_AcquireFlexDelegate =
       reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
-          SharedLibrary::GetLibrarySymbol(nullptr, "TF_AcquireFlexDelegate"));
+          SharedLibrary::GetSymbol("TF_AcquireFlexDelegate"));
   ASSERT_TRUE(TF_AcquireFlexDelegate);
   auto delegate_ptr = TF_AcquireFlexDelegate();
   ASSERT_TRUE(delegate_ptr != nullptr);
