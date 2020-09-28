@@ -1049,6 +1049,9 @@ Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
   const auto* output_shape_attr = node->GetAttr(kAttrOutputShape);
   const auto& shape = output_shape_attr->list().shape(0);
   const int rank = shape.dim_size();
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
   std::string src_format = context->src_format;
   std::string dst_format = context->dst_format;
   // Update the format from 4D to 5D layout if necessary.
@@ -1060,7 +1063,7 @@ Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
     context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
                                         dst_format_3d);
   }
-  if (!ShouldProcess(*context, *node) || (rank != 4 && rank != 5) ||
+  if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     if (allow_5d) {
       context->AssignDeviceAndDataFormats(context->target_device, src_format,
