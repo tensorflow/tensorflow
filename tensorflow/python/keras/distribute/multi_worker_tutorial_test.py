@@ -201,7 +201,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
           fn,
           multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
           args=(model_path, checkpoint_dir),
-          list_stdout=True)
+          return_output=True)
 
     self.assertTrue(
         any([

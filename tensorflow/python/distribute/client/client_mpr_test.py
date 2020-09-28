@@ -112,7 +112,7 @@ class ClientMprTest(test.TestCase):
             has_chief=True, num_workers=3, num_ps=1, has_eval=False),
         args=(functions_scheduled_event, test_finished_event),
         rpc_layer="grpc",
-        list_stdout=True,
+        return_output=True,
         use_dill_for_args=False)
 
     mpr.start()

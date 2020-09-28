@@ -132,7 +132,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr_result = multi_process_runner.run(
         simple_print_func,
         multi_worker_test_base.create_cluster_spec(num_workers=2),
-        list_stdout=True)
+        return_output=True)
     std_stream_results = mpr_result.stdout
     return_value = mpr_result.return_value
     self.assertIn('[worker-0]:    This is something printed.\n',
@@ -152,7 +152,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         fn,
         multi_worker_test_base.create_cluster_spec(num_workers=2),
-        list_stdout=True)
+        return_output=True)
     mpr.start()
     time.sleep(5)
     mpr.terminate('worker', 0)
@@ -178,7 +178,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         fn,
         multi_worker_test_base.create_cluster_spec(num_workers=2),
-        list_stdout=True)
+        return_output=True)
     mpr.start()
     time.sleep(3)
     mpr.terminate('worker', 0)
@@ -211,7 +211,7 @@ class MultiProcessRunnerTest(test.TestCase):
         fn,
         multi_worker_test_base.create_cluster_spec(
             has_chief=True, num_workers=2, num_ps=2, has_eval=True),
-        list_stdout=True)
+        return_output=True)
     mpr._dependence_on_chief = False
 
     mpr.start()
@@ -259,7 +259,7 @@ class MultiProcessRunnerTest(test.TestCase):
         fn,
         multi_worker_test_base.create_cluster_spec(
             has_chief=True, num_workers=1),
-        list_stdout=True)
+        return_output=True)
 
     def eval_func():
       time.sleep(1)
@@ -280,7 +280,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         fn_that_errors,
         multi_worker_test_base.create_cluster_spec(num_workers=2),
-        list_stdout=True)
+        return_output=True)
     mpr.start()
     time.sleep(60)
     mpr.terminate_all()
@@ -308,7 +308,7 @@ class MultiProcessRunnerTest(test.TestCase):
       mpr = multi_process_runner.MultiProcessRunner(
           fn,
           multi_worker_test_base.create_cluster_spec(num_workers=1),
-          list_stdout=True)
+          return_output=True)
       mpr.start()
       mpr.join(timeout=60)
     mpr.terminate_all()
@@ -327,7 +327,7 @@ class MultiProcessRunnerTest(test.TestCase):
       multi_process_runner.run(
           fn_expected_to_seg_fault,
           multi_worker_test_base.create_cluster_spec(num_workers=1),
-          list_stdout=True)
+          return_output=True)
     self.assertIn('Subprocess worker-0 exited with exit code',
                   str(cm.exception))
     list_to_assert = cm.exception.mpr_result.stdout
@@ -346,7 +346,7 @@ class MultiProcessRunnerTest(test.TestCase):
           fn_expected_to_seg_fault,
           multi_worker_test_base.create_cluster_spec(
               has_chief=True, num_workers=1),
-          list_stdout=True)
+          return_output=True)
     self.assertIn('Subprocess chief-0 exited with exit code',
                   str(cm.exception))
     list_to_assert = cm.exception.mpr_result.stdout
@@ -414,7 +414,7 @@ class MultiProcessRunnerTest(test.TestCase):
         fn,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
         auto_restart=True,
-        list_stdout=True)
+        return_output=True)
     mpr.start()
     with self.assertRaises(ValueError) as cm:
       mpr.join(timeout=10)

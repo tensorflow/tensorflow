@@ -129,7 +129,7 @@ class MultiProcessRunner(object):
                max_run_time=None,
                grpc_fail_fast=None,
                stream_output=True,
-               list_stdout=False,
+               return_output=False,
                use_dill_for_args=True,
                daemon=False,
                dependence_on_chief=True,
@@ -162,7 +162,7 @@ class MultiProcessRunner(object):
         variable is not explicitly set.
       stream_output: True if the output/error from the subprocesses should be
         streamed to be printed in parent process' log. Defaults to True.
-      list_stdout: True if the output/error from the subprocesses should be
+      return_output: True if the output/error from the subprocesses should be
         collected to be attached to the resulting `MultiProcessRunnerResult`
         returned from `MultiProcessRunner.join()`. If True, the list of stdout
         can be retrieved via `MultiProcessRunnerResult.stdout` attribute.
@@ -204,8 +204,8 @@ class MultiProcessRunner(object):
     self._max_run_time = max_run_time
     self._grpc_fail_fast = grpc_fail_fast
     self._stream_output = stream_output
-    # TODO(rchao): Revisit list_stdout argument to consider other solution.
-    self._list_stdout = list_stdout
+    # TODO(rchao): Revisit return_output argument to consider other solution.
+    self._return_output = return_output
     self._dependence_on_chief = dependence_on_chief
     self._use_dill_for_args = use_dill_for_args
     self._daemon = daemon
@@ -255,7 +255,7 @@ class MultiProcessRunner(object):
           # TODO(rchao): Use a lock here to ensure the printed lines are not
           # broken.
           print(formatted_line, end='', flush=True)
-        if self._list_stdout:
+        if self._return_output:
           self._streaming_queue.put(formatted_line)
 
   def _start_subprocess_and_reading_thread(self,
@@ -375,7 +375,7 @@ class MultiProcessRunner(object):
     mpr.join()
     ```
 
-    Note that if `list_stdout=True`, the logs/stdout by task
+    Note that if `return_output=True`, the logs/stdout by task
     run by the main process is not available in result.stdout.
 
     Args:
@@ -571,7 +571,7 @@ class MultiProcessRunner(object):
     Returns:
       A MultiProcessRunnerResult object, which has two attributes,
       `return_value` and `stdout`. `return_value` always contains the return
-      values from the subprocesses. If `list_stdout` argument is True at
+      values from the subprocesses. If `return_output` argument is True at
       `__init__`, `stdout` is available that contains a list of all messages
       from subprocesses' stdout and stderr.
 
@@ -1114,7 +1114,7 @@ def run(fn,
         max_run_time=None,
         grpc_fail_fast=None,
         stream_output=True,
-        list_stdout=False,
+        return_output=False,
         timeout=_DEFAULT_TIMEOUT_SEC,
         args=None,
         kwargs=None):  # pylint: disable=g-doc-args
@@ -1134,7 +1134,7 @@ def run(fn,
       max_run_time=max_run_time,
       grpc_fail_fast=grpc_fail_fast,
       stream_output=stream_output,
-      list_stdout=list_stdout,
+      return_output=return_output,
       args=args,
       kwargs=kwargs)
   runner.start()
