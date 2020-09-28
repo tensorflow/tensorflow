@@ -151,12 +151,14 @@ def _gen_kernel_image_hdr_impl_rocm(ctx):
         outputs = [ctx.outputs.out],
         inputs = [fatbin],
         command = (
-            ("echo 'static const unsigned char %s[] = {' > %s && " +
-             "hexdump -v -e \'/1 \"0x%%02x, \"\' %s | cat >> %s && " +
+            ("hex=`hexdump -v -e \'/1 \"0x%%02x, \"\' %s` && " +
+             "len=`echo $hex | wc -c` && " +
+             "echo 'static const unsigned char %s['$len' + 1] = {' > %s && " +
+             "echo $hex | cat >> %s && " +
              "echo '};' >> %s") % (
+                fatbin.path,
                 ctx.attr.symbol,
                 ctx.outputs.out.path,
-                fatbin.path,
                 ctx.outputs.out.path,
                 ctx.outputs.out.path,
             )
