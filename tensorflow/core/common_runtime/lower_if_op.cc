@@ -166,13 +166,15 @@ Status CondBuilder::AddInput(Node* src, int src_output) {
   // the same device as the input node (if set) and sets the colocation _class
   // attr. It also ignores the existing colocation constraints on the input node
   // using colocate_with(ignore_existing=True).
-  TF_RETURN_IF_ERROR(NodeBuilder(NewName(src->name()), "Switch",
-                                 graph_->op_registry(), &debug_info)
-                         .Input(src, src_output)
-                         .Input(pred_)
-                         .Device(src->requested_device())
-                         .Attr("_class", {src->name()})
-                         .Finalize(graph_, &input));
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(NewName(src->name()), "Switch", graph_->op_registry(),
+                  &debug_info)
+          .Input(src, src_output)
+          .Input(pred_)
+          .Device(src->requested_device())
+          .Attr(kColocationAttrName,
+                {absl::StrCat(kColocationGroupPrefix, src->name())})
+          .Finalize(graph_, &input));
   then_call_builder_.Input(input, kThenBranch);
   else_call_builder_.Input(input, kElseBranch);
   return Status::OK();

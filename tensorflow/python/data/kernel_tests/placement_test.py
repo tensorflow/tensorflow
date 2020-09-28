@@ -81,7 +81,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCondWithPlacement(self):
-    self.skipTest("b/166625126")
     # When the cond op is explicitly placed, there shouldn't be cross-device
     # copies.
     @def_function.function
@@ -98,7 +97,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
         nxt = next(iterator)
       return nxt
 
-    self.assertEqual(f(), 1)
+    self.assertEqual(f().numpy(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCondWithColocation(self):
