@@ -116,7 +116,6 @@ filegroup(
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
-        "mnist_gradients_testutil.h",
         "tape.h",
         "tfe_cancellation_manager_internal.h",
         "tfe_context_internal.h",
