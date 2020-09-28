@@ -5141,6 +5141,7 @@ cuda_py_test(
     srcs = ["ops/image_grad_deterministic_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tfrt_enabled = True,
     deps = [
         ":image_grad_test_base",
     ],
@@ -5236,6 +5237,7 @@ cuda_py_test(
     srcs = ["ops/math_grad_test.py"],
     python_version = "PY3",
     tags = ["no_windows_gpu"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5275,6 +5277,7 @@ cuda_py_test(
     tags = [
         "no_windows_gpu",
     ],
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",

@@ -1357,6 +1357,7 @@ tf_py_test(
     name = "template_test",
     size = "small",
     srcs = ["template_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -1935,6 +1936,7 @@ tf_py_test(
     name = "control_flow_util_v2_test",
     size = "small",
     srcs = ["control_flow_util_v2_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
