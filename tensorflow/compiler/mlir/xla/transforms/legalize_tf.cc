@@ -4722,10 +4722,8 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
                             &rewriter);
 
     // Get the sorted input and index tuple element.
-    auto tuple_first_element =
-        rewriter.create<mhlo::GetTupleElementOp>(op.getLoc(), sort_op, 0);
-    auto tuple_second_element =
-        rewriter.create<mhlo::GetTupleElementOp>(op.getLoc(), sort_op, 1);
+    auto tuple_first_element = sort_op.getResult(0);
+    auto tuple_second_element = sort_op.getResult(1);
 
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
     auto end_indices = llvm::to_vector<4>(input_type.getShape());
@@ -5011,8 +5009,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         BuildSortComparisonBody({i32_type, input_type.getElementType()},
                                 /*direction=*/"LT", &sorted.comparator(),
                                 &rewriter);
-        current = rewriter.create<GetTupleElementOp>(op.getLoc(),
-                                                     sorted.getResult(), 1);
+        current = sorted.getResult(1);
       }
       rewriter.replaceOp(op, current);
       return success();

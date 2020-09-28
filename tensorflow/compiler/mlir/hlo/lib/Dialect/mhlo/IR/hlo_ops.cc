@@ -2261,10 +2261,7 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
   state.addAttribute("dimension", builder.getI64IntegerAttr(dimension));
   state.addAttribute("is_stable", builder.getBoolAttr(dimension));
 
-  SmallVector<Type, 2> element_types;
-  element_types.reserve(operands.size());
-  for (Value operand : operands) element_types.push_back(operand.getType());
-  state.addTypes(builder.getTupleType(element_types));
+  for (Value operand : operands) state.addTypes(operand.getType());
 
   state.addRegion();
 }

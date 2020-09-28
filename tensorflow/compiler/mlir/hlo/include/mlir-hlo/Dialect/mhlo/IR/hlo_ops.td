@@ -1198,14 +1198,14 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]>,
   let results = (outs HLO_Tensor);
 }
 
-def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects]>, BASE_HLO_SortOp {
+def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects, SameOperandsAndResultShape]>, BASE_HLO_SortOp {
   let arguments = (ins
     Variadic<HLO_Tensor>:$operands,
     DefaultValuedAttr<I64Attr, "-1">:$dimension,
     DefaultValuedAttr<BoolAttr, "false">:$is_stable
   );
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs Variadic<HLO_Tensor>);
 
   let regions = (region SizedRegion<1>:$comparator);
 
