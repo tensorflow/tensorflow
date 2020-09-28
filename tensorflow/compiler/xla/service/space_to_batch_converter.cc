@@ -103,10 +103,6 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     return Status::OK();
   }
 
-  if (convolution->window().dimensions(kChosenSpatialDim).window_reversal()) {
-    return Status::OK();
-  }
-
   int64 activations_batch_dim = dim_numbers.input_batch_dimension();
 
   const int64 old_batch_size =
