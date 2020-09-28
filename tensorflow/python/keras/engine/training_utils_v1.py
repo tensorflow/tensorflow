@@ -186,9 +186,6 @@ class ConcatAggregator(Aggregator):
     else:
       self.results = np.concatenate(self.results, axis=0)
 
-    if isinstance(self.results, ops.EagerTensor):
-      self.results = self.results._numpy()  # pylint: disable=protected-access
-
 
 _COPY_THREADS = 4
 _COPY_POOL = None
@@ -250,8 +247,6 @@ class SliceAggregator(Aggregator):
     # initialization is effectively instantaneous.
     shape = (self.num_samples,) + batch_element.shape[1:]
     dtype = batch_element.dtype
-    if isinstance(batch_element, ops.EagerTensor):
-      dtype = dtype.as_numpy_dtype
 
     self.results = np.empty(shape=shape, dtype=dtype)
 
@@ -328,7 +323,7 @@ class OutputsAggregator(Aggregator):
         # or a composite tensor's Value object. In either case, we can't
         # allocate an array to hold the object - we'll handle it later.
         self.results.append(ConcatAggregator(self.batch_size))
-      elif isinstance(batch_element, (np.ndarray, ops.EagerTensor)):
+      elif isinstance(batch_element, np.ndarray):
         self.results.append(
             (ConcatAggregator(self.batch_size) if self.use_steps else
              SliceAggregator(self.num_samples, self.batch_size)))
@@ -866,12 +861,13 @@ def standardize_weights(y,
                        'you should pass a 2D sample_weight array.')
   else:
     if sample_weight is not None and len(sample_weight.shape) != 1:
-      raise ValueError('Found a sample_weight array with shape {}. In order to '
-                       'use timestep-wise sample weights, you should specify '
-                       'sample_weight_mode="temporal" in compile(); found "{}" '
-                       'instead. If you just mean to use sample-wise weights, '
-                       'make sure your sample_weight array is 1D.'
-                       .format(sample_weight.shape, sample_weight_mode))
+      raise ValueError(
+          'Found a sample_weight array with shape {}. In order to '
+          'use timestep-wise sample weights, you should specify '
+          'sample_weight_mode="temporal" in compile(); founssd "{}" '
+          'instead. If you just mean to use sample-wise weights, '
+          'make sure your sample_weight array is 1D.'.format(
+              sample_weight.shape, sample_weight_mode))
 
   if sample_weight is not None:
     if len(sample_weight.shape) > len(y.shape):
@@ -1628,7 +1624,7 @@ class ModelInputs(object):
         if v.ndim == 1:
           v = np.expand_dims(v, 1)
 
-      if isinstance(v, (np.ndarray, ops.EagerTensor)):
+      if isinstance(v, np.ndarray):
         # We fix the placeholder shape except the batch size.
         # This is suboptimal, but it is the best we can do with the info
         # we have. The user should call `model._set_inputs(placeholders)`
@@ -1673,25 +1669,6 @@ class ModelInputs(object):
 
 def generic_output_names(outputs_list):
   return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
-
-
-def convert_eager_tensors_to_numpy(structure):
-  """Convert every EagerTensor in `structure` to NumPy.
-
-  Arguments:
-    structure: An arbitrary structure of elements to be converted to NumPy
-      arrays.
-
-  Returns:
-    An identical structure with EagerTensors converted to NumPy arrays.
-  """
-
-  def _convert(element):
-    if isinstance(element, ops.EagerTensor):
-      return element.numpy()
-    return element
-
-  return nest.map_structure(_convert, structure)
 
 
 def should_run_validation(validation_freq, epoch):

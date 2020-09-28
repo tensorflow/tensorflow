@@ -153,10 +153,6 @@ def model_iteration(model,
   use_steps = is_dataset or steps_per_epoch is not None
   do_validation = val_inputs is not None
 
-  # Convert Eager Tensors to NumPy arrays to support batching/shuffling.
-  inputs, targets, sample_weights = training_utils_v1. \
-      convert_eager_tensors_to_numpy((inputs, targets, sample_weights))
-
   # Prepare input data.
   inputs = input_iterator or inputs
   if validation_in_fit and prepared_feed_values_from_dataset:

@@ -3141,7 +3141,7 @@ class _TrainingTarget(object):
 
 
 def _is_symbolic_tensor(x):
-  return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
+  return tensor_util.is_tensor(x)
 
 
 def _convert_scipy_sparse_tensor(value, expected_input):
