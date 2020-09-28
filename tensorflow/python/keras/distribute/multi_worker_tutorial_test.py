@@ -109,7 +109,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
 
     num_workers = 4
 
-    def proc_func(model_path, checkpoint_dir):
+    def fn(model_path, checkpoint_dir):
       global_batch_size = per_worker_batch_size * num_workers
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       with strategy.scope():
@@ -198,7 +198,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'ckpt')
     with test_util.skip_if_error(self, errors_impl.UnavailableError):
       mpr_result = multi_process_runner.run(
-          proc_func,
+          fn,
           multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
           args=(model_path, checkpoint_dir),
           list_stdout=True)
