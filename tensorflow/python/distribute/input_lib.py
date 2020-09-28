@@ -879,22 +879,6 @@ class DistributedIterator(DistributedIteratorBase,
                                    self._enable_get_next_as_optional)
 
 
-
-class DistributedIteratorForReplicas(DistributedIterator):
-  """Input Iterator for a distributed dataset on replicas."""
-  def __init__(self, input_workers, iterators, strategy):
-    super(DistributedIteratorForReplicas, self).__init__(input_workers, iterators, strategy)
-
-  def get_next(self, name=None):
-    """Returns the next input from the iterator for all replicas."""
-    if not self._enable_get_next_as_optional:
-      replicas = []
-      for iterator in self._iterators:
-        next_out = iterator.get_next_as_list_static_shapes(iterator._worker)
-        replicas.append(next_out)
-      return distribute_utils.regroup(replicas)
-
-
 class _IterableInput(DistributedDatasetInterface):
   """Base class for iterable inputs for distribution strategies."""
 
@@ -1179,29 +1163,23 @@ class DistributedDatasetsFromFunction(_IterableInput):
 
   def __iter__(self):
     if (ops.executing_eagerly_outside_functions() or
-        ops.get_default_graph().building_function):
+            ops.get_default_graph().building_function):
       # This is an optional flag that can be used to turn off using
       # OwnedMultiDeviceIterators and instead use the legacy
       # MultiDeviceIterators as a stop gap solution that will allow us to roll
       # out this change.
       enable_legacy_iterators = getattr(self._strategy,
                                         "_enable_legacy_iterators", False)
-      if self._replication_mode == InputReplicationMode.PER_WORKER:
-        iterators = _create_iterators_per_worker(self._datasets,
-                                                 self._input_workers,
-                                                 enable_legacy_iterators)
-        if enable_legacy_iterators:
-          iterator = DistributedIteratorV1(self._input_workers, iterators,
-                                           self._strategy)
-        else:
-          iterator = DistributedIterator(self._input_workers, iterators,
+      iterators = _create_iterators_per_worker(self._datasets,
+                                               self._input_workers,
+                                               enable_legacy_iterators,
+                                               self._replication_mode)
+      if enable_legacy_iterators:
+        iterator = DistributedIteratorV1(self._input_workers, iterators,
                                          self._strategy)
       else:
-        iterators = _create_iterators_per_replica(
-            self._input_contexts, self._input_workers, self._dataset_fn)
-        iterator = DistributedIteratorForReplicas(
-            self._input_workers, iterators, self._strategy)
-
+        iterator = DistributedIterator(self._input_workers, iterators,
+                                       self._strategy)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
       # When async eager is enabled, sometimes the iterator may not finish
@@ -1436,7 +1414,8 @@ def _recover_shape_fn(data, value_structure):
 class _SingleWorkerDatasetIteratorBase(object):
   """Iterator for a single `tf.data.Dataset`."""
 
-  def __init__(self, dataset, worker, devices):
+  def __init__(self, dataset, worker, devices,
+               replication_mode=InputReplicationMode.PER_WORKER):
     """Create iterator for the `dataset` to fetch data to worker's `devices` .
 
     A `MultiDeviceIterator`  or `OwnedMultiDeviceIterator` is used to prefetch
@@ -1451,6 +1430,7 @@ class _SingleWorkerDatasetIteratorBase(object):
     self._worker = worker
     self._devices = devices
     self._element_spec = dataset.element_spec
+    self._replication_mode = replication_mode
     self._make_iterator()
 
   def _make_iterator(self):
@@ -1578,7 +1558,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
   """Iterator for a DistributedDataset instance."""
 
   def __init__(self, dataset=None, worker=None, devices=None, components=None,
-               element_spec=None):
+               element_spec=None, replication_mode=InputReplicationMode.PER_WORKER):
     """Create iterator for the `dataset` to fetch data to worker's `devices` .
 
     `OwnedMultiDeviceIterator` is used to prefetch input to the devices on the
@@ -1608,21 +1588,28 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
       self._worker = worker
       self._devices = devices
       self._iterator = components[0]
+      self._replication_mode = replication_mode
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
-      super(_SingleWorkerOwnedDatasetIterator, self).__init__(dataset, worker,
-                                                              devices)
+      super(_SingleWorkerOwnedDatasetIterator, self).__init__(dataset=dataset,
+                                                              worker=worker,
+                                                              devices=devices,
+                                                              replication_mode=replication_mode)
 
   def _make_iterator(self):
     """Make appropriate iterator on the dataset."""
     if not self._worker:
       raise ValueError("Worked device must be specified when creating an "
                        "owned iterator.")
-    host_device = device_util.get_host_for_device(self._worker)
-    with ops.device(self._worker):
-      self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-          self._dataset, self._devices, source_device=host_device)
+    if self._replication_mode == InputReplicationMode.PER_WORKER:
+      host_device = device_util.get_host_for_device(self._worker)
+      with ops.device(self._worker):
+        self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
+            self._dataset, self._devices, source_device=host_device)
+    else:
+        with ops.device(self._devices[0]):
+          self._iterator = iter(self._dataset)
 
   @property
   def element_spec(self):
@@ -1767,20 +1754,21 @@ def _create_iterators_per_replica(input_contexts, input_workers,
   return iterators
 
 
-
 def _create_iterators_per_worker(worker_datasets, input_workers,
-                                 enable_legacy_iterators):
+                                 enable_legacy_iterators,
+                                 replication_mode=InputReplicationMode.PER_WORKER):
   """Create a multidevice iterator on each of the workers."""
   assert isinstance(input_workers, InputWorkers)
-
   assert len(worker_datasets) == len(input_workers.worker_devices)
   iterators = []
   for i, worker in enumerate(input_workers.worker_devices):
     with ops.device(worker):
       worker_devices = input_workers.compute_devices_for_worker(i)
       if tf2.enabled() and not enable_legacy_iterators:
-        iterator = _SingleWorkerOwnedDatasetIterator(worker_datasets[i], worker,
-                                                     worker_devices)
+        iterator = _SingleWorkerOwnedDatasetIterator(dataset=worker_datasets[i],
+                                                     worker=worker,
+                                                     devices=worker_devices,
+                                                     replication_mode=replication_mode)
       else:
         iterator = _SingleWorkerDatasetIterator(worker_datasets[i], worker,
                                                 worker_devices)
