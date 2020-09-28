@@ -6,8 +6,13 @@ ifeq ($(TARGET), zephyr_vexriscv)
 	ZEPHYR_PERSON_DETECTION_SRCS = \
 tensorflow/lite/micro/examples/person_detection/zephyr_riscv/src/assert.cc \
 tensorflow/lite/micro/examples/person_detection/zephyr_riscv/src/image_provider.cc \
+tensorflow/lite/micro/examples/person_detection/zephyr_riscv/JPEGDecoder/JPEGDecoder.h \
+tensorflow/lite/micro/examples/person_detection/zephyr_riscv/JPEGDecoder/JPEGDecoder.cpp \
+tensorflow/lite/micro/examples/person_detection/zephyr_riscv/JPEGDecoder/picojpeg.h \
+tensorflow/lite/micro/examples/person_detection/zephyr_riscv/JPEGDecoder/picojpeg.c \
 tensorflow/lite/micro/examples/person_detection/zephyr_riscv/src/main_functions.cc \
 tensorflow/lite/micro/examples/person_detection/main_functions.h \
+tensorflow/lite/micro/examples/person_detection/image_provider.h \
 tensorflow/lite/micro/examples/person_detection/main.cc \
 tensorflow/lite/micro/examples/person_detection/detection_responder.cc \
 tensorflow/lite/micro/examples/person_detection/detection_responder.h \

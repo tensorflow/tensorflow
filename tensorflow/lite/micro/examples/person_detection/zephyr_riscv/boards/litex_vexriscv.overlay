@@ -25,3 +25,16 @@ limitations under the License.
 	reg = <0x40000000 0x10000000>;
 };
 
+&gpio_out {
+	reg = <0x82005000 0x4>;
+};
+
+&spi0 {
+	reg = <0x82006000 0x34>;
+};
+
+&i2c0 {
+	reg = <0x82006800 0x4 0x82006804 0x4>;
+	label = "i2c0";
+};
+

@@ -92,6 +92,7 @@ void loop() {
     TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
   }
 
+  TF_LITE_REPORT_ERROR(error_reporter, "Running the model...");
   // Run the model on this input and make sure it succeeds.
   if (kTfLiteOk != interpreter->Invoke()) {
     TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed.");
