@@ -1061,8 +1061,7 @@ Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
                                         dst_format_3d);
   }
   if (!ShouldProcess(*context, *node) || (rank != 4 && rank != 5) ||
-      !IsFanoutPortRankN(*node, 0, rank) || !IsAfterDstToSrcTransform(*context,
-                                                                      *node)) {
+      !IsAfterDstToSrcTransform(*context, *node)) {
     if (allow_5d) {
       context->AssignDeviceAndDataFormats(context->target_device, src_format,
                                           dst_format);
