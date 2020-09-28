@@ -3,7 +3,9 @@
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gen_kernel_library",
+    "gen_unranked_kernel_library",
     "if_mlir_generated_gpu_kernels_enabled",
+    "if_mlir_unranked_kernels_enabled",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -30,19 +32,49 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "mlir_use_unranked_kernels",
+    define_values = {"enable_unranked_kernels": "1"},
+)
+
+filegroup(
+    name = "kernel_srcs",
+    srcs = if_mlir_unranked_kernels_enabled(
+        [
+            "unranked_gpu_abs.cc",
+        ],
+        [
+            "cwise_op_gpu_abs.cc",
+            "cwise_op_gpu_base.cc",
+            "cwise_op_gpu_base.h",
+            "cwise_op_gpu_tanh.cc",
+        ],
+    ),
+)
+
+cc_library(
+    name = "kernel_deps",
+    deps = if_mlir_unranked_kernels_enabled(
+        [
+            ":abs_unranked_kernels",
+            "//tensorflow/compiler/mlir/tools/kernel_gen:tf_cuda_runtime_wrappers",
+            "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
+        ],
+        [
+            ":abs_kernels",
+            ":tanh_kernels",
+        ],
+    ),
+)
+
 tf_kernel_library(
     name = "cwise_unary_op",
     # Technically these source files don't need --config=cuda or --config=rocm,
     # but we want to avoid building them if they are not needed.
-    srcs = if_cuda_or_rocm([
-        "cwise_op_gpu_abs.cc",
-        "cwise_op_gpu_base.cc",
-        "cwise_op_gpu_base.h",
-        "cwise_op_gpu_tanh.cc",
-    ]),
+    srcs = if_cuda_or_rocm([":kernel_srcs"]),
+    tags = ["no_rocm"],
     deps = if_cuda_or_rocm([
-        ":abs_kernels",
-        ":tanh_kernels",
+        ":kernel_deps",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -233,6 +265,19 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_unranked_kernel_library(
+    name = "abs_unranked",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
     ],
     unroll_factors = "4",
 )

@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "get_compatible_with_cloud",
     "tf_cc_binary",
 )
 load(
@@ -161,5 +162,17 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "@llvm-project//mlir:mlir_runner_utils",
+    ],
+)
+
+cc_library(
+    name = "tf_cuda_runtime_wrappers",
+    srcs = ["tf_cuda_runtime_wrappers.cpp"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
