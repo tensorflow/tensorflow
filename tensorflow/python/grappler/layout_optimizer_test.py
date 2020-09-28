@@ -193,7 +193,9 @@ def _get_cluster():
 
 def _is_transpose(node):
   return node.endswith('TransposeNHWCToNCHW-LayoutOptimizer') or node.endswith(
-      'TransposeNCHWToNHWC-LayoutOptimizer')
+      'TransposeNCHWToNHWC-LayoutOptimizer') or node.endswith(
+      'TransposeNDHWCToNCDHW-LayoutOptimizer') or node.endswith(
+      'TransposeNCDHWToNDHWC-LayoutOptimizer')
 
 
 def _is_permute(node):
