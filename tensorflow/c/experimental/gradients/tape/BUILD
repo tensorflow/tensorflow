@@ -38,3 +38,29 @@ cc_library(
         "//tensorflow/c/eager:gradients_internal",
     ],
 )
+
+cc_library(
+    name = "tape",
+    hdrs = [
+        "tape_context.h",
+        "tape_operation.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tape_context",
+        ":tape_operation",
+    ],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "tape_context.h",
+        "tape_operation.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)

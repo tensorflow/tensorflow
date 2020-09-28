@@ -568,17 +568,7 @@ selects.config_setting_group(
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = [
-        "//learning/brain/distribute/...",
-        "//learning/brain/swift/x10/...",
-        "//perftools/accelerators/xprof/api/...",
-        "//tensorflow/...",
-        "//tensorflow_estimator/python/estimator/...",
-        "//tensorflow_models/official/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
-        "//third_party/swift/tensorflow_apis/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 package_group(

@@ -476,7 +476,8 @@ int Main(int argc, char** argv) {
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'x':
-        s.xnnpack_delegate = optarg;
+        s.xnnpack_delegate =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'h':
       case '?':

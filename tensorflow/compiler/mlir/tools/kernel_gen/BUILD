@@ -1,8 +1,8 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "get_compatible_with_cloud",
     "tf_cc_binary",
-    "tf_cc_test",
 )
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
@@ -110,36 +110,6 @@ tf_cc_binary(
     ],
 )
 
-# We can test tf_to_gpu_binary by depending on the kernels that are generated
-# using it. This only tests that the headers containing the hex dump of the
-# generated GPU binaries are built successfully, but this is better than
-# nothing.
-# If this test fails, use the build flag --verbose_failures to see a full
-# command line of the failing build command, then copy the command line and run
-# it for further debugging.
-tf_cc_test(
-    name = "tf_to_gpu_binary_test",
-    srcs = [],
-    # Building the MLIR generated kernels requires hexdump on the ROCM
-    # platform, which might not be available.
-    tags = ["no_rocm"],
-    deps = [
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ] + if_cuda_is_configured([
-        "//tensorflow/core/kernels/mlir_generated:abs_kernels",
-        "//tensorflow/core/kernels/mlir_generated:ceil_kernels",
-        "//tensorflow/core/kernels/mlir_generated:cos_kernels",
-        "//tensorflow/core/kernels/mlir_generated:exp_kernels",
-        "//tensorflow/core/kernels/mlir_generated:floor_kernels",
-        "//tensorflow/core/kernels/mlir_generated:log_kernels",
-        "//tensorflow/core/kernels/mlir_generated:neg_kernels",
-        "//tensorflow/core/kernels/mlir_generated:rsqrt_kernels",
-        "//tensorflow/core/kernels/mlir_generated:sqrt_kernels",
-        "//tensorflow/core/kernels/mlir_generated:tanh_kernels",
-    ]),
-)
-
 tf_cc_binary(
     name = "tf_to_kernel",
     srcs = ["tf_to_kernel.cc"],
@@ -192,5 +162,17 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "@llvm-project//mlir:mlir_runner_utils",
+    ],
+)
+
+cc_library(
+    name = "tf_cuda_runtime_wrappers",
+    srcs = ["tf_cuda_runtime_wrappers.cpp"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )

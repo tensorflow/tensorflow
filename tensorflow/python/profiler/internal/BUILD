@@ -123,11 +123,9 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/convert:op_stats_to_tf_stats",
-        "//tensorflow/core/profiler/convert:xplane_to_op_stats",
+        "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/convert:xplane_to_trace_events",
         "//tensorflow/core/profiler/lib:profiler_session_headers",
-        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/rpc:profiler_server_headers",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
