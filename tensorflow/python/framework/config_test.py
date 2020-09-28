@@ -510,7 +510,7 @@ class DeviceTest(test.TestCase):
                                 'must be a tf.config.PhysicalDevice'):
       config.get_device_details(logical_devices[0])
 
-    phys_dev = context.PhysicalDevice('/physical_device:CPU:100', 'CPU')
+    phys_dev = context.PhysicalDevice('/physical_device:CPU:100', 'CPU', 'CPU')
     with self.assertRaisesRegex(
         ValueError, 'The PhysicalDevice must be one obtained from '
         'calling `tf.config.list_physical_devices`'):

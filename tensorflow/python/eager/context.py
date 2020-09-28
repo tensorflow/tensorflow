@@ -279,7 +279,7 @@ class LogicalDeviceConfiguration(
 
 @tf_export("config.PhysicalDevice")
 class PhysicalDevice(
-    collections.namedtuple("PhysicalDevice", ["name", "device_type"])):
+    collections.namedtuple("PhysicalDevice", ["name", "device_type", "subdevice_type"])):
   """Abstraction for a locally visible physical device.
 
   TensorFlow can utilize various devices such as the CPU or multiple GPUs
@@ -1244,6 +1244,24 @@ class Context(object):
   def invoking_op_callbacks(self, value):
     self._thread_local_data.invoking_op_callbacks = value
 
+  # Parse PhysicalDevice from the device string
+  # if the device string contains subdevice type string, then parse it.
+  # if the device string doesn't contains subdevice type string, subdevice type will
+  # be the same as the device type string.
+  def _parse_physical_devices(self, devs):
+    physical_devices = []
+    for d in devs:
+        if (d.decode().count(":") == 3):
+          name = d.decode().strip(d.decode().split(":")[3]).strip(":")
+          device_type = d.decode().split(":")[1]
+          subdevice_type = d.decode().split(":")[3]
+        else:
+          name = d.decode()
+          device_type = d.decode().split(":")[1]
+          subdevice_type = d.decode().split(":")[1]
+        physical_devices.append(PhysicalDevice(name, device_type, subdevice_type))
+    return physical_devices
+
   def _initialize_physical_devices(self):
     """Get local devices visible to the system."""
     # We lazy initialize self._physical_devices since we do not want to do this
@@ -1253,9 +1271,27 @@ class Context(object):
         return
 
       devs = pywrap_tfe.TF_ListPhysicalDevices()
-      self._physical_devices = [
-          PhysicalDevice(name=d.decode(),
-                         device_type=d.decode().split(":")[1]) for d in devs]
+      self._physical_devices = self._parse_physical_devices(devs)
+      self._physical_device_to_index = {
+          p: i for i, p in enumerate(self._physical_devices)
+      }
+
+      self._visible_device_list = list(self._physical_devices)
+      self._memory_growth_map = {
+          d: None for d in self._physical_devices if d.device_type == "GPU"
+      }
+
+    # Import device settings that may have been passed into the constructor
+    self._import_config()
+
+  def reinitialize_physical_devices(self):
+    """Get local devices visible to the system."""
+    # We lazy initialize self._physical_devices since we do not want to do this
+    # the constructor since the backend may not be initialized yet.
+    with self._device_lock:
+      devs = pywrap_tfe.TF_ListPhysicalDevices()
+      self._physical_devices = self._parse_physical_devices(devs)
+
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }

@@ -33,6 +33,11 @@ KernelDefBuilder& KernelDefBuilder::Device(const char* device_type) {
   return *this;
 }
 
+KernelDefBuilder& KernelDefBuilder::SubDevice(const char* subdevice_type) {
+  kernel_def_->set_subdevice_type(subdevice_type);
+  return *this;
+}
+
 template <>
 KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(
     const char* attr_name, gtl::ArraySlice<int64> allowed) {

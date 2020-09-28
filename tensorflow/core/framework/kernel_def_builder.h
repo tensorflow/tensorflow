@@ -39,6 +39,9 @@ class KernelDefBuilder {
   KernelDefBuilder& Device(const char* device_type);
   //  KernelDefBuilder& Device(DeviceType device_type);
 
+  // Required: specify the subdevice type of device this kernel supports
+  // Returns *this
+  KernelDefBuilder& SubDevice(const char* subdevice_type);
   // Specify that this kernel supports a limited set of values for a
   // particular type or list(type) attr (a further restriction than
   // what the Op allows).

@@ -40,6 +40,7 @@ static mutex* get_device_factory_lock() {
 struct FactoryItem {
   std::unique_ptr<DeviceFactory> factory;
   int priority;
+  string subdevice_type;
 };
 
 std::unordered_map<string, FactoryItem>& device_factories() {
@@ -63,17 +64,34 @@ int32 DeviceFactory::DevicePriority(const string& device_type) {
 }
 
 // static
-void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
-                             int priority) {
+string DeviceFactory::SubDeviceType(const string& device_type) {
+  tf_shared_lock l(*get_device_factory_lock());
+  std::unordered_map<string, FactoryItem>& factories = device_factories();
+  auto iter = factories.find(device_type);
+  if (iter != factories.end()) {
+    return iter->second.subdevice_type;
+  }
+
+  // If subdevice type is not found in the device factories, that means
+  // device is not registed. Unit test will direct create kernel without
+  // device registered. In these cases, device type will be used as
+  // subdevice type (framework:op_kernel_test, c:kernel_test)
+  return device_type;
+}
+
+// static
+void DeviceFactory::Register(const string& device_type,
+                             const string& subdevice_type,
+                             DeviceFactory* factory, int priority) {
   mutex_lock l(*get_device_factory_lock());
   std::unique_ptr<DeviceFactory> factory_ptr(factory);
   std::unordered_map<string, FactoryItem>& factories = device_factories();
   auto iter = factories.find(device_type);
   if (iter == factories.end()) {
-    factories[device_type] = {std::move(factory_ptr), priority};
+    factories[device_type] = {std::move(factory_ptr), priority, subdevice_type};
   } else {
     if (iter->second.priority < priority) {
-      iter->second = {std::move(factory_ptr), priority};
+      iter->second = {std::move(factory_ptr), priority, subdevice_type};
     } else if (iter->second.priority == priority) {
       LOG(FATAL) << "Duplicate registration of device factory for type "
                  << device_type << " with the same priority " << priority;

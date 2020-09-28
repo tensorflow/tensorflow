@@ -27,7 +27,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 struct MyCustomKernel {
   bool created;
@@ -293,6 +293,7 @@ TEST(TestKernel, TestTypeConstraint) {
       }
     }
   }
+  subdevice_type: "FakeDeviceName1"
 }
 )str";
   ASSERT_EQ(expected_str, list.DebugString());
@@ -331,6 +332,7 @@ TEST(TestKernel, TestHostMemory) {
   device_type: "FakeDeviceName1"
   host_memory_arg: "input2"
   host_memory_arg: "output1"
+  subdevice_type: "FakeDeviceName1"
 }
 )str";
   ASSERT_EQ(expected_str, list.DebugString());

@@ -22,7 +22,8 @@ config_setting(
 tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
-    hdrs = ["utils.h"],
+    hdrs = ["utils.h",
+            "//tensorflow/core/common_runtime:device_factory.h",],
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
     ],

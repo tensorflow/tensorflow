@@ -31,6 +31,7 @@ limitations under the License.
 #include "include/libxsmm.h"
 #endif
 
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -151,10 +152,14 @@ DeviceProperties GetLocalGPUInfo(PlatformGpuId platform_gpu_id) {
 DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
   DeviceProperties unknown;
   unknown.set_type("UNKNOWN");
+  // for default devices, we assume subdevice type is the same as device type
+  // for dynamic registered devices, we assume subdevice type is different
+  // with device type.
+  const string& subdevice_type = DeviceFactory::SubDeviceType(device.type);
 
   if (device.type == "CPU") {
     return GetLocalCPUInfo();
-  } else if (device.type == "GPU") {
+  } else if (device.type == "GPU" && subdevice_type == "GPU") {
     if (device.has_id) {
       TfGpuId tf_gpu_id(device.id);
       PlatformGpuId platform_gpu_id;

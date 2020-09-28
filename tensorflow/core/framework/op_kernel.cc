@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -1246,9 +1247,9 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
 }
 
 static string Key(StringPiece op_type, const DeviceType& device_type,
-                  StringPiece label) {
+                  StringPiece subdevice_type, StringPiece label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
-                         label);
+                         subdevice_type, ":", label);
 }
 
 namespace kernel_factory {
@@ -1256,9 +1257,11 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
+  // For those kernels register through static initialization, subdevice type is
+  // the same as the device type sice thery are kernels registered in proper.
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-          kernel_def->label());
+          kernel_def->device_type(), kernel_def->label());
 
   // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
   // here.
@@ -1267,6 +1270,24 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
   // before some file libraries can initialize, which in turn crashes the
   // program flakily. Until we get rid of static initializers in kernel
   // registration mechanism, we have this workaround here.
+  auto global_registry =
+      reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
+  mutex_lock l(global_registry->mu);
+  global_registry->registry.emplace(
+      key,
+      KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
+  delete kernel_def;
+}
+
+void OpKernelRegistrar::Register(const KernelDef* kernel_def,
+                                 StringPiece kernel_class_name,
+                                 std::unique_ptr<OpKernelFactory> factory) {
+  // OpKernelRegistrar::Register is intended to be used by Kernel C API for
+  // dynamic kernel registeration. subdevice type is registered from plugin.
+  const string key =
+      Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
+          kernel_def->subdevice_type(), kernel_def->label());
+
   auto global_registry =
       reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
   mutex_lock l(global_registry->mu);
@@ -1312,8 +1333,9 @@ Status FindKernelRegistration(
   *was_attr_mismatch = false;
 
   const string& label = GetKernelLabelAttr(node_attrs);
-
-  const string key = Key(node_op, device_type, label);
+  string subdevice_type =
+      DeviceFactory::SubDeviceType(DeviceTypeString(device_type));
+  const string key = Key(node_op, device_type, subdevice_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();
   tf_shared_lock lock(typed_registry->mu);
   auto regs = typed_registry->registry.equal_range(key);
@@ -1346,7 +1368,8 @@ Status FindKernelRegistration(
   // default kernel.
   if (*reg == nullptr &&
       !IsSymbolicExecutionDevice(device_type.type_string())) {
-    const string default_key = Key(node_op, DEVICE_DEFAULT, label);
+    const string default_key =
+        Key(node_op, DEVICE_DEFAULT, DEVICE_DEFAULT, label);
     auto regs = typed_registry->registry.equal_range(default_key);
     for (auto iter = regs.first; iter != regs.second; ++iter) {
       // If there is a kernel registered for the op and device_type,
@@ -1716,7 +1739,6 @@ template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
-
 
 void OpKernelConstruction::CtxFailure(const Status& s) {
   VLOG(1) << s;

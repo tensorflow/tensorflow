@@ -1330,7 +1330,6 @@ const Eigen::ThreadPoolDevice& OpKernelContext::eigen_device() const;
 template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const;
 
-
 // Register your OpKernel by specifying the Op's name, the device the
 // kernel runs on, any type attr constraints for this kernel, any
 // host-memory args, and the class to instantiate.  Examples:
@@ -1542,6 +1541,12 @@ class OpKernelRegistrar {
     InitInternal(kernel_def, kernel_class_name,
                  absl::make_unique<PtrOpKernelFactory>(create_fn));
   }
+
+  // Registers the given kernel factory with TensorFlow. This function is used
+  // by Kernel C API to register those kernels registered from plugin
+  static void Register(const KernelDef* kernel_def,
+                       StringPiece kernel_class_name,
+                       std::unique_ptr<OpKernelFactory> factory);
 
  private:
   struct PtrOpKernelFactory : public OpKernelFactory {

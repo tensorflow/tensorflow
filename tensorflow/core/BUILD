@@ -2229,7 +2229,9 @@ tf_cuda_library(
             "**/*main.cc",
         ],
     ),
-    hdrs = [":framework_internal_public_headers"],
+    hdrs = [":framework_internal_public_headers",
+            ":core_cpu_base_headers",
+            ],
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": ["-lm"],
