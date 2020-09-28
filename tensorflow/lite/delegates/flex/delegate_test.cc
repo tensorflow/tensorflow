@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
 #include <cstdint>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -361,6 +362,7 @@ TEST_F(DelegateTest, StaticOutputRFFT) {
 
   // Define inputs.
   SetShape(0, {3, 512});
+  SetValues(0, std::vector<float>(3 * 512, 1.0f));
 
   ASSERT_TRUE(Invoke());
 
