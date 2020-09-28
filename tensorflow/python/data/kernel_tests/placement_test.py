@@ -101,7 +101,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCondWithColocation(self):
-    self.skipTest("b/166625126")
     # When the cond op is colocated with the dataset, there shouldn't be
     # cross-device copies.
     @def_function.function
