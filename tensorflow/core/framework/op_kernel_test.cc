@@ -1152,28 +1152,20 @@ TEST(RegisteredKernels, GetRegisteredKernelsForOp) {
   EXPECT_EQ(kernel_list.kernel(0).device_type(), "CPU");
 }
 
-struct KernelNameAndBuilderFunction {
-  using FnType = std::unique_ptr<KernelDef const>();
-  char const* name;
-  FnType* builder;
-};
-
-#define EXTRACT_KERNEL_NAME_TO_STRUCT_IMPL(name, kernel_builder, ...)  \
-  KernelNameAndBuilderFunction {                                       \
-    name, +[]() {                                                      \
-      return std::unique_ptr<KernelDef const>(kernel_builder.Build()); \
-    }                                                                  \
-  }
-#define EXTRACT_KERNEL_NAME_TO_STRUCT(kernel_builder) \
-  TF_EXTRACT_KERNEL_NAME(EXTRACT_KERNEL_NAME_TO_STRUCT_IMPL, kernel_builder)
+#define EXTRACT_KERNEL_NAME_AND_BUILDER_IMPL(kernel_name, kernel_builder, ...) \
+  constexpr char const* kKernelName = kernel_name;                             \
+  auto builder = []() {                                                        \
+    return std::unique_ptr<KernelDef const>(kernel_builder.Build());           \
+  };
+#define EXTRACT_KERNEL_NAME_AND_BUILDER(kernel_builder) \
+  TF_EXTRACT_KERNEL_NAME(EXTRACT_KERNEL_NAME_AND_BUILDER_IMPL, kernel_builder)
 
 TEST(RegisterKernelMacro, ExtractName) {
   constexpr char const* kName = "Foo";
   constexpr char const* kLabel = "Label";
-  constexpr KernelNameAndBuilderFunction kKernelInfo =
-      EXTRACT_KERNEL_NAME_TO_STRUCT(Name(kName).Label(kLabel));
-  EXPECT_THAT(kKernelInfo.name, ::testing::StrEq(kName));
-  std::unique_ptr<KernelDef const> kernel_def = kKernelInfo.builder();
+  EXTRACT_KERNEL_NAME_AND_BUILDER(Name(kName).Label(kLabel));
+  EXPECT_THAT(kKernelName, ::testing::StrEq(kName));
+  std::unique_ptr<KernelDef const> kernel_def = builder();
   EXPECT_THAT(kernel_def->op(), ::testing::StrEq(kName));
   EXPECT_THAT(kernel_def->label(), ::testing::StrEq(kLabel));
 }
