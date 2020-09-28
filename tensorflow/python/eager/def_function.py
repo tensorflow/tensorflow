@@ -117,7 +117,7 @@ class _FrequentTracingDetector(object):
             "experimental_relax_shapes=True option that relaxes argument "
             "shapes that can avoid unnecessary retracing. For (3), please "
             "refer to "
-            "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
+            "https://www.tensorflow.org/guide/function#controlling_retracing"
             " and https://www.tensorflow.org/api_docs/python/tf/function for "
             " more details.".format(counter.get_tracing_count(),
                                     counter.call_count, function_name))

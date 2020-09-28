@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -908,6 +909,32 @@ class ScatterNdTensorTest(test.TestCase):
         constant_op.constant([
             "hello", "there", "hello", "there", "there", "hello", "hello", "12"
         ]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateRepeatedIndices1D(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Duplicate indices scatter is non-deterministic on GPU")
+    a = array_ops.zeros([10, 1])
+    b = array_ops.tensor_scatter_update(a, [[5], [5]], [[4], [8]])
+    self.assertAllEqual(
+        b,
+        constant_op.constant([[0.], [0.], [0.], [0.], [0.], [8.], [0.], [0.],
+                              [0.], [0.]]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateRepeatedIndices2D(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Duplicate indices scatter is non-deterministic on GPU")
+    a = array_ops.zeros([10, 10])
+    b = array_ops.tensor_scatter_update(
+        a, [[5], [6], [6]],
+        [math_ops.range(10),
+         math_ops.range(11, 21),
+         math_ops.range(10, 20)])
+    self.assertAllEqual(
+        b[6],
+        constant_op.constant(
+            [10., 11., 12., 13., 14., 15., 16., 17., 18., 19.]))
 
 
 if __name__ == "__main__":

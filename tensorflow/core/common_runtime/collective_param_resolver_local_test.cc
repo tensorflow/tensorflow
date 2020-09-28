@@ -67,7 +67,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     cp.instance.device_names = shared_cp.instance.device_names;
     CollectiveParamResolverLocal::InstanceRec ir;
     {
-      mutex_lock l(ir.out_mu);
+      mutex_lock l(ir.mu);
       ir.shared.name = shared_cp.name;
       ir.shared.group = shared_cp.group;
       ir.shared.instance = shared_cp.instance;

@@ -263,6 +263,7 @@ cuda_py_test(
     size = "small",
     srcs = ["context_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":context",
         ":test",

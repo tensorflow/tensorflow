@@ -140,7 +140,7 @@ port::StatusOr<void*> GetHipsparseDsoHandle() {
   return GetDsoHandle("hipsparse", "");
 }
 
-port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("hip_hcc", ""); }
+port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
 
 }  // namespace DsoLoader
 
