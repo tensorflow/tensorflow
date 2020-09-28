@@ -233,6 +233,22 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
       has_value_device = test_ops.device_placement_op()
     self.assertIn(b"GPU:0", self.evaluate(has_value_device))
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testIterDatasetEagerModeWithExplicitDevice(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    @def_function.function
+    def comp():
+      value = constant_op.constant(0, dtype=dtypes.int64)
+      for d in iter(dataset_ops.Dataset.range(10)):
+        value += d
+      return value
+
+    with ops.device("/gpu:0"):
+      result = comp()
+    self.assertEqual(result.numpy(), 45)
+
 
 if __name__ == "__main__":
   test.main()
