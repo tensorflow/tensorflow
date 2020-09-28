@@ -128,7 +128,7 @@ class MultiProcessRunner(object):
                rpc_layer=None,
                max_run_time=None,
                grpc_fail_fast=None,
-               stream_stdout=True,
+               stream_output=True,
                list_stdout=False,
                use_dill_for_args=True,
                daemon=False,
@@ -160,7 +160,7 @@ class MultiProcessRunner(object):
       grpc_fail_fast: Whether GRPC connection between processes should fail
         without retrying. Defaults to None, in which case the environment
         variable is not explicitly set.
-      stream_stdout: True if the output/error from the subprocesses should be
+      stream_output: True if the output/error from the subprocesses should be
         streamed to be printed in parent process' log. Defaults to True.
       list_stdout: True if the output/error from the subprocesses should be
         collected to be attached to the resulting `MultiProcessRunnerResult`
@@ -203,7 +203,7 @@ class MultiProcessRunner(object):
     self._rpc_layer = rpc_layer or 'grpc'
     self._max_run_time = max_run_time
     self._grpc_fail_fast = grpc_fail_fast
-    self._stream_stdout = stream_stdout
+    self._stream_output = stream_output
     # TODO(rchao): Revisit list_stdout argument to consider other solution.
     self._list_stdout = list_stdout
     self._dependence_on_chief = dependence_on_chief
@@ -251,7 +251,7 @@ class MultiProcessRunner(object):
       for line in reader:
         task_string = '[{}-{}]:'.format(task_type, task_id)
         formatted_line = '{} {}'.format(task_string.ljust(14), line)
-        if self._stream_stdout:
+        if self._stream_output:
           # TODO(rchao): Use a lock here to ensure the printed lines are not
           # broken.
           print(formatted_line, end='', flush=True)
@@ -1113,7 +1113,7 @@ def run(fn,
         rpc_layer=None,
         max_run_time=None,
         grpc_fail_fast=None,
-        stream_stdout=True,
+        stream_output=True,
         list_stdout=False,
         timeout=_DEFAULT_TIMEOUT_SEC,
         args=None,
@@ -1133,7 +1133,7 @@ def run(fn,
       rpc_layer,
       max_run_time=max_run_time,
       grpc_fail_fast=grpc_fail_fast,
-      stream_stdout=stream_stdout,
+      stream_output=stream_output,
       list_stdout=list_stdout,
       args=args,
       kwargs=kwargs)
