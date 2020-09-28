@@ -30,7 +30,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
-from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -139,7 +139,7 @@ def model_iteration(model,
   if is_dataset:
     if steps_per_epoch is None:
       reset_dataset_after_each_epoch = True
-      steps_per_epoch = training_utils.infer_steps_for_dataset(
+      steps_per_epoch = training_utils_v1.infer_steps_for_dataset(
           model, inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
     input_iterator = _get_iterator(inputs, model._distribution_strategy)
 
@@ -154,7 +154,7 @@ def model_iteration(model,
   do_validation = val_inputs is not None
 
   # Convert Eager Tensors to NumPy arrays to support batching/shuffling.
-  inputs, targets, sample_weights = training_utils. \
+  inputs, targets, sample_weights = training_utils_v1. \
       convert_eager_tensors_to_numpy((inputs, targets, sample_weights))
 
   # Prepare input data.
@@ -197,7 +197,7 @@ def model_iteration(model,
       # model_iteration() call, it will not trigger the dataset-input path
       # that determines the number of steps required. To avoid this issue,
       # set validation_steps here if validation_steps is None.
-      validation_steps = training_utils.infer_steps_for_dataset(
+      validation_steps = training_utils_v1.infer_steps_for_dataset(
           model,
           val_inputs,
           validation_steps,
@@ -240,12 +240,12 @@ def model_iteration(model,
 
   # Select aggregation method.
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(
+    aggregator = training_utils_v1.OutputsAggregator(
         use_steps,
         num_samples=None if steps_per_epoch else num_samples_or_steps,
         steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(
+    aggregator = training_utils_v1.MetricsAggregator(
         use_steps,
         num_samples=None if steps_per_epoch else num_samples_or_steps,
         steps=steps_per_epoch)
@@ -350,7 +350,7 @@ def model_iteration(model,
       # Sample-wise loop.
       index_array = np.arange(num_samples_or_steps)
       if shuffle == 'batch':
-        index_array = training_utils.batch_shuffle(index_array, batch_size)
+        index_array = training_utils_v1.batch_shuffle(index_array, batch_size)
       elif shuffle:
         np.random.shuffle(index_array)
       batches = make_batches(num_samples_or_steps, batch_size)
@@ -409,7 +409,7 @@ def model_iteration(model,
 
     # Run the test loop every `validation_freq` epochs during training.
     if (do_validation and
-        training_utils.should_run_validation(validation_freq, epoch) and
+        training_utils_v1.should_run_validation(validation_freq, epoch) and
         not callbacks.model.stop_training):
 
       if model._compile_distribution:
@@ -483,8 +483,8 @@ def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
   """Returns total number of samples (when training in batch mode) or steps."""
   if steps_per_epoch:
     return steps_per_epoch
-  return training_utils.check_num_samples(ins, batch_size, steps_per_epoch,
-                                          'steps_per_epoch')
+  return training_utils_v1.check_num_samples(ins, batch_size, steps_per_epoch,
+                                             'steps_per_epoch')
 
 
 def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
@@ -527,7 +527,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         inputs,
         extract_tensors_from_dataset=True)
 
-  inputs = training_utils.ModelInputs(inputs).as_list()
+  inputs = training_utils_v1.ModelInputs(inputs).as_list()
   targets = list(targets or [])
   sample_weights = list(sample_weights or [])
   ins = inputs + targets + sample_weights
@@ -541,7 +541,7 @@ def _get_iterator(inputs, distribution_strategy=None):
   if distribution_strategy:
     return distributed_training_utils_v1.get_iterator(
         inputs, distribution_strategy)
-  return training_utils.get_iterator(inputs)
+  return training_utils_v1.get_iterator(inputs)
 
 
 def _reinitialize_iterator(iterator, distribution_strategy=None):
@@ -549,7 +549,7 @@ def _reinitialize_iterator(iterator, distribution_strategy=None):
     distributed_training_utils_v1.initialize_iterator(
         iterator, distribution_strategy)
   else:
-    training_utils.initialize_iterator(iterator)
+    training_utils_v1.initialize_iterator(iterator)
 
 
 def _make_execution_function(model, mode):
@@ -593,7 +593,7 @@ predict_loop = functools.partial(
     model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
 
 
-class ArrayLikeTrainingLoop(training_utils.TrainingLoop):
+class ArrayLikeTrainingLoop(training_utils_v1.TrainingLoop):
   """TrainingLoop that handle inputs like array.
 
   This is the default handler for most of the input data types, includes
@@ -639,9 +639,9 @@ class ArrayLikeTrainingLoop(training_utils.TrainingLoop):
       val_x, val_y, val_sample_weights = model._prepare_validation_data(
           validation_data, batch_size, validation_steps)
     elif validation_split and 0. < validation_split < 1.:
-      (x, y, sample_weights, val_x, val_y,
-       val_sample_weights) = training_utils.split_training_and_validation_data(
-           x, y, sample_weights, validation_split)
+      (x, y, sample_weights, val_x, val_y, val_sample_weights
+      ) = training_utils_v1.split_training_and_validation_data(
+          x, y, sample_weights, validation_split)
     else:
       if validation_steps:
         raise ValueError('`validation_steps` should not be specified if '
