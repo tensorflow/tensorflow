@@ -627,7 +627,7 @@ TfLiteTensor* GetTempLhs(TfLiteContext* context, TfLiteNode* node,
     return nullptr;
   }
 
-  if (lhs->type == kTfLiteInt8 || rhs->type == kTfLiteInt16) {
+  if (lhs->type == kTfLiteInt8 || lhs->type == kTfLiteInt16) {
     // Get the quantization params from the LHS tensor.
     transposed_lhs->params.scale = lhs->params.scale;
     transposed_lhs->params.zero_point = lhs->params.zero_point;
