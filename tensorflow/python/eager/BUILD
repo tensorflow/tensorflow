@@ -982,6 +982,26 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "wrap_function_device_test",
+    srcs = ["wrap_function_device_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = False,
+    deps = [
+        ":def_function",
+        ":wrap_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "remote",
     srcs = ["remote.py"],
