@@ -9,16 +9,17 @@ namespace micro {
 namespace xcore {
 
 constexpr const char* Lookup_8_OpCode = "XC_lookup_8";
-// constexpr const char* ArgMax2D_OpCode = "XC_argmax_16"; // not used
 constexpr const char* MaxPool2D_OpCode = "XC_maxpool2d";
 constexpr const char* AvgPool2D_OpCode = "XC_avgpool2d";
 constexpr const char* AvgPool2D_Global_OpCode = "XC_avgpool2d_global";
 constexpr const char* FullyConnected_8_OpCode = "XC_fc";
-constexpr const char* Requantize_16_to_8_OpCode = "XC_requantize_16_to_8";
 constexpr const char* Conv2D_Shallow_OpCode = "XC_conv2d_shallowin";
 constexpr const char* Conv2D_Deep_OpCode = "XC_conv2d_deep";
 constexpr const char* Conv2D_1x1_OpCode = "XC_conv2d_1x1";
 constexpr const char* Conv2D_Depthwise_OpCode = "XC_conv2d_depthwise";
+
+constexpr const char* Requantize_16_to_8_OpCode = "XC_requantize_16_to_8";
+constexpr const char* ArgMax2D_OpCode = "XC_argmax_16";
 
 struct PoolingParams {
   int32_t pool_h;
@@ -47,7 +48,6 @@ TfLiteRegistration* Register_Conv2D_Deep();
 TfLiteRegistration* Register_Conv2D_1x1();
 TfLiteRegistration* Register_Conv2D_Depthwise();
 TfLiteRegistration* Register_FullyConnected_8();
-TfLiteRegistration* Register_ArgMax_16();
 TfLiteRegistration* Register_MaxPool2D();
 TfLiteRegistration* Register_AvgPool2D();
 TfLiteRegistration* Register_AvgPool2D_Global();
@@ -56,8 +56,9 @@ TfLiteRegistration* Register_BSign_8();
 TfLiteRegistration* Register_BConv2D_Bin_Out();
 TfLiteRegistration* Register_Pad();
 
-// legacy operators
+// operators not currently inserted by the XCORE converter
 TfLiteRegistration* Register_Requantize_16_to_8();
+TfLiteRegistration* Register_ArgMax_16();
 
 }  // namespace xcore
 }  // namespace micro
