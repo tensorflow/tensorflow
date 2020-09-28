@@ -492,6 +492,8 @@ tf_cuda_library(
     ],
     hdrs = [
         "kernels.h",
+	"//tensorflow/c/experimental/stream_executor:stream_executor.h",
+	"//tensorflow/c/experimental/stream_executor:stream_executor_internal.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -499,6 +501,7 @@ tf_cuda_library(
         ":tf_status",
         ":tf_status_helper",
         ":tf_tensor_internal",
+	"//tensorflow/c/experimental/stream_executor:stream_executor",
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
@@ -578,6 +581,7 @@ tf_cuda_cc_test(
     srcs = ["c_api_test.cc"],
     data = [
         ":test_op1.so",
+        ":test_pluggable_device.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     linkopts = select({
@@ -686,6 +690,19 @@ tf_cc_test(
 tf_custom_op_library(
     name = "test_op1.so",
     srcs = ["test_op1.cc"],
+)
+
+cc_library(
+    name = "test_pluggable_device_impl",
+    srcs = ["test_pluggable_device.cc"],
+    hdrs = ["c_api_macros.h",
+            "tf_status.h",
+            "//tensorflow/c/experimental/stream_executor:stream_executor.h",],
+)
+
+tf_custom_op_library(
+    name = "test_pluggable_device.so",
+    deps = [":test_pluggable_device_impl"],
 )
 
 tf_kernel_library(

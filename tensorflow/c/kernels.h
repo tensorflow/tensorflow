@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -64,6 +65,10 @@ typedef struct TF_Tensor TF_Tensor;
 typedef struct TF_KernelBuilder TF_KernelBuilder;
 typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
+
+// TF_InitKernel to do op/kernel registration.
+// Plugin needs to implement this function to register all kernels.
+void TF_InitKernel();
 
 // Allocates a new kernel builder and returns a pointer to it.
 //
@@ -127,6 +132,11 @@ TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
 
 // --------------------------------------------------------------------------
 // OpKernelContext routines
+
+// TF_GetStream returns the SP_Stream available in ctx
+// This function is only for pluggable device
+// it will return nullptr in all other cased.
+TF_CAPI_EXPORT extern SP_Stream TF_GetStream(TF_OpKernelContext* ctx);
 
 // TF_NumInputs returns the number of inputs available in ctx.
 TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);

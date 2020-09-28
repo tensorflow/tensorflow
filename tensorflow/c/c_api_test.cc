@@ -228,6 +228,21 @@ TEST(CAPI, LibraryLoadFunctions) {
   }
 }
 
+TEST(CAPI, LibraryPluggableDeviceLoadFunctions) {
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  // Load the library.
+  TF_Status* status = TF_NewStatus();
+  string lib_path = tensorflow::GetDataDependencyFilepath(
+      tensorflow::io::JoinPath("tensorflow", "c", "test_pluggable_device.so"));
+  TF_Library* lib = TF_LoadPluggableDeviceLibrary(lib_path.c_str(), status);
+  TF_Code code = TF_GetCode(status);
+  string status_msg(TF_Message(status));
+  TF_DeleteStatus(status);
+  ASSERT_EQ(TF_OK, code) << status_msg;
+  TF_DeletePluggableDeviceLibraryHandle(lib);
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+}
+
 void TestEncodeDecode(int line, const std::vector<string>& data) {
   const tensorflow::int64 n = data.size();
   Status status;
@@ -1467,6 +1482,7 @@ TEST(CAPI, DeletingNullPointerIsSafe) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteDeviceList(nullptr);
   TF_DeleteLibraryHandle(nullptr);
+  TF_DeletePluggableDeviceLibraryHandle(nullptr);
   TF_DeleteApiDefMap(nullptr);
 
   TF_DeleteStatus(status);
