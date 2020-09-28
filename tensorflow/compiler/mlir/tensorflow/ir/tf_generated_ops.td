@@ -6980,6 +6980,49 @@ def TF_NoOp : TF_Op<"NoOp", [NoSideEffect]> {
   let results = (outs);
 }
 
+def TF_NonMaxSuppressionV3Op : TF_Op<"NonMaxSuppressionV3", [NoSideEffect]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32]>:$boxes,
+    TensorOf<[TF_Float16, TF_Float32]>:$scores,
+    TF_Int32Tensor:$max_output_size,
+    TensorOf<[TF_Float16, TF_Float32]>:$iou_threshold,
+    TensorOf<[TF_Float16, TF_Float32]>:$score_threshold
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$selected_indices
+  );
+
+  TF_DerivedOperandTypeAttr T_threshold = TF_DerivedOperandTypeAttr<3>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_NonMaxSuppressionV4Op : TF_Op<"NonMaxSuppressionV4", [NoSideEffect]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
