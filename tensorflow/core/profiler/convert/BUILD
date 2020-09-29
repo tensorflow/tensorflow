@@ -579,3 +579,25 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
     ],
 )
+
+cc_library(
+    name = "xplane_to_tools_data",
+    srcs = ["xplane_to_tools_data.cc"],
+    hdrs = ["xplane_to_tools_data.h"],
+    deps = [
+        ":op_stats_to_input_pipeline_analysis",
+        ":op_stats_to_overview_page",
+        ":op_stats_to_tf_stats",
+        ":xplane_to_memory_profile",
+        ":xplane_to_op_stats",
+        ":xplane_to_trace_events",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:input_pipeline_proto_cc",
+        "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
+        "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)

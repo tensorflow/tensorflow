@@ -417,13 +417,27 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kSort: {
       auto sort_instruction = Cast<HloSortInstruction>(instruction);
+
+      llvm::SmallVector<Type, 4> return_types = {result_type};
+      if (mlir::TupleType tuple_ty = result_type.dyn_cast<mlir::TupleType>()) {
+        return_types = llvm::to_vector<6>(tuple_ty.getTypes());
+      }
+
       auto sort_op = func_builder->create<mlir::mhlo::SortOp>(
-          loc, result_type, operands,
+          loc, return_types, operands,
           builder_->getI64IntegerAttr(sort_instruction->sort_dimension()),
           builder_->getBoolAttr(sort_instruction->is_stable()));
       TF_RETURN_IF_ERROR(
           ImportAsRegion(*sort_instruction->to_apply(), &sort_op.comparator()));
-      return sort_op.getOperation();
+
+      // Check if the output needs to be tupled.
+      if (return_types.size() == 1 && return_types.front() == result_type) {
+        return sort_op.getOperation();
+      }
+
+      return func_builder
+          ->create<mlir::mhlo::TupleOp>(loc, result_type, sort_op.getResults())
+          .getOperation();
     }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;

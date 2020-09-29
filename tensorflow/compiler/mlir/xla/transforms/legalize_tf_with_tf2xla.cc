@@ -227,6 +227,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::StatelessTruncatedNormalOp>(),
     TypeID::get<TF::SubOp>(),
     TypeID::get<TF::TanOp>(),
+    TypeID::get<TF::TPUEmbeddingActivationsOp>(),
     TypeID::get<TF::TransposeOp>(),
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncatedNormalOp>(),

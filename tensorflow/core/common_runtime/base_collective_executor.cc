@@ -306,7 +306,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 void BaseCollectiveExecutor::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, StatusCallback done) {
-  cp->instance.gpu_ring_order = *gpu_ring_order_;
+  cp->group.gpu_ring_order = *gpu_ring_order_;
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
   auto done_with_timeout = done;
   auto timeout_microseconds =
@@ -402,9 +402,9 @@ void BaseCollectiveExecutor::UnblockDependencies(
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =
-        col_params.instance.task_names[col_params.default_rank];
+        col_params.group.task_names[col_params.default_rank];
     const int32 num_devices =
-        col_params.instance.num_devices_per_task.at(task_name);
+        col_params.group.num_devices_per_task.at(task_name);
     launched_[col_params.instance.instance_key] = num_devices;
   }
   if (--launched_[col_params.instance.instance_key] == 0) {

@@ -1,8 +1,8 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "get_compatible_with_cloud",
     "tf_cc_binary",
-    "tf_cc_test",
 )
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
@@ -42,9 +42,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
-        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
@@ -60,9 +58,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/mlir_gpu:passes",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
@@ -72,9 +67,7 @@ cc_library(
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Parser",
@@ -85,8 +78,6 @@ cc_library(
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TargetNVVMIR",
-        "@llvm-project//mlir:TargetROCDLIR",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -108,36 +99,6 @@ tf_cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
     ],
-)
-
-# We can test tf_to_gpu_binary by depending on the kernels that are generated
-# using it. This only tests that the headers containing the hex dump of the
-# generated GPU binaries are built successfully, but this is better than
-# nothing.
-# If this test fails, use the build flag --verbose_failures to see a full
-# command line of the failing build command, then copy the command line and run
-# it for further debugging.
-tf_cc_test(
-    name = "tf_to_gpu_binary_test",
-    srcs = [],
-    # Building the MLIR generated kernels requires hexdump on the ROCM
-    # platform, which might not be available.
-    tags = ["no_rocm"],
-    deps = [
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ] + if_cuda_is_configured([
-        "//tensorflow/core/kernels/mlir_generated:abs_kernels",
-        "//tensorflow/core/kernels/mlir_generated:ceil_kernels",
-        "//tensorflow/core/kernels/mlir_generated:cos_kernels",
-        "//tensorflow/core/kernels/mlir_generated:exp_kernels",
-        "//tensorflow/core/kernels/mlir_generated:floor_kernels",
-        "//tensorflow/core/kernels/mlir_generated:log_kernels",
-        "//tensorflow/core/kernels/mlir_generated:neg_kernels",
-        "//tensorflow/core/kernels/mlir_generated:rsqrt_kernels",
-        "//tensorflow/core/kernels/mlir_generated:sqrt_kernels",
-        "//tensorflow/core/kernels/mlir_generated:tanh_kernels",
-    ]),
 )
 
 tf_cc_binary(
@@ -192,5 +153,17 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "@llvm-project//mlir:mlir_runner_utils",
+    ],
+)
+
+cc_library(
+    name = "tf_cuda_runtime_wrappers",
+    srcs = ["tf_cuda_runtime_wrappers.cpp"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )

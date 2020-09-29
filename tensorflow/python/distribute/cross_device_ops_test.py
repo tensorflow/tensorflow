@@ -102,7 +102,7 @@ class MultiProcessPoolRunner():
 # expensive initialization cost of TensorFlow in new processes.
 #
 # Note that they have to be globals and can't be owned by test classes because
-# usually proc_func usually captures the test class instance, and test class
+# usually fn usually captures the test class instance, and test class
 # instance can't be pickled if it has mpr as a member (it is not allowed to
 # pickle Process objects).
 # TODO(crccw): Use `num_workers` combination once it is ready.

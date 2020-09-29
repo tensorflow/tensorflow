@@ -30,11 +30,13 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -81,6 +83,16 @@ inline bool AttrDataFormatMatch(const utils::MutableNodeView& node,
                                 absl::string_view src_data_format) {
   bool missing = false;
   return AttrDataFormatMatch(node, src_data_format, &missing);
+}
+
+bool IsNonFloatingConv2D(const utils::MutableNodeView& node) {
+  if (IsConv2D(*node.node()) || IsConv2DBackpropInput(*node.node())) {
+    const auto* attr = node.GetAttr(kAttrT);
+    if (attr != nullptr) {
+      return !kDataTypeIsFloating.Contains(attr->type());
+    }
+  }
+  return false;
 }
 
 // Utils for layout agnostic transposer.
@@ -205,15 +217,19 @@ bool Transposer::ShouldProcess(const TransposeContext& context,
       GetDeviceName(context.virtual_placer.get(), *node_def);
   string device;
   string task;
-  bool is_on_target_device =
+  const bool is_on_target_device =
       DeviceNameUtils::SplitDeviceName(device_name, &task, &device) &&
       absl::StrContains(absl::AsciiStrToLower(device),
                         absl::AsciiStrToLower(context.target_device));
 
   // Only checks data format for layout sensitive op.
-  bool data_format_match = !IsLayoutSensitiveOp(*node_def) ||
-                           AttrDataFormatMatch(node, context.src_format);
-  return is_on_target_device && data_format_match &&
+  const bool data_format_match = !IsLayoutSensitiveOp(*node_def) ||
+                                 AttrDataFormatMatch(node, context.src_format);
+
+  // Only transposes floating point nodes.
+  const bool is_integer_conv2d = IsNonFloatingConv2D(node);
+
+  return is_on_target_device && data_format_match && !is_integer_conv2d &&
          !context.nodes_to_preserve.contains(node_def->name()) &&
          !(node.NumRegularFanouts() == 0 && node.NumControlledFanouts() == 0);
 }

@@ -534,6 +534,19 @@ func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
 
 // -----
 
+// CHECK-LABEL: func @not
+func @not(%input: memref<2x2xi64>, %result: memref<2x2xi64>) {
+  "lmhlo.not"(%input, %result) : (memref<2x2xi64>, memref<2x2xi64>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i64, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[N1:.*]] = constant -1 : i64
+// CHECK-NEXT:   %[[RESULT:.*]] = xor %[[N1]], %[[OPERAND_IN]] : i64
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i64
+
+// -----
+
 // CHECK-LABEL: func @rem
 func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                 %result: memref<2x2xf32>) {

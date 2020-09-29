@@ -432,6 +432,21 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NegOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::NotOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  Type element_type = args.front().getType();
+  if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
+    // lmhlo.not(x) -> x ^ -1
+    auto all_ones =
+        b->create<::mlir::ConstantIntOp>(loc, -1, integer_type.getWidth());
+    return b->create<::mlir::XOrOp>(loc, all_ones, args[0]);
+  }
+  return nullptr;
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::RsqrtOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
