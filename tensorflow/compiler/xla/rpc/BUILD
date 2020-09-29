@@ -8,7 +8,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
+    "tf_proto_library",
 )
 load(
     "//tensorflow/compiler/xla:xla.bzl",
@@ -20,7 +20,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "xla_service_proto",
     srcs = ["xla_service.proto"],
     has_services = 1,

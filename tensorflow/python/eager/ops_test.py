@@ -77,8 +77,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     total = math_ops.add_n([three, four])
     self.assertAllEqual(7, total)
 
-  @test_util.disable_tfrt('b/163564975: TFRT MatMul Kernel is partially '
-                          'implemented.')
   def testExecuteBoolAttr(self):
     three = constant_op.constant([[3]])
     five = constant_op.constant([[5]])

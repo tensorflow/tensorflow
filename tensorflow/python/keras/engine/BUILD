@@ -38,6 +38,7 @@ py_library(
         "training_eager_v1.py",
         "training_generator_v1.py",
         "training_utils.py",
+        "training_utils_v1.py",
         "training_v1.py",
     ],
     srcs_version = "PY2AND3",
@@ -542,9 +543,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "training_utils_test",
+    name = "training_utils_v1_test",
     size = "medium",
-    srcs = ["training_utils_test.py"],
+    srcs = ["training_utils_v1_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/135021748) reenable
@@ -571,6 +572,7 @@ tf_py_test(
     deps = [
         ":base_layer",
         ":engine",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/utils:layer_utils",
     ],

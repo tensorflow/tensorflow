@@ -55,10 +55,14 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
   MutableGraphView graph(output);
 
+  // Add a const node with value kAutotune
+  NodeDef* autotune_value =
+      graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
+
   absl::flat_hash_set<string> already_prefetched;
   // 1) Collect about all existing `PrefetchDataset` nodes, replacing
   // `prefetch(N)` with `prefetch(AUTOTUNE, buffer_size_min=N)` for all N !=-1.
-  for (NodeDef& node : *(output->mutable_node())) {
+  for (NodeDef& node : *output->mutable_node()) {
     if (node.op() == kPrefetchDataset) {
       NodeDef* buffer_size_node = graph.GetNode(node.input(1));
       // We only consider to rewrite if `buffer_size` is constant.
@@ -66,10 +70,9 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
         int64 initial_buffer_size =
             buffer_size_node->attr().at("value").tensor().int64_val(0);
         if (initial_buffer_size != data::model::kAutotune) {
-          buffer_size_node->mutable_attr()
-              ->at("value")
-              .mutable_tensor()
-              ->set_int64_val(0, data::model::kAutotune);
+          TF_RETURN_IF_ERROR(graph.UpdateFanin(node.name(),
+                                               {buffer_size_node->name(), 0},
+                                               {autotune_value->name(), 0}));
           node.mutable_attr()->at(kBufferSizeMin).set_i(initial_buffer_size);
         }
       } else {
@@ -100,10 +103,6 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   if (async_datasets.empty()) return Status::OK();
-
-  // Add a const node with value kAutotune
-  NodeDef* autotune_value =
-      graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
 
   for (const NodeDef* async_dataset_node : async_datasets) {
     NodeDef prefetch_node;

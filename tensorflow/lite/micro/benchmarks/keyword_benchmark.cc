@@ -34,11 +34,13 @@ namespace {
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
 constexpr int tensor_arena_size = 21 * 1024;
-alignas(16) uint8_t tensor_arena[tensor_arena_size];
+alignas(16) uint8_t
+    tensor_arena[tensor_arena_size + sizeof(MicroBenchmarkRunner<int16_t>)];
 // A random number generator seed to generate input values.
 constexpr int kRandomSeed = 42;
 
 static tflite::MicroMutableOpResolver<6> op_resolver;
+MicroBenchmarkRunner<int16_t>* benchmark_runner = nullptr;
 
 MicroBenchmarkRunner<int16_t> CreateBenchmarkRunner() {
   op_resolver.AddDequantize();
@@ -50,17 +52,25 @@ MicroBenchmarkRunner<int16_t> CreateBenchmarkRunner() {
   return MicroBenchmarkRunner<int16_t>(g_keyword_scrambled_model_data,
                                        &op_resolver, tensor_arena,
                                        tensor_arena_size);
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  benchmark_runner = new (tensor_arena) MicroBenchmarkRunner<int16_t>(
+      g_keyword_scrambled_model_data,
+      &tensor_arena[sizeof(MicroBenchmarkRunner<int16_t>)], tensor_arena_size);
 }
 
-static MicroBenchmarkRunner<int16_t> benchmark_runner = CreateBenchmarkRunner();
-
 // Initializes keyword runner and sets random inputs.
-void InitializeKeywordRunner() { benchmark_runner.SetRandomInput(kRandomSeed); }
+void InitializeKeywordRunner() {
+  CreateBenchmarkRunner();
+  benchmark_runner->SetRandomInput(kRandomSeed);
+}
 
 // This method assumes InitializeKeywordRunner has already been run.
 void KeywordRunNIerations(int iterations) {
   for (int i = 0; i < iterations; i++) {
-    benchmark_runner.RunSingleIteration();
+    benchmark_runner->RunSingleIteration();
   }
 }
 

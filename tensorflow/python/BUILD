@@ -5137,10 +5137,11 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_deterministic_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/image_grad_deterministic_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tfrt_enabled = True,
     deps = [
         ":image_grad_test_base",
     ],
@@ -5148,7 +5149,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_test",
-    size = "medium",
+    size = "large",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
     shard_count = 5,
@@ -5236,6 +5237,7 @@ cuda_py_test(
     srcs = ["ops/math_grad_test.py"],
     python_version = "PY3",
     tags = ["no_windows_gpu"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5275,6 +5277,7 @@ cuda_py_test(
     tags = [
         "no_windows_gpu",
     ],
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -5414,6 +5417,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_rocm",
         "no_windows_gpu",
         "noasan",  # b/159332048
         "nomsan",  # b/148630708
@@ -6021,6 +6025,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
+        "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/c/eager:mnist_gradients_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
@@ -7534,6 +7539,7 @@ cc_library(
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/c/experimental/gradients:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/gradients/tape:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime:core_cpu_lib_headers",

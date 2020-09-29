@@ -49,16 +49,22 @@ class _ParallelComponentSaveable(saveable_object.SaveableObject):
         resource=self._handle, value=restored_tensor)
 
 
-class VariableProxyMetaClass(  # pylint: disable=duplicate-bases
-    type(wrapt.ObjectProxy), type(resource_variable_ops.BaseResourceVariable)):
-  """A combined MetaClasses for ParallelVariable.
+_wrapt_type = type(wrapt.ObjectProxy)
+_variable_type = type(resource_variable_ops.BaseResourceVariable)
+if issubclass(_variable_type, _wrapt_type):
+  # Some wrapt versions do not have a meta-class, which would create an invalid
+  # MRO.
+  VariableProxyMetaClass = _variable_type
+else:
+  class VariableProxyMetaClass(_wrapt_type, _variable_type):  # pylint: disable=duplicate-bases
+    """A combined MetaClasses for ParallelVariable.
 
-  Satisfies the requirement "the metaclass of a derived class must be a
-  (non-strict) subclass of the metaclasses of all its bases." At the time of
-  writing these two MetaClasses are compatible (overriding different methods,
-  both relatively trivial).
-  """
-  pass
+    Satisfies the requirement "the metaclass of a derived class must be a
+    (non-strict) subclass of the metaclasses of all its bases." At the time of
+    writing these two MetaClasses are compatible (overriding different methods,
+    both relatively trivial).
+    """
+    pass
 
 
 class ParallelVariable(

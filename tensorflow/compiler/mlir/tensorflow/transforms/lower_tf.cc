@@ -56,6 +56,14 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   return DenseIntElementsAttr::get(ty, vals);
 }
 
+static APFloat ConvertToAPFloat(double val, Type type) {
+  if (type.getIntOrFloatBitWidth() == 32) {
+    return APFloat(static_cast<float>(val));
+  }
+
+  return APFloat(val);
+}
+
 // Returns int, float, or complex DenseElementsAttr with scalar shape with the
 // given element type and the integer value.
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
@@ -297,6 +305,114 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
 
     auto axis = rewriter.create<ConstOp>(loc, rewriter.getI64IntegerAttr(0));
     rewriter.replaceOpWithNewOp<ConcatV2Op>(op, op.getType(), values, axis);
+    return success();
+  }
+};
+
+// This pass performs a manual conversion with FakeQuant, converting between
+// floating point and quantized space. It is designed to reproduce TF's
+// implementation, mirroring the previous XLA implementation.
+//
+// 1. Computing proper quantized bounds. This involves nudging the input bounds.
+// 2. Converting the input bounds to quantized space, rounding values.
+// 3. Convert back into floating point space.
+class ConvertFakeQuantWithMinMaxVarsOp
+    : public OpRewritePattern<TF::FakeQuantWithMinMaxVarsOp> {
+  using OpRewritePattern<TF::FakeQuantWithMinMaxVarsOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::FakeQuantWithMinMaxVarsOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input = op.inputs();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto element_ty = input_ty.getElementType();
+    auto scalar_ty = RankedTensorType::get({}, element_ty);
+
+    auto num_bits = op.num_bits();
+    auto narrow_range = op.narrow_range();
+    const double bits_min = narrow_range ? 1 : 0;
+    const double bits_max = (1 << num_bits) - 1;
+
+    auto float_min = op.min();
+    auto float_max = op.max();
+
+    auto float_diff =
+        rewriter.create<TF::SubOp>(op.getLoc(), float_max, float_min);
+
+    // Compute the range when quantized.
+    auto quant_min = rewriter.create<TF::ConstOp>(
+        op.getLoc(), DenseElementsAttr::get(
+                         scalar_ty, ConvertToAPFloat(bits_min, element_ty)));
+
+    auto quant_max = rewriter.create<TF::ConstOp>(
+        op.getLoc(), DenseElementsAttr::get(
+                         scalar_ty, ConvertToAPFloat(bits_max, element_ty)));
+
+    auto quant_diff = rewriter.create<TF::ConstOp>(
+        op.getLoc(),
+        DenseElementsAttr::get(
+            scalar_ty, ConvertToAPFloat(bits_max - bits_min, element_ty)));
+
+    auto quant_to_float =
+        rewriter.create<TF::DivOp>(op.getLoc(), float_diff, quant_diff);
+
+    auto float_to_quant =
+        rewriter.create<TF::DivOp>(op.getLoc(), quant_diff, float_diff);
+
+    // During quantization, the quantized min/max values may not line up
+    // perfectly with the specified min/max. Nudge them into the right range.
+    auto min_scaled =
+        rewriter.create<TF::DivOp>(op.getLoc(), float_min, quant_to_float);
+    auto min_scaled_sub =
+        rewriter.create<TF::SubOp>(op.getLoc(), quant_min, min_scaled);
+
+    auto mid_rounded =
+        rewriter.create<TF::RoundOp>(op.getLoc(), scalar_ty, min_scaled_sub);
+
+    auto nudged_zero_point_val = rewriter.create<TF::ClipByValueOp>(
+        op.getLoc(), scalar_ty, mid_rounded, quant_min, quant_max);
+
+    auto quant_min_sub = rewriter.create<TF::SubOp>(op.getLoc(), quant_min,
+                                                    nudged_zero_point_val);
+    auto quant_max_sub = rewriter.create<TF::SubOp>(op.getLoc(), quant_max,
+                                                    nudged_zero_point_val);
+
+    auto nudged_float_min =
+        rewriter.create<TF::MulOp>(op.getLoc(), quant_min_sub, quant_to_float);
+
+    auto nudged_float_max =
+        rewriter.create<TF::MulOp>(op.getLoc(), quant_max_sub, quant_to_float);
+
+    // Now quantize the input value with the approximated min/max values.
+
+    // Move the input value into quantized space
+    Value quantized_input = rewriter.create<TF::ClipByValueOp>(
+        op.getLoc(), input_ty, input, nudged_float_min, nudged_float_max);
+
+    quantized_input = rewriter.create<TF::SubOp>(
+        op.getLoc(), input_ty, quantized_input, nudged_float_min);
+
+    quantized_input = rewriter.create<TF::MulOp>(
+        op.getLoc(), input_ty, quantized_input, float_to_quant);
+
+    // Round the quantized input always to the positive direction.
+    auto half_val = rewriter.create<TF::ConstOp>(
+        op.getLoc(),
+        DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
+
+    quantized_input = rewriter.create<TF::AddOp>(op.getLoc(), input_ty,
+                                                 quantized_input, half_val);
+
+    quantized_input =
+        rewriter.create<TF::FloorOp>(op.getLoc(), quantized_input);
+
+    // Convert back into floating point spae.
+    Value output = rewriter.create<TF::MulOp>(op.getLoc(), input_ty,
+                                              quantized_input, quant_to_float);
+
+    output = rewriter.create<TF::AddOp>(op.getLoc(), input_ty, output,
+                                        nudged_float_min);
+
+    rewriter.replaceOp(op, {output});
     return success();
   }
 };
@@ -660,8 +776,9 @@ class Lower_UnaryOpsComposition
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerPackOp, LowerSpaceToBatchNDOp, LowerSparseMatMulOp,
+  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
+                   LowerDynamicStitchOp, LowerInvertPermutationOp, LowerPackOp,
+                   LowerSpaceToBatchNDOp, LowerSparseMatMulOp,
                    Lower_UnaryOpsComposition>(context);
   populateWithGenerated(context, patterns);
 }

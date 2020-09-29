@@ -789,7 +789,6 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = array_ops.ones((3, 3))
-    self.assertIsInstance(x2, ops.EagerTensor)
     with self.assertRaisesRegex(TypeError, 'Graph tensors'):
       math_ops.matmul(x1, x2)
 

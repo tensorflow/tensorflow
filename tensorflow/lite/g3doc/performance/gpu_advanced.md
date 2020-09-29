@@ -285,12 +285,10 @@ While it is convenient to use `nullptr`, we recommend that you explicitly set
 the options, to avoid any unexpected behavior if default values are changed in
 the future.
 
-### Running quantized models (Experimental)
+### Running quantized models on GPU
 
-The GPU delegate already supports
-[float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
-models. There is experimental support on Android and iOS to run 8-bit quantized
-as well. This includes all flavors of quantization, including:
+This section explains how the GPU delegate accelerates 8-bit quantized models.
+This includes all flavors of quantization, including:
 
 *   Models trained with
     [Quantization-aware training](https://www.tensorflow.org/lite/convert/quantization)
@@ -322,12 +320,14 @@ This feature can be enabled using delegate options as follows:
 
 #### Android
 
+Android APIs support quantized models by default. To disable, do the following:
+
 **C++ API**
 
 ```c++
 // NEW: Prepare custom options with feature enabled.
 TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
-options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
 
 auto* delegate = TfLiteGpuDelegateV2Create(options);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
@@ -337,12 +337,15 @@ if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 
 ```java
 // NEW: Prepare GPU delegate with feature turned on.
-GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(true));
+GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(false));
 
 Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
 ```
 
 #### iOS
+
+Support for quantized models on iOS APIs is experimental. To enable, do the
+following:
 
 **Swift API**
 

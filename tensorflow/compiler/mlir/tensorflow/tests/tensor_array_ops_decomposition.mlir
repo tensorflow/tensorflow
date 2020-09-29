@@ -54,6 +54,22 @@ func @main() -> tensor<i32> {
 
 // -----
 
+// Test inferring shape from the first scatter.
+
+// CHECK-LABEL: func @main
+func @main() -> tensor<i32> {
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  %indices = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %values = "tf.Const"() {value = dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf32>} : () -> tensor<2x3xf32>
+  %write = "tf.TensorArrayScatterV3"(%ta#0, %indices, %values, %ta#1) : (tensor<!tf.resource>, tensor<2xi32>, tensor<2x3xf32>, tensor<f32>) -> tensor<f32>
+  %size_out = "tf.TensorArraySizeV3"(%ta#0, %write) : (tensor<!tf.resource>, tensor<f32>) -> tensor<i32>
+  return %size_out : tensor<i32>
+}
+
+// -----
+
 // Test tensor array concat and split.
 
 // CHECK-LABEL: func @main

@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
@@ -12,14 +12,14 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:public"])
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_driver_proto",
     srcs = ["tpu_driver.proto"],
     cc_api_version = 2,
     protodeps = [],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_service_proto",
     srcs = ["tpu_service.proto"],
     has_services = 1,

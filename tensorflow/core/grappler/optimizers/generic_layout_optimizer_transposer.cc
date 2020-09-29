@@ -30,11 +30,13 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -81,6 +83,16 @@ inline bool AttrDataFormatMatch(const utils::MutableNodeView& node,
                                 absl::string_view src_data_format) {
   bool missing = false;
   return AttrDataFormatMatch(node, src_data_format, &missing);
+}
+
+bool IsNonFloatingConv2D(const utils::MutableNodeView& node) {
+  if (IsConv2D(*node.node()) || IsConv2DBackpropInput(*node.node())) {
+    const auto* attr = node.GetAttr(kAttrT);
+    if (attr != nullptr) {
+      return !kDataTypeIsFloating.Contains(attr->type());
+    }
+  }
+  return false;
 }
 
 // Utils for layout agnostic transposer.
@@ -205,15 +217,19 @@ bool Transposer::ShouldProcess(const TransposeContext& context,
       GetDeviceName(context.virtual_placer.get(), *node_def);
   string device;
   string task;
-  bool is_on_target_device =
+  const bool is_on_target_device =
       DeviceNameUtils::SplitDeviceName(device_name, &task, &device) &&
       absl::StrContains(absl::AsciiStrToLower(device),
                         absl::AsciiStrToLower(context.target_device));
 
   // Only checks data format for layout sensitive op.
-  bool data_format_match = !IsLayoutSensitiveOp(*node_def) ||
-                           AttrDataFormatMatch(node, context.src_format);
-  return is_on_target_device && data_format_match &&
+  const bool data_format_match = !IsLayoutSensitiveOp(*node_def) ||
+                                 AttrDataFormatMatch(node, context.src_format);
+
+  // Only transposes floating point nodes.
+  const bool is_integer_conv2d = IsNonFloatingConv2D(node);
+
+  return is_on_target_device && data_format_match && !is_integer_conv2d &&
          !context.nodes_to_preserve.contains(node_def->name()) &&
          !(node.NumRegularFanouts() == 0 && node.NumControlledFanouts() == 0);
 }
@@ -1371,17 +1387,46 @@ bool ReduceTransposer::IsReduceAxisSupported(
 Status ReduceTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsReduceOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4) ||
+  const auto& regular_fanin = node->GetRegularFanin(0);
+  const auto* output_shape_attr =
+      regular_fanin.node_view()->GetAttr(kAttrOutputShape);
+  const auto& shape = output_shape_attr->list().shape(0);
+  const int rank = shape.dim_size();
+  std::string src_format = context->src_format;
+  std::string dst_format = context->dst_format;
+  // Update the format from 4D to 5D layout if necessary.
+  bool allow_5d = rank == 5 && (src_format == "NHWC" || src_format == "NCHW") &&
+                  (dst_format == "NHWC" || dst_format == "NCHW");
+  if (allow_5d) {
+    std::string src_format_3d = src_format == "NHWC" ? "NDHWC" : "NCDHW";
+    std::string dst_format_3d = dst_format == "NHWC" ? "NDHWC" : "NCDHW";
+    context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
+                                        dst_format_3d);
+  }
+  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, rank) ||
       !IsReduceAxisSupported(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
+    // Change back to the original layout due to early exit.
+    if (allow_5d) {
+      context->AssignDeviceAndDataFormats(context->target_device, src_format,
+                                          dst_format);
+    }
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {1}, node, kOpDataFormatDimMap));
   if (KeepDims(*node)) {
     TF_RETURN_IF_ERROR(
         UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  }
+  // Change back the format from 5D to 4D layout.
+  if (allow_5d) {
+    context->AssignDeviceAndDataFormats(context->target_device, src_format,
+                                        dst_format);
   }
   return context->graph_view->GetMutationBuilder()->Apply();
 }

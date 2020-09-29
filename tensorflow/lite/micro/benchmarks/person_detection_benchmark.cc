@@ -38,16 +38,24 @@ namespace {
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
 constexpr int kTensorArenaSize = 95 * 1024;
 constexpr int kRandomSeed = 42;
-alignas(16) uint8_t tensor_arena[kTensorArenaSize];
+alignas(16) uint8_t
+    tensor_arena[kTensorArenaSize + sizeof(MicroBenchmarkRunner<uint8_t>)];
 
-static tflite::AllOpsResolver op_resolver;
-static MicroBenchmarkRunner<uint8_t> benchmark_runner(
-    g_person_detect_model_data, &op_resolver, tensor_arena, kTensorArenaSize);
+MicroBenchmarkRunner<uint8_t>* benchmark_runner = nullptr;
+
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  benchmark_runner = new (tensor_arena) MicroBenchmarkRunner<uint8_t>(
+      g_person_detect_model_data,
+      &tensor_arena[sizeof(MicroBenchmarkRunner<uint8_t>)], kTensorArenaSize);
+}
 
 void PersonDetectionTenIterationsWithRandomInput() {
-  benchmark_runner.SetRandomInput(kRandomSeed);
+  benchmark_runner->SetRandomInput(kRandomSeed);
   for (int i = 0; i < 10; i++) {
-    benchmark_runner.RunSingleIteration();
+    benchmark_runner->RunSingleIteration();
   }
 }
 

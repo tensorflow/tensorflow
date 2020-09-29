@@ -271,8 +271,8 @@ class MultiProcessCluster(object):
         self._cluster_spec,
         args=(self._start_events, self._finish_events),
         rpc_layer=self._rpc_layer,
-        stream_stdout=False,
-        list_stdout=False,
+        stream_output=False,
+        return_output=False,
         use_dill_for_args=False)
     self._mpr.start()
     for task_type, task_addresses in self._cluster_spec.items():

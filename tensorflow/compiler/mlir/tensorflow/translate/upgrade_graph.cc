@@ -65,9 +65,10 @@ Status GenerateResourceSharedNameIfEmpty(Graph& graph,
       TF_RETURN_IF_ERROR(flib_def.LookUpOpDef(node_def.op(), &op_def));
       if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
         // Use the concat of function name and node name for such ops in a
-        // function as the shared_name.
+        // function as the shared_name. "@" is used as the separator because it
+        // is not allowed in the function name or the node name.
         (*node_def.mutable_attr())["shared_name"].set_s(
-            absl::StrCat(func_name, "_", node_def.name()));
+            absl::StrCat(node_def.name(), "@", func_name));
       }
     }
     TF_RETURN_IF_ERROR(flib_def.ReplaceFunction(func_name, copy));
