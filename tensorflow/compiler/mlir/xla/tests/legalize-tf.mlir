@@ -2176,6 +2176,13 @@ func @floor_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @invert_op_unranked
+func @invert_op_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK:  "mhlo.not"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  %0 = "tf.Invert"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
 // CHECK-LABEL: @is_finite
 func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
   // CHECK:  "mhlo.is_finite"(%arg0) : (tensor<2xf32>) -> tensor<2xi1>
