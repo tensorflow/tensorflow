@@ -347,7 +347,7 @@ class BinaryOpTransposer : public LayoutAgnosticOpTransposer {
 
  private:
   bool IsNDOperateWithMD(const utils::MutableNodeView& node, int n, int m);
-  bool IsFaninShapeSupported(const utils::MutableNodeView& node);
+  bool IsFaninShapeSupported(const utils::MutableNodeView& node, int rank);
   std::vector<int> GetNDDataFaninPorts(const utils::MutableNodeView& node,
                                        int rank);
   Status AddNodeShapeConst(utils::Mutation* mutation,
