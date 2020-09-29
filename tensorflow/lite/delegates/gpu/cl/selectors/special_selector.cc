@@ -88,16 +88,14 @@ absl::Status GPUSubgraphFromGraph(
     const DeviceInfo& device_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  if (!device_info.IsNvidia()) {
-    return absl::NotFoundError(
-        "Experimental feature, enabled for NVidia only, but device is not "
-        "nvidia gpu.");
-  }
-  if (TryDepthwiseConvPlus1x1Conv(precision, graph, first_node_id,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
+    std::string* name) {
+  if ((device_info.IsAdreno() || device_info.IsNvidia()) &&
+      TryDepthwiseConvPlus1x1Conv(precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)
           .ok()) {
+    *name = "depthwise_conv_plus_1x1_conv";
     return absl::OkStatus();
   }
   return absl::NotFoundError("No special combination.");
