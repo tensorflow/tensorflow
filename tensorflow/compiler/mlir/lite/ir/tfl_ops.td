@@ -1100,7 +1100,8 @@ def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization", [
     TFL_OperandHasRank<0, 4>,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoSideEffect]> {
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Local Response Normalization.";
 
   let description = [{
