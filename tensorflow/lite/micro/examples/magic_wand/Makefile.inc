@@ -1,4 +1,8 @@
-ifeq ($(TARGET), sparkfun_edge)
+ifeq ($(TARGET),$(filter $(TARGET),\
+  sparkfun_edge\
+  sparkfun_edge2\
+  sparkfun_artemis_dk\
+  ))
   INCLUDES += \
     -I$(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/lis2dh12/
 
