@@ -348,18 +348,20 @@ class BinaryOpTransposer : public LayoutAgnosticOpTransposer {
  private:
   bool IsNDOperateWithMD(const utils::MutableNodeView& node, int n, int m);
   bool IsFaninShapeSupported(const utils::MutableNodeView& node);
-  std::vector<int> Get4DDataFaninPorts(const utils::MutableNodeView& node);
+  std::vector<int> GetNDDataFaninPorts(const utils::MutableNodeView& node,
+                                       int rank);
   Status AddNodeShapeConst(utils::Mutation* mutation,
                            absl::string_view node_name,
                            absl::string_view node_device, bool node_in_frame,
-                           int num_channels, absl::string_view depended_node);
+                           int num_channels, absl::string_view depended_node,
+                           int rank);
   Status AddNodeReshape(utils::Mutation* mutation, absl::string_view node_name,
                         absl::string_view node_device,
                         absl::string_view input_name,
                         absl::string_view shape_const_node_name,
                         const DataType& data_type);
   Status MaybeReshapeVectorFanin(TransposeContext* context,
-                                 utils::MutableNodeView* node);
+                                 utils::MutableNodeView* node, int rank);
 };
 
 class ConcatOpTransposer : public LayoutAgnosticOpTransposer {
