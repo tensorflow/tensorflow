@@ -44,6 +44,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
+#include "tensorflow/stream_executor/dnn.h"  // For DataType, ToDataType
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -119,16 +120,8 @@ std::string ComputationTypeString(ComputationType ty);
 
 std::ostream &operator<<(std::ostream &os, ComputationType ty);
 
-// Type with which inputs and outputs of a blaslt routine are performed.
-enum class DataType {
-  kF16,         // 16-bit floating-point
-  kF32,         // 32-bit floating-point
-  kF64,         // 64-bit floating-point
-  kI8,          // 8-bit integer
-  kI32,         // 32-bit integer
-  kComplexF32,  // Complex number comprised of two f32s
-  kComplexF64,  // Complex number comprised of two f64s
-};
+using dnn::DataType;
+using dnn::ToDataType;
 
 // Describes the type of pointers for the scaling factors alpha and beta in
 // blaslt routines.
@@ -141,38 +134,6 @@ enum class PointerMode {
 string DataTypeString(DataType ty);
 
 std::ostream &operator<<(std::ostream &os, DataType ty);
-
-// Converts a compile-time type to a DataType value.
-template <typename T>
-struct ToDataType {};
-template <>
-struct ToDataType<Eigen::half> {
-  static constexpr const DataType value = DataType::kF16;
-};
-template <>
-struct ToDataType<float> {
-  static constexpr const DataType value = DataType::kF32;
-};
-template <>
-struct ToDataType<double> {
-  static constexpr const DataType value = DataType::kF64;
-};
-template <>
-struct ToDataType<int8> {
-  static constexpr const DataType value = DataType::kI8;
-};
-template <>
-struct ToDataType<int32> {
-  static constexpr const DataType value = DataType::kI32;
-};
-template <>
-struct ToDataType<std::complex<float>> {
-  static constexpr const DataType value = DataType::kComplexF32;
-};
-template <>
-struct ToDataType<std::complex<double>> {
-  static constexpr const DataType value = DataType::kComplexF64;
-};
 
 // Opaque identifier for an "algorithm" used by a blas routine.  This functions
 // as a hint to the blas library.

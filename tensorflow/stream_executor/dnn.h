@@ -133,6 +133,14 @@ template <>
 struct ToDataType<int32> {
   static constexpr DataType value = DataType::kInt32;
 };
+template <>
+struct ToDataType<std::complex<float>> {
+  static constexpr DataType value = DataType::kComplexFloat;
+};
+template <>
+struct ToDataType<std::complex<double>> {
+  static constexpr DataType value = DataType::kComplexDouble;
+};
 
 // Specifies the types of a RNN model.
 enum class RnnMode {

@@ -441,21 +441,21 @@ cublasComputeType_t CUBLASComputationType(blas::ComputationType ty) {
 
 blas::DataType GetScaleType(blas::DataType data_type,
                             blas::ComputationType compute_type) {
-  bool is_complex = data_type == blas::DataType::kComplexF32 ||
-                    data_type == blas::DataType::kComplexF64;
+  bool is_complex = data_type == blas::DataType::kComplexFloat ||
+                    data_type == blas::DataType::kComplexDouble;
   switch (compute_type) {
     case blas::ComputationType::kF16:
-      return blas::DataType::kF16;
+      return blas::DataType::kHalf;
     case blas::ComputationType::kF32:          // fall-through
     case blas::ComputationType::kComplexF32:   // fall-through
     case blas::ComputationType::kF32FastTF32:  // fall-through
     case blas::ComputationType::kF32FastBF16:
-      return is_complex ? blas::DataType::kComplexF32 : blas::DataType::kF32;
+      return is_complex ? blas::DataType::kComplexFloat : blas::DataType::kFloat;
     case blas::ComputationType::kF64:  // fall-through
     case blas::ComputationType::kComplexF64:
-      return is_complex ? blas::DataType::kComplexF64 : blas::DataType::kF64;
+      return is_complex ? blas::DataType::kComplexDouble : blas::DataType::kDouble;
     case blas::ComputationType::kI32:
-      return blas::DataType::kI32;
+      return blas::DataType::kInt32;
   }
 }
 
@@ -484,38 +484,38 @@ cublasLtEpilogue_t CUBLASEpilogue(blas::Epilogue epilogue) {
 
 cudaDataType_t GetCUDADataType(blas::DataType ty) {
   switch (ty) {
-    case blas::DataType::kF16:
+    case blas::DataType::kHalf:
       return CUDA_R_16F;
-    case blas::DataType::kF32:
+    case blas::DataType::kFloat:
       return CUDA_R_32F;
-    case blas::DataType::kF64:
+    case blas::DataType::kDouble:
       return CUDA_R_64F;
-    case blas::DataType::kI8:
+    case blas::DataType::kInt8:
       return CUDA_R_8I;
-    case blas::DataType::kI32:
+    case blas::DataType::kInt32:
       return CUDA_R_32I;
-    case blas::DataType::kComplexF32:
+    case blas::DataType::kComplexFloat:
       return CUDA_C_32F;
-    case blas::DataType::kComplexF64:
+    case blas::DataType::kComplexDouble:
       return CUDA_C_64F;
   }
 }
 
 int GetDataTypeSizeBytes(blas::DataType ty) {
   switch (ty) {
-    case blas::DataType::kF16:
+    case blas::DataType::kHalf:
       return 2;
-    case blas::DataType::kF32:
+    case blas::DataType::kFloat:
       return 4;
-    case blas::DataType::kF64:
+    case blas::DataType::kDouble:
       return 8;
-    case blas::DataType::kI8:
+    case blas::DataType::kInt8:
       return 1;
-    case blas::DataType::kI32:
+    case blas::DataType::kInt32:
       return 4;
-    case blas::DataType::kComplexF32:
+    case blas::DataType::kComplexFloat:
       return 8;
-    case blas::DataType::kComplexF64:
+    case blas::DataType::kComplexDouble:
       return 16;
   }
 }
@@ -3611,7 +3611,7 @@ bool CUDABlas::DoBlasLtMatmul(Stream* stream,
                               blas::ProfileResult* output_profile_result) {
 #if CUDA_VERSION >= 11000
   const auto& cuda_plan = *static_cast<const CUDABlasLtMatmulPlan*>(plan);
-  if (cuda_plan.scale_type() == blas::DataType::kF32) {
+  if (cuda_plan.scale_type() == blas::DataType::kFloat) {
     // F32* computation types require F32 alpha/beta type, so we must cast them.
     if (alpha.is_pointer() || beta.is_pointer()) {
       // We cannot easily convert a pointer to f16 memory to a pointer to f32

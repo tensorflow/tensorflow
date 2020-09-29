@@ -97,19 +97,19 @@ std::ostream& operator<<(std::ostream& os, ComputationType ty) {
 
 string DataTypeString(DataType ty) {
   switch (ty) {
-    case DataType::kF16:
+    case DataType::kHalf:
       return "f16";
-    case DataType::kF32:
+    case DataType::kFloat:
       return "f32";
-    case DataType::kF64:
+    case DataType::kDouble:
       return "f64";
-    case DataType::kI8:
+    case DataType::kInt8:
       return "i8";
-    case DataType::kI32:
+    case DataType::kInt32:
       return "i32";
-    case DataType::kComplexF32:
+    case DataType::kComplexFloat:
       return "complex f32";
-    case DataType::kComplexF64:
+    case DataType::kComplexDouble:
       return "complex f64";
     default:
       LOG(FATAL) << "Unknown DataType " << static_cast<int32>(ty);
