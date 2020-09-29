@@ -697,17 +697,7 @@ def _create_local_rocm_repository(repository_ctx):
         "-DTENSORFLOW_USE_ROCM=1",
         "-D__HIP_PLATFORM_HCC__",
         "-DEIGEN_USE_HIP",
-    ] + _if_hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin, [
-        #
-        # define "TENSORFLOW_COMPILER_IS_HIP_CLANG" when we are using clang
-        # based hipcc to compile/build tensorflow
-        #
-        # Note that this #define should not be used to check whether or not
-        # tensorflow is being built with ROCm support
-        # (only TENSORFLOW_USE_ROCM should be used for that purpose)
-        #
-        "-DTENSORFLOW_COMPILER_IS_HIP_CLANG=1",
-    ]))
+    ])
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
