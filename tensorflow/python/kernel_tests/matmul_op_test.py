@@ -54,8 +54,8 @@ def _AddTest(test, op_name, testcase_name, fn):
   if hasattr(test, test_name):
     raise RuntimeError("Test %s defined more than once" % test_name)
   if 'bfloat16' in testcase_name:
-    # running bfloat16 in eager mode as we need to calculate intermediate
-    # tensors by using cast operators
+    # for MatMulGradient you need to send the x parameter as float32 for calculating numerical values
+    # that's why we cannot use the decorators
     setattr(test, test_name, fn)
   else:
     setattr(test, test_name, test_util.deprecated_graph_mode_only(fn))
@@ -70,25 +70,25 @@ def _GetTransposedMatrices(x, x_name, kwargs):
     return x
 
 class MatMulTest(test_lib.TestCase):
-  pass
+  pass # Filled in below
 
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
   @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
-    if a_np_.dtype is dtypes.bfloat16:
+    if a_np_.dtype==dtypes.bfloat16.as_numpy_dtype:
       # converting it back to float32 to avoid precision error
-      a_np_fp32 = np.array(math_ops.cast(a_np_, dtypes.float32))
-      b_np_fp32 = np.array(math_ops.cast(b_np_, dtypes.float32))
+      a_np_fp32 = a_np_.astype(np.float32)
+      b_np_fp32 = b_np_.astype(np.float32)
       # calculating the benchmark values
       np_val_temp = np.matrix(a_np_fp32) * np.matrix(b_np_fp32)
-      np_val = math_ops.cast(np_val_temp, dtypes.bfloat16)
+      np_val = np_val_temp.astype(a_np_.dtype)
       # Applying GetTransposedMatrix from random inputs for feeding to graph
       a_np_trans = _GetTransposedMatrices(a_np_fp32, "a", kwargs_)
       b_np_trans = _GetTransposedMatrices(b_np_fp32, "b", kwargs_)
       # converting the Transpose/Adjoint matrix to bfloat16
-      effective_a_np = math_ops.cast(a_np_trans, dtypes.bfloat16)
-      effective_b_np = math_ops.cast(b_np_trans, dtypes.bfloat16)
+      effective_a_np = a_np_trans.astype(a_np_.dtype)
+      effective_b_np = b_np_trans.astype(a_np_.dtype)
     else:
       np_val = np.matrix(a_np_) * np.matrix(b_np_)
       # Transpose and possibly conjugate a_np_ and b_np_ according to the
@@ -128,7 +128,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
   return Test
 
 class MatMulGradientTest(test_lib.TestCase):
-  pass
+  pass # Filled in below
 
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
@@ -136,16 +136,16 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     if not use_static_shape_ or a_np_.dtype in (np.int32, np.int64, np.float16):
       self.skipTest("Skipping infeasible gradient test.")
     
-    if a_np_.dtype is dtypes.bfloat16:
+    if a_np_.dtype == dtypes.bfloat16.as_numpy_dtype:
       # converting it back to float32 to avoid precision error
-      a_np_fp32 = np.array(math_ops.cast(a_np_, dtypes.float32))
-      b_np_fp32 = np.array(math_ops.cast(b_np_, dtypes.float32))
+      a_np_fp32 = a_np_.astype(np.float32)
+      b_np_fp32 = b_np_.astype(np.float32)
       # Applying GetTransposedMatrix from random inputs for feeding to graph
       a_np_trans = _GetTransposedMatrices(a_np_fp32, "a", kwargs_)
       b_np_trans = _GetTransposedMatrices(b_np_fp32, "b", kwargs_)
       # converting the Transpose/Adjoint matrix to bfloat16
-      effective_a_np = math_ops.cast(a_np_trans, dtypes.bfloat16)
-      effective_b_np = math_ops.cast(b_np_trans, dtypes.bfloat16)
+      effective_a_np = a_np_trans.astype(a_np_.dtype)
+      effective_b_np = b_np_trans.astype(a_np_.dtype)
       effective_a_np_ = a_np_trans
       effective_b_np_ = b_np_trans
       epsilon = np.finfo(np.float32).eps
@@ -159,6 +159,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
       effective_a_np_ = effective_a_np
       effective_b_np_ = effective_b_np
       epsilon = np.finfo(a_np_.dtype).eps
+
 
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
@@ -262,7 +263,7 @@ if __name__ == "__main__":
   trans_options = [[False, False], [True, False], [False, True]]
   dtypes_to_test = [
       np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
-      np.complex128, dtypes.bfloat16
+      np.complex128, dtypes.bfloat16.as_numpy_dtype
   ]
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
@@ -276,19 +277,8 @@ if __name__ == "__main__":
           for k in sizes:
             # Construct compatible random matrices a_np of size [m, k] and b_np
             # of size [k, n].
-            if dtype is dtypes.bfloat16:
-                a_np_random = np.random.normal(-5.0, 5.0, m * k
-                                              ).astype(np.float32).reshape([m, k])
-                b_np_random = np.random.normal(-5.0, 5.0, k * n
-                                              ).astype(np.float32).reshape([k, n])
-                a_np = math_ops.cast(a_np_random, dtypes.bfloat16)
-                b_np = math_ops.cast(b_np_random, dtypes.bfloat16)
-
-                _name_ = 'bfloat16'
-            else:
-              a_np = np.random.normal(-5, 5, m * k).astype(dtype).reshape([m, k])
-              b_np = np.random.normal(-5, 5, k * n).astype(dtype).reshape([k, n])
-              _name_ = dtype.__name__
+            a_np = np.random.normal(-5, 5, m * k).astype(dtype).reshape([m, k])
+            b_np = np.random.normal(-5, 5, k * n).astype(dtype).reshape([k, n])
             if dtype in (np.complex64, np.complex128):
               a_np.imag = np.random.normal(-5, 5,
                                            m * k).astype(dtype).reshape([m, k])
@@ -298,7 +288,7 @@ if __name__ == "__main__":
             for adjoint_a, transpose_a in trans_options:
               for adjoint_b, transpose_b in trans_options:
                 name = "%s_%s_%s_%s_%s_%s_%s_%s_%s" % (
-                    use_static_shape, _name_, m, n, k, adjoint_a,
+                    use_static_shape, dtype.__name__, m, n, k, adjoint_a,
                     transpose_a, adjoint_b, transpose_b)
                 _AddTest(MatMulTest, "MatMulTest", name,
                          _GetMatMulTest(
@@ -309,8 +299,6 @@ if __name__ == "__main__":
                              transpose_a=transpose_a,
                              adjoint_b=adjoint_b,
                              transpose_b=transpose_b))
-                #if dtype is dtypes.bfloat16:
-                #    continue;
                 _AddTest(MatMulGradientTest, "MatMulGradientTest", name,
                          _GetMatMulGradientTest(
                              a_np,
