@@ -16,7 +16,7 @@ If you are using a platform other than Android, or you are already familiar with
 the TensorFlow Lite APIs, you can download our starter text classification
 model.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification.tflite">Download
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification_v2.tflite">Download
 starter model</a>
 
 ## How it works

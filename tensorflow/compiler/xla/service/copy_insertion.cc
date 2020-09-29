@@ -217,10 +217,9 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
 
 // Add kCopy instructions around the given kWhile instruction to eliminate any
 // possible live range interference of HLO values assuming a dependency-based
-// ordering (HloDependencyOrdering). Copies are added conservatively. There
-// likely are copies which are not strictly necessary, but they are removed
-// later in the pass via RemoveUnnecessaryCopies.
-//
+// ordering. Copies are added conservatively. There  likely are copies which are
+// not strictly necessary, but they are removed later in the pass via
+// RemoveUnnecessaryCopies.
 //
 // Elements (each ShapeIndex) in the loop state are considered independently.  A
 // copy is added to each element of the loop state which is modified in the
@@ -359,6 +358,19 @@ Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
     }
     computation->set_root_instruction(deep_copy);
   }
+  return Status::OK();
+}
+
+// Add copies for the operands of in-place operations. RemoveUnnecessaryCopies
+// will remove the unnecessary copies.
+Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
+                                    HloInstruction* in_place_op,
+                                    int64 operand_number) {
+  VLOG(2) << "Adding copies for in-place operation " << in_place_op->name();
+  HloInstruction* operand = in_place_op->mutable_operand(operand_number);
+  TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
+                      in_place_op->parent()->DeepCopyInstruction(operand));
+  TF_RETURN_IF_ERROR(operand->ReplaceUseWith(in_place_op, deep_copy));
   return Status::OK();
 }
 
@@ -509,6 +521,12 @@ class CopyRemover {
     // value. The map is used to construct the copy info map below.
     absl::flat_hash_map<const HloValue*, ValueNode*> value_to_node;
     for (const HloBuffer& buffer : alias_analysis.buffers()) {
+      // No copies should have been inserted within fused computations, so no
+      // need to remove them. HloOrdering isn't compatible with HloValues inside
+      // fusions, so skip copy removal for them.
+      if (buffer.values().at(0)->defining_instruction()->IsFused()) {
+        continue;
+      }
       // Verify values contained in the buffer are strictly ordered. This
       // should always be the case after adding copies to eliminate
       // interference. Specifically, the addition of the control flow edges
@@ -591,7 +609,7 @@ class CopyRemover {
   void CreateCopyMap(
       const HloModule& module,
       const absl::flat_hash_map<const HloValue*, ValueNode*>& value_to_node) {
-    for (HloComputation* computation : module.computations()) {
+    for (HloComputation* computation : module.MakeNonfusionComputations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         // Add copies with unambiguous source values to the map. Copies with
         // ambiguous sources are not removable.
@@ -1005,7 +1023,7 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
 
-  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
@@ -1013,6 +1031,15 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
       } else if (instruction->opcode() == HloOpcode::kConditional) {
         TF_RETURN_IF_ERROR(
             AddCopiesForConditional(*alias_analysis, instruction));
+      } else {
+        for (const auto& operand_and_output_index :
+             HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
+          const HloUse& operand = operand_and_output_index.first;
+          CHECK_EQ(operand.operand_index, ShapeIndex{})
+              << "Support for non-{} shape operand not currently implemented.";
+          TF_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
+              *alias_analysis, instruction, operand.operand_number));
+        }
       }
     }
   }

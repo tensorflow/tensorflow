@@ -51,6 +51,12 @@ There are two ways to install Model Maker.
 pip install tflite-model-maker
 ```
 
+If you want to install nightly version, please follow the command:
+
+```shell
+pip install tflite-model-maker-nightly
+```
+
 *   Clone the source code from GitHub and install.
 
 ```shell

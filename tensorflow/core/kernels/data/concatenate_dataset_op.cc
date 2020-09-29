@@ -85,6 +85,12 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return n1 + n2;
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    inputs->push_back(to_concatenate_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(input_->CheckExternalState());
     return to_concatenate_->CheckExternalState();

@@ -30,8 +30,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 namespace tensorflow {
+namespace tpu {
 
 using Status = stream_executor::port::Status;
+template <typename T>
+using StatusOr = stream_executor::port::StatusOr<T>;
 
 TpuTransferManager::TpuTransferManager() {
   manager_ = tpu::ExecutorApiFn()->TpuTransferManager_NewFn();
@@ -217,6 +220,25 @@ int64 TpuTransferManager::GetByteSizeRequirement(
   return size_in_bytes;
 }
 
+StatusOr<xla::Shape> TpuTransferManager::ChooseCompactLayoutForShape(
+    const xla::Shape& host_shape) const {
+  XLA_Shape c_host_shape;
+  ApiConverter::ToC(host_shape, &c_host_shape);
+  XLA_Shape c_output;
+  StatusHelper status;
+  tpu::ExecutorApiFn()->TpuTransferManager_ChooseCompactLayoutForShapeFn(
+      manager_, &c_host_shape, &c_output, status.c_status);
+  // TODO(skyewm): use a scoped version of XLA_Shape
+  ApiConverter::Free(&c_host_shape);
+  if (!status.status().ok()) {
+    ApiConverter::Free(&c_output);
+    return status.status();
+  }
+  xla::Shape output = ApiConverter::FromC(&c_output);
+  ApiConverter::Free(&c_output);
+  return output;
+}
+
 bool TpuTransferManager::CanShapedBufferBeAccessedNow(
     stream_executor::StreamExecutor* executor,
     const xla::ShapedBuffer& device_buffer) const {
@@ -228,6 +250,17 @@ bool TpuTransferManager::CanShapedBufferBeAccessedNow(
   return tpu::ExecutorApiFn()
       ->TpuTransferManager_CanShapedBufferBeAccessedNowFn(
           manager_, tpu_executor->se_executor(), &c_device_buffer);
+}
+
+bool TpuTransferManager::CanBufferBeAccessedNow(
+    se::StreamExecutor* executor,
+    const se::DeviceMemoryBase& device_buffer) const {
+  auto* tpu_executor = down_cast<TpuExecutor*>(executor->implementation());
+  SE_DeviceMemoryBase c_device_buffer{const_cast<void*>(device_buffer.opaque()),
+                                      device_buffer.size(),
+                                      device_buffer.payload()};
+  return tpu::ExecutorApiFn()->TpuTransferManager_CanBufferBeAccessedNowFn(
+      manager_, tpu_executor->se_executor(), &c_device_buffer);
 }
 
 Status TpuTransferManager::WriteSingleTupleIndexTable(
@@ -287,4 +320,5 @@ Status TpuTransferManager::LinearizeToBuffers(
   return status.status();
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

@@ -40,8 +40,7 @@ class EagerOpRewriteTest : public ::testing::Test {
     tensorflow::EagerContext* eager_ctx = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        async, lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous,
-        GetDefaultCustomKernelCreator());
+        async, lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous);
 
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(
@@ -68,62 +67,61 @@ class EagerOpRewriteTest : public ::testing::Test {
   }
 };
 
-#define REGISTER_TEST(NAME, T, INPUT)                 \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {            \
-    auto orig_op = CreateOp("Conv2D");                \
-    orig_op->MutableAttrs()->Set("T", T);             \
-    orig_op->MutableAttrs()->Set("padding", "VALID"); \
-    CheckRewrite(orig_op.get(), "_MklNativeConv2D");  \
+#define CONV_OPS                                                      \
+  "Conv2D", "Conv2DBackpropInput", "Conv2DBackpropFilter", "Conv3D",  \
+      "Conv3DBackpropFilterV2", "Conv3DBackpropInputV2",              \
+      "DepthwiseConv2dNative", "DepthwiseConv2dNativeBackpropFilter", \
+      "DepthwiseConv2dNativeBackpropInput"
+
+#define REGISTER_TEST(NAME, T, INPUT)                                 \
+  TEST_F(EagerOpRewriteTest, NAME##_##T) {                            \
+    std::vector<string> conv_ops = {CONV_OPS};                        \
+    for (int i = 0; i < conv_ops.size(); ++i) {                       \
+      auto orig_op = CreateOp(conv_ops[i]);                           \
+      orig_op->MutableAttrs()->Set("T", T);                           \
+      orig_op->MutableAttrs()->Set("padding", "VALID");               \
+      CheckRewrite(orig_op.get(),                                     \
+                   mkl_op_registry::GetMklNativeOpName(conv_ops[i])); \
+    }                                                                 \
   }
-REGISTER_TEST_ALL_TYPES(Conv2D);
+REGISTER_TEST_ALL_TYPES(ConvOps_Positive);
 #undef REGISTER_TEST
 
-#define REGISTER_TEST(NAME, T, INPUT)                    \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {               \
-    auto orig_op = CreateOp("Conv2D");                   \
-    orig_op->MutableAttrs()->Set("T", T);                \
-    orig_op->MutableAttrs()->Set("padding", "EXPLICIT"); \
-    CheckRewrite(orig_op.get(), "Conv2D");               \
+#define REGISTER_TEST(NAME, T, INPUT)                      \
+  TEST_F(EagerOpRewriteTest, NAME##_##T) {                 \
+    std::vector<string> conv_ops = {CONV_OPS};             \
+    for (int i = 0; i < conv_ops.size(); ++i) {            \
+      auto orig_op = CreateOp(conv_ops[i]);                \
+      orig_op->MutableAttrs()->Set("T", T);                \
+      orig_op->MutableAttrs()->Set("padding", "EXPLICIT"); \
+      CheckRewrite(orig_op.get(), conv_ops[i]);            \
+    }                                                      \
   }
-REGISTER_TEST_ALL_TYPES(Conv2D_Explicit_Padding);
+REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Negative);
 #undef REGISTER_TEST
 
-#define REGISTER_TEST(NAME, T, INPUT)                             \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {                        \
-    auto orig_op = CreateOp("Conv2DBackpropInput");               \
-    orig_op->MutableAttrs()->Set("T", T);                         \
-    orig_op->MutableAttrs()->Set("padding", "VALID");             \
-    CheckRewrite(orig_op.get(), "_MklNativeConv2DBackpropInput"); \
+#define REGISTER_TEST(NAME, T, INPUT)                            \
+  TEST_F(EagerOpRewriteTest, NAME##_##T) {                       \
+    std::vector<string> ops = {"AvgPool",                        \
+                               "AvgPoolGrad",                    \
+                               "AvgPool3D",                      \
+                               "AvgPool3DGrad",                  \
+                               "BatchMatMul",                    \
+                               "FusedBatchNorm",                 \
+                               "FusedBatchNormV2",               \
+                               "FusedBatchNormV3",               \
+                               "FusedBatchNormGrad",             \
+                               "FusedBatchNormGradV2",           \
+                               "FusedBatchNormGradV3",           \
+                               "MatMul"};                        \
+    for (int i = 0; i < ops.size(); ++i) {                       \
+      auto orig_op = CreateOp(ops[i]);                           \
+      orig_op->MutableAttrs()->Set("T", T);                      \
+      CheckRewrite(orig_op.get(),                                \
+                   mkl_op_registry::GetMklNativeOpName(ops[i])); \
+    }                                                            \
   }
-REGISTER_TEST_ALL_TYPES(Conv2DBackpropInput);
-#undef REGISTER_TEST
-
-#define REGISTER_TEST(NAME, T, INPUT)                              \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {                         \
-    auto orig_op = CreateOp("Conv2DBackpropFilter");               \
-    orig_op->MutableAttrs()->Set("T", T);                          \
-    orig_op->MutableAttrs()->Set("padding", "VALID");              \
-    CheckRewrite(orig_op.get(), "_MklNativeConv2DBackpropFilter"); \
-  }
-REGISTER_TEST_ALL_TYPES(Conv2DBackpropFilter);
-#undef REGISTER_TEST
-
-#define REGISTER_TEST(NAME, T, INPUT)               \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {          \
-    auto orig_op = CreateOp("BatchMatMul");         \
-    orig_op->MutableAttrs()->Set("T", T);           \
-    CheckRewrite(orig_op.get(), "_MklBatchMatMul"); \
-  }
-REGISTER_TEST_ALL_TYPES(BatchMatMul);
-#undef REGISTER_TEST
-
-#define REGISTER_TEST(NAME, T, INPUT)          \
-  TEST_F(EagerOpRewriteTest, NAME##_##T) {     \
-    auto orig_op = CreateOp("MatMul");         \
-    orig_op->MutableAttrs()->Set("T", T);      \
-    CheckRewrite(orig_op.get(), "_MklMatMul"); \
-  }
-REGISTER_TEST_ALL_TYPES(MatMul);
+REGISTER_TEST_ALL_TYPES(MostOps_Positive);
 #undef REGISTER_TEST
 
 }  // namespace tensorflow

@@ -41,14 +41,10 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
     ] + select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:android": [
-            "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ],
         "//conditions:default": [],
     }) + select({

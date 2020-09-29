@@ -18,11 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import atexit
 import collections
 import os
 
 from absl.testing import parameterized
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
@@ -35,6 +35,8 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -100,7 +102,7 @@ class MultiProcessPoolRunner():
 # expensive initialization cost of TensorFlow in new processes.
 #
 # Note that they have to be globals and can't be owned by test classes because
-# usually proc_func usually captures the test class instance, and test class
+# usually fn usually captures the test class instance, and test class
 # instance can't be pickled if it has mpr as a member (it is not allowed to
 # pickle Process objects).
 # TODO(crccw): Use `num_workers` combination once it is ready.
@@ -116,16 +118,6 @@ def get_global_mpr(num_processes):
   else:
     raise ValueError("get_global_mpr: num_processes must be 1 or 2, got %d" %
                      num_processes)
-
-
-# Shutdown the runners gracefully to avoid the processes getting SIGTERM and
-# make tsan happy.
-def _shutdown_at_exit():
-  global_mpr_2p.runner.shutdown()
-  global_mpr_1p.runner.shutdown()
-
-
-atexit.register(_shutdown_at_exit)
 
 
 class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
@@ -508,6 +500,51 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       ]
       self.batch_reduce_and_verify(inputs, expect, options)
 
+  @combinations.generate(
+      combinations.combine(
+          num_processes=[1, 2],
+          required_gpus=[0, 1, 2],
+          axis=[0, 1, 2],
+          func_mode=["eager", "func_graph"],
+          communication=[
+              CollectiveCommunication.NCCL,
+              CollectiveCommunication.AUTO,
+              CollectiveCommunication.RING
+          ]))
+  def testAllGatherSameShape(self, num_processes, required_gpus, communication,
+                             func_mode, axis):
+
+    def replica_fn():
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus,
+                                                    communication)
+      value = constant_op.constant([[[1, 2], [1, 2]]], dtype=dtypes.float32)
+
+      def gather_fn():
+        value_fn = lambda device_idx: value
+        per_replica_value = make_per_replica_value(value_fn, devices)
+        gathered_values = collective._gather(
+            per_replica_value, per_replica_value, axis=axis)
+        gathered_values = self.as_list(gathered_values)
+        # Skip checking devices in eager. In eager the device attribute doesn't
+        # reflect the actual device of the tensor.
+        if not context.executing_eagerly():
+          self.assertAllEqual(devices, [v.device for v in gathered_values])
+        return [ops.convert_to_tensor(v) for v in gathered_values]
+
+      group_size = num_processes * (required_gpus or 1)
+      expect = array_ops.concat([value] * group_size, axis=axis)
+      per_replica_expect = [ops.convert_to_tensor(expect)] * len(devices)
+
+      if func_mode == "eager":
+        result = gather_fn()
+        self.assertAllClose(result, per_replica_expect)
+
+      if func_mode == "func_graph":
+        result = def_function.function(gather_fn)()
+        self.assertAllClose(result, per_replica_expect)
+
+    get_global_mpr(num_processes).run(replica_fn)
 
 if __name__ == "__main__":
   # Set default inter op thread pool size to one to ensure we don't exhaust the

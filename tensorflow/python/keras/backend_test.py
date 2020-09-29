@@ -36,11 +36,11 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.util import tf_inspect
 
 
 def compare_single_input_op_to_numpy(keras_op,

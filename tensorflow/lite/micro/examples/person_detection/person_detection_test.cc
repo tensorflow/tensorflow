@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-#include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -45,7 +44,6 @@ TF_LITE_MICRO_TEST(TestInvoke) {
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
   }
-  PrintModelData(model, &micro_error_reporter);
 
   // Pull in only the operation implementations we need.
   // This relies on a complete list of all the ops needed by this graph.

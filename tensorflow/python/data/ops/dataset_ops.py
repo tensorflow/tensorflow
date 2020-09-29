@@ -94,6 +94,8 @@ ops.NotDifferentiable("ReduceDataset")
 
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
+tf_export("data.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
+# TODO(b/168128531): Deprecate and remove this symbol.
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 # Constants representing infinite and unknown cardinalities.
@@ -371,10 +373,15 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
 
-    # (2) Apply graph rewrite options
+    # (2) Apply autotune options
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
+    if autotune:
+      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
+
+    # (3) Apply graph rewrite options
     # pylint: disable=protected-access
     graph_rewrites = options._graph_rewrites()
-    graph_rewrite_configs = options._graph_rewrite_configs()
+    graph_rewrite_configs = options._graph_rewrite_configs(autotune)
     # pylint: enable=protected-access
     if self._has_captured_ref():
       if graph_rewrites.enabled or graph_rewrites.default:
@@ -390,12 +397,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
                                  graph_rewrites.disabled,
                                  graph_rewrites.default, graph_rewrite_configs)
-
-    # (3) Apply autotune options
-    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
-
-    if autotune:
-      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
 
     # (4) Apply stats aggregator options
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
@@ -417,7 +418,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       RuntimeError: If not inside of tf.function and not executing eagerly.
     """
     if context.executing_eagerly() or ops.inside_function():
-      return iterator_ops.OwnedIterator(self)
+      with ops.colocate_with(self._variant_tensor):
+        return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
@@ -1699,7 +1701,7 @@ name=None))
 
     >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
     >>> dataset = dataset.map(lambda x: x + 1,
-    ...     num_parallel_calls=tf.data.experimental.AUTOTUNE,
+    ...     num_parallel_calls=tf.data.AUTOTUNE,
     ...     deterministic=False)
 
     Args:
@@ -1707,7 +1709,7 @@ name=None))
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
-        `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
+        `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
         should be traded for performance by allowing elements to be produced out
@@ -1820,7 +1822,7 @@ name=None))
     ...              "/var/data/file3.txt", "/var/data/file4.txt"]
     >>> dataset = tf.data.Dataset.from_tensor_slices(filenames)
     >>> dataset = dataset.interleave(lambda x: tf.data.TFRecordDataset(x),
-    ...     cycle_length=4, num_parallel_calls=tf.data.experimental.AUTOTUNE,
+    ...     cycle_length=4, num_parallel_calls=tf.data.AUTOTUNE,
     ...     deterministic=False)
 
     Args:
@@ -1828,7 +1830,7 @@ name=None))
       cycle_length: (Optional.) The number of input elements that will be
         processed concurrently. If not set, the tf.data runtime decides what it
         should be based on available CPU. If `num_parallel_calls` is set to
-        `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument identifies
+        `tf.data.AUTOTUNE`, the `cycle_length` argument identifies
         the maximum degree of parallelism.
       block_length: (Optional.) The number of consecutive elements to produce
         from each input element before cycling to another input element. If not
@@ -1837,7 +1839,7 @@ name=None))
         threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
         from cycle elements synchronously with no parallelism. If the value
-        `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
+        `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
         should be traded for performance by allowing elements to be produced out
@@ -2271,7 +2273,8 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      return iterator_ops.OwnedIterator(self)
+      with ops.colocate_with(self._variant_tensor):
+        return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -2313,12 +2316,13 @@ class DatasetV1(DatasetV2):
       else:
         six.reraise(ValueError, err)
 
-    # pylint: disable=protected-access
-    return iterator_ops.Iterator(
-        gen_dataset_ops.one_shot_iterator(
-            dataset_factory=_make_dataset, **self._flat_structure), None,
-        get_legacy_output_types(self), get_legacy_output_shapes(self),
-        get_legacy_output_classes(self))
+    with ops.colocate_with(self._variant_tensor):
+      # pylint: disable=protected-access
+      return iterator_ops.Iterator(
+          gen_dataset_ops.one_shot_iterator(
+              dataset_factory=_make_dataset, **self._flat_structure), None,
+          get_legacy_output_types(self), get_legacy_output_shapes(self),
+          get_legacy_output_classes(self))
 
   @deprecation.deprecated(
       None, "This is a deprecated API that should only be used in TF 1 graph "
@@ -2378,16 +2382,20 @@ class DatasetV1(DatasetV2):
     dataset = self._apply_options()
     if shared_name is None:
       shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator_v2(
-        container="", shared_name=shared_name, **self._flat_structure)
-    with ops.colocate_with(iterator_resource):
+
+    with ops.colocate_with(self._variant_tensor):
+      iterator_resource = gen_dataset_ops.iterator_v2(
+          container="", shared_name=shared_name, **self._flat_structure)
+
       initializer = gen_dataset_ops.make_iterator(
           dataset._variant_tensor,  # pylint: disable=protected-access
           iterator_resource)
-    # pylint: disable=protected-access
-    return iterator_ops.Iterator(
-        iterator_resource, initializer, get_legacy_output_types(dataset),
-        get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
+
+      # pylint: disable=protected-access
+      return iterator_ops.Iterator(iterator_resource, initializer,
+                                   get_legacy_output_types(dataset),
+                                   get_legacy_output_shapes(dataset),
+                                   get_legacy_output_classes(dataset))
 
   @property
   @deprecation.deprecated(
@@ -2567,7 +2575,7 @@ class DatasetV1(DatasetV2):
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
-        `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
+        `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
         should be traded for performance by allowing elements to be produced out
@@ -2971,11 +2979,12 @@ class Options(options_lib.OptionsBase):
                           disabled=list(set(result.disabled)),
                           default=list(set(result.default)))
 
-  def _graph_rewrite_configs(self):
+  def _graph_rewrite_configs(self, autotune):
     """Produces the list of configurations for enabled graph optimizations."""
     result = []
     if self.experimental_optimization:
-      result.extend(self.experimental_optimization._graph_rewrite_configs())  # pylint: disable=protected-access
+      result.extend(
+          self.experimental_optimization._graph_rewrite_configs(autotune))  # pylint: disable=protected-access
 
     if self.experimental_slack:
       num_devices = self.experimental_distribute.num_devices
@@ -4380,7 +4389,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     # pylint: disable=protected-access
     # We colocate the prefetch dataset with its input as this collocation only
     # happens automatically in graph mode.
-    with ops.device(input_dataset._variant_tensor.device):
+    with ops.colocate_with(input_dataset._variant_tensor):
       variant_tensor = gen_dataset_ops.prefetch_dataset(
           input_dataset._variant_tensor,
           buffer_size=self._buffer_size,

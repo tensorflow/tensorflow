@@ -109,7 +109,8 @@ string DebugStepInfo(const StepInfoResult& step_info) {
 }  // namespace
 
 StepDatabaseResult ConvertStepEventsToStepDb(
-    bool has_device, const StepEvents& nonoverlapped_step_events) {
+    bool has_device, bool maybe_drop_incomplete_steps,
+    const StepEvents& nonoverlapped_step_events) {
   StepDatabaseResult step_db;
   // Gets sorted step numbers.
   std::vector<int64> step_numbers;
@@ -150,6 +151,17 @@ StepDatabaseResult ConvertStepEventsToStepDb(
     }
     // The remaining fields in PerCoreStepInfo are not filled.
     *step_db.add_step_sequence() = per_core_step_info;
+  }
+
+  // If we are using sampling mode and we get enough steps, we would like to
+  // drop the incomplete steps at the beginning and the end.
+  // (Sometimes CUTPI instrumentation will prolong the first step too).
+  int kDropIncomplteteStepThreshold = 5;
+  if (maybe_drop_incomplete_steps &&
+      step_db.step_sequence_size() > kDropIncomplteteStepThreshold) {
+    step_db.mutable_step_sequence()->erase(
+        step_db.mutable_step_sequence()->begin());
+    step_db.mutable_step_sequence()->RemoveLast();
   }
   return step_db;
 }

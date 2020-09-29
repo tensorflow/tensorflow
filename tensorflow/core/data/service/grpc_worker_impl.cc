@@ -43,6 +43,7 @@ Status GrpcWorkerImpl::Start(const std::string& worker_address) {
   }
 HANDLER(ProcessTask);
 HANDLER(GetElement);
+HANDLER(GetWorkerTasks);
 #undef HANDLER
 
 }  // namespace data

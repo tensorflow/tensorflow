@@ -24,6 +24,7 @@ import six
 from tensorflow.python.eager import def_function
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils import generic_utils
@@ -161,7 +162,7 @@ def model_metadata(model, include_optimizer=True, require_config=True):
       backend=K.backend(),
       model_config=model_config)
   if model.optimizer and include_optimizer:
-    if isinstance(model.optimizer, optimizers.TFOptimizer):
+    if isinstance(model.optimizer, optimizer_v1.TFOptimizer):
       logging.warning(
           'TensorFlow optimizers do not '
           'make it possible to access '

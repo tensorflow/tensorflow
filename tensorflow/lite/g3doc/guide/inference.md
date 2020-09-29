@@ -365,7 +365,7 @@ TfLiteInterpreterInvoke(interpreter);
 
 // Extract the output tensor data.
 const TfLiteTensor* output_tensor =
-//      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+    TfLiteInterpreterGetOutputTensor(interpreter, 0);
 TfLiteTensorCopyToBuffer(output_tensor, output.data(),
                          output.size() * sizeof(float));
 
@@ -377,7 +377,9 @@ TfLiteModelDelete(model);
 
 ## Load and run a model in C++
 
-*Platforms: Android and Linux*
+*Platforms: Android, iOS, and Linux*
+
+Note: C++ API on iOS is only available when using bazel.
 
 In C++, the model is stored in
 [`FlatBufferModel`](https://www.tensorflow.org/lite/api_docs/cc/class/tflite/flat-buffer-model.html)
@@ -488,11 +490,11 @@ output_data = interpreter.get_tensor(output_details[0]['index'])
 print(output_data)
 ```
 
-Alternatively to loading the model as a pre-converted `.tflite` file, you can
-combine your code with the
-[TensorFlow Lite Converter Python API](../convert/python_api.md)
+As an alternative to loading the model as a pre-converted `.tflite` file, you
+can combine your code with the
+[TensorFlow Lite Converter Python API](https://www.tensorflow.org/lite/convert/python_api)
 (`tf.lite.TFLiteConverter`), allowing you to convert your TensorFlow model into
-the TensorFlow Lite format and then run an inference:
+the TensorFlow Lite format and then run inference:
 
 ```python
 import numpy as np

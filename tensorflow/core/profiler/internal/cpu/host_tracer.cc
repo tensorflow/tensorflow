@@ -141,6 +141,7 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
 }
 
 Status HostTracer::CollectData(XSpace* space) {
+  VLOG(2) << "Collecting data to XSpace from HostTracer.";
   if (recording_) {
     return errors::Internal("TraceMeRecorder not stopped");
   }

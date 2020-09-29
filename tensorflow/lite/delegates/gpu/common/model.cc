@@ -46,6 +46,11 @@ std::vector<Value*> GraphFloat32::inputs() const {
   return FilterValues([](const ValueDef& v) { return v.producer == nullptr; });
 }
 
+std::vector<Value*> GraphFloat32::variable_inputs() const {
+  return FilterValues(
+      [](const ValueDef& v) { return v.value->tensor.is_variable_input; });
+}
+
 std::vector<Value*> GraphFloat32::outputs() const {
   return FilterValues([](const ValueDef& v) { return v.consumers.empty(); });
 }
@@ -496,6 +501,7 @@ absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
 }
 
 bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
+  if (model.values().empty()) return true;
   const int32_t b = model.values()[0]->tensor.shape.b;
   for (auto value : model.values()) {
     if (value->tensor.shape.b != b) {

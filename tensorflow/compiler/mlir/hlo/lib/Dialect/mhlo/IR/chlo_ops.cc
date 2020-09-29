@@ -303,8 +303,14 @@ void ConstantLikeOp::getCanonicalizationPatterns(
   results.insert<ConstantLikeToConstant>(context);
 }
 
+}  // namespace chlo
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
+
+namespace mlir {
+namespace chlo {
 
 //===----------------------------------------------------------------------===//
 // chlo Dialect Constructor

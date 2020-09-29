@@ -145,7 +145,7 @@ Build Type                                                                      
 *   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
 *   [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
 *   [TensorFlow Examples](https://github.com/tensorflow/examples)
-*   [TensorFlow in Practice from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
+*   [DeepLearning.AI TensorFlow Developer Professional Certificate](https://www.coursera.org/specializations/tensorflow-in-practice)
 *   [TensorFlow: Data and Deployment from Coursera](https://www.coursera.org/specializations/tensorflow-data-and-deployment)
 *   [Getting Started with TensorFlow 2 from Coursera](https://www.coursera.org/learn/getting-started-with-tensor-flow2)
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)

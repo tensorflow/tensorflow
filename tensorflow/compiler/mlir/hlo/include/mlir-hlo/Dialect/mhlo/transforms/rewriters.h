@@ -28,6 +28,12 @@ class LLVMTypeConverter;
 class LowerToLLVMOptions;
 class OwningRewritePatternList;
 class BufferAssignmentPlacer;
+
+// Populates a collection of rewrite patterns to realize element-wise operations
+// on ranked tensors where possible.
+void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
+                                          OwningRewritePatternList *patterns);
+
 namespace mhlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -51,9 +57,9 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(
-    MLIRContext *context, BufferAssignmentPlacer *bufferAssignment,
-    BufferAssignmentTypeConverter *converter,
+    MLIRContext *context, BufferAssignmentTypeConverter *converter,
     OwningRewritePatternList *patterns);
+
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
                                           OwningRewritePatternList *patterns);
@@ -82,10 +88,10 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
-// Populates a pattern that translates the standard TanhOp to an approximation
-// that does not use intrinsics.
-void PopulateTanhToApproximationPatterns(MLIRContext *context,
-                                         OwningRewritePatternList *patterns);
+// Populates patterns that translate the trigonometric operations from the
+// standard dialect to approximations that do not use intrinsics.
+void PopulateTrigonometricToApproximationPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace mhlo
 
