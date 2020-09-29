@@ -41,6 +41,10 @@ tf_module {
     argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_memory_usage"
+    argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_synchronous_execution"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }

@@ -1468,7 +1468,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         epochs=20)
     loss = history.history['loss']
     self.assertEqual(len(loss), 1)
-    self.assertTrue(np.isnan(loss[0]))
+    self.assertTrue(np.isnan(loss[0]) or np.isinf(loss[0]))
 
   @unittest.skipIf(
       os.name == 'nt',
@@ -1768,6 +1768,28 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model.evaluate(x, y, batch_size=2)
     with self.assertRaisesRegexp(ValueError, 'New function '):
       model.predict(x, batch_size=2)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_stop_training_batch_level(self):
+
+    class MyCallback(keras.callbacks.Callback):
+
+      def __init__(self):
+        super(MyCallback, self).__init__()
+        self.batch_counter = 0
+
+      def on_train_batch_end(self, batch, logs=None):
+        self.batch_counter += 1
+        if batch == 2:
+          self.model.stop_training = True
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    my_cb = MyCallback()
+    # Will run 5 batches if `stop_training` doesn't work.
+    model.fit(x, y, batch_size=2, callbacks=[my_cb])
+    self.assertEqual(my_cb.batch_counter, 3)
 
 
 # A summary that was emitted during a test. Fields:

@@ -18,20 +18,17 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
-#include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
-#include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
-#include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
-#include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
-#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
@@ -40,10 +37,6 @@ limitations under the License.
 namespace py = ::pybind11;
 
 namespace {
-
-using ::tensorflow::profiler::KERNEL_STATS_DB;
-using ::tensorflow::profiler::OP_METRICS_DB;
-using ::tensorflow::profiler::STEP_DB;
 
 tensorflow::Status ValidateHostPortPair(const std::string& host_port) {
   tensorflow::uint32 port;
@@ -175,59 +168,17 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     return content;
   });
 
-  m.def("xspace_to_trace_events", [](const py::bytes& serialized_xspace_proto) {
-    tensorflow::string content;
-    tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(std::string(serialized_xspace_proto));
-    tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, &content);
-    return py::bytes(content);
-  });
-
-  m.def("xspace_to_overview_page",
-        [](const py::bytes& serialized_xspace_proto) {
-          tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(std::string(serialized_xspace_proto));
-          tensorflow::profiler::OverviewPage overview_page =
-              tensorflow::profiler::ConvertOpStatsToOverviewPage(
-                  ConvertXSpaceToOpStats(
-                      xspace, {OP_METRICS_DB, STEP_DB, KERNEL_STATS_DB}));
-          return py::bytes(overview_page.SerializeAsString());
-        });
-
-  m.def("xspace_to_input_pipeline",
-        [](const py::bytes& serialized_xspace_proto) {
-          tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(std::string(serialized_xspace_proto));
-          tensorflow::profiler::InputPipelineAnalysisResult input_pipeline =
-              tensorflow::profiler::ConvertOpStatsToInputPipelineAnalysis(
-                  ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB}));
-          return py::bytes(input_pipeline.SerializeAsString());
-        });
-
-  m.def("xspace_to_tf_stats", [](const py::bytes& serialized_xspace_proto) {
-    tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(std::string(serialized_xspace_proto));
-    tensorflow::profiler::TfStatsDatabase tf_stats_db =
-        tensorflow::profiler::ConvertOpStatsToTfStats(
-            ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, KERNEL_STATS_DB}));
-    return py::bytes(tf_stats_db.SerializeAsString());
-  });
-
-  m.def("xspace_to_kernel_stats", [](const py::bytes& serialized_xspace_proto) {
-    tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(std::string(serialized_xspace_proto));
-    tensorflow::profiler::OpStats op_stats =
-        ConvertXSpaceToOpStats(xspace, {KERNEL_STATS_DB});
-    return py::bytes(op_stats.kernel_stats_db().SerializeAsString());
-  });
-
-  m.def("xspace_to_memory_profile",
-        [](const py::bytes& serialized_xspace_proto) {
-          tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(std::string(serialized_xspace_proto));
-          std::string json_output;
-          tensorflow::profiler::ConvertXSpaceToMemoryProfileJson(xspace,
-                                                                 &json_output);
-          return py::bytes(json_output);
+  m.def("xspace_to_tools_data",
+        [](const py::list& xspace_path_list, const py::str& py_tool_name) {
+          std::vector<std::string> xspace_paths;
+          for (py::handle obj : xspace_path_list) {
+            xspace_paths.push_back(std::string(py::cast<py::str>(obj)));
+          }
+          std::string tool_name = std::string(py_tool_name);
+          auto tool_data_and_success =
+              tensorflow::profiler::ConvertMultiXSpacesToToolData(xspace_paths,
+                                                                  tool_name);
+          return py::make_tuple(py::bytes(tool_data_and_success.first),
+                                py::bool_(tool_data_and_success.second));
         });
 };

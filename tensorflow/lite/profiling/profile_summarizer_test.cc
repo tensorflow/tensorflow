@@ -36,10 +36,14 @@ namespace {
 const char* kOpName = "SimpleOpEval";
 
 TfLiteStatus SimpleOpEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input1 = tflite::GetInput(context, node, /*index=*/0);
-  const TfLiteTensor* input2 = tflite::GetInput(context, node, /*index=*/1);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, /*index=*/0, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, /*index=*/1, &input2));
 
-  TfLiteTensor* output = GetOutput(context, node, /*index=*/0);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, /*index=*/0, &output));
 
   int32_t* output_data = output->data.i32;
   *output_data = *(input1->data.i32) + *(input2->data.i32);

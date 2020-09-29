@@ -192,6 +192,20 @@ struct ImageResizerGradientState {
     original_height = original_image.dim_size(1);
     original_width = original_image.dim_size(2);
 
+    // The following check is also carried out for the forward op. It is added
+    // here to prevent a divide-by-zero exception when either height_scale or
+    // width_scale is being calculated.
+    OP_REQUIRES(context, resized_height > 0 && resized_width > 0,
+                errors::InvalidArgument("resized dimensions must be positive"));
+
+    // The following check is also carried out for the forward op. It is added
+    // here to prevent either height_scale or width_scale from being set to
+    // zero, which would cause a divide-by-zero exception in the deterministic
+    // back-prop path.
+    OP_REQUIRES(
+        context, original_height > 0 && original_width > 0,
+        errors::InvalidArgument("original dimensions must be positive"));
+
     OP_REQUIRES(
         context,
         FastBoundsCheck(original_height, std::numeric_limits<int32>::max()) &&

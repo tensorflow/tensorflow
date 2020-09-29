@@ -24,6 +24,10 @@ namespace tpu {
 
 TfTpu_ExecutorApiFn* ExecutorApiFn();
 
+// Returns whether function pointers in `executor_api_fn` have been set.  If
+// false, it probably means an appropriate initializer needs to be linked in.
+bool IsInitialized(TfTpu_ExecutorApiFn* executor_api_fn);
+
 }  // namespace tpu
 }  // namespace tensorflow
 

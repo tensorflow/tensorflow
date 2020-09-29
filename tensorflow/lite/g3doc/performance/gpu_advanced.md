@@ -65,27 +65,83 @@ allows the appropriate versions; for example, ADD v2.
 
 ## Basic usage
 
-### Android (Java)
+### Android (Kotlin / Java)
 
-Run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify the
-`GpuDelegate` through `Interpreter.Options`.
+Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
+package in the existing `dependencies` block.
 
-```java
-// NEW: Prepare GPU delegate.
-GpuDelegate delegate = new GpuDelegate();
-Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
-
-// Set up interpreter.
-Interpreter interpreter = new Interpreter(model, options);
-
-// Run inference.
-writeToInputTensor(inputTensor);
-interpreter.run(inputTensor, outputTensor);
-readFromOutputTensor(outputTensor);
-
-// Clean up.
-delegate.close();
 ```
+dependencies {
+    ...
+    implementation 'org.tensorflow:tensorflow-lite:2.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.3.0'
+}
+```
+
+Then run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify
+the `GpuDelegate` through `Interpreter.Options`.
+
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Kotlin</h3>
+      <p><pre class="prettyprint lang-kotlin">
+    import org.tensorflow.lite.Interpreter
+    import org.tensorflow.lite.gpu.CompatibilityList
+    import org.tensorflow.lite.gpu.GpuDelegate
+
+    val compatList = CompatibilityList()
+
+    val options = Interpreter.Options().apply{
+        if(compatList.isDelegateSupportedOnThisDevice){
+            // if the device has a supported GPU, add the GPU delegate
+            val delegateOptions = compatList.bestOptionsForThisDevice
+            this.addDelegate(GpuDelegate(delegateOptions))
+        } else {
+            // if the GPU is not supported, run on 4 threads
+            this.setNumThreads(4)
+        }
+    }
+
+    val interpreter = Interpreter(model, options)
+
+    // Run inference
+    writeToInput(input)
+    interpreter.run(input, output)
+    readFromOutput(output)
+      </pre></p>
+    </section>
+    <section>
+      <h3>Java</h3>
+      <p><pre class="prettyprint lang-java">
+    import org.tensorflow.lite.Interpreter;
+    import org.tensorflow.lite.gpu.CompatibilityList;
+    import org.tensorflow.lite.gpu.GpuDelegate;
+
+    // Initialize interpreter with GPU delegate
+    Interpreter.Options options = new Interpreter.Options();
+    CompatibilityList compatList = CompatibilityList();
+
+    if(compatList.isDelegateSupportedOnThisDevice()){
+        // if the device has a supported GPU, add the GPU delegate
+        GpuDelegate.Options delegateOptions = compatList.getBestOptionsForThisDevice();
+        GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions);
+        options.addDelegate(gpuDelegate);
+    } else {
+        // if the GPU is not supported, run on 4 threads
+        options.setNumThreads(4);
+    }
+
+    Interpreter interpreter = new Interpreter(model, options);
+
+    // Run inference
+    writeToInput(input);
+    interpreter.run(input, output);
+    readFromOutput(output);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 ### Android (C/C++)
 
@@ -197,7 +253,7 @@ default options (which are explicated in the Basic Usage example above).
 
 // THIS:
 var options = MetalDelegate.Options()
-options.allowsPrecisionLoss = false
+options.isPrecisionLossAllowed = false
 options.waitType = .passive
 options.isQuantizationEnabled = false
 let delegate = MetalDelegate(options: options)

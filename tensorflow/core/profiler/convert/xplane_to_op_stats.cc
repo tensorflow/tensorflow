@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
+#include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
+#include "tensorflow/core/profiler/utils/step_intersection.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -107,7 +109,7 @@ void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
 }
 
 void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
-                      const OpStatsConfig& config, OpMetricsDb* op_metrics_db,
+                      const OpStatsOptions& options, OpMetricsDb* op_metrics_db,
                       StepEvents* step_events) {
   absl::flat_hash_map<int64, TfOp> tf_ops =
       CollectTfOpsFromHostThreadsXPlane(*host_plane);
@@ -116,7 +118,7 @@ void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
   plane.ForEachLine([&](const XLineVisitor& line) {
     ConsumeTfMetricsDbData(
         ConvertHostThreadsXLineToTfMetricsDbData(line, tf_ops), &combiner);
-    if (config.contains(STEP_DB)) {
+    if (options.generate_step_db) {
       CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
                             line, use_device_step_events, *step_events),
                         step_events);
@@ -143,7 +145,7 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 }
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
-                               const OpStatsConfig& config) {
+                               const OpStatsOptions& options) {
   const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(space, kGpuPlanePrefix);
@@ -158,7 +160,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   KernelReportMap reports;
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
-    if (config.contains(OP_METRICS_DB)) {
+    if (options.generate_op_metrics_db) {
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
@@ -168,37 +170,77 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
           perf_env.peak_hbm_bw_giga_bytes_per_second());
       op_metrics_db_combiner.Combine(device_op_metrics_db);
     }
-    if (config.contains(STEP_DB)) {
+    if (options.generate_step_db) {
       CombineStepEvents(ConvertDeviceTraceXPlaneToStepEvents(*device_trace),
                         &step_events);
     }
-    if (config.contains(KERNEL_STATS_DB)) {
+    if (options.generate_kernel_stats_db) {
       ConvertDeviceTraceXPlaneToKernelReports(*device_trace,
                                               /*on_kernel_fn=*/{}, &reports);
     }
   }
 
   // Combine into reports.
-  if (config.contains(KERNEL_STATS_DB)) {
+  if (options.generate_kernel_stats_db) {
     CopyTopKDurationKernelReportsToDb(reports,
                                       op_stats.mutable_kernel_stats_db());
   }
 
   bool has_device = !device_planes.empty();
   // Convert a host plane.
-  if (host_plane && config.contains(OP_METRICS_DB)) {
-    ProcessHostPlane(host_plane, has_device, config,
+  if (host_plane && options.generate_op_metrics_db) {
+    ProcessHostPlane(host_plane, has_device, options,
                      op_stats.mutable_host_op_metrics_db(), &step_events);
   }
-  if (config.contains(STEP_DB)) {
+  if (options.generate_step_db) {
     StepEvents nonoverlapped_step_events =
         ToNonOverlappedStepEvents(step_events);
-    *op_stats.mutable_step_db() =
-        ConvertStepEventsToStepDb(has_device, nonoverlapped_step_events);
+    *op_stats.mutable_step_db() = ConvertStepEventsToStepDb(
+        has_device, options.maybe_drop_incomplete_steps,
+        nonoverlapped_step_events);
     *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
         ComputePrecisionStats(nonoverlapped_step_events);
   }
   return op_stats;
+}
+
+Status ConvertMultiXSpacesToCombinedOpStats(
+    const std::vector<std::string>& xspace_paths, const OpStatsOptions& options,
+    OpStats* combined_op_stats) {
+  // A shortcut code path for a single XSpace. There is no need to merge OpStats
+  // if there is only a single XSpace.
+  if (xspace_paths.size() == 1) {
+    XSpace xspace;
+    Status status = ReadBinaryProto(Env::Default(), xspace_paths[0], &xspace);
+    if (!status.ok()) return status;
+    *combined_op_stats = ConvertXSpaceToOpStats(xspace, options);
+    return Status::OK();
+  }
+
+  // Read multiple XSpaces and convert to multiple OpStats.
+  std::vector<OpStats> all_op_stats;
+  for (const std::string& xspace_path : xspace_paths) {
+    XSpace xspace;
+    Status status = ReadBinaryProto(Env::Default(), xspace_path, &xspace);
+    if (!status.ok()) return status;
+    all_op_stats.push_back(ConvertXSpaceToOpStats(xspace, options));
+  }
+
+  // Combine OpStats.
+  std::vector<OpStatsInfo> all_op_stats_info;
+  all_op_stats_info.reserve(all_op_stats.size());
+  for (int i = 0; i < all_op_stats.size(); i++) {
+    all_op_stats_info.emplace_back(
+        &all_op_stats[i],
+        ParseHardwareType(all_op_stats[i].run_environment().device_type()), i);
+  }
+
+  // Do not limit the maximum number of steps during the merge of OpStats.
+  StepIntersection step_intersection =
+      ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
+  CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
+
+  return Status::OK();
 }
 
 }  // namespace profiler

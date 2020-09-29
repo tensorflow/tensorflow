@@ -188,6 +188,14 @@ absl::Status InferenceContext::InitFromGraph(
   if (create_info.hints.Check(ModelHints::kFastTuning)) {
     tuning_parameters.tuning_type = TuningType::FAST;
   }
+  if (tuning_parameters.info->IsMali()) {
+    const MaliInfo& info = tuning_parameters.info->mali_info;
+    if (info.IsMaliT6xx()) {
+      // Mali T628 hangs forever in clFinish when used profiling queue
+      // TuningType::FAST does not use profiling queue.
+      tuning_parameters.tuning_type = TuningType::FAST;
+    }
+  }
   RETURN_IF_ERROR(Tune(tuning_parameters));
   return absl::OkStatus();
 }
@@ -619,6 +627,9 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
   }
   for (const auto& b : shared_buffers_) {
     total_memory += b.GetMemorySizeInBytes();
+  }
+  for (const auto& t : variable_tensors_) {
+    total_memory += t.second.GetMemorySizeInBytes();
   }
 
   return total_memory;

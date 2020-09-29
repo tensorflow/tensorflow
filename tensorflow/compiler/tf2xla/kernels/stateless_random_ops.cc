@@ -111,6 +111,8 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
   }
 }
 
+namespace {
+
 xla::XlaOp StatelessRngUniformFullInt(absl::string_view device_type_string,
                                       xla::XlaOp seeds,
                                       const xla::Shape& shape) {
@@ -139,8 +141,6 @@ xla::XlaOp StatelessRngUniformFullInt(absl::string_view device_type_string,
           xla::primitive_util::LowercasePrimitiveTypeName(type)));
   }
 }
-
-namespace {
 
 class StatelessRandomUniformOp : public XlaOpKernel {
  public:

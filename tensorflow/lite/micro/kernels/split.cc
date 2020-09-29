@@ -69,6 +69,7 @@ TfLiteStatus SplitImpl(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* axis = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, axis != nullptr);
 
   // Dynamic output tensors are needed if axis tensor is not constant.
   // But Micro doesn't support dynamic memory allocation, so we only support

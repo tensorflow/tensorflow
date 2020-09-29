@@ -74,6 +74,17 @@ func @ignore_embedding_ops() -> () {
   return
 }
 
+// CHECK-LABEL: func @ignore_stack_ops
+func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
+  "tf_device.cluster"() ( {
+    // CHECK: "tf.StackV2"
+    // CHECK-NOT: _xla_outside_compilation
+    %0 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+    tf_device.return
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @op_string_result
 func @op_string_result() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {
@@ -284,3 +295,31 @@ func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf.string>)
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
   return %0 : tensor<f32>
 }
+
+// Checks that ops with inputs and outputs with string subtypes are marked
+// for outside compilation.
+
+// CHECK-LABEL: func @check_op_with_variant_string_subtypes_outside_compiled
+func @check_op_with_variant_string_subtypes_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<3xi32>) -> () {
+  "tf_device.cluster"() ( {
+    // CHECK:      "tf.TensorListReserve"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK:      "tf.TensorListGetItem"
+    // CHECK-SAME: _xla_outside_compilation
+    %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.string>>>
+    "tf.TensorListGetItem"(%0, %arg1, %arg2) : (tensor<!tf.variant<tensor<*x!tf.string>>>, tensor<i32>, tensor<3xi32>) -> tensor<24x24x64xui8>
+    tf_device.return
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+  return
+}
+// CHECK-LABEL: func @check_op_with_resource_string_subtypes_outside_compiled
+func @check_op_with_resource_string_subtypes_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf.resource<tensor<!tf.string>>>) -> () {
+  "tf_device.cluster"() ( {
+    // CHECK:      "tf.VarHandleOp"
+    // CHECK-SAME: _xla_outside_compilation
+    "tf.VarHandleOp"() {allowed_devices = [], container = "", device = "", shared_name = ""} : () -> tensor<!tf.resource<tensor<!tf.string>>>
+    tf_device.return
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+  return
+}
+

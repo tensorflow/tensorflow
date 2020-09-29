@@ -8,22 +8,12 @@ package(
 exports_files(["LICENSE"])
 
 py_library(
-    name = "parameter_server_client",
-    srcs = ["parameter_server_client.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client",
-        ":utils",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
-    ],
-)
-
-py_library(
     name = "client",
     srcs = ["client.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":metric_utils",
+        ":utils",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
@@ -39,7 +29,6 @@ py_library(
         "//tensorflow/python/eager:executor",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:remote",
-        "@absl_py//absl/logging",
         "@six_archive//:six",
     ],
 )
@@ -50,13 +39,13 @@ tf_py_test(
     srcs = ["client_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tfrt_enabled = True,
     deps = [
         ":client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -68,7 +57,6 @@ tf_py_test(
     tags = ["no_oss"],  # TODO(b/162119374)
     deps = [
         ":client",
-        ":parameter_server_client",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -83,7 +71,6 @@ tf_py_test(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -94,7 +81,6 @@ tf_py_test(
     shard_count = 2,
     tags = ["no_oss"],  # TODO(b/162119374)
     deps = [
-        ":parameter_server_client",
         ":remote_eager_lib",
         ":utils",
         "//tensorflow/python:dtypes",
@@ -102,7 +88,9 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute/client",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",

@@ -4618,6 +4618,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       result = control_flow_ops.merge([v_f, v_t])
       self.evaluate(result)
 
+  def testSwitchEagerMode(self):
+    if not context.executing_eagerly():
+      return
+    input_data = [1, 2, 3, 4]
+    vf, vt = control_flow_ops.switch(input_data, False)
+    self.assertAllEqual(vf, input_data)
+    self.assertAllEqual(vt, [])
+
   @test_util.run_deprecated_v1
   def testQIntArgAndRet(self):
 

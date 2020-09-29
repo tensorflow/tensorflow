@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import warnings
 
 from absl.testing import parameterized
@@ -209,20 +208,21 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         _disable_intra_op_parallelism_test_combinations()))
+      combinations.times(
+          test_base.default_test_combinations(),
+          _disable_intra_op_parallelism_test_combinations(),
+          combinations.combine(apply_autotune=[None, True, False])))
   def testOptimizationDisableIntraOpParallelism(self, dataset_fn,
-                                                expected_output):
-    os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "disable_intra_op_parallelism"
-    os.environ["TF_JOB_NAME"] = "test_job"
-
+                                                expected_output,
+                                                apply_autotune):
     dataset = dataset_fn()
     dataset = dataset.apply(testing.assert_next(["MaxIntraOpParallelism"]))
+    if apply_autotune is not None:
+      options = dataset_ops.Options()
+      options.experimental_optimization.autotune = apply_autotune
+      dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(dataset, expected_output=expected_output)
-
-    del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
-    del os.environ["TF_JOB_NAME"]
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptimizationThreadPoolDataset(self):
@@ -362,7 +362,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "parallel_batch",
         "shuffle_and_repeat_fusion",
         "map_vectorization",
-        "inject_prefetch",
+        "autotune_buffer_sizes",
         "make_sloppy",
         "latency_all_edges",
         "slack",
@@ -410,7 +410,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "parallel_batch",
         "shuffle_and_repeat_fusion",
         "map_vectorization",
-        "inject_prefetch",
+        "autotune_buffer_sizes",
         "make_sloppy",
         "latency_all_edges",
         "slack",
@@ -442,7 +442,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.autotune_cpu_budget = 1000
     options.experimental_optimization.autotune_ram_budget = 999999999
     options.experimental_optimization.autotune_buffers = True
-    self.assertIn("inject_prefetch", options._graph_rewrites().enabled)
+    self.assertIn("autotune_buffer_sizes", options._graph_rewrites().enabled)
     autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,

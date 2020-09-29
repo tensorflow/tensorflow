@@ -34,7 +34,7 @@ class Initializer(object):
   signature:
 
   ```python
-  def __call__(self, shape, dtype=None)`:
+  def __call__(self, shape, dtype=None):
     # returns a tensor of shape `shape` and dtype `dtype`
     # containing values drawn from a distribution of your choice.
   ```
@@ -54,7 +54,7 @@ class Initializer(object):
       self.mean = mean
       self.stddev = stddev
 
-    def __call__(self, shape, dtype=None)`:
+    def __call__(self, shape, dtype=None):
       return tf.random.normal(
           shape, mean=self.mean, stddev=self.stddev, dtype=dtype)
 

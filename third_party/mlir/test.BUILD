@@ -1,8 +1,9 @@
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
 
-licenses(["notice"])
-
-package(default_visibility = [":test_friends"])
+package(
+    default_visibility = [":test_friends"],
+    licenses = ["notice"],
+)
 
 # Please only depend on this from MLIR tests.
 package_group(
@@ -129,13 +130,16 @@ cc_library(
         "lib/IR/TestPrintDefUse.cpp",
         "lib/IR/TestPrintNesting.cpp",
         "lib/IR/TestSideEffects.cpp",
+        "lib/IR/TestSlicing.cpp",
         "lib/IR/TestSymbolUses.cpp",
         "lib/IR/TestTypes.cpp",
     ],
     deps = [
         ":TestDialect",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
@@ -176,6 +180,7 @@ cc_library(
         ":TestDialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:GPUDialect",

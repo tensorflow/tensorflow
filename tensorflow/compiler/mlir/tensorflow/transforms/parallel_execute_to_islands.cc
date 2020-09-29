@@ -180,8 +180,7 @@ tf_executor::IslandOp CreateInputBarrierIsland(
 
   // Create YieldOp for the new input sink island.
   builder->setInsertionPointToEnd(&input_sink_island.GetBody());
-  builder->create<tf_executor::YieldOp>(island_op.getLoc(),
-                                        llvm::to_vector<8>(island_inputs));
+  builder->create<tf_executor::YieldOp>(island_op.getLoc(), island_inputs);
   return input_sink_island;
 }
 

@@ -102,6 +102,31 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected_output=[x + 42 for x in range(5)],
         requires_initialization=True)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(apply_autotune=[None, True, False])))
+  def testAutotuneOption(self, apply_autotune):
+    next_nodes = ["ParallelMap"] if (apply_autotune is not False) else ["Map"]  # pylint: disable=g-bool-id-comparison
+
+    def func(i):
+      ds = dataset_ops.Dataset.range(i).apply(
+          testing.assert_next(next_nodes)).map(lambda x: x + 1)
+      return ds
+
+    dataset = dataset_ops.Dataset.range(1, 4).interleave(
+        map_func=func, cycle_length=4, block_length=5)
+    dataset = dataset.apply(
+        testing.assert_next(next_nodes)).map(lambda x: x * 2)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    if apply_autotune is not None:
+      options.experimental_optimization.autotune = apply_autotune
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=[2, 2, 4, 2, 4, 6])
+
 
 if __name__ == "__main__":
   test.main()

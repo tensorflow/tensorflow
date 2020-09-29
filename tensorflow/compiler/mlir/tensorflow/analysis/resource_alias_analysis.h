@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
@@ -76,6 +77,16 @@ class ResourceAliasAnalysisInfo {
   // `body_info` is the backtrack analysis info for the loop body.
   void AnalyzeWhileLoop(Operation* while_op,
                         const BacktrackAnalysisInfo& body_info);
+
+  // Analyzes tf.Case/tf.If ops to compute resourceID's.
+  template <class CaseOrIfOp>
+  void AnalyzeFunctionalCaseOrIfOp(CaseOrIfOp case_or_if_op,
+                                   llvm::ArrayRef<FuncOp> functions,
+                                   const BacktrackAnalysis& backtrack_analysis);
+
+  // Analyzes tf.CaseRegion/tf.IfRegion ops to compute resourceID's.
+  void AnalyzeRegionCaseOrIfOp(Operation* case_or_if_op,
+                               const BacktrackAnalysis& backtrack_analysis);
 
   // Maps each resource-type value to a set of unique IDs that it could alias.
   llvm::SmallDenseMap<Value, llvm::SmallSet<int64_t, 8>, 8>

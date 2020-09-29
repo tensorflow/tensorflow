@@ -27,12 +27,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -65,7 +66,7 @@ def create_test_objects(cluster_spec=None,
                         num_gpus=None):
   sess_config = config_pb2.ConfigProto()
   if num_gpus is None:
-    num_gpus = context.num_gpus()
+    num_gpus = len(tf_config.list_logical_devices('GPU'))
 
   if cluster_spec and task_type and task_id is not None:
     cluster_resolver = SimpleClusterResolver(
@@ -371,4 +372,4 @@ class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
-  ds_combinations.main()
+  multi_process_runner.test_main()

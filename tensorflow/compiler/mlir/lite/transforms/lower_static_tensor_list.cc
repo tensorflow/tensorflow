@@ -749,7 +749,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
 LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
-  for (FuncOp func : {op.cond_func(), op.body_func()}) {
+  for (FuncOp func : {op.cond_function(), op.body_function()}) {
     if (!func) continue;
 
     FunctionType func_type = func.getType();

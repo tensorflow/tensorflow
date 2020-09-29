@@ -1,8 +1,5 @@
 // RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-placement -split-input-file %s -o - | FILECHECK_OPTS="" FileCheck --check-prefixes=PRE,BOTH %s
 // RUN: mlir-hlo-opt -hlo-legalize-to-lhlo=results-escape-function=true -buffer-placement -split-input-file %s -o - | FILECHECK_OPTS="" FileCheck --check-prefixes=ESC,BOTH %s
-// TODO(herhut): unbreak the test after upstream API changes.
-// XFAIL: *
-
 
 // BOTH-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -173,7 +170,7 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
   // BOTH-SAME: (%[[OPERAND:.*]]: memref<?x?xf32>)
   %tensor_operand = tensor_load %operand : memref<?x?xf32>
   %c1 = constant 1 : i64
-  %shape = tensor_from_elements(%c1, %c1, %c1) : tensor<3xi64>
+  %shape = tensor_from_elements %c1, %c1, %c1 : tensor<3xi64>
   %tensor_result = "mhlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape) {
     broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
@@ -419,7 +416,7 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
   // BOTH: %[[C1:.*]] = constant 1 : index
   // BOTH: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // BOTH: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // BOTH: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
+  // BOTH: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
   // BOTH: %[[C0_:.*]] = constant 0 : index
   // BOTH: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
   // BOTH: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
@@ -444,7 +441,7 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) {
   // BOTH: %[[C1:.*]] = constant 1 : index
   // BOTH: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // BOTH: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // BOTH: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
+  // BOTH: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
   // BOTH: %[[C0_:.*]] = constant 0 : index
   // BOTH: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
   // BOTH: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index

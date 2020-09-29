@@ -73,7 +73,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Next, we can strip the outer fusion operation.
   pm.addPass(createFusionOpRemoverPass());
   // Remove unnecessary LHLO copies.
-  pm.addPass(::mlir::lmhlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::createCopyRemovalPass());
   // Transform LHLO operations to LinAlg.
   pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
@@ -122,7 +122,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Approximate of requested.
   if (options.use_approximations) {
     pm.addNestedPass<::mlir::FuncOp>(
-        ::mlir::mhlo::createLegalizeTanhToApproximationPass());
+        ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   }
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(createMoveScalarComputationsIntoGpuLaunchPass());

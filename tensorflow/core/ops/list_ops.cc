@@ -379,11 +379,18 @@ REGISTER_OP("TensorListElementShape")
     .Attr("shape_type: {int32, int64}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       auto* handle_data = c->input_handle_shapes_and_types(0);
+      // `TensorListElementShape` returns the scalar -1 if the rank of
+      // element_shape is unknown else returns the shape vector (with possibly
+      // unknown dims).
       if (!IsValidTensorListHandleData(handle_data)) {
-        c->set_output(0, c->Vector(c->UnknownDim()));
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
-      c->set_output(0, c->Vector(c->Rank((*handle_data)[0].shape)));
+      if (c->RankKnown((*handle_data)[0].shape)) {
+        c->set_output(0, c->Vector(c->Rank((*handle_data)[0].shape)));
+      } else {
+        c->set_output(0, c->UnknownShape());
+      }
       return Status::OK();
     });
 

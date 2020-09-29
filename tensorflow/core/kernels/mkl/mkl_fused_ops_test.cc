@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -249,6 +250,12 @@ class MklFusedConv2DOpTest : public OpsTestBase {
       next_op = ops::Elu(root.WithOpName(last_op), next_op);
     }
 
+    if (std::find(fused_ops.begin(), fused_ops.end(), "LeakyRelu") !=
+        fused_ops.end()) {
+      last_op = "with_leakyrelu";
+      next_op = ops::internal::LeakyRelu(root.WithOpName(last_op), next_op);
+    }
+
     CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
   }
 
@@ -406,6 +413,18 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndElu) {
   this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Elu"});
 }
 
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndLeakyRelu) {
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "LeakyRelu"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndLeakyRelu) {
+  const int kFilterSize = 3;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "LeakyRelu"});
+}
+
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAdd) {
   const int kFilterSize = 1;
   const int kFilterCount = 3;
@@ -458,15 +477,31 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddElu) {
   this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Add", "Elu"});
 }
 
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAddLeakyRelu) {
+  const int kFilterSize = 1;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount,
+                          {"BiasAdd", "Add", "LeakyRelu"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddLeakyRelu) {
+  const int kFilterSize = 3;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount,
+                          {"BiasAdd", "Add", "LeakyRelu"});
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     MklFusedConv2DWithBiasOpTest, OneByOneConvolution, SpatialConvolution,
     OneByOneConvolutionAndRelu, SpatialConvolutionAndRelu,
     OneByOneConvolutionAndRelu6, SpatialConvolutionAndRelu6,
     OneByOneConvolutionAndElu, SpatialConvolutionAndElu,
+    OneByOneConvolutionAndLeakyRelu, SpatialConvolutionAndLeakyRelu,
     OneByOneConvolutionAndAdd, SpatialConvolutionAndAdd,
     OneByOneConvolutionAndAddRelu, SpatialConvolutionAndAddRelu,
     OneByOneConvolutionAndAddRelu6, SpatialConvolutionAndAddRelu6,
-    OneByOneConvolutionAndAddElu, SpatialConvolutionAndAddElu);
+    OneByOneConvolutionAndAddElu, SpatialConvolutionAndAddElu,
+    OneByOneConvolutionAndAddLeakyRelu, SpatialConvolutionAndAddLeakyRelu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedConv2DWithBiasOpTest,
@@ -962,6 +997,12 @@ class MklFusedMatMulOpTest : public OpsTestBase {
             next_op = ops::Elu(root.WithOpName(last_op), next_op);
           }
 
+          if (std::find(fused_ops.begin(), fused_ops.end(), "Tanh") !=
+              fused_ops.end()) {
+            last_op = "with_tanh";
+            next_op = ops::Tanh(root.WithOpName(last_op), next_op);
+          }
+
           CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
         };
 
@@ -1049,11 +1090,21 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndElu) {
                           {"BiasAdd", "Elu"});
 }
 
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndTanh) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel,
+                          {"BiasAdd", "Tanh"});
+}
+
 REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
                             WithBias,              //
                             WithBiasAndRelu,       //
                             WithBiasAndRelu6,      //
-                            WithBiasAndElu);
+                            WithBiasAndElu,        //
+                            WithBiasAndTanh);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,

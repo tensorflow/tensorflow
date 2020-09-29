@@ -1360,14 +1360,14 @@ def trace_off():
   """Stops the current trace and discards any collected information."""
   global _current_trace_context
   with _current_trace_context_lock:
+    if _current_trace_context is None:
+      return  # tracing already off
+    graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name, unpacking-non-sequence
     _current_trace_context = None
 
-  # Disabling run_metadata disables graph collection as well.
-  context.context().disable_run_metadata()
+  if graph:
+    # Disabling run_metadata disables graph collection as well.
+    context.context().disable_run_metadata()
 
-  # profiler only has start and stop. One needs to stop in order to export
-  # and stopping when it is not running will raise an error.
-  try:
+  if profiler:
     _profiler.stop()
-  except _profiler.ProfilerNotRunningError:
-    pass

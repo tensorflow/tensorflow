@@ -95,6 +95,8 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
+        "//tensorflow/python/keras/utils:tf_contextlib",
+        "//tensorflow/python/keras/utils:tf_inspect",
     ],
 )
 
@@ -285,6 +287,7 @@ py_library(
 py_library(
     name = "optimizers",
     srcs = [
+        "optimizer_v1.py",
         "optimizers.py",
     ],
     srcs_version = "PY2AND3",
@@ -334,6 +337,7 @@ tf_py_test(
     size = "small",
     srcs = ["activations_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":activations",
         ":backend",
@@ -353,6 +357,7 @@ tf_py_test(
     size = "small",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":testing_utils",
@@ -369,6 +374,7 @@ tf_py_test(
     size = "small",
     srcs = ["constraints_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -383,6 +389,7 @@ tf_py_test(
     size = "small",
     srcs = ["initializers_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -417,6 +424,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = ["notsan"],
+    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -451,6 +459,7 @@ tf_py_test(
     size = "small",
     srcs = ["metrics_functional_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -619,6 +628,7 @@ tf_py_test(
     size = "medium",
     srcs = ["backend_config_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backend",
         ":backend_config",
@@ -633,6 +643,7 @@ tf_py_test(
     srcs = ["keras_parameterized_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
+    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

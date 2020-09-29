@@ -27,6 +27,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
+from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEngineInstance  # pylint: disable=g-importing-member
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -74,6 +75,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def mkdtemp(self):
     return tempfile.mkdtemp(dir=self.get_temp_dir())
 
+  def testTRTEngineInstanceAvailable(self):
+    # test if we can access the TRTEngineInstance protobuf
+    assert hasattr(TRTEngineInstance(), "serialized_engine")
+
   def testGetTensorrtRewriterConfig(self):
     """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
     if not is_tensorrt_enabled():
@@ -86,7 +91,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         is_dynamic_op=True,
         maximum_cached_engines=2)
     rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
-        conversion_params=conversion_params)
+        conversion_params=conversion_params, is_v2=True)
     self.assertEqual(["constfold", "layout", "constfold"],
                      rewriter_cfg.optimizers)
     self.assertEqual(rewriter_config_pb2.RewriterConfig.ONE,

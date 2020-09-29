@@ -21,11 +21,13 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import losses
@@ -244,6 +246,59 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
   def test_deserialization_error(self):
     with self.assertRaisesRegex(ValueError, 'Could not interpret loss'):
       losses.get(0)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_uses_cached_logits(self):
+    logits = constant_op.constant([[-30., 30.]])
+    y_pred = activations.sigmoid(logits)
+    self.assertTrue(hasattr(y_pred, '_keras_logits'))
+    y_true = constant_op.constant([[0., 1.]])
+    loss = losses.binary_crossentropy(y_true, y_pred)[0]
+    # Check that logits are used. If y_pred is used directly, loss will
+    # collapse to 0 from underflow.
+    self.assertNotEqual(self.evaluate(loss), 0.)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_categorical_crossentropy_uses_cached_logits(self):
+    logits = constant_op.constant([[-5., 0., 5.]])
+    y_pred = activations.softmax(logits)
+    self.assertTrue(hasattr(y_pred, '_keras_logits'))
+    y_true = constant_op.constant([[0., 0., 1.]])
+    loss = losses.categorical_crossentropy(y_true, logits, from_logits=True)[0]
+    # Check that logits are used. If y_pred is used directly, loss will
+    # collapse to 0 from underflow.
+    self.assertNotEqual(self.evaluate(loss), 0.)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_sparse_categorical_crossentropy_uses_cached_logits(self):
+    logits = constant_op.constant([[-5., 0., 5.]])
+    y_pred = activations.softmax(logits)
+    self.assertTrue(hasattr(y_pred, '_keras_logits'))
+    y_true = constant_op.constant([2])
+    loss = losses.sparse_categorical_crossentropy(
+        y_true, logits, from_logits=True)[0]
+    # Check that logits are used. If y_pred is used directly, loss will
+    # collapse to 0 from underflow.
+    self.assertNotEqual(self.evaluate(loss), 0.)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_loss_not_autographed_in_eager(self):
+
+    class MyLoss(losses.Loss):
+
+      def call(self, y_true, y_pred):
+        return y_true - y_pred
+
+    loss = MyLoss()
+    y_true = constant_op.constant([[0., 0., 0.]])
+    y_pred = constant_op.constant([[1., 1., 1.]])
+
+    def tf_convert(fn, _):
+      assert False, 'Function should not be autographed.'
+      return fn
+
+    with test.mock.patch.object(autograph, 'tf_convert', tf_convert):
+      loss(y_true, y_pred)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))

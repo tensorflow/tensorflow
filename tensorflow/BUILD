@@ -497,10 +497,17 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# This flag enables experimental MLIR bridge support.
+# This flag forcibly enables experimental MLIR bridge support.
 config_setting(
     name = "enable_mlir_bridge",
     values = {"define": "enable_mlir_bridge=true"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag forcibly disables experimental MLIR bridge support.
+config_setting(
+    name = "disable_mlir_bridge",
+    values = {"define": "enable_mlir_bridge=false"},
     visibility = ["//visibility:public"],
 )
 
@@ -561,28 +568,13 @@ selects.config_setting_group(
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = [
-        "//learning/brain/distribute/...",
-        "//learning/brain/swift/x10/...",
-        "//perftools/accelerators/xprof/api/...",
-        "//tensorflow/...",
-        "//tensorflow_estimator/python/estimator/...",
-        "//tensorflow_models/official/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
-        "//third_party/swift/tensorflow_apis/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 package_group(
     name = "ndarray_tensor_allow_list",
     packages = ["//learning/pathways/..."],
 )
-
-# Packages that use composite tensors or dispatch.
-# TODO(b/154762408) Remove this package group once it's no longer needed.
-# If this is modified, then copy.bara.sky must also be modified.
-package_group(name = "composite_tensor_whitelist")
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
@@ -715,6 +707,7 @@ tf_cc_shared_object(
     soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",

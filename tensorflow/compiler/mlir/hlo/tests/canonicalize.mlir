@@ -583,6 +583,262 @@ func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   return %arg0 : tensor<i64>
 }
 
+// CHECK-LABEL: fold_compare_same_eq
+func @fold_compare_same_eq(%arg0: tensor<i64>) -> tensor<i1> {
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_same_le
+func @fold_compare_same_le(%arg0: tensor<i64>) -> tensor<i1> {
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LE"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_same_ge
+func @fold_compare_same_ge(%arg0: tensor<i64>) -> tensor<i1> {
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GE"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+// CHECK-LABEL: fold_compare_same_ne
+func @fold_compare_same_ne(%arg0: tensor<i64>) -> tensor<i1> {
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "NE"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_same_lt
+func @fold_compare_same_lt(%arg0: tensor<i64>) -> tensor<i1> {
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_same_gt
+func @fold_compare_same_gt(%arg0: tensor<i64>) -> tensor<i1> {
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_eq
+func @fold_compare_false_eq() -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "EQ"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+// CHECK-LABEL: fold_compare_true_eq
+func @fold_compare_true_eq() -> tensor<i1> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "EQ"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_eq_float
+func @fold_compare_false_eq_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<0.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_eq_float
+func @fold_compare_true_eq_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<1.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_ne
+func @fold_compare_false_ne() -> tensor<i1> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "NE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_ne
+func @fold_compare_true_ne() -> tensor<i1> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "NE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_ne_float
+func @fold_compare_false_ne_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<1.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "NE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_ne_float
+func @fold_compare_true_ne_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<0.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "NE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_lt
+func @fold_compare_false_lt() -> tensor<i1> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_lt
+func @fold_compare_true_lt() -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_lt_float
+func @fold_compare_false_lt_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<1.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_lt_float
+func @fold_compare_true_lt_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<0.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_le
+func @fold_compare_false_le() -> tensor<i1> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_le
+func @fold_compare_true_le() -> tensor<i1> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_le_float
+func @fold_compare_false_le_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<1.> : tensor<f32>
+  %1 = mhlo.constant dense<0.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_le_float
+func @fold_compare_true_le_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<1.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_gt
+func @fold_compare_false_gt() -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_gt
+func @fold_compare_true_gt() -> tensor<i1> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_gt_float
+func @fold_compare_false_gt_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<0.> : tensor<f32>
+  %1 = mhlo.constant dense<0.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_gt_float
+func @fold_compare_true_gt_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<1.> : tensor<f32>
+  %1 = mhlo.constant dense<0.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_ge
+func @fold_compare_false_ge() -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_ge
+func @fold_compare_true_ge() -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_false_ge_float
+func @fold_compare_false_ge_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<0.> : tensor<f32>
+  %1 = mhlo.constant dense<1.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: fold_compare_true_ge_float
+func @fold_compare_true_ge_float() -> tensor<i1> {
+  %0 = mhlo.constant dense<0.> : tensor<f32>
+  %1 = mhlo.constant dense<0.> : tensor<f32>
+  // CHECK: %0 = mhlo.constant dense<true> : tensor<i1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %2 : tensor<i1>
+}
+
 // CHECK-LABEL: unpack_repack_same_tuple
 // CHECK-SAME: ([[ARG0:%.*]]: tuple<tensor<i32>, !mhlo.token, tensor<f32>>)
 func @unpack_repack_same_tuple(%arg0: tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tuple<tensor<i32>, !mhlo.token, tensor<f32>> {
@@ -833,4 +1089,47 @@ func @fold_xor_zeros_constants() -> tensor<4xi32> {
   // CHECK: %0 = mhlo.constant dense<[7, 2, 1, 1]> : tensor<4xi32>
   // CHECK: return %0
   return %2 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_negate_int
+func @fold_negate_int() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[0, 1, 6, -3]> : tensor<4xi32>
+  // CHECK: mhlo.constant dense<[0, -1, -6, 3]>
+  %1 = "mhlo.negate"(%0) : (tensor<4xi32>) -> tensor<4xi32>
+  return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_negate_float
+func @fold_negate_float() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<[0., 1., 6., -3.]> : tensor<4xf32>
+  // CHECK: mhlo.constant dense<[-0.000000e+00, -1.000000e+00, -6.000000e+00, 3.000000e+00]>
+  %1 = "mhlo.negate"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_sqrt_f32_constants
+func @fold_sqrt_f32_constants() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<1.0> : tensor<4xf32>
+  %1 = "mhlo.sqrt"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<1.000000e+00> : tensor<4xf32>
+  // CHECK-NOT: mhlo.sqrt
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_sqrt_f64_constants
+func @fold_sqrt_f64_constants() -> tensor<4xf64> {
+  %0 = mhlo.constant dense<[1.0, 4.0, 9.0, 16.0]> : tensor<4xf64>
+  %1 = "mhlo.sqrt"(%0) : (tensor<4xf64>) -> tensor<4xf64>
+  //     CHECK: mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf64>
+  // CHECK-NOT: mhlo.sqrt
+  return %1 : tensor<4xf64>
+}
+
+// CHECK-LABEL: func @not_fold_sqrt_neg_constants
+func @not_fold_sqrt_neg_constants() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<-1.0> : tensor<4xf32>
+  %1 = "mhlo.sqrt"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: mhlo.constant dense<-1.000000e+00> : tensor<4xf32>
+  // CHECK: mhlo.sqrt
+  return %1 : tensor<4xf32>
 }

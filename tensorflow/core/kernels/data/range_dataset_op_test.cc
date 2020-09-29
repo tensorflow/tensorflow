@@ -141,6 +141,39 @@ TEST_F(RangeDatasetOpTest, ZeroStep) {
             tensorflow::error::INVALID_ARGUMENT);
 }
 
+TEST_F(RangeDatasetOpTest, SplitProviderPositiveStep) {
+  auto params = RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3,
+                                   /*output_dtypes=*/{DT_INT64});
+  TF_ASSERT_OK(InitializeRuntime(params));
+  TF_EXPECT_OK(CheckSplitProviderFullIteration(
+      params, CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/2, /*shard_index=*/1,
+      CreateTensors<int64>(TensorShape({}), {{3}, {9}})));
+}
+
+TEST_F(RangeDatasetOpTest, SplitProviderNegativeStep) {
+  auto params = RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/-3,
+                                   /*output_dtypes=*/{DT_INT64});
+  TF_ASSERT_OK(InitializeRuntime(params));
+  TF_EXPECT_OK(CheckSplitProviderFullIteration(
+      params, CreateTensors<int64>(TensorShape({}), {{10}, {7}, {4}, {1}})));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/2, /*shard_index=*/0,
+      CreateTensors<int64>(TensorShape({}), {{10}, {4}})));
+}
+
+TEST_F(RangeDatasetOpTest, SplitProviderEmpty) {
+  auto params = RangeDatasetParams(/*start=*/0, /*stop=*/0, /*step=*/1,
+                                   /*output_dtypes=*/{DT_INT64});
+  TF_ASSERT_OK(InitializeRuntime(params));
+  TF_EXPECT_OK(CheckSplitProviderFullIteration(
+      params, CreateTensors<int64>(TensorShape({}), {})));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/3, /*shard_index=*/2,
+      CreateTensors<int64>(TensorShape({}), {})));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

@@ -87,8 +87,13 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
     // Trace viewer is the only tool, skip OpStats conversion.
     if (tools.size() == 1) return Status::OK();
   }
-  OpStats op_stats =
-      ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB, KERNEL_STATS_DB});
+
+  OpStatsOptions options;
+  options.generate_kernel_stats_db = true;
+  options.generate_op_metrics_db = true;
+  options.generate_step_db = true;
+  options.maybe_drop_incomplete_steps = true;
+  OpStats op_stats = ConvertXSpaceToOpStats(xspace, options);
   if (tools.contains(kOverviewPage)) {
     OverviewPage overview_page_db = ConvertOpStatsToOverviewPage(op_stats);
     AddToolData(ToolName(kOverviewPage), overview_page_db, response);

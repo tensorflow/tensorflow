@@ -447,6 +447,13 @@ static LogicalResult Verify(BiasAddOp op) {
   return success();
 }
 
+Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
+  // Only NHWC in f32 is supported for fusion.
+  if (data_format() != "NHWC" || !T().isF32()) return None;
+
+  return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
+}
+
 //===----------------------------------------------------------------------===//
 // BiasAddGradOp
 //===----------------------------------------------------------------------===//
@@ -539,8 +546,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   if (!matchPattern(op.branch_index(), m_Constant(&branch))) return failure();
 
   int index = *branch.getValues<int>().begin();
-  if (index < 0 || index >= op.branches().size())
-    index = op.branches().size() - 1;
+  if (index < 0 || index >= op.num_branches()) index = op.num_branches() - 1;
 
   auto func = op.branches()[index].cast<SymbolRefAttr>();
   auto empty = rewriter.getStringAttr("");
@@ -2157,6 +2163,15 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+Optional<ContractionFusion> LeakyReluOp::GetContractionFusion() {
+  // Only f32 is supported for fusion.
+  if (!T().isF32()) return None;
+
+  NamedAttribute alpha(Identifier::get("alpha", getContext()), alphaAttr());
+  return ContractionFusion("LeakyRelu", /*additional_arguments=*/{},
+                           /*additional_attributes=*/{alpha});
+}
+
 //===----------------------------------------------------------------------===//
 // LogOp
 //===----------------------------------------------------------------------===//
@@ -2278,12 +2293,12 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<MulOp>(*this, operands);
 }
 
+}  // namespace TF
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.cc.inc"
-
-}  // namespace TF
-}  // namespace mlir

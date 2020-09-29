@@ -30,7 +30,6 @@ import re
 import sys
 import threading
 import weakref
-from absl import logging
 from six.moves import queue
 
 from tensorflow.python.data.ops import iterator_ops
@@ -47,6 +46,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 # Maximum time for failed worker to come back is 1 hour
@@ -196,17 +196,21 @@ class FunctionRetryableError(Exception):
   pass
 
 
-def _maybe_get_error_and_rebuild_remote_values(worker, structure):
+def _maybe_rebuild_remote_values(worker, structure):
   """Attempts to return errors from `RemoteValue`s. Rebuilds them if needed."""
   errors_in_structure = []
 
   def _get_error(val):
     if isinstance(val, RemoteValue):
       if val._status is _RemoteValueStatus.ABORTED:  # pylint: disable=protected-access
-        with worker.failure_handler.wait_on_failure(
-            on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
-            worker_device_name=worker.device_name):
-          val._rebuild_on(worker)  # pylint: disable=protected-access
+        try:
+          with worker.failure_handler.wait_on_failure(
+              on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
+              worker_device_name=worker.device_name):
+            val._rebuild_on(worker)  # pylint: disable=protected-access
+        except Exception as e:  # pylint: disable=broad-except
+          val._set_error(e)  # pylint: disable=protected-access
+
       error = val._get_error()  # pylint: disable=protected-access
       if error:
         errors_in_structure.append(error)
@@ -257,6 +261,18 @@ def _select_worker_slice(worker_id, structured):
   return nest.map_structure(_get, structured)
 
 
+def _disallow_remote_value_as_input(structured):
+  """Raises if any element of `structured` is a RemoteValue."""
+
+  def _raise_if_remote_value(x):
+    if isinstance(x, RemoteValue):
+      raise ValueError("RemoteValue cannot be used as an input to scheduled "
+                       "function. Please file a feature request if you need "
+                       "this feature.")
+
+  nest.map_structure(_raise_if_remote_value, structured)
+
+
 class Closure(object):
   """Hold a function to be scheduled and its arguments."""
 
@@ -266,6 +282,9 @@ class Closure(object):
                        "callable object.")
     self._args = args or ()
     self._kwargs = kwargs or {}
+
+    _disallow_remote_value_as_input(self._args)
+    _disallow_remote_value_as_input(self._kwargs)
 
     if isinstance(function, def_function.Function):
       replica_args = _select_worker_slice(0, self._args)
@@ -328,8 +347,8 @@ class Closure(object):
     replica_kwargs = _select_worker_slice(worker.worker_index, self._kwargs)
 
     e = (
-        _maybe_get_error_and_rebuild_remote_values(worker, replica_args) or
-        _maybe_get_error_and_rebuild_remote_values(worker, replica_kwargs))
+        _maybe_rebuild_remote_values(worker, replica_args) or
+        _maybe_rebuild_remote_values(worker, replica_kwargs))
     if e:
       if not isinstance(e, InputError):
         e = InputError(e)
@@ -384,7 +403,7 @@ class _CoordinatedClosureQueue(object):
 
     if _CLOSURE_QUEUE_MAX_SIZE <= 0:
       logging.warning(
-          "In ParameterServerClient, creating an infinite closure queue can "
+          "In a `Client`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
     self._error = None
@@ -846,9 +865,7 @@ class Client(object):
   functions to be executed, and fetch the results of the functions.
 
   Currently, `Client` is not supported to be used in a standalone manner.
-  It should be used in conjunction with `ParameterServerStrategyV2`. The
-  recommended way of using the combination is through a `ParameterServerClient`
-  object. Please see `ParameterServerClient` for more information.
+  It should be used in conjunction with `ParameterServerStrategyV2`.
 
   This is currently under development, and the API as well as implementation
   is subject to changes.
@@ -915,7 +932,8 @@ class Client(object):
     of values, each of which represents a component specific to a worker; in
     this case, the argument will be substituted with the corresponding component
     on the target worker. Arguments that are not `PerWorkerValues` will be
-    passed into `fn` as-is.
+    passed into `fn` as-is. Currently, `RemoteValue` is not supported to be
+    input `args` or `kwargs`.
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for

@@ -22,6 +22,7 @@ import copy
 import itertools
 import json
 import os
+import warnings
 import six
 
 from tensorflow.python.autograph.lang import directives
@@ -38,6 +39,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import base_layer
@@ -72,7 +74,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import util as trackable_utils
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import keras_export
@@ -706,7 +707,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom training logic.
     This method is called by `Model.make_train_function`.
 
-    This method should contain the mathemetical logic for one step of training.
+    This method should contain the mathematical logic for one step of training.
     This typically includes the forward pass, loss calculation, backpropagation,
     and metric updates.
 
@@ -878,7 +879,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             The model will not be trained on this data. Thus, note the fact
             that the validation loss of data provided using `validation_split`
             or `validation_data` is not affected by regularization layers like
-            noise and dropuout.
+            noise and dropout.
             `validation_data` will override `validation_split`.
             `validation_data` could be:
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
@@ -1078,6 +1079,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_train_batch_end(end_step, logs)
+              if self.stop_training:
+                break
 
         if logs is None:
           raise ValueError('Expect x to be a non-empty array or dataset.')
@@ -1131,7 +1134,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom evaluation logic.
     This method is called by `Model.make_test_function`.
 
-    This function should contain the mathemetical logic for one step of
+    This function should contain the mathematical logic for one step of
     evaluation.
     This typically includes the forward pass, loss calculation, and metrics
     updates.
@@ -1383,7 +1386,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom inference logic.
     This method is called by `Model.make_predict_function`.
 
-    This method should contain the mathemetical logic for one step of inference.
+    This method should contain the mathematical logic for one step of inference.
     This typically includes the forward pass.
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
@@ -1775,8 +1778,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       outputs = self.predict_function(iterator)
     return tf_utils.to_numpy_or_python_type(outputs)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.fit, which supports generators.')
   def fit_generator(self,
                     generator,
                     steps_per_epoch=None,
@@ -1798,6 +1799,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       `Model.fit` now supports generators, so there is no longer any need to use
       this endpoint.
     """
+    warnings.warn('`Model.fit_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.fit`, which supports generators.')
     return self.fit(
         generator,
         steps_per_epoch=steps_per_epoch,
@@ -1814,8 +1818,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         shuffle=shuffle,
         initial_epoch=initial_epoch)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.evaluate, which supports generators.')
   def evaluate_generator(self,
                          generator,
                          steps=None,
@@ -1830,6 +1832,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       `Model.evaluate` now supports generators, so there is no longer any need
       to use this endpoint.
     """
+    warnings.warn('`Model.evaluate_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.evaluate`, which supports generators.')
     self._check_call_args('evaluate_generator')
 
     return self.evaluate(
@@ -1841,8 +1846,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         verbose=verbose,
         callbacks=callbacks)
 
-  @deprecation.deprecated(
-      None, 'Please use Model.predict, which supports generators.')
   def predict_generator(self,
                         generator,
                         steps=None,
@@ -1857,6 +1860,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       `Model.predict` now supports generators, so there is no longer any need
       to use this endpoint.
     """
+    warnings.warn('`Model.predict_generator` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `Model.predict`, which supports generators.')
     return self.predict(
         generator,
         steps=steps,
@@ -1918,7 +1924,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This allows you to save the entirety of the state of a model
     in a single file.
 
-    Saved models can be reinstantiated via `keras.models.load_model`.
+    Saved models can be re-instantiated via `keras.models.load_model`.
     The model returned by `load_model` is a compiled model ready to be used
     (unless the saved model was never compiled in the first place).
 
@@ -2270,10 +2276,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         layer.reset_states()
 
   @property
-  @deprecation.deprecated(
-      date=None,
-      instructions='This property should not be used in TensorFlow 2.0, '
-      'as updates are applied automatically.')
   @doc_controls.do_not_generate_docs
   def state_updates(self):
     """Deprecated, do NOT use!
@@ -2287,6 +2289,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     Returns:
         A list of update ops.
     """
+    warnings.warn('`Model.state_updates` will be removed in a future version. '
+                  'This property should not be used in TensorFlow 2.0, '
+                  'as `updates` are applied automatically.')
     state_updates = []
     for layer in self.layers:
       if getattr(layer, 'stateful', False):
@@ -2459,7 +2464,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _validate_compile(self, optimizer, metrics, **kwargs):
     """Performs validation checks for the default `compile`."""
     if any(
-        isinstance(opt, optimizers.Optimizer)
+        isinstance(opt, optimizer_v1.Optimizer)
         for opt in nest.flatten(optimizer)):
       raise ValueError(
           '`tf.compat.v1.keras` Optimizer (', optimizer, ') is '

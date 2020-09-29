@@ -22,7 +22,7 @@ import os
 import sys
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
@@ -41,10 +41,7 @@ class _ModelWithOptimizerUsingDefun(util.Checkpoint):
     self.dense = core.Dense(1)
     self.optimizer = adam.Adam(0.01)
 
-  # Using defun due to control flow v2 cycles, b/121159261. def_function uses
-  # conds to gate variable initialization and so triggers cond reference cycles,
-  # but the thing being wrapped here does not use cond itself.
-  @function.defun(
+  @def_function.function(
       input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
                        tensor_spec.TensorSpec([None], dtypes.float32)),
   )
