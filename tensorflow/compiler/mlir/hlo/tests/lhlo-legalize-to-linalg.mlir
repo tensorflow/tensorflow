@@ -586,6 +586,37 @@ func @sign(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @sign_bf16
+func @sign_bf16(%input: memref<2x2xbf16>, %result: memref<2x2xbf16>) {
+  "lmhlo.sign"(%input, %result) : (memref<2x2xbf16>, memref<2x2xbf16>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: bf16, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[CST:.*]] = constant 1.000000e+00 : bf16
+// CHECK-NEXT:   %[[RESULT:.*]] = copysign %[[CST]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : bf16
+
+// -----
+
+// CHECK-LABEL: func @sign_i16
+func @sign_i16(%input: memref<2x2xi16>, %result: memref<2x2xi16>) {
+  "lmhlo.sign"(%input, %result) : (memref<2x2xi16>, memref<2x2xi16>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[C0:.*]] = constant 0 : i16
+// CHECK-NEXT:   %[[CMP:.*]] = cmpi "eq", %[[OPERAND_IN]], %[[C0]] : i16
+// CHECK-NEXT:   %[[C15:.*]] = constant 15 : i16
+// CHECK-NEXT:   %[[ASHR:.*]] = shift_right_signed %[[OPERAND_IN]], %[[C15]] : i16
+// CHECK-NEXT:   %[[C1:.*]] = constant 1 : i16
+// CHECK-NEXT:   %[[OR:.*]] = or %[[ASHR]], %[[C1]] : i16
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[C0]], %[[OR]] : i16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
+
+// -----
+
 // CHECK-LABEL: func @sqrt
 func @sqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.sqrt"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()

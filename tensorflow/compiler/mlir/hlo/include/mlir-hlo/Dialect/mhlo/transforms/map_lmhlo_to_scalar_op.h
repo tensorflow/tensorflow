@@ -469,11 +469,27 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
   Type element_type = args.front().getType();
-  if (element_type.isa<FloatType>()) {
-    FloatType float_type = element_type.cast<FloatType>();
-    APFloat const_value = float_type.isF32() ? APFloat(1.0f) : APFloat(1.0);
-    Value one = b->create<mlir::ConstantFloatOp>(loc, const_value, float_type);
+  if (auto float_type = element_type.dyn_cast<FloatType>()) {
+    bool ignored;
+    APFloat one_apfloat(1.0f);
+    one_apfloat.convert(float_type.getFloatSemantics(),
+                        APFloat::rmNearestTiesToEven, &ignored);
+    Value one = b->create<mlir::ConstantFloatOp>(loc, one_apfloat, float_type);
     return b->create<::mlir::CopySignOp>(loc, result_types, one, args[0]);
+  } else if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
+    // sign(x) = x == 0 ? 0 : ((x s>> 31) | 1)
+    Value zero =
+        b->create<::mlir::ConstantIntOp>(loc, 0, integer_type.getWidth());
+    Value cmp =
+        b->create<::mlir::CmpIOp>(loc, CmpIPredicate::eq, args[0], zero);
+    Value bitwidth_minus_one = b->create<::mlir::ConstantIntOp>(
+        loc, integer_type.getWidth() - 1, integer_type.getWidth());
+    Value ashr =
+        b->create<::mlir::SignedShiftRightOp>(loc, args[0], bitwidth_minus_one);
+    Value one =
+        b->create<::mlir::ConstantIntOp>(loc, 1, integer_type.getWidth());
+    Value or_op = b->create<::mlir::OrOp>(loc, ashr, one);
+    return b->create<::mlir::SelectOp>(loc, cmp, zero, or_op);
   }
   return nullptr;
 }
