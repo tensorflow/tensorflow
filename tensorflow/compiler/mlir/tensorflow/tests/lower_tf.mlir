@@ -86,6 +86,16 @@ func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32
   return %0 : tensor<2x3xf32>
 }
 
+// CHECK-LABEL: @is_inf
+func @is_inf(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
+  // CHECK: %[[INF:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[ABS:.*]] = "tf.Abs"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%[[ABS]], %[[INF]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  %0 = "tf.IsInf"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<3x4xi1>
+}
+
 // CHECK-LABEL: @is_nan
 func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
   // CHECK: %[[RESULT:.*]] = "tf.NotEqual"(%arg0, %arg0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xi1>

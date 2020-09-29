@@ -24,6 +24,10 @@ class GetScalarOfType<int value> : NativeCodeCall<
 class GetScalarOfFloatType<string value> : NativeCodeCall<
   "GetScalarOfFloatType(getElementTypeOrSelf($0)," # value # ")">;
 
+def GetScalarInfOfType : NativeCodeCall<
+  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "std::numeric_limits<double>::infinity())">;
+
 def GetScalarNanOfType : NativeCodeCall<
   "GetScalarOfFloatType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::quiet_NaN())">;
@@ -153,6 +157,15 @@ foreach fromToBinPair = [[TF_DivNoNanOp, TF_DivOp],
 
 def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
+
+//===----------------------------------------------------------------------===//
+// Inf op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsInfOp : Pat<(TF_IsInfOp $x),
+                       (TF_EqualOp (TF_AbsOp:$abs $x),
+                        (TF_ConstOp:$inf (GetScalarInfOfType $x)),
+                        /*incompatible_shape_error*/ConstBoolAttrTrue)>;
 
 //===----------------------------------------------------------------------===//
 // NaN op patterns.
