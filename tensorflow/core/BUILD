@@ -47,7 +47,6 @@
 # Public mobile targets, e.g. for Android:
 #
 # filegroup ":android_proto_srcs" - Protos
-# filegroup ":android_srcs" - Core sources
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
@@ -1522,18 +1521,6 @@ filegroup(
 )
 
 # Portable library providing testing functionality for TensorFlow.
-alias(
-    name = "android_tensorflow_test_lib",
-    actual = ":portable_tensorflow_test_lib",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "ios_tensorflow_test_lib",
-    actual = ":portable_tensorflow_test_lib",
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "portable_tensorflow_test_lib",
     testonly = 1,
