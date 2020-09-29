@@ -1275,7 +1275,8 @@ class FusedBatchNormOpBase : public OpKernel {
       const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
       dest_shape = ShapeFromFormat(
           tensor_format_, in_batch, {{in_planes, in_rows * in_cols}}, in_depth);
-      CHECK(x.CopyFrom(x, dest_shape));
+      OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
     }
 
     if (has_side_input_) {
@@ -1327,7 +1328,8 @@ class FusedBatchNormOpBase : public OpKernel {
           saved_maybe_inv_var, tensor_format_, use_reserved_space);
     }
     if (use_reshape) {
-      CHECK(y->CopyFrom(*y, x_shape));
+      OP_REQUIRES(context, y->CopyFrom(*y, x_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
     }
   }
 
@@ -1434,8 +1436,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
       const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
       dest_shape = ShapeFromFormat(
           tensor_format_, in_batch, {{in_planes, in_rows * in_cols}}, in_depth);
-      CHECK(x.CopyFrom(x, dest_shape));
-      CHECK(y_backprop.CopyFrom(y_backprop, dest_shape));
+      OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
+      OP_REQUIRES(context, y_backprop.CopyFrom(y_backprop, dest_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
     }
 
     Tensor* x_backprop = nullptr;
@@ -1476,17 +1480,18 @@ class FusedBatchNormGradOpBase : public OpKernel {
           tensor_format_);
     } else {
       // Necessary layout conversion is currently done in python.
-      CHECK(tensor_format_ == FORMAT_NHWC)
-          << "The implementation of FusedBatchNormGrad with is_training=False "
-             "only support "
-          << "NHWC tensor format for now.";
+      OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
+                  errors::InvalidArgument("The implementation of "
+                      "FusedBatchNormGrad with is_training=False only support "
+                      "NHWC tensor format for now."));
       functor::FusedBatchNormFreezeGrad<Device, T, U>()(
           context, y_backprop, x, scale,
           saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var, epsilon_,
           x_backprop, scale_backprop, offset_backprop);
     }
     if (use_reshape) {
-      CHECK(x_backprop->CopyFrom(*x_backprop, x_shape));
+      OP_REQUIRES(context, x_backprop->CopyFrom(*x_backprop, x_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
     }
   }
 
