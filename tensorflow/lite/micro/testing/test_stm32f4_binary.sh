@@ -25,31 +25,51 @@
 # and paths in the docker run command assume the entire tensorflow repo is mounted.
 
 declare -r ROOT_DIR=`pwd`
-declare -r TEST_TMPDIR=/tmp/test_stm32f4_binary/
+declare -r EXPECTED=${2}
+declare -r TIMEOUT_SEC=30
+declare -r SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.resc
+declare -r ROBOT_SCRIPT=tensorflow/lite/micro/testing/stm32f4.robot
+declare -r TEST_TMPDIR=/tmp/test_stm32f4_binary
 declare -r MICRO_LOG_PATH=${TEST_TMPDIR}
 declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}/logs.txt
+declare -r RENODE_PATH=/opt/renode/tests
+declare -r RENODE_KEYWORDS_FILENAME=renode-keywords.robot
+declare -r BIN_TO_TEST=${ROOT_DIR}/${1}
+declare -r RESULTS_DIR=`basename ${BIN_TO_TEST}`
 mkdir -p ${MICRO_LOG_PATH}
 
-docker build -t renode_stm32f4 \
-  -f ${ROOT_DIR}/tensorflow/lite/micro/testing/Dockerfile.stm32f4 \
-  ${ROOT_DIR}/tensorflow/lite/micro/testing/
-
-exit_code=0
-# running in `if` to avoid setting +e
-if ! docker run \
-  --log-driver=none -a stdout -a stderr \
-  -v ${ROOT_DIR}:/workspace \
-  -v /tmp:/tmp \
-  -e BIN=/workspace/$1 \
-  -e SCRIPT=/workspace/tensorflow/lite/micro/testing/stm32f4.resc \
-  -e EXPECTED="$2" \
-  -it renode_stm32f4 \
-  /bin/bash -c "/opt/renode/tests/test.sh /workspace/tensorflow/lite/micro/testing/stm32f4.robot 2>&1 >${MICRO_LOG_FILENAME}"
+renode_found=1
+RENODE_TEST=`which renode-test` && : || renode_found=0
+if [ $renode_found -eq 0 ]
 then
-  exit_code=1
+    RENODE_TEST=${RENODE_PATH}/test.sh  # When built from source there is no renode-test.
+    if [ ! -f "$RENODE_TEST" ]; then
+        echo "Renode not installed, please install it. For example:"
+        echo "mkdir <your/path>/renode"
+        echo "curl -L https://github.com/renode/renode/releases/download/<version>/"\
+"renode-<version>.linux-portable.tar.gz | tar -C <your/path>/renode --strip-components=1 -zx"
+        echo "export PATH=\$PATH:<your/path/to/unpacked/renode/where/test.sh/reside>"
+        echo "ln -s <your/path/to/unpacked/renode>/test.sh <your/path/to/unpacked/renode>/renode-test"
+        exit 1
+    fi
 fi
 
-echo "LOGS:"
+# Resolve path, which may be different with the portable version.
+RENODE_KEYWORDS=${RENODE_PATH}/${RENODE_KEYWORDS_FILENAME}
+if [ ! -f "$RENODE_KEYWORDS" ]; then
+    REAL_PATH=`dirname ${RENODE_TEST}`
+    RENODE_KEYWORDS=`find ${REAL_PATH} -name ${RENODE_KEYWORDS_FILENAME}`
+    if [ ! -f "$RENODE_KEYWORDS" ]; then
+        echo "${RENODE_KEYWORDS_FILENAME} not found"
+        exit 1
+    fi
+fi
+
+exit_code=0
+${RENODE_TEST} --variable RENODE_KEYWORDS:${RENODE_KEYWORDS} --variable BIN:${BIN_TO_TEST} \
+                 --variable SCRIPT:${SCRIPT} --variable EXPECTED:"${EXPECTED}" --variable TIMEOUT:${TIMEOUT_SEC} \
+                 -r ${RESULTS_DIR} ${ROBOT_SCRIPT} 2>&1 >${MICRO_LOG_FILENAME} && : || exit_code=1
+
 cat ${MICRO_LOG_FILENAME}
 if [ $exit_code -eq 0 ]
 then
