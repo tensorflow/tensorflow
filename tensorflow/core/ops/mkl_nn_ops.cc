@@ -239,6 +239,29 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklNativeFusedMatMul")
+    .Input("a: T")
+    .Input("b: T")
+    .Input("args: num_args * T")
+    .Output("product: T")
+    .Attr("is_filter_const: bool = false")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ----------- //
+    .Attr("epsilon: float = 0.0001")
+    // --------------------------------------------- //
+    .SetShapeFn(shape_inference::MatMulShape)
+    .Doc(R"doc(
+MKL version of FusedMatMul operator that does not depend
+on layout propagation. Uses oneDNN APIs to implement MatMul fusion.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke this one.
+)doc");
+
 REGISTER_OP("__MklDummyPadWithFusedConv2D")
     .Input("input: T")
     .Input("filter: T")

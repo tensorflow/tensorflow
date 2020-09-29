@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -926,39 +927,61 @@ class MklFusedMatMulOpTest : public OpsTestBase {
           DataType dtype = DataTypeToEnum<T>::v();
           const int num_args = 1;
 
-          TF_EXPECT_OK(NodeDefBuilder("MklFusedMatMul", "_MklFusedMatMul")
-                           .Input(FakeInput(dtype))
-                           .Input(FakeInput(dtype))
-                           .Input(FakeInput(num_args, dtype))
-                           .Input(FakeInput(DT_UINT8))
-                           .Input(FakeInput(DT_UINT8))
-                           .Input(FakeInput(num_args, DT_UINT8))
-                           .Attr("T", dtype)
-                           .Attr("transpose_a", false)
-                           .Attr("transpose_b", false)
-                           .Attr("num_args", num_args)
-                           .Attr("fused_ops", fused_ops)
-                           .Attr("epsilon", 0.0001)
-                           .Attr("_kernel", "MklLayoutDependentOp")
-                           .Finalize(node_def()));
+          if (!NativeFormatEnabled()) {
+            TF_EXPECT_OK(NodeDefBuilder("MklFusedMatMul", "_MklFusedMatMul")
+                             .Input(FakeInput(dtype))
+                             .Input(FakeInput(dtype))
+                             .Input(FakeInput(num_args, dtype))
+                             .Input(FakeInput(DT_UINT8))
+                             .Input(FakeInput(DT_UINT8))
+                             .Input(FakeInput(num_args, DT_UINT8))
+                             .Attr("T", dtype)
+                             .Attr("transpose_a", false)
+                             .Attr("transpose_b", false)
+                             .Attr("num_args", num_args)
+                             .Attr("fused_ops", fused_ops)
+                             .Attr("epsilon", 0.0001)
+                             .Attr("_kernel", "MklLayoutDependentOp")
+                             .Finalize(node_def()));
+          } else {
+            TF_EXPECT_OK(
+                NodeDefBuilder("MklFusedMatMul", "_MklNativeFusedMatMul")
+                    .Input(FakeInput(dtype))
+                    .Input(FakeInput(dtype))
+                    .Input(FakeInput(num_args, dtype))
+                    .Attr("T", dtype)
+                    .Attr("transpose_a", false)
+                    .Attr("transpose_b", false)
+                    .Attr("num_args", num_args)
+                    .Attr("fused_ops", fused_ops)
+                    .Attr("epsilon", 0.0001)
+                    .Attr("_kernel", "MklNameChangeOp")
+                    .Finalize(node_def()));
+          }
 
           TF_EXPECT_OK(InitOp());
 
           AddInputFromArray<T>(input.shape(), input.flat<T>());
           AddInputFromArray<T>(weight.shape(), weight.flat<T>());
           AddInputFromArray<T>(bias.shape(), bias.flat<T>());
-          // Add MKL meta input for input, filter and bias.
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+          if (!NativeFormatEnabled()) {
+            // Add MKL meta input for input, filter and bias.
+            AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+            AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+            AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+          }
 
           TF_ASSERT_OK(RunOpKernel());
 
           const Tensor& output_tensor = *GetOutput(0);
-          const Tensor& output_meta_tensor = *GetOutput(1);
-          CommonTestUtilities<T> test_util;
-          test_util.PerformConversion(dtype, output_tensor, output_meta_tensor,
-                                      output);
+          if (!NativeFormatEnabled()) {
+            const Tensor& output_meta_tensor = *GetOutput(1);
+            CommonTestUtilities<T> test_util;
+            test_util.PerformConversion(dtype, output_tensor,
+                                        output_meta_tensor, output);
+          } else {
+            *output = output_tensor;
+          }
         };
 
     CommonTestUtilities<T>::VerifyFusedMatrixClose(kInputChannel, kBatch,
@@ -1033,21 +1056,36 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
   const int num_args = 1;
   const std::vector<string>& fused_ops = {"BiasAdd"};
 
-  TF_ASSERT_OK(NodeDefBuilder("MklFusedMatMul", "_MklFusedMatMul")
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(num_args, DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(num_args, DT_UINT8))
-                   .Attr("T", DT_FLOAT)
-                   .Attr("transpose_a", false)
-                   .Attr("transpose_b", false)
-                   .Attr("num_args", num_args)
-                   .Attr("fused_ops", fused_ops)
-                   .Attr("epsilon", 0.0001)
-                   .Attr("_kernel", "MklLayoutDependentOp")
-                   .Finalize(node_def()));
+  if (!NativeFormatEnabled()) {
+    TF_ASSERT_OK(NodeDefBuilder("MklFusedMatMul", "_MklFusedMatMul")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(num_args, DT_FLOAT))
+                     .Input(FakeInput(DT_UINT8))
+                     .Input(FakeInput(DT_UINT8))
+                     .Input(FakeInput(num_args, DT_UINT8))
+                     .Attr("T", DT_FLOAT)
+                     .Attr("transpose_a", false)
+                     .Attr("transpose_b", false)
+                     .Attr("num_args", num_args)
+                     .Attr("fused_ops", fused_ops)
+                     .Attr("epsilon", 0.0001)
+                     .Attr("_kernel", "MklLayoutDependentOp")
+                     .Finalize(node_def()));
+  } else {
+    TF_ASSERT_OK(NodeDefBuilder("MklFusedMatMul", "_MklNativeFusedMatMul")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(num_args, DT_FLOAT))
+                     .Attr("T", DT_FLOAT)
+                     .Attr("transpose_a", false)
+                     .Attr("transpose_b", false)
+                     .Attr("num_args", num_args)
+                     .Attr("fused_ops", fused_ops)
+                     .Attr("epsilon", 0.0001)
+                     .Attr("_kernel", "MklNameChangeOp")
+                     .Finalize(node_def()));
+  }
 
   TF_EXPECT_OK(InitOp());
   // The tensor shape of (1,3) is selected to allow the mkldnn expected
@@ -1063,10 +1101,12 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   // Bias vector.
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
-  // Add MKL meta input for input, filter and bias.
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    // Add MKL meta input for input, filter and bias.
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   int64 start_time = Env::Default()->NowMicros();
   TF_ASSERT_OK(RunOpKernel());
@@ -1079,9 +1119,13 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
   test::FillValues<float>(&expected, {75, 82, 89, 96});
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& mkl_shape_tensor = *GetOutput(1);
   CommonTestUtilities<float> test_util;
-  test_util.ConvertAndCompare(DT_FLOAT, output, mkl_shape_tensor, expected);
+  if (!NativeFormatEnabled()) {
+    const Tensor& mkl_shape_tensor = *GetOutput(1);
+    test_util.ConvertAndCompare(DT_FLOAT, output, mkl_shape_tensor, expected);
+  } else {
+    test::ExpectTensorNear<float>(expected, output, 1e-5);
+  }
 
   // Test for the second time to use the cached weight
   start_time = Env::Default()->NowMicros();
@@ -1097,9 +1141,13 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
   // Compare the result with expected result
   CommonTestUtilities<float> test_util_new;
   const Tensor& output_new = *GetOutput(0);
-  const Tensor& mkl_shape_tensor_new = *GetOutput(1);
-  test_util_new.ConvertAndCompare(DT_FLOAT, output_new, mkl_shape_tensor_new,
-                                  expected);
+  if (!NativeFormatEnabled()) {
+    const Tensor& mkl_shape_tensor_new = *GetOutput(1);
+    test_util_new.ConvertAndCompare(DT_FLOAT, output_new, mkl_shape_tensor_new,
+                                    expected);
+  } else {
+    test::ExpectTensorNear<float>(expected, output_new, 1e-5);
+  }
 }
 
 class BiasCacheTest : public OpsTestBase {
