@@ -222,6 +222,14 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "logicalnot",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = ["i1"],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "neg",
     same_shape = "0,1",
     tile_size = "256",
