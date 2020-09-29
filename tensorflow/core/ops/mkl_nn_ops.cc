@@ -205,9 +205,9 @@ REGISTER_OP("_MklNativeFusedConv2D")
     // Attributes for the LeakyRelu ----------------------------------------- //
     .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
-*NOTE*: Do not invoke this operator directly in Python. MKL DNN graph transformer
+*NOTE*: Do not invoke this operator directly in Python. oneDNN graph transformer
  is expected to create these operators.
 )doc");
 
@@ -225,7 +225,7 @@ REGISTER_OP("_MklNativeConv2DWithBias")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
-MKL version of Conv2D and BiasAdd operator. Uses DNNL APIs to perform
+MKL version of Conv2D and BiasAdd operator. Uses oneDNN APIs to perform
 2D convolution and add Bias to the output of convolution.
 
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
@@ -388,7 +388,7 @@ REGISTER_OP("_MklNativePadWithFusedConv2D")
     // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
-*NOTE*: Do not invoke this operator directly in Python. MKL DNN graph transformer
+*NOTE*: Do not invoke this operator directly in Python. oneDNN graph transformer
  is expected to create these operators.
 )doc");
 

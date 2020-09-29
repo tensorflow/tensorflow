@@ -949,7 +949,9 @@ class MklConvOp : public OpKernel {
           AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                                     output_tf_shape, *output_mkl_shape,
                                     native_format);
-          CHECK((*output_tensor)->CopyFrom(add_tensor, add_tensor.shape()));
+          bool result =
+              (*output_tensor)->CopyFrom(add_tensor, add_tensor.shape());
+          DCHECK(result);
         }
         return;
       }

@@ -797,16 +797,15 @@ class FusedPadConvOpTest : public OpsTestBase {
                        .Input(FakeInput(dtype))     // Input
                        .Input(FakeInput(dtype))     // Filter
                        .Input(FakeInput(DT_INT32))  // Padding
-                       .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                       .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                       .Input(FakeInput(DT_UINT8))  // MKl second tensor
+                       .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                       .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                       .Input(FakeInput(DT_UINT8))  // MKL second tensor
                        .Attr("padding", "VALID")
                        .Attr("data_format", data_format)
                        .Attr("T", dtype)
                        .Attr("strides", {1, stride, stride, 1})
                        .Attr("_kernel", "MklLayoutDependentOp")
                        .Finalize(node_def()));
-      TF_EXPECT_OK(InitOp());
     } else {
       TF_EXPECT_OK(
           NodeDefBuilder("fused_pad_conv_op", "_MklNativePadWithConv2D")
@@ -819,8 +818,8 @@ class FusedPadConvOpTest : public OpsTestBase {
               .Attr("strides", {1, stride, stride, 1})
               .Attr("_kernel", "MklNameChangeOp")
               .Finalize(node_def()));
-      TF_EXPECT_OK(InitOp());
     }
+    TF_EXPECT_OK(InitOp());
 
     // Setting up inputs and execute
     AddInputFromArray<T>(image.shape(), image.flat<T>());
@@ -872,8 +871,8 @@ class FilterCacheTest : public OpsTestBase {
       TF_EXPECT_OK(NodeDefBuilder("conv2d_filter_cache", "_MklConv2D")
                        .Input(FakeInput(dtype))     // Input
                        .Input(FakeInput(dtype))     // Filter
-                       .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                       .Input(FakeInput(DT_UINT8))  // MKl second tensor
+                       .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                       .Input(FakeInput(DT_UINT8))  // MKL second tensor
                        .Attr("padding", "VALID")
                        .Attr("data_format", "NHWC")
                        .Attr("is_filter_const", is_filter_const)
