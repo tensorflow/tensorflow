@@ -345,6 +345,22 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::FloorOp>(Location loc,
       loc, result_types, args, b);
 }
 
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::IsFiniteOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  if (args[0].getType().isa<FloatType>()) {
+    auto pos_inf = APFloat::getInf(
+        args[0].getType().cast<FloatType>().getFloatSemantics());
+    auto const_pos_inf =
+        b->create<ConstantOp>(loc, b->getFloatAttr(args[0].getType(), pos_inf));
+    Value abs_x = b->create<::mlir::AbsFOp>(loc, args[0]);
+    return b->create<::mlir::CmpFOp>(loc, CmpFPredicate::ONE, abs_x,
+                                     const_pos_inf);
+  }
+  return nullptr;
+}
+
 /// Implements the conversion of HLO op to scalar op (to use within region of a
 /// linalg.generic op) for compare-select style operations like min/max.
 template <typename... Args>

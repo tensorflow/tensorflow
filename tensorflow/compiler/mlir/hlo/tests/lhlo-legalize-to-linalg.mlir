@@ -125,6 +125,20 @@ func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @is_finte
+func @is_finte(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
+  "lmhlo.is_finite"(%input, %result) : (memref<2x2xf32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[POS_INF:.+]] = constant 0x7F800000 : f32
+// CHECK-NEXT:   %[[ABS_X:.+]] = absf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.+]] = cmpf "one", %[[ABS_X]], %[[POS_INF]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 // CHECK-LABEL: func @float_cmp
 func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                 %result: memref<2x2xi1>) {
