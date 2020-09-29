@@ -3,13 +3,13 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library_additional_deps",
-    "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
 
@@ -21,6 +21,9 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
@@ -107,7 +110,6 @@ cc_library(
         ":common_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
@@ -118,7 +120,10 @@ cc_library(
         "//tensorflow/core/common_runtime:core_cpu_lib_no_ops",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/stream_executor/lib",
-    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
+    ] + if_tensorrt([
+        ":tensorrt_lib",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
@@ -234,7 +239,6 @@ tf_cuda_library(
     name = "trt_engine_utils",
     srcs = ["utils/trt_engine_utils.cc"],
     hdrs = ["utils/trt_engine_utils.h"],
-    compatible_with = [],
     deps = [
         ":trt_logging",
         ":utils",
@@ -249,7 +253,6 @@ tf_cuda_library(
     name = "trt_logging",
     srcs = ["utils/trt_logger.cc"],
     hdrs = ["utils/trt_logger.h"],
-    compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
         ":common_utils",
@@ -291,7 +294,6 @@ tf_cuda_library(
         "utils/trt_lru_cache.h",
         "utils/trt_shape_optimization_profiles.h",
     ],
-    compatible_with = [],
     deps = [
         ":trt_allocator",
         ":trt_logging",
@@ -309,7 +311,6 @@ tf_cuda_library(
     name = "trt_allocator",
     srcs = ["utils/trt_allocator.cc"],
     hdrs = ["utils/trt_allocator.h"],
-    compatible_with = [],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
@@ -369,7 +370,6 @@ tf_cuda_library(
     hdrs = [
         "convert/logger_registry.h",
     ],
-    compatible_with = [],
     copts = tf_copts(),
     deps = [
         "@com_google_absl//absl/strings",
@@ -390,7 +390,6 @@ tf_cuda_library(
         "convert/convert_nodes.h",
         "convert/trt_optimization_pass.h",
     ],
-    compatible_with = [],
     deps = [
         ":common_utils",
         ":logger_registry",
@@ -549,7 +548,6 @@ tf_cuda_library(
     name = "trt_plugins",
     srcs = ["plugin/trt_plugin.cc"],
     hdrs = ["plugin/trt_plugin.h"],
-    compatible_with = [],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",

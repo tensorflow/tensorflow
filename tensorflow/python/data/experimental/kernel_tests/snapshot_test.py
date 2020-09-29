@@ -133,6 +133,27 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.assertDatasetProduces(dataset2, expected)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testReadSnapshotDatasetAutoWriteSnappyRead(self):
+    self.createTFRecords()
+    filenames = self._test_filenames
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 100)
+    ]
+
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(
+        snapshot.snapshot(self._snapshot_dir, compression="AUTO"))
+    self.assertDatasetProduces(dataset, expected)
+
+    self.removeTFRecords()
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(self._snapshot_dir, compression="SNAPPY"))
+    self.assertDatasetProduces(dataset2, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotDatasetCustomShardFn(self):
     self.createTFRecords()
     filenames = self._test_filenames

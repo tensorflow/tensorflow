@@ -38,7 +38,7 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
-from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -639,9 +639,9 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # TODO(b/124535720): Remove once this standarize data logic is shared with
     # main flow.
     inputs, targets = nest.map_structure(
-        training_utils.standardize_single_array, (inputs, targets))
+        training_utils_v1.standardize_single_array, (inputs, targets))
   else:
-    inputs = training_utils.ModelInputs(inputs).as_list()
+    inputs = training_utils_v1.ModelInputs(inputs).as_list()
 
   if mode == ModeKeys.PREDICT:
     sample_weights = []

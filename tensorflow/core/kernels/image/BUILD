@@ -326,7 +326,6 @@ tf_cc_tests(
         "non_max_suppression_op_test.cc",
         "resize_area_op_test.cc",
         "resize_bicubic_op_test.cc",
-        "resize_nearest_neighbor_op_test.cc",
         "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
@@ -349,8 +348,11 @@ tf_cc_test(
 )
 
 tf_cuda_cc_test(
-    name = "resize_bilinear_op_test",
-    srcs = ["resize_bilinear_op_test.cc"],
+    name = "resize_ops_test",
+    srcs = [
+        "resize_bilinear_op_test.cc",
+        "resize_nearest_neighbor_op_test.cc",
+    ],
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":image",

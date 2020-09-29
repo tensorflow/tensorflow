@@ -908,7 +908,6 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = ["multi_gpu"],
-    tfrt_enabled = True,
     deps = [
         ":adam",
         ":checkpoint_management",

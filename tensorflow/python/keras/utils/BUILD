@@ -379,7 +379,6 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
-    tfrt_enabled = True,
     xla_enable_strict_auto_jit = True,
     deps = [
         "//tensorflow/python:client_testlib",

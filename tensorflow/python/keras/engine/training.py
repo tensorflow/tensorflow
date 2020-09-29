@@ -39,6 +39,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import base_layer
@@ -1078,6 +1079,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_train_batch_end(end_step, logs)
+              if self.stop_training:
+                break
 
         if logs is None:
           raise ValueError('Expect x to be a non-empty array or dataset.')
@@ -2461,7 +2464,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _validate_compile(self, optimizer, metrics, **kwargs):
     """Performs validation checks for the default `compile`."""
     if any(
-        isinstance(opt, optimizers.Optimizer)
+        isinstance(opt, optimizer_v1.Optimizer)
         for opt in nest.flatten(optimizer)):
       raise ValueError(
           '`tf.compat.v1.keras` Optimizer (', optimizer, ') is '

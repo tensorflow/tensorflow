@@ -148,3 +148,10 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "tf_data_stats_proto",
+    srcs = ["tf_data_stats.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)

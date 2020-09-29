@@ -344,6 +344,18 @@ func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// BOTH-LABEL: func @not
+func @not(%operand: memref<2x2xi32>, %result: memref<2x2xi32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xi32>
+  %tensor_result = "mhlo.not"(%tensor_operand)
+      : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  // BOTH: "lmhlo.not"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @rsqrt
 func @rsqrt(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>

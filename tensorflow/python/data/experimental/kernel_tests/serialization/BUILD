@@ -146,7 +146,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",

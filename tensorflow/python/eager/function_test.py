@@ -3553,6 +3553,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(output[0] + output[1], 5555)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionMethodWithVarargs(self):
+    float32_scalar = tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+
+    class MyModel(module.Module):
+
+      @def_function.function(input_signature=[float32_scalar, float32_scalar])
+      def add(self, *arg):
+        return math_ops.add(*arg)
+
+    m = MyModel()
+    cf = m.add.get_concrete_function()
+    cf(-12.0, 3.0)
+
+  @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionStructuredSignatureKeywordOrder(self):
     # Check that keyword-only arguments are sorted appropriately, so that they
     # feed the right tensor into each input.

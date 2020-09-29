@@ -690,7 +690,7 @@ tf_py_test(
 
 tf_py_test(
     name = "noise_test",
-    size = "small",
+    size = "medium",
     srcs = ["noise_test.py"],
     python_version = "PY3",
     deps = [

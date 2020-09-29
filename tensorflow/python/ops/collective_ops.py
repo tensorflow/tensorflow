@@ -77,7 +77,8 @@ def all_reduce_v2(t,
                   instance_key,
                   merge_op='Add',
                   final_op='Id',
-                  communication_hint='auto'):
+                  communication_hint='auto',
+                  timeout=0):
   """Reduces tensors collectively, across devices.
 
   Args:
@@ -94,6 +95,9 @@ def all_reduce_v2(t,
     communication_hint: preferred collective communication.  The implementation
       may fall back to another mechanism.  Options include `auto`, `ring`, and
       `nccl`.
+    timeout: a float. If set to a non zero, set a completion timeout to detect
+      staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
+      timeout value in seconds. This feature is experimental.
 
   Returns:
     An Op implementing the distributed reduction.
@@ -105,7 +109,8 @@ def all_reduce_v2(t,
       instance_key=instance_key,
       merge_op=merge_op,
       final_op=final_op,
-      communication_hint=communication_hint.lower())
+      communication_hint=communication_hint.lower(),
+      timeout_seconds=timeout)
 
 
 def all_gather(t,

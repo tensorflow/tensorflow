@@ -1732,10 +1732,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
         ds = ds.batch(5).repeat()
         return ds
 
-      ds = distribution.experimental_distribute_datasets_from_function(
-          make_dataset)
-      val_ds = distribution.experimental_distribute_datasets_from_function(
-          make_dataset)
+      ds = distribution.distribute_datasets_from_function(make_dataset)
+      val_ds = distribution.distribute_datasets_from_function(make_dataset)
 
       model.fit(
           ds,

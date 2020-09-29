@@ -39,8 +39,7 @@ class KernelRunner {
   // Calls init and prepare on the kernel (i.e. TfLiteRegistration) struct. Any
   // exceptions will be reported through the error_reporter and returned as a
   // status code here.
-  TfLiteStatus InitAndPrepare(const char* init_data = nullptr,
-                              size_t length = 0);
+  TfLiteStatus InitAndPrepare(const char* init_data = nullptr);
 
   // Calls init, prepare, and invoke on a given TfLiteRegistration pointer.
   // After successful invoke, results will be available in the output tensor as
@@ -61,10 +60,10 @@ class KernelRunner {
                             ...);
 
  private:
-  static constexpr int kNumScratchBuffers = 12;
+  static constexpr int kNumScratchBuffers_ = 5;
 
-  static constexpr int kKernelRunnerBufferSize = 10000;
-  static uint8_t kernel_runner_buffer_[kKernelRunnerBufferSize];
+  static constexpr int kKernelRunnerBufferSize_ = 10000;
+  static uint8_t kKernelRunnerBuffer_[kKernelRunnerBufferSize_];
 
   SimpleMemoryAllocator* allocator_ = nullptr;
   const TfLiteRegistration& registration_;
@@ -75,7 +74,7 @@ class KernelRunner {
   TfLiteNode node_ = {};
 
   int scratch_buffer_count_ = 0;
-  uint8_t* scratch_buffers_[kNumScratchBuffers];
+  uint8_t* scratch_buffers_[kNumScratchBuffers_];
 };
 
 }  // namespace micro

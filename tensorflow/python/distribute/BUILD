@@ -1799,7 +1799,6 @@ py_library(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/tracking:base",
-        "@absl_py//absl/logging",
     ],
 )
 

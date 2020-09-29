@@ -23,12 +23,12 @@ import platform
 import sys
 import threading
 import time
-from absl import logging
 
 from tensorflow.python.distribute.client import client
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.util import nest
 

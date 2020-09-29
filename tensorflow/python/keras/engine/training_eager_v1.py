@@ -25,6 +25,7 @@ from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
@@ -127,11 +128,12 @@ def _model_loss(model,
   outs = nest.flatten(outs)
 
   if targets:
-    targets = training_utils.cast_if_floating_dtype_and_mismatch(targets, outs)
+    targets = training_utils_v1.cast_if_floating_dtype_and_mismatch(
+        targets, outs)
   # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
   if sample_weights:
     sample_weights = [
-        training_utils.cast_if_floating_dtype(
+        training_utils_v1.cast_if_floating_dtype(
             ops.convert_to_tensor_v2_with_dispatch(val))
         if val is not None else None for val in sample_weights
     ]
@@ -304,7 +306,7 @@ def train_on_batch(model,
           model output. Could be a empty list when model has only one output.
         'metrics': list of tensors for metric specified.
   """
-  inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+  inputs = training_utils_v1.cast_to_model_input_dtypes(inputs, model)
   outs, total_loss, output_losses, masks = (
       _process_single_batch(
           model,
@@ -345,7 +347,7 @@ def test_on_batch(model,
           model output. Could be a empty list when model has only one output.
         'metrics': list of tensors for metric specified.
   """
-  inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+  inputs = training_utils_v1.cast_to_model_input_dtypes(inputs, model)
 
   with backend.eager_learning_phase_scope(0):
     outs, total_loss, output_losses, masks = (

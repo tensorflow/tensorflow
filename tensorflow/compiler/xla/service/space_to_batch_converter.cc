@@ -103,10 +103,6 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     return Status::OK();
   }
 
-  if (convolution->window().dimensions(kChosenSpatialDim).window_reversal()) {
-    return Status::OK();
-  }
-
   int64 activations_batch_dim = dim_numbers.input_batch_dimension();
 
   const int64 old_batch_size =
@@ -371,8 +367,8 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   new_dim_numbers.set_output_feature_dimension(dim_count);
 
   int p = 0;
-  for (auto [k, v] : dim_map) {
-    transpose_dims[p] = v;
+  for (const auto& entry : dim_map) {
+    transpose_dims[p] = entry.second;
     p++;
   }
 

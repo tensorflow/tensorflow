@@ -1,3 +1,9 @@
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py", "tf_native_cc_binary")
 
@@ -45,6 +51,7 @@ filegroup(
 
 gentbl(
     name = "tensorflow_op_interfaces_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-interface-decls",
@@ -65,6 +72,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_struct_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-dialect-doc",
@@ -109,6 +117,7 @@ cc_library(
 
 gentbl(
     name = "tensorflow_all_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -128,6 +137,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_tfrt_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -160,6 +170,7 @@ tf_ops_category_list = [
 [[
     gentbl(
         name = "tensorflow_" + target["name"] + "_inc_gen",
+        compatible_with = get_compatible_with_cloud(),
         tbl_outs = [
             (
                 "-gen-op-decls -op-include-regex='" + target["include"] + "'",
@@ -180,6 +191,7 @@ tf_ops_category_list = [
 
 gentbl(
     name = "tensorflow_remaining_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls -op-exclude-regex='" + "|".join([target["include"] for target in tf_ops_category_list]) + "' ",
@@ -199,6 +211,7 @@ gentbl(
 
 gentbl(
     name = "tf_saved_model_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -225,6 +238,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_executor_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -251,6 +265,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_device_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls ",
@@ -276,6 +291,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_canonicalize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -291,6 +307,7 @@ gentbl(
 
 gentbl(
     name = "hlo_legalize_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-rewriters", "transforms/generated_legalize_hlo.inc"),
     ],
@@ -639,6 +656,7 @@ cc_library(
 
 gentbl(
     name = "decompose_resource_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -671,6 +689,7 @@ cc_library(
 
 gentbl(
     name = "tf_data_optimization_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -1007,6 +1026,16 @@ cc_library(
 )
 
 cc_library(
+    name = "upgrade_graph",
+    srcs = ["translate/upgrade_graph.cc"],
+    hdrs = ["translate/upgrade_graph.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+    ],
+)
+
+cc_library(
     name = "convert_graphdef",
     srcs = [
         "translate/export_graphdef.cc",
@@ -1031,6 +1060,7 @@ cc_library(
         ":tensorflow_types",
         ":tf_saved_model_passes",
         ":translate_utils",
+        ":upgrade_graph",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader_lite",
@@ -1529,6 +1559,7 @@ tf_native_cc_binary(
 
 gentbl(
     name = "derived_attr_populator_inc",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("", "translate/derived_attr_populator.inc"),
     ],
@@ -1555,6 +1586,7 @@ filegroup(
 
 gentbl(
     name = "tensorflow_optimize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -1720,6 +1752,7 @@ cc_library(
 tf_gen_op_wrapper_py(
     name = "gen_mlir_passthrough_op_py",
     out = "gen_mlir_passthrough_op.py",
+    compatible_with = [],
     deps = [":mlir_passthrough_op"],
 )
 
@@ -1729,6 +1762,7 @@ tf_gen_op_wrapper_py(
 # without linking any of the other tensorflow passes.
 gentbl(
     name = "lower_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",

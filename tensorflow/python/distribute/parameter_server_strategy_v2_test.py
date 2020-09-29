@@ -21,8 +21,6 @@ from __future__ import print_function
 
 import functools
 import os
-import platform
-import sys
 
 from absl.testing import parameterized
 
@@ -60,10 +58,6 @@ class ParameterServerStrategyV2Test(test.TestCase):
 
   def testVariablePlacement(self):
 
-    if sys.version_info >= (3, 8) and platform.system() == "Windows":
-      # TODO(b/165013260): Fix this
-      self.skipTest("Test is currently broken on Windows with Python 3.8")
-
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     v1 = variables.Variable(initial_value=0.0)
@@ -98,12 +92,6 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
     cluster_def = multi_worker_test_base.create_in_process_cluster(
         num_workers=2, num_ps=2)
     cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
-
-  def setUp(self):
-    super().setUp()
-    if sys.version_info >= (3, 8) and platform.system() == "Windows":
-      # TODO(b/165013260): Fix this
-      self.skipTest("Test is currently broken on Windows with Python 3.8")
 
   def tearDown(self):
     super().tearDown()

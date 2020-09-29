@@ -1390,9 +1390,6 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
   VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
   auto parameters = CollectTunableParameters(snapshot);
   auto essential_parameters = CollectEssentialParallelism(snapshot, parameters);
-  // We add the number of model's buffered bytes because it is excluded from the
-  // memory budget, but it is included in the maximum number of buffered bytes.
-  ram_budget += TotalBufferedBytes(snapshot);
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
   }
@@ -1467,9 +1464,6 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
   VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  // We add the number of model's buffered bytes because it is excluded from the
-  // memory budget, but it is included in the maximum number of buffered bytes.
-  ram_budget += TotalBufferedBytes(snapshot);
   // Buffer size parameter will only be incremented if the output latency
   // improvement is greater than this constant.
   constexpr double kBufferSizeMinDelta = 1.0L;
