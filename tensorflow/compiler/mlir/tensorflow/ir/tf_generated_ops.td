@@ -13585,6 +13585,30 @@ Handling of out-of-bounds slice indices is implementation-defined.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaEinsumOp : TF_Op<"XlaEinsum", [NoSideEffect]> {
+  let summary = [{
+An op which supports basic einsum op with 2 inputs and 1 output.
+  }];
+
+  let description = [{
+This op has better TPU performance since it doesn't have explicitly reshape and
+transpose operations as tf.einsum does.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Complex64, TF_Float32]>:$a,
+    TensorOf<[TF_Bfloat16, TF_Complex64, TF_Float32]>:$b,
+
+    StrAttr:$equation
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex64, TF_Float32]>:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_XlaGatherOp : TF_Op<"XlaGather", [NoSideEffect]> {
   let summary = "Wraps the XLA Gather operator documented at";
 
