@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 // tensorflow/lite/micro/mbed/micro_timer.cc.
 
 #include "tensorflow/lite/micro/micro_time.h"
+#include "tensorflow/lite/micro/debug_log.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
 #include "am_bsp.h"         // NOLINT
@@ -35,14 +36,46 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-// Select CTIMER 1 as benchmarking timer on Sparkfun Edge. This timer must not
+// Select CTIMER 1 as benchmarking timer on Apollo3EVB. This timer must not
 // be used elsewhere.
 constexpr int kTimerNum = 1;
 
 // Clock set to operate at 12MHz.
 constexpr int kClocksPerSecond = 12e6;
 
+// Enables 96MHz burst mode on Apollo3EVB3. Enable in timer since most
+// benchmarks and profilers want maximum performance for debugging.
+void BurstModeEnable() {
+  am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0);
+
+  // Set the default cache configuration
+  am_hal_cachectrl_config(&am_hal_cachectrl_defaults);
+  am_hal_cachectrl_enable();
+
+  am_hal_burst_avail_e eBurstModeAvailable;
+  am_hal_burst_mode_e eBurstMode;
+
+  // Check that the Burst Feature is available.
+  int status = am_hal_burst_mode_initialize(&eBurstModeAvailable);
+  if (status != AM_HAL_STATUS_SUCCESS ||
+      eBurstModeAvailable != AM_HAL_BURST_AVAIL) {
+    DebugLog("Failed to initialize burst mode.");
+    return;
+  }
+
+  //this enables high mode in 96MHz
+  status = am_hal_burst_mode_enable(&eBurstMode);
+  
+  //this enables normal 48MHz mode
+  //status  = am_hal_burst_mode_disable(&eBurstMode);
+
+  if (status != AM_HAL_STATUS_SUCCESS || eBurstMode != AM_HAL_BURST_MODE) {
+    DebugLog("Failed to Enable Burst Mode operation\n");
+  }
+}
+
 }  // namespace
+
 
 int32_t ticks_per_second() { return kClocksPerSecond; }
 
@@ -53,6 +86,7 @@ int32_t GetCurrentTimeTicks() {
   // TODO(b/150808076): Split out initialization, intialize in interpreter.
   static bool is_initialized = false;
   if (!is_initialized) {
+	BurstModeEnable();
     am_hal_ctimer_config_t timer_config;
     // Operate as a 32-bit timer.
     timer_config.ui32Link = 1;
