@@ -3441,37 +3441,22 @@ bool CUDABlas::GetBlasLtMatmulAlgorithms(
 }
 
 #if CUDA_VERSION >= 11000
-template <typename ABType, typename CDType, typename ScaleType>
-bool CUDABlas::DoBlasLtMatmulInternalImpl(
+bool CUDABlas::DoBlasLtMatmulInternal(
     Stream* stream, bool err_on_failure, const blas::IBlasLtMatmulPlan* plan,
-    const HostOrDeviceScalar<ScaleType>& alpha, const ABType* a,
-    const ABType* b, const HostOrDeviceScalar<ScaleType>& beta, const CDType* c,
-    CDType* d, ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm,
-    const CDType* bias) {
+    const HostOrDeviceScalar<void>& alpha, DeviceMemoryBase a,
+    DeviceMemoryBase b, const HostOrDeviceScalar<void>& beta,
+    DeviceMemoryBase c, DeviceMemoryBase d, ScratchAllocator* scratch_allocator,
+    const blas::IBlasLtMatmulAlgorithm* algorithm, DeviceMemoryBase bias) {
   const auto& cuda_plan = *static_cast<const CUDABlasLtMatmulPlan*>(plan);
   const auto& cuda_algo =
       *static_cast<const CUDABlasLtMatmulAlgorithm*>(algorithm);
 
-  if (cuda_plan.ab_type() != blas::ToDataType<ABType>::value) {
-    VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong ab_type: "
-               "expected "
-            << blas::ToDataType<ABType>::value << ", got "
-            << cuda_plan.ab_type();
-    return false;
-  }
-  if (cuda_plan.cd_type() != blas::ToDataType<CDType>::value) {
-    VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong cd_type: "
-               "expected "
-            << blas::ToDataType<CDType>::value << ", got "
-            << cuda_plan.cd_type();
-    return false;
-  }
-  if (cuda_plan.scale_type() != blas::ToDataType<ScaleType>::value) {
-    VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong "
-               "scale_type: expected "
-            << blas::ToDataType<ScaleType>::value << ", got "
-            << cuda_plan.cd_type();
+  if (alpha.data_type() != cuda_plan.scale_type() ||
+      beta.data_type() != cuda_plan.scale_type()) {
+    VLOG(2) << "DoBlasLtMatmul returning false because alpha and beta types do "
+               "not match plan: expected "
+            << cuda_plan.cd_type() << ", got alpha=" << alpha.data_type()
+            << " beta=" << beta.data_type();
     return false;
   }
   if (alpha.is_pointer() != beta.is_pointer()) {
@@ -3494,16 +3479,16 @@ bool CUDABlas::DoBlasLtMatmulInternalImpl(
     return false;
   }
   if (bias != nullptr) {
-    if (!cuda_plan.SetBiasPointer(bias)) {
+    if (!cuda_plan.SetBiasPointer(bias.opaque())) {
       VLOG(2) << "DoBlasLtMatmul returning false because setting the bias "
                  "pointer failed.";
       return false;
     }
   }
-  const ScaleType* alpha_ptr =
-      alpha.is_pointer() ? GpuMemory(alpha.pointer()) : &alpha.value();
-  const ScaleType* beta_ptr =
-      beta.is_pointer() ? GpuMemory(beta.pointer()) : &beta.value();
+  const void* alpha_ptr = alpha.is_pointer() ? alpha.opaque_pointer().opaque()
+                                             : alpha.opaque_value();
+  const void* beta_ptr =
+      beta.is_pointer() ? beta.opaque_pointer().opaque() : beta.opaque_value();
 
   void* workspace = nullptr;
   if (cuda_algo.workspace_size()) {
@@ -3529,9 +3514,9 @@ bool CUDABlas::DoBlasLtMatmulInternalImpl(
   gpu::ScopedActivateExecutorContext sac{parent_};
 
   cublasStatus_t ret = cublasLtMatmul(
-      blasLt_, cuda_plan.op_desc(), alpha_ptr, a, cuda_plan.a_desc(), b,
-      cuda_plan.b_desc(), beta_ptr, c, cuda_plan.c_desc(), d,
-      cuda_plan.d_desc(), cuda_algo.algo(), workspace,
+      blasLt_, cuda_plan.op_desc(), alpha_ptr, a.opaque(), cuda_plan.a_desc(),
+      b.opaque(), cuda_plan.b_desc(), beta_ptr, c.opaque(), cuda_plan.c_desc(),
+      d.opaque(), cuda_plan.d_desc(), cuda_algo.algo(), workspace,
       cuda_algo.workspace_size(), cuda_stream);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     if (err_on_failure || VLOG_IS_ON(3)) {
@@ -3543,17 +3528,32 @@ bool CUDABlas::DoBlasLtMatmulInternalImpl(
 }
 #endif  // CUDA_VERSION >= 11000
 
-template <typename ABType, typename CDType, typename ScaleType>
-bool CUDABlas::DoBlasLtMatmulInternal(
+bool CUDABlas::DoBlasLtMatmul(
     Stream* stream, const blas::IBlasLtMatmulPlan* plan,
-    const HostOrDeviceScalar<ScaleType>& alpha, const DeviceMemory<ABType>& a,
-    const DeviceMemory<ABType>& b, const HostOrDeviceScalar<ScaleType>& beta,
-    const DeviceMemory<CDType>& c, DeviceMemory<CDType>* d,
-    ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm,
-    const DeviceMemory<CDType>& bias,
+    const HostOrDeviceScalar<void>& alpha, DeviceMemoryBase a,
+    DeviceMemoryBase b, const HostOrDeviceScalar<void>& beta,
+    DeviceMemoryBase c, ScratchAllocator* scratch_allocator,
+    const blas::IBlasLtMatmulAlgorithm* algorithm, DeviceMemoryBase bias,
     blas::ProfileResult* output_profile_result) {
 #if CUDA_VERSION >= 11000
+  const auto& cuda_plan = *static_cast<const CUDABlasLtMatmulPlan*>(plan);
+  HostOrDeviceScalar<void> alpha_cast = alpha;
+  HostOrDeviceScalar<void> beta_cast = beta;
+  if (cuda_plan.cd_type() == blas::DataType::kHalf &&
+      cuda_plan.scale_type() == blas::DataType::kFloat) {
+    // The given alpha and beta types are F16 (they always match c), but F32*
+    // computation type requires that they be F32, so we must cast them.
+    if (alpha.is_pointer() || beta.is_pointer()) {
+      // We cannot easily convert a pointer to f16 memory to a pointer to f32
+      // memory from here, so we don't support this for now.
+      return false;
+    }
+    alpha_cast = HostOrDeviceScalar<void>(
+        static_cast<float>(alpha.value<Eigen::half>()));
+    beta_cast =
+        HostOrDeviceScalar<void>(static_cast<float>(beta.value<Eigen::half>()));
+  }
+
   std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   if (output_profile_result) {
     timer.reset(new GpuTimer(parent_));
@@ -3563,10 +3563,9 @@ bool CUDABlas::DoBlasLtMatmulInternal(
   }
 
   bool err_on_failure = timer != nullptr;
-  bool result = DoBlasLtMatmulInternalImpl(
-      stream, err_on_failure, plan, alpha, GpuMemory(a), GpuMemory(b), beta,
-      GpuMemory(c), GpuMemoryMutable(d), scratch_allocator, algorithm,
-      GpuMemory(bias));
+  bool result = DoBlasLtMatmulInternal(stream, err_on_failure, plan, alpha_cast,
+                                       a, b, beta_cast, c, c, scratch_allocator,
+                                       algorithm, bias);
 
   if (timer && result) {
     // GpuTimer will CHECK-fail if we Stop() it while the stream is in an error
@@ -3583,109 +3582,6 @@ bool CUDABlas::DoBlasLtMatmulInternal(
 #else  // if CUDA_VERSION < 11000
   return false;
 #endif
-}
-
-bool CUDABlas::DoBlasLtMatmul(
-    Stream* stream, const blas::IBlasLtMatmulPlan* plan,
-    const HostOrDeviceScalar<int32>& alpha, const DeviceMemory<int8>& a,
-    const DeviceMemory<int8>& b, const HostOrDeviceScalar<int32>& beta,
-    DeviceMemory<int32>* c, ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm,
-    const DeviceMemory<int32>& bias,
-    blas::ProfileResult* output_profile_result) {
-  return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm, bias,
-                                output_profile_result);
-}
-
-bool CUDABlas::DoBlasLtMatmul(Stream* stream,
-                              const blas::IBlasLtMatmulPlan* plan,
-                              const HostOrDeviceScalar<Eigen::half>& alpha,
-                              const DeviceMemory<Eigen::half>& a,
-                              const DeviceMemory<Eigen::half>& b,
-                              const HostOrDeviceScalar<Eigen::half>& beta,
-                              DeviceMemory<Eigen::half>* c,
-                              ScratchAllocator* scratch_allocator,
-                              const blas::IBlasLtMatmulAlgorithm* algorithm,
-                              const DeviceMemory<Eigen::half>& bias,
-                              blas::ProfileResult* output_profile_result) {
-#if CUDA_VERSION >= 11000
-  const auto& cuda_plan = *static_cast<const CUDABlasLtMatmulPlan*>(plan);
-  if (cuda_plan.scale_type() == blas::DataType::kFloat) {
-    // F32* computation types require F32 alpha/beta type, so we must cast them.
-    if (alpha.is_pointer() || beta.is_pointer()) {
-      // We cannot easily convert a pointer to f16 memory to a pointer to f32
-      // memory from here, so we don't support this for now.
-      return false;
-    }
-    HostOrDeviceScalar<float> float_alpha(static_cast<float>(alpha.value()));
-    HostOrDeviceScalar<float> float_beta(static_cast<float>(beta.value()));
-    return DoBlasLtMatmulInternal(stream, plan, float_alpha, a, b, float_beta,
-                                  *c, c, scratch_allocator, algorithm, bias,
-                                  output_profile_result);
-  }
-  return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm, bias,
-                                output_profile_result);
-#else  // if CUDA_VERSION < 11000
-  return false;
-#endif
-}
-
-bool CUDABlas::DoBlasLtMatmul(
-    Stream* stream, const blas::IBlasLtMatmulPlan* plan,
-    const HostOrDeviceScalar<float>& alpha, const DeviceMemory<float>& a,
-    const DeviceMemory<float>& b, const HostOrDeviceScalar<float>& beta,
-    DeviceMemory<float>* c, ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm,
-    const DeviceMemory<float>& bias,
-    blas::ProfileResult* output_profile_result) {
-  return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm, bias,
-                                output_profile_result);
-}
-
-bool CUDABlas::DoBlasLtMatmul(
-    Stream* stream, const blas::IBlasLtMatmulPlan* plan,
-    const HostOrDeviceScalar<double>& alpha, const DeviceMemory<double>& a,
-    const DeviceMemory<double>& b, const HostOrDeviceScalar<double>& beta,
-    DeviceMemory<double>* c, ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm,
-    const DeviceMemory<double>& bias,
-    blas::ProfileResult* output_profile_result) {
-  return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm, bias,
-                                output_profile_result);
-}
-
-bool CUDABlas::DoBlasLtMatmul(
-    Stream* stream, const blas::IBlasLtMatmulPlan* plan,
-    const HostOrDeviceScalar<std::complex<float>>& alpha,
-    const DeviceMemory<std::complex<float>>& a,
-    const DeviceMemory<std::complex<float>>& b,
-    const HostOrDeviceScalar<std::complex<float>>& beta,
-    DeviceMemory<std::complex<float>>* c, ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm,
-    const DeviceMemory<std::complex<float>>& bias,
-    blas::ProfileResult* output_profile_result) {
-  return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm, bias,
-                                output_profile_result);
-}
-
-bool CUDABlas::DoBlasLtMatmul(
-    Stream* stream, const blas::IBlasLtMatmulPlan* plan,
-    const HostOrDeviceScalar<std::complex<double>>& alpha,
-    const DeviceMemory<std::complex<double>>& a,
-    const DeviceMemory<std::complex<double>>& b,
-    const HostOrDeviceScalar<std::complex<double>>& beta,
-    DeviceMemory<std::complex<double>>* c, ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm,
-    const DeviceMemory<std::complex<double>>& bias,
-    blas::ProfileResult* output_profile_result) {
-  return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm, bias,
-                                output_profile_result);
 }
 
 port::Status CUDABlas::GetVersion(std::string *version) {

@@ -140,25 +140,15 @@ class CUDABlas : public blas::BlasSupport {
                                    blas::ProfileResult *output_profile_result);
 
   // Helper function for implementing DoBlasLtMatmul.
-  template <typename ABType, typename CDType, typename ScaleType>
-  bool DoBlasLtMatmulInternal(
-      Stream* stream, const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<ScaleType>& alpha, const DeviceMemory<ABType>& a,
-      const DeviceMemory<ABType>& b, const HostOrDeviceScalar<ScaleType>& beta,
-      const DeviceMemory<CDType>& c, DeviceMemory<CDType>* d,
-      ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm,
-      const DeviceMemory<CDType>& bias,
-      blas::ProfileResult* output_profile_result);
-
-  // Helper function for implementing DoBlasLtMatmulInternal.
-  template <typename ABType, typename CDType, typename ScaleType>
-  bool DoBlasLtMatmulInternalImpl(
-      Stream* stream, bool err_on_failure, const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<ScaleType>& alpha, const ABType* a,
-      const ABType* b, const HostOrDeviceScalar<ScaleType>& beta,
-      const CDType* c, CDType* d, ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm, const CDType* bias);
+  bool DoBlasLtMatmulInternal(Stream* stream, bool err_on_failure,
+                              const blas::IBlasLtMatmulPlan* plan,
+                              const HostOrDeviceScalar<void>& alpha,
+                              DeviceMemoryBase a, DeviceMemoryBase b,
+                              const HostOrDeviceScalar<void>& beta,
+                              DeviceMemoryBase c, DeviceMemoryBase d,
+                              ScratchAllocator* scratch_allocator,
+                              const blas::IBlasLtMatmulAlgorithm* algorithm,
+                              DeviceMemoryBase bias);
 
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;
