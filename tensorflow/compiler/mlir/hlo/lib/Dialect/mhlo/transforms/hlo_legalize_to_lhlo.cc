@@ -510,6 +510,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::MinOp>,
       HloToLhloOpConverter<mhlo::MulOp>,
       HloToLhloOpConverter<mhlo::NegOp>,
+      HloToLhloOpConverter<mhlo::NotOp>,
       HloToLhloOpConverter<mhlo::RealOp>,
       HloToLhloOpConverter<mhlo::RemOp>,
       HloToLhloOpConverter<mhlo::RsqrtOp>,
