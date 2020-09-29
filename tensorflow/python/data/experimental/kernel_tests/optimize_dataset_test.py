@@ -224,6 +224,33 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(autotune=False, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=True),
+          combinations.combine(first_buffer_sizes=[(1, -1, -1, 4),
+                                                   (2, -1, 3, -1),
+                                                   (2, 1, -1, -1)]),
+          combinations.combine(second_buffer_sizes=[(1, -1, -1, 4),
+                                                    (2, -1, 3, -1),
+                                                    (2, 1, -1, -1)]))
+  )
+  def testOptimizationAutotuneBuffers(self, autotune, autotune_buffers,
+                                      first_buffer_sizes, second_buffer_sizes):
+    dataset = dataset_ops.Dataset.range(10)
+    for buffer_size in first_buffer_sizes:
+      dataset = dataset.prefetch(buffer_size=buffer_size)
+    dataset = dataset.map(lambda x: x + 1)
+    for buffer_size in second_buffer_sizes:
+      dataset = dataset.prefetch(buffer_size=buffer_size)
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune = autotune
+    options.experimental_optimization.autotune_buffers = autotune_buffers
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=list(range(1, 11)))
+
   @combinations.generate(test_base.default_test_combinations())
   def testOptimizationThreadPoolDataset(self):
     dataset = dataset_ops.Dataset.range(10).batch(10)
