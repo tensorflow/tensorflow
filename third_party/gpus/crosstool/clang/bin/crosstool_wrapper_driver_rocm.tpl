@@ -95,27 +95,6 @@ def GetHostCompilerOptions(argv):
 
   return opts
 
-def GetHipccOptions(argv):
-  """Collect the -hipcc_options values from argv.
-
-  Args:
-    argv: A list of strings, possibly the argv passed to main().
-
-  Returns:
-    The string that can be passed directly to hipcc.
-  """
-
-  parser = ArgumentParser()
-  parser.add_argument('-hipcc_options', nargs='*', action='append')
-
-  args, _ = parser.parse_known_args(argv)
-
-  if args.hipcc_options:
-    options = _update_options(sum(args.hipcc_options, []))
-    return ' '.join(['--'+a for a in options])
-  return ''
-
-
 def system(cmd):
   """Invokes cmd with os.system().
 
@@ -145,7 +124,6 @@ def InvokeHipcc(argv, log=False):
   """
 
   host_compiler_options = GetHostCompilerOptions(argv)
-  hipcc_compiler_options = GetHipccOptions(argv)
   opt_option = GetOptionValue(argv, 'O')
   m_options = GetOptionValue(argv, 'm')
   m_options = ''.join([' -m' + m for m in m_options if m in ['32', '64']])
@@ -191,7 +169,6 @@ def InvokeHipcc(argv, log=False):
   # Also we need to retain warning about uninitialised shared variable as
   # warning only, even when -Werror option is specified.
   hipccopts += ' --include=hip/hip_runtime.h '
-  hipccopts += ' ' + hipcc_compiler_options
   # Use -fno-gpu-rdc by default for early GPU kernel finalization
   # This flag would trigger GPU kernels be generated at compile time, instead
   # of link time. This allows the default host compiler (gcc) be used as the
