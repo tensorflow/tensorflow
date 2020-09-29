@@ -419,10 +419,6 @@ class RocmApiCallbackImpl {
         const hipFunction_t kernelFunc = data->args.hipHccModuleLaunchKernel.f;
         if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
 
-#if TENSORFLOW_COMPILER_IS_HIP_CLANG
-        // hipHccModuleLaucnhKernel struct-members seem to be named differently
-        // in the hip headers from the hipclang build.
-        // this is probably a temporary discrepancy
         event.kernel_info.dynamic_shared_memory_usage =
             data->args.hipHccModuleLaunchKernel.sharedMemBytes;
         event.kernel_info.block_x =
@@ -448,26 +444,6 @@ class RocmApiCallbackImpl {
 #endif
         event.kernel_info.dynamic_shared_memory_usage =
             data->args.hipHccModuleLaunchKernel.sharedMemBytes;
-#else
-        event.kernel_info.dynamic_shared_memory_usage =
-            data->args.hipHccModuleLaunchKernel.sharedMemBytes;
-        unsigned int blockDimX =
-            data->args.hipHccModuleLaunchKernel.localWorkSizeX;
-        unsigned int blockDimY =
-            data->args.hipHccModuleLaunchKernel.localWorkSizeY;
-        unsigned int blockDimZ =
-            data->args.hipHccModuleLaunchKernel.localWorkSizeZ;
-
-        event.kernel_info.block_x = blockDimX;
-        event.kernel_info.block_y = blockDimY;
-        event.kernel_info.block_z = blockDimZ;
-        event.kernel_info.grid_x =
-            data->args.hipHccModuleLaunchKernel.globalWorkSizeX / blockDimX;
-        event.kernel_info.grid_y =
-            data->args.hipHccModuleLaunchKernel.globalWorkSizeY / blockDimY;
-        event.kernel_info.grid_z =
-            data->args.hipHccModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
-#endif
       } break;
       case HIP_API_ID_hipLaunchKernel: {
         const void* func_addr = data->args.hipLaunchKernel.function_address;
