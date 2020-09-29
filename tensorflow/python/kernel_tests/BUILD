@@ -290,6 +290,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops_gen",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/compat:v2_compat",
     ],
