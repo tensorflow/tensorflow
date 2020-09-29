@@ -148,18 +148,6 @@ tf_cuda_cc_test(
 # )
 
 gen_kernel_library(
-    name = "tanh",
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "abs",
     same_shape = "0,1",
     tile_size = "256",
@@ -258,7 +246,31 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "sign",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        # TODO(b/162577610): Add bf16, f16, i32, i64, c64 and c128.
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "sqrt",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "tanh",
     same_shape = "0,1",
     tile_size = "256",
     types = [
