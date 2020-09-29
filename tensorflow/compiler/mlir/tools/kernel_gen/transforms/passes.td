@@ -67,8 +67,6 @@ def PropagateTensorFlowABIKnowledgePass
     : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
   let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";
   let options = [
-    Option<"func_type_", "func-type", "mlir::FunctionType",
-           /*default=*/"", "Function type">,
     ListOption<"same_shape_", "same-shape", "uint32_t",
                "List of same shape args">,
   ];
