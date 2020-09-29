@@ -24,10 +24,14 @@ install_bazelisk
 
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
-# Run configure.
-export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.5)
-yes "" | "$PYTHON_BIN_PATH" configure.py
+# Remove need to run configure to set TF_NEED_CUDA=0, TF_NEED_ROCM=0, and
+# CC_OPT_FLAGS='-mavx'.
+echo "build:opt --copt=-mavx" >> .tf_configure.bazelrc
+sed "/build:opt --copt=-Wno-sign-compare/d".tf_configure.bazelrc
+echo "build --action_env PYTHON_BIN_PATH=\"/usr/local/bin/python3.5\""
+echo "build --action_env PYTHON_LIB_PATH=\"/usr/local/lib/python3.5/site-packages\""
+echo "build --python_path=\"/usr/local/bin/python3.5\""
+
 
 # Build the pip package
 bazel build --config=release_cpu_linux tensorflow/tools/pip_package:build_pip_package
