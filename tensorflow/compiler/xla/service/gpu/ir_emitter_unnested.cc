@@ -2403,23 +2403,26 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
   std::unique_ptr<KernelThunk> kernel_thunk =
       BuildKernelThunk(&hlo, /*implements_whole_instruction=*/true);
 
+  // Check if we want to schedule grid size that has fewer SM waves.
+  // This speed up computations in some cases.
   bool few_waves = false;
-  auto is_good_for_few_waves = [](const HloInstruction* instr) {
-    if (instr->opcode() == HloOpcode::kReduceWindow) {
-      return false;
-    } else if (instr->opcode() == HloOpcode::kBroadcast &&
-	       !instr->dimensions().empty()) {
-      // We need to make the codegen broadcast aware before enabling.
-      return false;
+  auto few_waves_allow_instr = [](const HloInstruction* instr) {
+    if (instr->IsElementwise() ||
+        instr->opcode() == HloOpcode::kParameter ||
+        // We need to make the codegen broadcast aware before enabling
+        // more broadcast pattern.
+        (instr->opcode() == HloOpcode::kBroadcast &&
+         instr->dimensions().empty())) {
+      return true;
     }
-    return true;
+    return false;
   };
   if (hlo.opcode() == HloOpcode::kFusion) {
     few_waves = absl::c_all_of(
         hlo.fused_instructions_computation()->instructions(),
-	is_good_for_few_waves);
+        few_waves_allow_instr);
   } else {
-    few_waves = is_good_for_few_waves(&hlo);
+    few_waves = few_waves_allow_instr(&hlo);
   }
 
   Status emit_status = EmitTargetElementLoopInThunk(
