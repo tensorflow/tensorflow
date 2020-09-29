@@ -204,9 +204,10 @@ def _gen_mlir_op_impl(ctx):
     ctx.actions.run_shell(
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
-        command = "cat %s | sed s/elem_type/%s/g > %s" % (
+        command = "cat %s | sed s/elem_type/%s/g | sed s/output_type/%s/g> %s" % (
             ctx.file.template.path,
             ctx.attr.type,
+            ctx.attr.output_type,
             ctx.outputs.out.path,
         ),
     )
@@ -217,19 +218,21 @@ _gen_mlir_op_rule = rule(
     attrs = {
         "template": attr.label(mandatory = True, allow_single_file = True),
         "type": attr.string(mandatory = True),
+        "output_type": attr.string(mandatory = True),
         "out": attr.output(mandatory = True),
     },
 )
 
-def _gen_mlir_op(name, type):
+def _gen_mlir_op(name, type, output_type):
     _gen_mlir_op_rule(
         name = "generate_{name}_{type}_mlir".format(name = name, type = type),
         template = "op_definitions/{name}.mlir.tmpl".format(name = name),
         type = type,
+        output_type = output_type,
         out = "{name}_{type}.mlir".format(name = name, type = type),
     )
 
-def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
+def gen_kernel_library(name, types, tile_size, output_types = None, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
     """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
@@ -247,6 +250,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unr
             _gen_mlir_op(
                 name = name,
                 type = type,
+                output_type = output_types[type] if output_types else type,
             )
             _gen_kernel_image_hdr(
                 name = "{name}_{type}_kernel".format(name = name, type = type),
@@ -329,7 +333,7 @@ _gen_unranked_kernel_fatbin_rule = rule(
     implementation = _gen_unranked_kernel_fatbin_impl,
 )
 
-def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factors = None, extra_args = []):
+def gen_unranked_kernel_library(name, types, tile_size, output_types = None, tags = [], unroll_factors = None, extra_args = []):
     """ Generate a library with unranked kernels for a specific tensorflow op.
 
     Args:
@@ -346,6 +350,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
             _gen_mlir_op(
                 name = name,
                 type = type,
+                output_type = output_types[type] if output_types else type,
             )
             _gen_unranked_kernel_fatbin_rule(
                 name = "{name}_{type}_kernel_generator".format(name = name, type = type),
