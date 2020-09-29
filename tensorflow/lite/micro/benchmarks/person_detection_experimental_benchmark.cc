@@ -34,21 +34,27 @@ limitations under the License.
 
 namespace {
 
+using PersonDetectionExperimentalBenchmarkRunner = MicroBenchmarkRunner<int8_t>;
+
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
 constexpr int kTensorArenaSize = 135 * 1024;
-alignas(16) uint8_t
-    tensor_arena[kTensorArenaSize + sizeof(MicroBenchmarkRunner<int8_t>)];
+alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-MicroBenchmarkRunner<int8_t>* benchmark_runner = nullptr;
+uint8_t
+    benchmark_runner_buffer[sizeof(PersonDetectionExperimentalBenchmarkRunner)];
+PersonDetectionExperimentalBenchmarkRunner* benchmark_runner = nullptr;
 
 // Initialize benchmark runner instance explicitly to avoid global init order
 // issues on Sparkfun. Use new since static variables within a method
 // are automatically surrounded by locking, which breaks bluepill and stm32f4.
 void CreateBenchmarkRunner() {
-  benchmark_runner = new (tensor_arena) MicroBenchmarkRunner<int8_t>(
-      g_person_detect_model_data,
-      &tensor_arena[sizeof(MicroBenchmarkRunner<int8_t>)], kTensorArenaSize);
+  // We allocate AllOpsResolver from a global buffer because the object's
+  // lifetime must exceed that of the PersonDetectionBenchmarkRunner object.
+  benchmark_runner =
+      new (tensor_arena) PersonDetectionExperimentalBenchmarkRunner(
+          g_person_detect_model_data, new (op_resolver_buffer) AllOpsResolver(),
+          tensor_arena, kTensorArenaSize);
 }
 
 void InitializeBenchmarkRunner() {
