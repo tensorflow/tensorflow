@@ -18807,6 +18807,14 @@ func CollectiveReduceV2CommunicationHint(value string) CollectiveReduceV2Attr {
 	}
 }
 
+// CollectiveReduceV2TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
 // Mutually reduces multiple tensors of identical type and shape.
 func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
