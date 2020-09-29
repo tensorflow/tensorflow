@@ -95,7 +95,6 @@ func @two_clusters_with_one_op_each() {
   // CHECK-NEXT: "tf.opC"
   // CHECK-NEXT: "tf.opD"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER6]]"
-  // CHECK-SAME: _xla_outside_compilation = "{{[a-zA-Z_0-9]+}}"
   // CHECK-NEXT: "tf.opE"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() : () -> tensor<i32>
@@ -118,9 +117,8 @@ func @two_clusters_with_two_ops_each() {
   // CHECK-NEXT: "tf.opD"
   // CHECK-NEXT: "tf.opE"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER8]]"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER9:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opF"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER9]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER8]]"
   // CHECK-NEXT: "tf.opG"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() : () -> tensor<i32>
@@ -163,12 +161,11 @@ func @two_clusters_with_same_parent() {
   // CHECK-NEXT: "tf.opB"
   // CHECK-NEXT: "tf.opC"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER10]]"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER11:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opD"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER12:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opE"
   // CHECK-NEXT: "tf.opF"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13:[a-zA-Z_0-9]+]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER12]]"
   // CHECK-NEXT: "tf.opG"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<i32>
@@ -189,10 +186,10 @@ func @two_clusters_with_same_outside_compiled_parent() {
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER12:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opB"
   // CHECK-NEXT: "tf.opC"
-  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER12]]"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opD"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER14:[a-zA-Z_0-9]+]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER12]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER13]]"
   // CHECK-NEXT: "tf.Identity"
   // CHECK-NEXT: "tf.opF"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13]]"
@@ -234,8 +231,7 @@ func @outside_compile_with_block() {
   // CHECK-NEXT: "tf.opB"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER15]]"
   // CHECK: "tf.opC"
-  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER14]]"
-  // CHECK-SAME: _xla_outside_compilation = "{{[a-zA-Z_0-9]+}}"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER15]]"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<i32>
     %b = "tf.opB"(%a) {_xla_outside_compilation = "0"} : (tensor<i32>) -> tensor<i32>
@@ -257,7 +253,6 @@ func @two_clusters_with_one_op_each_with_indirect_dependency() {
   // CHECK-NEXT: "tf.opD"
   // CHECK-NEXT: "tf.opE"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER16]]"
-  // CHECK-SAME: _xla_outside_compilation = "{{[a-zA-Z_0-9]+}}"
   // CHECK-NEXT: "tf.opF"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() : () -> tensor<i32>
@@ -376,7 +371,7 @@ func @check_clustering_ops_inside_nested_control_flow(%arg0 : tensor<*x!tf.resou
   // CHECK-NEXT:   "tf.B"
   // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER17:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT:   "tf.C"
-  // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER17:[a-zA-Z_0-9]+]]"
+  // CHECK-NOT:   _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK:        "tf.IfRegion"
   // CHECK:          "tf.IfRegion"
   // CHECK-NEXT:       "tf.Const"
