@@ -86,9 +86,8 @@ void EliminateUnusedResults(
   // Rebuild the new operation with lesser number of results.
   OpBuilder builder(op);
   Operation *new_op = Operation::create(
-      op->getLoc(), op->getName(), new_result_types,
-      llvm::to_vector<4>(op->getOperands()), op->getAttrs(),
-      llvm::to_vector<4>(op->getSuccessors()), op->getNumRegions());
+      op->getLoc(), op->getName(), new_result_types, op->getOperands(),
+      op->getAttrs(), op->getSuccessors(), op->getNumRegions());
   builder.insert(new_op);
 
   // Move region bodies to the new operation.
@@ -188,8 +187,8 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
 
 // Eliminated unused results from a functional while.
 void EliminateUnusedResultsForWhile(TF::WhileOp op) {
-  FuncOp cond = op.cond_func();
-  FuncOp body = op.body_func();
+  FuncOp cond = op.cond_function();
+  FuncOp body = op.body_function();
 
   llvm::BitVector can_eliminate(op.getNumResults());
   for (OpResult result : llvm::reverse(op.getResults())) {
@@ -304,14 +303,14 @@ LogicalResult CanonicalizeFunctionalIfCase(Operation *op,
 // Canonicalizes a functional while. Forwards common argument to results and
 // drop resource results if posible.
 LogicalResult CanonicalizeFunctionalWhile(TF::WhileOp op) {
-  for (FuncOp func : {op.cond_func(), op.body_func()}) {
+  for (FuncOp func : {op.cond_function(), op.body_function()}) {
     if (failed(CleanupAndCanonicalize(func))) return failure();
   }
 
   // For while, just use the body function to forward operand to result.
   bool has_resource_result = false;
-  if (failed(ForwardCommonArgToOutput(op, {op.body_func()}, op.getOperands(),
-                                      has_resource_result)))
+  if (failed(ForwardCommonArgToOutput(op, {op.body_function()},
+                                      op.getOperands(), has_resource_result)))
     return failure();
   // If no resource type results were found, no further cleanup needed.
   if (!has_resource_result) return success();
@@ -412,17 +411,13 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
 
     if (auto if_op = dyn_cast<TF::IfOp>(op)) {
       result = CanonicalizeFunctionalIfCase(
-          op, {if_op.then_func(), if_op.else_func()}, if_op.input());
+          op, {if_op.then_function(), if_op.else_function()}, if_op.input());
     } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
       SmallVector<FuncOp, 4> branches;
-      for (Attribute branch : case_op.branches()) {
-        auto sym = branch.cast<FlatSymbolRefAttr>();
-        branches.push_back(
-            SymbolTable::lookupNearestSymbolFrom<FuncOp>(op, sym));
-      }
+      case_op.get_branch_functions(branches);
       result = CanonicalizeFunctionalIfCase(case_op, branches, case_op.input());
     } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-      if (while_op.cond_func().walk(check_while_cond).wasInterrupted())
+      if (while_op.cond_function().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
       result = CanonicalizeFunctionalWhile(while_op);
     } else if (isa<TF::IfRegionOp, TF::CaseRegionOp, tf_device::ClusterOp>(

@@ -6,6 +6,7 @@
 # runtime behavior, but the majority of runtime tests should be TFLite side and
 # invariants only verified in the converter/compiler.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 licenses(["notice"])

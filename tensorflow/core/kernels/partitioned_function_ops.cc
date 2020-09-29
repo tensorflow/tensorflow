@@ -289,11 +289,5 @@ REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
 REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");
 REGISTER_INPUT_COLOCATION_EXEMPTION("StatefulPartitionedCall");
 
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_SYCL),
-                        PartitionedCallOp);
-REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_SYCL),
-                        PartitionedCallOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

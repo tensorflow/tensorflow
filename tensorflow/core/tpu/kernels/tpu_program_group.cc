@@ -32,70 +32,6 @@ namespace tpu {
 namespace {
 namespace se_tpu = ::stream_executor::tpu;
 using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
-using xla::Shape;
-
-StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
-    std::unique_ptr<xla::HloModuleGroup> module_group,
-    const XlaCompiler::CompilationResult& compilation_result,
-    const TPUCompileMetadataProto& metadata,
-    const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-    const std::vector<std::vector<xla::Shape>>& per_core_output_shapes,
-    const std::vector<std::vector<std::pair<int, bool>>>&
-        per_core_variable_indices,
-    const absl::optional<xla::DeviceAssignment>& device_assignment) {
-  VLOG(1) << "Run CompileAheadOfTime.";
-  TF_ASSIGN_OR_RETURN(TpuAotCompilationRequestProto aot_request,
-                      CreateTpuAotCompilationRequest(
-                          *module_group, compilation_result, metadata,
-                          per_core_arg_shapes, per_core_output_shapes,
-                          per_core_variable_indices, device_assignment));
-  se_tpu::SerializedProto serialized_aot_request =
-      se_tpu::SerializeProto(aot_request);
-  auto cleanup = gtl::MakeCleanup([serialized_aot_request] {
-    se_tpu::SerializedProto_Free(serialized_aot_request);
-  });
-
-  XLA_TpuProgram** xla_tpu_programs = nullptr;
-  size_t count = 0;
-  StatusHelper status;
-  VLOG(1) << "Run TpuCompile_CompileAheadOfTime.";
-  CompileApiFn()->TpuCompile_CompileAheadOfTimeFn(
-      serialized_aot_request, &xla_tpu_programs, &count, status.c_status);
-  VLOG(1) << "Run CompileAheadOfTime completed.";
-  if (!status.status().ok()) {
-    return status.status();
-  }
-  std::vector<XLA_TpuProgram*> tpu_programs(count, nullptr);
-  for (size_t i = 0; i < count; ++i) {
-    tpu_programs[i] = xla_tpu_programs[i];
-  }
-  TpuProgramApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
-  return tpu_programs;
-}
-
-StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
-    const TPUCompileMetadataProto& metadata,
-    const XlaCompiler::CompilationResult& compilation_result,
-    const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-    const std::vector<std::vector<xla::Shape>>& per_core_output_shapes,
-    const std::vector<std::vector<std::pair<int, bool>>>&
-        per_core_variable_indices,
-    const absl::optional<xla::DeviceAssignment>& device_assignment) {
-  VLOG(1) << "Compile Tpu programs.";
-  std::vector<std::unique_ptr<xla::HloModule>> hlo_modules;
-  auto status = CreateHloModules(metadata, compilation_result,
-                                 device_assignment, &hlo_modules);
-  if (!status.ok()) {
-    return status;
-  }
-
-  return CompileAheadOfTime(
-      absl::make_unique<xla::HloModuleGroup>(hlo_modules[0]->name(),
-                                             absl::MakeSpan(hlo_modules)),
-      compilation_result, metadata, per_core_arg_shapes, per_core_output_shapes,
-      per_core_variable_indices, device_assignment);
-}
 }  // namespace
 
 TPUExecutableInfoProto TpuProgramGroup::ConstructExecutableInfo(
@@ -215,53 +151,6 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
     }
   }
   tpu_programs_.clear();
-}
-
-/*static*/
-Status TpuProgramGroup::Build(
-    const TPUCompileMetadataProto& metadata,
-    const tensorflow::XlaCompiler::CompilationResult& compilation_result,
-    const std::vector<ShardingAndIndex>& arg_core_mapping,
-    const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-    const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-    TpuProgramGroupInterface* tpu_program_group_interface) {
-  std::vector<std::vector<xla::Shape>> per_core_output_shapes(
-      metadata.num_cores_per_replica());
-  TF_RETURN_IF_ERROR(ComputeOutputShapesForEachCore(
-      metadata, compilation_result, &per_core_output_shapes));
-
-  std::vector<std::vector<std::pair<int, bool>>> per_core_variable_indices(
-      metadata.num_cores_per_replica());
-  std::vector<bool> may_modify_variables;
-  TF_RETURN_IF_ERROR(AddVariableUpdatesToCores(
-      metadata, compilation_result, arg_core_mapping, &may_modify_variables,
-      &per_core_output_shapes, &per_core_variable_indices));
-  TF_RET_CHECK(per_core_arg_shapes.size() == metadata.num_cores_per_replica());
-  TF_RET_CHECK(per_core_output_shapes.size() == per_core_arg_shapes.size());
-  TF_RET_CHECK(per_core_output_shapes.size() ==
-               per_core_variable_indices.size());
-
-  // With shardable input/output pairs, XLA could generate separate
-  // sharding/unsharding programs along with the main program. The
-  // sharding/unsharding programs will be in nested entries of the AOT
-  // compilation result.
-  auto status_or = CompileAheadOfTime(
-      metadata, compilation_result, per_core_arg_shapes, per_core_output_shapes,
-      per_core_variable_indices, xla_device_assignment);
-
-  TF_ASSIGN_OR_RETURN(std::vector<XLA_TpuProgram*> xla_tpu_programs,
-                      std::move(status_or));
-  // SPMD could return 1 result for all partitions.
-  TF_RET_CHECK(xla_tpu_programs.size() == 1 ||
-               xla_tpu_programs.size() == metadata.num_cores_per_replica());
-
-  // TODO(henrytan): add an interface to TpuProgramGroupInterface to set
-  // may_modify_variables.
-  TpuProgramGroup* tpu_program_group =
-      tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
-  tpu_program_group->Initialize(xla_tpu_programs);
-  tpu_program_group->may_modify_variables_ = may_modify_variables;
-  return Status::OK();
 }
 
 TpuProgramGroup::TpuProgramGroup(TpuProgramGroup&& other)

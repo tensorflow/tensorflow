@@ -200,6 +200,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& worker_thread : worker_threads_) {
         worker_thread.reset();
       }
+
+      VLOG(1) << "Destroyed data service dataset iterator for job id "
+              << job_client_id_;
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
@@ -227,7 +230,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                             dataset()->processing_mode_,
                                             job_client_id_);
             },
-            "create job", deadline_micros));
+            /*description=*/
+            strings::StrCat("create job with dispatcher at ",
+                            dataset()->address_),
+            deadline_micros));
       } else {
         TF_RETURN_IF_ERROR(grpc_util::Retry(
             [&]() {
@@ -235,7 +241,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   dataset()->dataset_id_, dataset()->processing_mode_,
                   dataset()->job_name_, iterator_index_, job_client_id_);
             },
-            "get or create job", deadline_micros));
+            /*description=*/
+            strings::StrCat("get or create job with dispatcher at ",
+                            dataset()->address_),
+            deadline_micros));
       }
       initialized_ = true;
       VLOG(1) << "Created data service job with id " << job_client_id_;

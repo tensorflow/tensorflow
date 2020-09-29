@@ -9,6 +9,7 @@ load(
     "tf_copts",
     "tf_py_test",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -25,6 +26,7 @@ cc_library(
     hdrs = [
         "transform_utils.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [

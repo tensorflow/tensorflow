@@ -22,6 +22,7 @@ import collections
 import functools
 import itertools
 import threading
+import warnings
 
 import numpy as np
 import six
@@ -51,6 +52,7 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
@@ -64,12 +66,9 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import doc_controls
 
 
@@ -161,7 +160,7 @@ class Layer(base_layer.Layer):
     # to non-input layers.
     allowed_kwargs = {
         'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
-        'weights', 'activity_regularizer', 'autocast'
+        'weights', 'activity_regularizer', 'autocast', 'implementation'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -780,7 +779,8 @@ class Layer(base_layer.Layer):
 
           if not self.dynamic:
             try:
-              with ops.enable_auto_cast_variables(self._compute_dtype_object):
+              with autocast_variable.enable_auto_cast_variables(
+                  self._compute_dtype_object):
                 outputs = call_fn(cast_inputs, *args, **kwargs)
 
             except errors.OperatorNotAllowedInGraphError as e:
@@ -824,7 +824,8 @@ class Layer(base_layer.Layer):
         with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs)
-          with ops.enable_auto_cast_variables(self._compute_dtype_object):
+          with autocast_variable.enable_auto_cast_variables(
+              self._compute_dtype_object):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
@@ -1048,7 +1049,7 @@ class Layer(base_layer.Layer):
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
-        with ops.enable_auto_cast_variables(None):
+        with autocast_variable.enable_auto_cast_variables(None):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
@@ -1694,8 +1695,6 @@ class Layer(base_layer.Layer):
   # Methods & attributes below are public aliases of other methods.            #
   ##############################################################################
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.__call__` method instead.')
   @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
     """Deprecated, do NOT use!
@@ -1710,13 +1709,17 @@ class Layer(base_layer.Layer):
     Returns:
       Output tensor(s).
     """
+    warnings.warn('`layer.apply` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.__call__` method instead.')
     return self.__call__(inputs, *args, **kwargs)
 
-  @deprecation.deprecated(
-      date=None, instructions='Please use `layer.add_weight` method instead.')
   @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
     """Deprecated, do NOT use! Alias for `add_weight`."""
+    warnings.warn('`layer.add_variable` is deprecated and '
+                  'will be removed in a future version. '
+                  'Please use `layer.add_weight` method instead.')
     return self.add_weight(*args, **kwargs)
 
   @property
@@ -1783,11 +1786,6 @@ class Layer(base_layer.Layer):
                        'use a different Strategy, e.g. a MirroredStrategy.' %
                        (strategy.__class__.__name__, self._dtype_policy.name))
 
-    # This has no impact on the layer behavior, and is only used for printing
-    # warnings.
-    self._dtype_defaulted_to_floatx = (not dtype and
-                                       policy.policy_defaults_to_floatx())
-
     # Performance optimization: cache the compute dtype as a Dtype object or
     # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
     if self._dtype_policy.compute_dtype:
@@ -1831,8 +1829,6 @@ class Layer(base_layer.Layer):
                       ragged_tensor.RaggedTensor)
         if (isinstance(x, cast_types) and x.dtype.is_floating and
             x.dtype.base_dtype.name != compute_dtype):
-          if self._dtype_defaulted_to_floatx:
-            self._warn_about_input_casting(x.dtype.base_dtype)
           return math_ops.cast(x, compute_dtype)
         elif isinstance(x, tensor_spec.TensorSpec) and x.dtype.is_floating:
           # Inputs may be TensorSpecs when this function is called from
@@ -1843,31 +1839,6 @@ class Layer(base_layer.Layer):
       return nest.map_structure(f, inputs)
     else:
       return inputs
-
-  def _warn_about_input_casting(self, input_dtype):
-    # self._already_warned_about_input_casting is only retrieved or set in this
-    # function.
-    already_warned = getattr(self, '_already_warned_about_input_casting', False)
-    if not already_warned:
-      tf_logging.warn(
-          "Layer {self.name} is casting an input tensor from dtype "
-          "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
-          "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          'because its dtype defaults to floatx.\n\n'
-          ""
-          "If you intended to run this layer in {layer_dtype}, you can safely "
-          "ignore this warning. If in doubt, this warning is likely only an "
-          "issue if you are porting a TensorFlow 1.X model to TensorFlow 2.\n\n"
-          ""
-          "To change all layers to have dtype {input_dtype} by default, call "
-          "`tf.keras.backend.set_floatx('{input_dtype}')`. To change just this "
-          "layer, pass dtype='{input_dtype}' to the layer constructor. If you "
-          "are the author of this layer, you can disable autocasting by "
-          "passing autocast=False to the base Layer constructor.\n".format(
-              self=self,
-              input_dtype=input_dtype.name,
-              layer_dtype=self._compute_dtype))
-      self._already_warned_about_input_casting = True
 
   # _dtype used to be an attribute set in the constructor. We still expose it
   # because some clients still use it.
@@ -2152,7 +2123,7 @@ class Layer(base_layer.Layer):
     Returns:
       A dict mapping all sublayers to their `trainable` value.
     """
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    layers = layer_utils.filter_empty_layer_containers(self._layers)
     # Keep track of each top-level layers' `trainable` as well as the
     # state of all of its sublayers.
     trainable_state = {self: self.trainable}
@@ -2162,7 +2133,7 @@ class Layer(base_layer.Layer):
 
   def _set_trainable_state(self, trainable_state):
     """Set `trainable` state for each sublayer."""
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    layers = layer_utils.filter_empty_layer_containers(self._layers)
     if self in trainable_state:
       self.trainable = trainable_state[self]
     for layer in layers:
@@ -2318,7 +2289,7 @@ class Layer(base_layer.Layer):
         'weights', 'trainable_weights', 'non_trainable_weights'
     }
     if hasattr(self, '_layers'):
-      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+      nested_layers = layer_utils.filter_empty_layer_containers(
           self._layers)
       return list(
           itertools.chain.from_iterable(

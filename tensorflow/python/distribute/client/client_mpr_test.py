@@ -13,18 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Multi-process runner tests for parameter_server_client.py."""
+"""Multi-process runner tests for `Client` with `ParameterServerStrategyV2`."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import time
-from absl import logging
+
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute.client import client
-from tensorflow.python.distribute.client import parameter_server_client
+from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute.client import client as client_lib
 from tensorflow.python.distribute.client import utils
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import def_function
@@ -33,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 
 
 class ClientMprTest(test.TestCase):
@@ -47,13 +49,15 @@ class ClientMprTest(test.TestCase):
                                        test_schedule=False,
                                        test_join=False):
 
-    def proc_func(functions_scheduled_event, test_finished_event):
+    def fn(functions_scheduled_event, test_finished_event):
       cluster_resolver = TFConfigClusterResolver()
       if cluster_resolver.task_type != "chief":
         utils.start_server(cluster_resolver, "grpc")
-      ps_client = parameter_server_client.ParameterServerClient(
+      strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
           cluster_resolver)
-      with ps_client._strategy.scope():
+      ps_client = client_lib.Client(strategy)
+
+      with strategy.scope():
         v = variables.Variable(initial_value=0, dtype=dtypes.int32)
 
       @def_function.function
@@ -77,7 +81,7 @@ class ClientMprTest(test.TestCase):
           while ps_client.cluster._closure_queue._error is None:
             time.sleep(1)
           ps_client.schedule(worker_fn)
-      except client.ParameterServerFailureError:
+      except client_lib.ParameterServerFailureError:
         # The following verifies that after PS fails, continue executing
         # functions on workers should fail and indicate it's PS failure.
         for worker_id in range(3):
@@ -87,7 +91,7 @@ class ClientMprTest(test.TestCase):
               # failure.
               worker_fn()
             except Exception as e:  # pylint: disable=broad-except
-              if client._is_ps_failure(e):
+              if client_lib._is_ps_failure(e):
                 if worker_id < 2:
                   continue
                 logging.info("_test_translate_ps_failure_error ends properly.")
@@ -103,12 +107,12 @@ class ClientMprTest(test.TestCase):
     functions_scheduled_event = manager.Event()
     test_finished_event = manager.Event()
     mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
+        fn,
         multi_worker_test_base.create_cluster_spec(
             has_chief=True, num_workers=3, num_ps=1, has_eval=False),
         args=(functions_scheduled_event, test_finished_event),
         rpc_layer="grpc",
-        list_stdout=True,
+        return_output=True,
         use_dill_for_args=False)
 
     mpr.start()

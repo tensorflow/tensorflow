@@ -26,7 +26,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1476,7 +1475,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
     """Ensure that variables are created correctly in a tf function."""
     m = metrics.MeanTensor(dtype=dtypes.float64)
 
-    @eager_function.defun
+    @def_function.function
     def call_metric(x):
       return m(x)
 

@@ -425,6 +425,7 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
           Operation* defining_op = v.getDefiningOp();
           bool is_external = false;
           if (defining_op) {
+            if (!tpu_cluster.getOperation()->isAncestor(defining_op)) continue;
             is_external =
                 llvm::none_of(host_cluster_ops, [&](Operation* cluster_op) {
                   return defining_op == cluster_op;
@@ -440,6 +441,11 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
       } else {
         llvm::SetVector<Value> external_captured_inputs;
         visitUsedValuesDefinedAbove(*region, *region, [&](OpOperand* operand) {
+          const bool captured_value_from_host =
+              llvm::find(host_cluster_ops, operand->get().getDefiningOp()) !=
+              host_cluster_ops.end();
+          if (captured_value_from_host) return;
+
           Region* operand_defined_region = operand->get().getParentRegion();
           if (!tpu_cluster.body().isAncestor(operand_defined_region)) return;
           // If the host_cluster_op is regional control flow (if, while),
@@ -471,12 +477,18 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
 llvm::SmallVector<Value, 4> GetExternalOutputs(
     llvm::ArrayRef<Operation*> cluster_ops) {
   llvm::SmallSetVector<Value, 4> external_outputs;
+  llvm::SmallPtrSet<Operation*, 4> host_cluster_ops_set;
+  for (auto op : cluster_ops) {
+    op->walk([&](Operation* host_cluster_op) {
+      host_cluster_ops_set.insert(host_cluster_op);
+    });
+  }
 
   for (Operation* op : cluster_ops) {
     for (Operation* user : op->getUsers()) {
-      bool is_external = llvm::none_of(cluster_ops, [&](Operation* cluster_op) {
-        return user == cluster_op;
-      });
+      bool is_external = llvm::none_of(
+          host_cluster_ops_set,
+          [&](Operation* cluster_op) { return user == cluster_op; });
       if (!is_external) continue;
       for (Value v : user->getOperands()) {
         if (v.getDefiningOp() == op) external_outputs.insert(v);
@@ -503,6 +515,12 @@ void SetHostComputeInsertion(
       }
     }
   }
+
+  // If no operand usage can be found, this means that external input is
+  // implicitly captured inputs for ops inside internal regions of one of the
+  // `cluster_ops`. In that case, set the insertion point to the last op of the
+  // `cluster_ops` in the IR.
+  builder->setInsertionPoint(cluster_ops.back());
 }
 
 // Creates the HostCompute with `inputs` and `outputs`

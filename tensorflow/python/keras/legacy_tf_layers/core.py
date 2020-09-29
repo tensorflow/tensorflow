@@ -21,11 +21,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
 
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.keras.legacy_tf_layers import base
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -110,8 +110,6 @@ class Dense(keras_layers.Dense, base.Layer):
                                 **kwargs)
 
 
-@deprecation.deprecated(
-    date=None, instructions='Use keras.layers.Dense instead.')
 @tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
@@ -170,6 +168,9 @@ def dense(
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.dense` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.Dense` instead.')
   layer = Dense(units,
                 activation=activation,
                 use_bias=use_bias,
@@ -226,9 +227,6 @@ class Dropout(keras_layers.Dropout, base.Layer):
     return super(Dropout, self).call(inputs, training=training)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.dropout instead.')
 @tf_export(v1=['layers.dropout'])
 def dropout(inputs,
             rate=0.5,
@@ -267,6 +265,9 @@ def dropout(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.dropout` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.Dropout` instead.')
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
 
@@ -297,9 +298,6 @@ class Flatten(keras_layers.Flatten, base.Layer):
   pass
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.Flatten instead.')
 @tf_export(v1=['layers.flatten'])
 def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).
@@ -328,6 +326,9 @@ def flatten(inputs, name=None, data_format='channels_last'):
     # now `y` has shape `(None, None)`
   ```
   """
+  warnings.warn('`tf.layers.flatten` is deprecated and '
+                'will be removed in a future version. '
+                'Please use `tf.keras.layers.Flatten` instead.')
   layer = Flatten(name=name, data_format=data_format)
   return layer.apply(inputs)
 

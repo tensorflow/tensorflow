@@ -33,6 +33,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.tf_export import tf_export
 
 # Key where the object graph proto is saved in a TensorBundle
 OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
@@ -586,6 +587,7 @@ def no_automatic_dependency_tracking_scope(obj):
     obj._setattr_tracking = previous_value  # pylint: disable=protected-access
 
 
+@tf_export("__internal__.tracking.Trackable", v1=[])
 class Trackable(object):
   """Base class for `Trackable` objects without automatic dependencies.
 
@@ -800,7 +802,6 @@ class Trackable(object):
         # then we'll catch that when we call _track_trackable. So this is
         # "best effort" to set the initializer with the highest restore UID.
         initializer = checkpoint_initializer
-        shape = None
     new_variable = getter(
         name=name,
         shape=shape,

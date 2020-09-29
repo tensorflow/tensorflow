@@ -739,7 +739,7 @@ func @dynamic_slice_mismatch_element_types(%arg0: tensor<3x4xi32>, %arg1: tensor
 // -----
 
 func @dynamic_slice_invalid_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // expected-error@+1 {{operand #1 must be a 0-dim integer tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
+  // expected-error@+1 {{operand #1 must be 0D tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
   %0 = "mhlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
   return %0 : tensor<1x4xi32>
 }
@@ -755,7 +755,7 @@ func @dynamic_update_slice(%input: tensor<3x4xi64>, %update: tensor<2xi64>, %sta
 // -----
 
 func @dynamic_update_slice_invalid_start(%input: tensor<3x4xi64>, %update: tensor<2xi64>, %start: tensor<2xi64>) -> tensor<3x4xi64> {
-  // expected-error@+1 {{operand #2 must be a 0-dim integer tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
+  // expected-error@+1 {{operand #2 must be 0D tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
   %0 = "mhlo.dynamic-update-slice"(%input, %update, %start) : (tensor<3x4xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<3x4xi64>
   return %0 : tensor<3x4xi64>
 }
@@ -1010,34 +1010,34 @@ func @constant_invalid() -> () {
 
 func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // CHECK: mhlo.sort
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
 // -----
 
 func @sort_no_operands() {
-  // expected-error @+1 {{op requires at least one input}}
-  %0 = "mhlo.sort"() ( {
+  // expected-error @+1 {{expected named operation to have atleast 1 result}}
+  %0:0 = "mhlo.sort"() ( {
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<i32>, %arg4: tensor<i32>):
     %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : () -> tuple<>
+  }) {dimension = 1 : i64, is_stable = true} : () -> ()
   return
 }
 
 // -----
 
 func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>) {
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (tensor<*xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<*xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
@@ -1045,23 +1045,23 @@ func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>) {
 
 func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{comparator block argument #0 should be of type 'tensor<f32>' but got 'tensor<i32>'}}
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (tensor<*xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<*xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
 // -----
 
 func @sort_different_dims(%input0: tensor<16x8xf32>, %input1: tensor<16x16xi32>) {
-  // expected-error @+1 {{op requires all inputs to have the same dimensions}}
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  // expected-error @+1 {{op requires the same shape for all operands and results}}
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x8xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x8xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
@@ -1069,11 +1069,11 @@ func @sort_different_dims(%input0: tensor<16x8xf32>, %input1: tensor<16x16xi32>)
 
 func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{dimension attribute value must be in range [-2, 2), but found 10}}
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 10 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 10 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
@@ -1081,11 +1081,11 @@ func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi3
 
 func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{dimension attribute value must be in range [-2, 2), but found -3}}
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = -3 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = -3 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
@@ -1093,11 +1093,11 @@ func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi3
 
 func @sort_wrong_block_arg_count(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{op comparator block should have 4 arguments}}
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
@@ -1105,11 +1105,11 @@ func @sort_wrong_block_arg_count(%input0: tensor<16x16xf32>, %input1: tensor<16x
 
 func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{op comparator block argument #3 should be of type 'tensor<i32>' but got 'tensor<f32>'}}
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<f32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 

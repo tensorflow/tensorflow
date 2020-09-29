@@ -1,5 +1,7 @@
 # Contains graph rewrites for TPU runtimes and optimizations.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = [
         "//tensorflow/core/tpu:__subpackages__",

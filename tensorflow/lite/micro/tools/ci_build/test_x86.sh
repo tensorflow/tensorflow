@@ -30,9 +30,11 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
 
 # Next, build w/o TF_LITE_STATIC_MEMORY to catch additional build errors.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=no_tf_lite_static_memory build
 
-# First make sure that the release build succeeds.
+# Next, make sure that the release build succeeds.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release build
 
 # Next, build w/o release so that we can run the tests and get additional
@@ -40,6 +42,13 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=re
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile test
 
-# Also repeat for the debug build.
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=debug test
+if [[ ${1} != "PRESUBMIT" ]]; then
+  # Most of TFLM external contributors only use make. We are building a subset of
+  # targets with bazel as part of this script to make it easier for external
+  # contributors to fix these errors prior to creating a pull request.
+  #
+  # We only run the bazel command when this script is run locally (i.e. not via
+  # test_all.sh) to avoid duplicate work on the CI system and also avoid
+  # installing bazel on the TFLM Docker image.
+  readable_run bazel build tensorflow/lite/micro:all
+fi

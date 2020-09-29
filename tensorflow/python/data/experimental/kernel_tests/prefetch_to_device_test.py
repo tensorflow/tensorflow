@@ -224,48 +224,6 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(device_dataset._variant_tensor.device,
                      "/job:localhost/replica:0/task:0/device:GPU:0")
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testIteratorOnDeviceEagerMode(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
-    iterator = iter(dataset)
-    data = next(iterator)
-
-    self.assertIn("gpu:0", dataset._variant_tensor.device.lower())
-    self.assertIn("gpu:0", iterator._iterator_resource.device.lower())
-    self.assertIn("gpu:0", data.device.lower())
-
-  @combinations.generate(test_base.graph_only_combinations())
-  def testIteratorOnDeviceGraphModeOneShotIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    data = iterator.get_next()
-
-    self.assertIn("gpu:0", dataset._variant_tensor.device.lower())
-    self.assertIn("gpu:0", iterator._iterator_resource.device.lower())
-    self.assertIn("gpu:0", data.device.lower())
-
-  @combinations.generate(test_base.graph_only_combinations())
-  def testIteratorOnDeviceGraphModeInitializableIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    data = iterator.get_next()
-
-    self.assertIn("gpu:0", dataset._variant_tensor.device.lower())
-    self.assertIn("gpu:0", iterator._iterator_resource.device.lower())
-    self.assertIn("gpu:0", data.device.lower())
-
 
 if __name__ == "__main__":
   test.main()

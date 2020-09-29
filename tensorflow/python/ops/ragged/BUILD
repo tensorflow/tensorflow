@@ -2,17 +2,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
-    default_visibility = [
-        "//intelligence/datum/prensor:__pkg__",
-        "//learning/brain/contrib/text:__pkg__",
-        "//nlp/nlx/bert:__pkg__",
-        "//nlp/nlx/i18n/pangloss:__subpackages__",
-        "//nlp/nlx/infrastructure/multiscale:__subpackages__",
-        "//nlp/projects/atc/tf/ops:__pkg__",
-        "//research/graph/convolutions/model:__subpackages__",
-        "//research/socrates:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 

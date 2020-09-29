@@ -198,6 +198,24 @@ py_library(
 )
 
 py_library(
+    name = "tf_contextlib",
+    srcs = ["tf_contextlib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "tf_inspect",
+    srcs = ["tf_inspect.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "vis_utils",
     srcs = [
         "vis_utils.py",
@@ -232,6 +250,7 @@ tf_py_test(
     size = "small",
     srcs = ["generic_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":generic_utils",
         "//tensorflow/python:client_testlib",
@@ -245,6 +264,7 @@ tf_py_test(
     size = "small",
     srcs = ["version_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":version_utils",
         "//tensorflow/python:client_testlib",
@@ -258,6 +278,7 @@ tf_py_test(
     size = "small",
     srcs = ["tf_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":tf_utils",
         "//tensorflow/python:client_testlib",
@@ -299,6 +320,7 @@ tf_py_test(
         "no_windows",  # TODO: needs investigation on Windows
         "notsan",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -312,6 +334,7 @@ tf_py_test(
     size = "small",
     srcs = ["layer_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":layer_utils",
         "//tensorflow/python:client_testlib",
@@ -325,6 +348,7 @@ tf_py_test(
     size = "small",
     srcs = ["np_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -338,6 +362,7 @@ tf_py_test(
     size = "small",
     srcs = ["kernelized_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -368,6 +393,7 @@ tf_py_test(
     size = "small",
     srcs = ["vis_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -381,6 +407,7 @@ tf_py_test(
     size = "small",
     srcs = ["conv_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -394,6 +421,7 @@ tf_py_test(
     size = "small",
     srcs = ["metrics_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",

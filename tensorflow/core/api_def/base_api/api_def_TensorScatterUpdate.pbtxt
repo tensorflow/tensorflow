@@ -33,12 +33,14 @@ This operation is very similar to `tf.scatter_nd`, except that the updates are
 scattered onto an existing tensor (as opposed to a zero-tensor). If the memory
 for the existing tensor cannot be re-used, a copy is made and updated.
 
-If `indices` contains duplicates, then their updates are accumulated (summed).
+If `indices` contains duplicates, then we pick the last update for the index.
 
-**WARNING**: The order in which updates are applied is nondeterministic, so the
-output will be nondeterministic if `indices` contains duplicates -- because
-of some numerical approximation issues, numbers summed in different order
-may yield different results.
+If an out of bound index is found, an error is returned.
+
+**WARNING**: There are some GPU specific semantics for this operation.
+- If an out of bound index is found, the index is ignored.
+- The order in which updates are applied is nondeterministic, so the output
+will be nondeterministic if `indices` contains duplicates.
 
 `indices` is an integer tensor containing indices into a new tensor of shape
 `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
@@ -98,7 +100,5 @@ In Python, this scatter operation would look like this:
       [1 1 1 1]
       [1 1 1 1]]]
 
-Note that on CPU, if an out of bound index is found, an error is returned.
-On GPU, if an out of bound index is found, the index is ignored.
 END
 }

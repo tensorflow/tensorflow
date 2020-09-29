@@ -1,5 +1,12 @@
 # Building TensorFlow Lite for Microcontrollers for Synopsys DesignWare ARC EM/HS Processors
 
+## Maintainers
+
+*   [dzakhar](https://github.com/dzakhar)
+*   [JaccovG](https://github.com/JaccovG)
+
+## Introduction
+
 This document contains the general information on building and running
 TensorFlow Lite Micro for targets based on the Synopsys ARC EM/HS Processors.
 

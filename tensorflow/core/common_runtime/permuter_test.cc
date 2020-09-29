@@ -183,11 +183,11 @@ class PermuterTest : public ::testing::Test {
         } else {
           dev_name = strings::StrCat(task_name, "/device:CPU:", di);
         }
-        col_params_.instance.device_names.push_back(dev_name);
+        col_params_.group.device_names.push_back(dev_name);
         col_params_.instance.devices.push_back(dev_name);
         int default_rank = wi * num_devices_per_worker + di;
         permutation_.push_back(default_rank);
-        col_params_.instance.task_names.push_back(task_name);
+        col_params_.group.task_names.push_back(task_name);
         col_params_.task.is_local.push_back(true);
       }
     }
@@ -212,7 +212,7 @@ class PermuterTest : public ::testing::Test {
       for (int di = 0; di < num_devices_per_worker; di++) {
         int default_rank = wi * num_devices_per_worker + di;
         instances_.push_back(new DeviceInstance(
-            default_rank, col_params_.instance.device_names[default_rank],
+            default_rank, col_params_.group.device_names[default_rank],
             device_type, this));
       }
     }
@@ -323,16 +323,14 @@ class PermuterTest : public ::testing::Test {
       col_params_.instance.instance_key =
           parent_->col_params_.instance.instance_key;
       col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.instance.device_names =
-          parent_->col_params_.instance.device_names;
+      col_params_.group.device_names = parent_->col_params_.group.device_names;
       col_params_.instance.devices = parent_->col_params_.instance.devices;
       col_params_.instance.permutation =
           parent->col_params_.instance.permutation;
-      col_params_.instance.task_names =
-          parent_->col_params_.instance.task_names;
+      col_params_.group.task_names = parent_->col_params_.group.task_names;
       col_params_.task.is_local = parent_->col_params_.task.is_local;
       CHECK_EQ(col_params_.instance.devices.size(),
-               col_params_.instance.device_names.size());
+               col_params_.group.device_names.size());
       // Default rank is order in device_names.
       col_params_.default_rank = rank;
     }
@@ -388,8 +386,9 @@ class PermuterTest : public ::testing::Test {
       Permuter* permuter = new Permuter;
       core::ScopedUnref unref(permuter);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, &tensor_input_, &tensor_output_);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, &tensor_input_, &tensor_output_);
       TF_CHECK_OK(permuter->InitializeCollectiveContext(col_ctx));
       Notification note;
       // Run the permute.

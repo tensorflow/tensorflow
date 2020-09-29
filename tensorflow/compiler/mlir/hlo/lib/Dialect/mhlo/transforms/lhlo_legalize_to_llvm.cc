@@ -45,7 +45,7 @@ struct StaticMemRefCastOpConverter
       return failure();
     // Create descriptor.
     auto desc = MemRefDescriptor::undef(rewriter, loc, llvmTargetDescriptorTy);
-    Type llvmTargetElementTy = desc.getElementType();
+    Type llvmTargetElementTy = desc.getElementPtrType();
     // Set allocated ptr.
     Value allocated = sourceMemRef.allocatedPtr(rewriter, loc);
     allocated =
@@ -96,7 +96,7 @@ struct DynamicMemRefCastOpConverter
       return failure();
     // Create descriptor.
     auto desc = MemRefDescriptor::undef(rewriter, loc, llvmTargetDescriptorTy);
-    Type llvmTargetElementTy = desc.getElementType();
+    Type llvmTargetElementTy = desc.getElementPtrType();
     // Set allocated ptr.
     Value allocated = sourceMemRef.allocatedPtr(rewriter, loc);
     allocated =

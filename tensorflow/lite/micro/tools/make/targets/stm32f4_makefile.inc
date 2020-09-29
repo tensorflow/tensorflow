@@ -62,35 +62,24 @@ ifeq ($(TARGET), stm32f4)
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
   # TODO, non working tests.. the micro_speech example partly works
   # TODO(b/158324045): Examine why some tests fail here.
+
   EXCLUDED_TESTS := \
     tensorflow/lite/micro/micro_interpreter_test.cc \
     tensorflow/lite/micro/micro_allocator_test.cc \
     tensorflow/lite/micro/memory_helpers_test.cc \
     tensorflow/lite/micro/memory_arena_threshold_test.cc \
     tensorflow/lite/micro/recording_micro_allocator_test.cc \
-    tensorflow/lite/micro/kernels/logistic_test.cc \
-    tensorflow/lite/micro/kernels/logical_test.cc \
-    tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
-    tensorflow/lite/micro/kernels/comparisons_test.cc \
-    tensorflow/lite/micro/kernels/reshape_test.cc \
-    tensorflow/lite/micro/kernels/arg_min_max_test.cc \
-    tensorflow/lite/micro/kernels/elementwise_test.cc \
-    tensorflow/lite/micro/kernels/strided_slice_test.cc \
-    tensorflow/lite/micro/kernels/prelu_test.cc \
-    tensorflow/lite/micro/kernels/pack_test.cc \
-    tensorflow/lite/micro/kernels/activations_test.cc \
-    tensorflow/lite/micro/kernels/dequantize_test.cc \
-    tensorflow/lite/micro/kernels/unpack_test.cc \
-    tensorflow/lite/micro/kernels/split_test.cc \
-    tensorflow/lite/micro/simple_tensor_allocator_test.cc
+    tensorflow/lite/micro/kernels/circular_buffer_test.cc \
+    tensorflow/lite/micro/kernels/conv_test.cc \
+    tensorflow/lite/micro/kernels/fully_connected_test.cc
+
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
+
   EXCLUDED_EXAMPLE_TESTS := \
     tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
     tensorflow/lite/micro/examples/person_detection/Makefile.inc \
     tensorflow/lite/micro/examples/person_detection_experimental/Makefile.inc \
-    tensorflow/lite/micro/examples/mobilenet_v2/Makefile.inc \
     tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
-    tensorflow/lite/micro/examples/ds_cnn_l/Makefile.inc \
     tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
   MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 

@@ -621,8 +621,10 @@ TfLiteRegistration GetPassthroughOpRegistration() {
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
     auto* first_new_tensor = static_cast<int*>(node->user_data);
 
-    const TfLiteTensor* tensor0 = GetInput(context, node, 0);
-    TfLiteTensor* tensor1 = GetOutput(context, node, 0);
+    const TfLiteTensor* tensor0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &tensor0));
+    TfLiteTensor* tensor1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &tensor1));
 
     TfLiteIntArray* newSize = TfLiteIntArrayCopy(tensor0->dims);
     TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, tensor1, newSize));
@@ -646,7 +648,8 @@ TfLiteRegistration GetPassthroughOpRegistration() {
     return kTfLiteOk;
   };
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* a0 = GetInput(context, node, 0);
+    const TfLiteTensor* a0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
 
     auto populate = [&](int id) {
       TfLiteTensor* t = &context->tensors[id];
@@ -780,8 +783,10 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   // String-in String-out node.
   TfLiteRegistration reg_copy = {nullptr, nullptr, nullptr, nullptr};
   reg_copy.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* input = GetInput(context, node, 0);
-    TfLiteTensor* output = GetOutput(context, node, 0);
+    const TfLiteTensor* input;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     DynamicBuffer buf;
     StringRef str_ref = GetString(input, 0);
     buf.AddString(str_ref);
@@ -792,14 +797,17 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   // String-in Int-out node.
   TfLiteRegistration reg_len = {nullptr, nullptr, nullptr, nullptr};
   reg_len.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-    TfLiteTensor* output = GetOutput(context, node, 0);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
     outputSize->data[0] = 1;
     return context->ResizeTensor(context, output, outputSize);
   };
   reg_len.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* a0 = GetInput(context, node, 0);
-    TfLiteTensor* a1 = GetOutput(context, node, 0);
+    const TfLiteTensor* a0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
+    TfLiteTensor* a1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &a1));
     a1->data.i32[0] = a0->bytes;
     return kTfLiteOk;
   };
@@ -848,14 +856,18 @@ TEST(BasicInterpreter, AllocateTwice) {
 
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* tensor0 = GetInput(context, node, 0);
-    TfLiteTensor* tensor1 = GetOutput(context, node, 0);
+    const TfLiteTensor* tensor0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &tensor0));
+    TfLiteTensor* tensor1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &tensor1));
     TfLiteIntArray* newSize = TfLiteIntArrayCopy(tensor0->dims);
     return context->ResizeTensor(context, tensor1, newSize);
   };
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* a0 = GetInput(context, node, 0);
-    TfLiteTensor* a1 = GetOutput(context, node, 0);
+    const TfLiteTensor* a0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
+    TfLiteTensor* a1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &a1));
     int num = a0->dims->data[0];
     for (int i = 0; i < num; i++) {
       a1->data.f[i] = a0->data.f[i];
@@ -1205,8 +1217,10 @@ class TestExecutionPlan : public ::testing::Test {
 
     reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
       // Set output size to input size
-      const TfLiteTensor* tensor0 = GetInput(context, node, 0);
-      TfLiteTensor* tensor1 = GetOutput(context, node, 0);
+      const TfLiteTensor* tensor0;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &tensor0));
+      TfLiteTensor* tensor1;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &tensor1));
       TfLiteIntArray* newSize = TfLiteIntArrayCopy(tensor0->dims);
       return context->ResizeTensor(context, tensor1, newSize);
     };
@@ -1215,8 +1229,10 @@ class TestExecutionPlan : public ::testing::Test {
       CallReporting* call_reporting =
           static_cast<CallReporting*>(node->builtin_data);
       // Copy input data to output data.
-      const TfLiteTensor* a0 = GetInput(context, node, 0);
-      TfLiteTensor* a1 = GetOutput(context, node, 0);
+      const TfLiteTensor* a0;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
+      TfLiteTensor* a1;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &a1));
       int num = a0->dims->data[0];
       for (int i = 0; i < num; i++) {
         a1->data.f[i] = a0->data.f[i];
@@ -1403,8 +1419,10 @@ class CancellationTest : public ::testing::Test {
     // Set output size to the input size in CancelOp::Prepare(). Code exists to
     // have a framework in Prepare. The input and output tensors are not used.
     reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-      const TfLiteTensor* in_tensor = GetInput(context, node, 0);
-      TfLiteTensor* out_tensor = GetOutput(context, node, 0);
+      const TfLiteTensor* in_tensor;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
+      TfLiteTensor* out_tensor;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
       TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
       return context->ResizeTensor(context, out_tensor, new_size);
     };
@@ -1423,8 +1441,10 @@ class CancellationTest : public ::testing::Test {
     // Set output size to the input size in OkOp::Prepare(). Code exists to have
     // a framework in Prepare. The input and output tensors are not used.
     reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-      const TfLiteTensor* in_tensor = GetInput(context, node, 0);
-      TfLiteTensor* out_tensor = GetOutput(context, node, 0);
+      const TfLiteTensor* in_tensor;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
+      TfLiteTensor* out_tensor;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
       TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
       return context->ResizeTensor(context, out_tensor, new_size);
     };

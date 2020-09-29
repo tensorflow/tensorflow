@@ -33,9 +33,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif
 
 // AdjustContrastOp is deprecated as of GraphDef version >= 2
 
@@ -434,26 +431,5 @@ REGISTER_GPU(Eigen::half)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-template <>
-class AdjustContrastOpv2<SYCLDevice, float> : public AdjustContrastOpV2Base {
- public:
-  explicit AdjustContrastOpv2(OpKernelConstruction* context)
-      : AdjustContrastOpV2Base(context) {}
-
-  void DoCompute(OpKernelContext* context,
-                 const ComputeOptions& options) override {
-    const int64 shape[4] = {options.batch, options.height, options.width,
-                            options.channels};
-    functor::AdjustContrastv2<SYCLDevice>()(
-        context->eigen_device<SYCLDevice>(),
-        options.input->shaped<float, 4>(shape), options.factor->scalar<float>(),
-        options.output->shaped<float, 4>(shape));
-  }
-};
-REGISTER_KERNEL_BUILDER(
-    Name("AdjustContrastv2").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    AdjustContrastOpv2<SYCLDevice, float>);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

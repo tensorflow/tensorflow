@@ -41,9 +41,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 struct Constants {
@@ -71,10 +68,6 @@ struct ConstantsBase {
 };
 template <>
 struct Constants<CPUDevice> : ConstantsBase {};
-#ifdef TENSORFLOW_USE_SYCL
-template <>
-struct Constants<SYCLDevice> : ConstantsBase {};
-#endif  // TENSORFLOW_USE_SYCL
 #endif  // EIGEN_HAS_INDEX_LIST
 
 class ReductionHelper {
@@ -279,11 +272,6 @@ struct ReduceFunctorBase {
 template <typename Reducer>
 struct ReduceFunctor<CPUDevice, Reducer>
     : ReduceFunctorBase<CPUDevice, Reducer> {};
-#if TENSORFLOW_USE_SYCL
-template <typename Reducer>
-struct ReduceFunctor<SYCLDevice, Reducer>
-    : ReduceFunctorBase<SYCLDevice, Reducer> {};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

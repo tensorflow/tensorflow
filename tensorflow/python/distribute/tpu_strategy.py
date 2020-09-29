@@ -125,7 +125,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   `strategy.run` is called inside a `tf.function` if eager
   behavior is enabled. See more details in https://www.tensorflow.org/guide/tpu.
 
-  `experimental_distribute_datasets_from_function` and
+  `distribute_datasets_from_function` and
   `experimental_distribute_dataset` APIs can be used to distribute the dataset
   across the TPU workers when writing your own training loop. If you are using
   `fit` and `compile` methods available in `tf.keras.Model`, then Keras will
@@ -144,7 +144,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   ...   y = np.random.randint(2, size=(2, 1))
   ...   dataset = tf.data.Dataset.from_tensor_slices((x, y))
   ...   return dataset.repeat().batch(1, drop_remainder=True)
-  >>> dist_dataset = strategy.experimental_distribute_datasets_from_function(
+  >>> dist_dataset = strategy.distribute_datasets_from_function(
   ...     dataset_fn)
   >>> iterator = iter(dist_dataset)
 
@@ -190,7 +190,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   ...   # Add operation will be executed on logical device 0.
   ...   output = strategy.experimental_assign_to_logical_device(output, 0)
   ...   return output
-  >>> dist_dataset = strategy.experimental_distribute_datasets_from_function(
+  >>> dist_dataset = strategy.distribute_datasets_from_function(
   ...     dataset_fn)
   >>> iterator = iter(dist_dataset)
   >>> strategy.run(step_fn, args=(next(iterator),))
@@ -229,7 +229,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     `tf.distribute.DistributedValues`, such as those produced by a
     `tf.distribute.DistributedDataset` from
     `tf.distribute.Strategy.experimental_distribute_dataset` or
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function`,
+    `tf.distribute.Strategy.distribute_datasets_from_function`,
     when `fn` is executed on a particular replica, it will be executed with the
     component of `tf.distribute.DistributedValues` that correspond to that
     replica.
@@ -277,6 +277,200 @@ class TPUStrategyV2(distribute_lib.Strategy):
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
+
+  def experimental_assign_to_logical_device(self, tensor, logical_device_id):
+    """Adds annotation that `tensor` will be assigned to a logical device.
+
+    This adds an annotation to `tensor` specifying that operations on
+    `tensor` will be invoked on logical core device id `logical_device_id`.
+    When model parallelism is used, the default behavior is that all ops
+    are placed on zero-th logical device.
+
+    ```python
+
+    # Initializing TPU system with 2 logical devices and 4 replicas.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 1, 1, 2],
+        num_replicas=4)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      output = tf.add(inputs, inputs)
+
+      # Add operation will be executed on logical device 0.
+      output = strategy.experimental_assign_to_logical_device(output, 0)
+      return output
+
+    strategy.run(step_fn, args=(next(iterator),))
+    ```
+
+    Args:
+      tensor: Input tensor to annotate.
+      logical_device_id: Id of the logical core to which the tensor will be
+        assigned.
+
+    Raises:
+      ValueError: The logical device id presented is not consistent with total
+      number of partitions specified by the device assignment.
+
+    Returns:
+      Annotated tensor with identical value as `tensor`.
+    """
+    num_logical_devices_per_replica = self.extended._tpu_devices.shape[1]  # pylint: disable=protected-access
+    if (logical_device_id < 0 or
+        logical_device_id >= num_logical_devices_per_replica):
+      raise ValueError("`logical_core_id` to assign must be lower then total "
+                       "number of logical devices per replica. Received "
+                       "logical device id {} but there are only total of {} "
+                       "logical devices in replica.".format(
+                           logical_device_id, num_logical_devices_per_replica))
+    return xla_sharding.assign_device(
+        tensor, logical_device_id, use_sharding_op=True)
+
+  def experimental_split_to_logical_devices(self, tensor, partition_dimensions):
+    """Adds annotation that `tensor` will be split across logical devices.
+
+    This adds an annotation to tensor `tensor` specifying that operations on
+    `tensor` will be be split among multiple logical devices. Tensor `tensor`
+    will be split across dimensions specified by `partition_dimensions`.
+    The dimensions of `tensor` must be divisible by corresponding value in
+    `partition_dimensions`.
+
+    For example, for system with 8 logical devices, if `tensor` is an image
+    tensor with shape (batch_size, width, height, channel) and
+    `partition_dimensions` is [1, 2, 4, 1], then `tensor` will be split
+    2 in width dimension and 4 way in height dimension and the split
+    tensor values will be fed into 8 logical devices.
+
+    ```python
+    # Initializing TPU system with 8 logical devices and 1 replica.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 2, 2, 2],
+        num_replicas=1)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      inputs = strategy.experimental_split_to_logical_devices(
+        inputs, [1, 2, 4, 1])
+
+      # model() function will be executed on 8 logical devices with `inputs`
+      # split 2 * 4  ways.
+      output = model(inputs)
+      return output
+
+    strategy.run(step_fn, args=(next(iterator),))
+    ```
+    Args:
+      tensor: Input tensor to annotate.
+      partition_dimensions: An unnested list of integers with the size equal to
+        rank of `tensor` specifying how `tensor` will be partitioned. The
+        product of all elements in `partition_dimensions` must be equal to the
+        total number of logical devices per replica.
+
+    Raises:
+      ValueError: 1) If the size of partition_dimensions does not equal to rank
+        of `tensor` or 2) if product of elements of `partition_dimensions` does
+        not match the number of logical devices per replica defined by the
+        implementing DistributionStrategy's device specification or
+        3) if a known size of `tensor` is not divisible by corresponding
+        value in `partition_dimensions`.
+
+    Returns:
+      Annotated tensor with identical value as `tensor`.
+    """
+    num_logical_devices_per_replica = self.extended._tpu_devices.shape[1]  # pylint: disable=protected-access
+    num_partition_splits = np.prod(partition_dimensions)
+    input_shape = tensor.shape
+    tensor_rank = len(input_shape)
+
+    if tensor_rank != len(partition_dimensions):
+      raise ValueError("Length of `partition_dimensions` ({}) must be  "
+                       "equal to the rank of `x` ({}).".format(
+                           len(partition_dimensions), tensor_rank))
+
+    for dim_index, dim_size in enumerate(input_shape):
+      if dim_size is None:
+        continue
+
+      split_size = partition_dimensions[dim_index]
+      if dim_size % split_size != 0:
+        raise ValueError("Tensor shape at dimension ({}) must be "
+                         "divisible by corresponding value specified "
+                         "by `partition_dimensions` ({}).".format(
+                             dim_index, split_size))
+
+    if num_partition_splits != num_logical_devices_per_replica:
+      raise ValueError("Number of logical devices ({}) does not match the "
+                       "number of partition splits specified ({}).".format(
+                           num_logical_devices_per_replica,
+                           num_partition_splits))
+
+    tile_assignment = np.arange(num_partition_splits).reshape(
+        partition_dimensions)
+    return xla_sharding.tile(tensor, tile_assignment, use_sharding_op=True)
+
+  def experimental_replicate_to_logical_devices(self, tensor):
+    """Adds annotation that `tensor` will be replicated to all logical devices.
+
+    This adds an annotation to tensor `tensor` specifying that operations on
+    `tensor` will be invoked on all logical devices.
+
+    ```python
+    # Initializing TPU system with 2 logical devices and 4 replicas.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 1, 1, 2],
+        num_replicas=4)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      images, labels = inputs
+      images = strategy.experimental_split_to_logical_devices(
+        inputs, [1, 2, 4, 1])
+
+      # model() function will be executed on 8 logical devices with `inputs`
+      # split 2 * 4  ways.
+      output = model(inputs)
+
+      # For loss calculation, all logical devices share the same logits
+      # and labels.
+      labels = strategy.experimental_replicate_to_logical_devices(labels)
+      output = strategy.experimental_replicate_to_logical_devices(output)
+      loss = loss_fn(labels, output)
+
+      return loss
+
+    strategy.run(step_fn, args=(next(iterator),))
+    ```
+    Args:
+      tensor: Input tensor to annotate.
+
+    Returns:
+      Annotated tensor with identical value as `tensor`.
+    """
+    return xla_sharding.replicate(tensor, use_sharding_op=True)
 
 
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
@@ -617,8 +811,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         self._container_strategy(),
         split_batch_by=self._num_replicas_in_sync)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_workers = self._get_input_workers(options)
     input_contexts = []
     num_workers = input_workers.num_workers
@@ -771,57 +964,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           yield
     finally:
       self._logical_device_stack.pop()
-
-  def _experimental_assign_to_logical_device(self, tensor, logical_device_id):
-    """See `DistributionStrategy.experimental_assign_to_logical_device`."""
-    num_logical_devices_per_replica = self._tpu_devices.shape[1]
-    if (logical_device_id < 0 or
-        logical_device_id >= num_logical_devices_per_replica):
-      raise ValueError("`logical_core_id` to assign must be lower then total "
-                       "number of logical devices per replica. Received "
-                       "logical device id {} but there are only total of {} "
-                       "logical devices in replica.".format(
-                           logical_device_id, num_logical_devices_per_replica))
-    return xla_sharding.assign_device(
-        tensor, logical_device_id, use_sharding_op=True)
-
-  def _experimental_split_to_logical_devices(self, tensor,
-                                             partition_dimensions):
-    """See `DistributionStrategy.experimental_split_to_logical_devices`."""
-    num_logical_devices_per_replica = self._tpu_devices.shape[1]
-    num_partition_splits = np.prod(partition_dimensions)
-    input_shape = tensor.shape
-    tensor_rank = len(input_shape)
-
-    if tensor_rank != len(partition_dimensions):
-      raise ValueError("Length of `partition_dimensions` ({}) must be  "
-                       "equal to the rank of `x` ({}).".format(
-                           len(partition_dimensions), tensor_rank))
-
-    for dim_index, dim_size in enumerate(input_shape):
-      if dim_size is None:
-        continue
-
-      split_size = partition_dimensions[dim_index]
-      if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension ({}) must be "
-                         "divisible by corresponding value specified "
-                         "by `partition_dimensions` ({}).".format(
-                             dim_index, split_size))
-
-    if num_partition_splits != num_logical_devices_per_replica:
-      raise ValueError("Number of logical devices ({}) does not match the "
-                       "number of partition splits specified ({}).".format(
-                           num_logical_devices_per_replica,
-                           num_partition_splits))
-
-    tile_assignment = np.arange(num_partition_splits).reshape(
-        partition_dimensions)
-    return xla_sharding.tile(tensor, tile_assignment, use_sharding_op=True)
-
-  def _experimental_replicate_to_logical_devices(self, tensor):
-    """See `DistributionStrategy.experimental_replicate_to_logical_devices`."""
-    return xla_sharding.replicate(tensor, use_sharding_op=True)
 
   def _experimental_initialize_system(self):
     """Experimental method added to be used by Estimator.

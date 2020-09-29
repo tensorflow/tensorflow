@@ -135,12 +135,16 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-    bool has_side_effect) {
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   if (operand_shapes_with_layout.has_value())
     return Unimplemented(
         "CustomCall doesn't support operands shapes with layout");
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
+  TF_RET_CHECK(output_operand_aliasing.empty())
+      << "MLIR CustomCallOp does not support output_operand_aliasing yet";
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),
@@ -239,11 +243,22 @@ StatusOr<XlaOp> MlirHloBuilder::SortInternal(const Shape& shape,
                                              int64 dimension, bool is_stable) {
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
+  llvm::SmallVector<mlir::Type, 4> sort_types = {ty};
+  if (auto tuple_ty = ty.dyn_cast<mlir::TupleType>()) {
+    sort_types = llvm::to_vector<6>(tuple_ty.getTypes());
+  }
+
   auto op = builder_.create<mlir::mhlo::SortOp>(
-      loc_, ty, GetValues(operands), builder_.getI64IntegerAttr(dimension),
-      builder_.getBoolAttr(is_stable));
+      loc_, sort_types, GetValues(operands),
+      builder_.getI64IntegerAttr(dimension), builder_.getBoolAttr(is_stable));
   TF_RETURN_IF_ERROR(ImportComputation(comparator.proto(), &op.comparator()));
-  return MakeXlaOp(op);
+
+  if (ty.isa<mlir::TupleType>()) {
+    auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
+    return MakeXlaOp(tuple);
+  }
+
+  return MakeXlaOp(op.getResult(0));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,

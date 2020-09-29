@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -82,6 +84,7 @@ tf_cuda_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/nccl:collective_communicator",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -114,9 +117,12 @@ tf_cc_test(
         ":core",
         ":eager_operation",
         ":execute",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:cast_op",
     ],
 )
 
@@ -441,6 +447,7 @@ cc_library(
     copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

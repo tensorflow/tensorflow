@@ -146,6 +146,10 @@ cc_library(
         "acceleration_test_util_internal.cc",
     ],
     hdrs = ["acceleration_test_util_internal.h"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/types:optional",
@@ -272,6 +276,10 @@ cc_test(
     name = "eigen_support_test",
     size = "small",
     srcs = ["eigen_support_test.cc"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":eigen_support",
         "//tensorflow/lite/c:common",
@@ -283,16 +291,8 @@ cc_test(
 
 cc_library(
     name = "tflite_with_ruy_enabled",
+    compatible_with = get_compatible_with_portable(),
     defines = ["TFLITE_WITH_RUY"],
-    visibility = ["//visibility:private"],
-)
-
-cc_library(
-    name = "tflite_with_ruy_and_caching_enabled",
-    defines = [
-        "TFLITE_WITH_RUY",
-        "TFLITE_WITH_RUY_GEMV",
-    ],
     visibility = ["//visibility:private"],
 )
 
@@ -314,6 +314,7 @@ cc_library(
 
 cc_library(
     name = "tflite_with_ruy",
+    compatible_with = get_compatible_with_portable(),
     deps = select({
         ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
         ":tflite_with_ruy_explicit_false": [],
@@ -329,6 +330,7 @@ cc_library(
     hdrs = [
         "cpu_backend_context.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":tflite_with_ruy",
@@ -348,6 +350,7 @@ cc_library(
     hdrs = [
         "cpu_backend_threadpool.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":cpu_backend_context",
@@ -387,6 +390,7 @@ cc_library(
         "cpu_backend_gemm_params.h",
         "cpu_backend_gemm_ruy.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":tflite_with_ruy",
@@ -458,6 +462,10 @@ cc_test(
     name = "kernel_util_test",
     size = "small",
     srcs = ["kernel_util_test.cc"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":kernel_util",
         "//tensorflow/lite/c:common",
@@ -500,6 +508,7 @@ cc_library(
     name = "padding",
     srcs = [],
     hdrs = ["padding.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -643,6 +652,7 @@ cc_library(
     hdrs = [
         "dequantize.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = BUILTIN_KERNEL_DEPS + [
@@ -651,25 +661,6 @@ cc_library(
         "//tensorflow/lite:string",
         "@farmhash_archive//:farmhash",
     ],
-)
-
-# Creates a target where Ruy is unconditionally enabled along with caching
-# on GEMV operations. This is useful for TF Lite deployments where custom
-# copts are not allowed, e.g. b/156119344
-cc_library(
-    name = "builtin_op_kernels_ruy_and_caching",
-    srcs = BUILTIN_KERNEL_SRCS,
-    hdrs = [
-        "dequantize.h",
-    ],
-    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
-    visibility = ["//visibility:private"],
-    deps = BUILTIN_KERNEL_DEPS + [
-        "@ruy//ruy/profiler:instrumentation",
-        "//tensorflow/lite/kernels/internal:cppmath",
-        "//tensorflow/lite:string",
-        "@farmhash_archive//:farmhash",
-    ] + [":tflite_with_ruy_and_caching_enabled"],
 )
 
 cc_library(
@@ -709,6 +700,7 @@ cc_library(
     srcs = [
         "complex_support.cc",
         "cumsum.cc",
+        "multinomial.cc",
         "rfft2d.cc",
     ],
     hdrs = ["custom_ops_register.h"],
@@ -730,6 +722,7 @@ cc_library(
     name = "lstm_eval",
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":cpu_backend_context",
@@ -748,6 +741,7 @@ cc_library(
 cc_library(
     name = "lstm_shared",
     hdrs = ["lstm_shared.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
 )
 
@@ -783,26 +777,9 @@ cc_library(
         "fully_connected.h",
         "register.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework_lib",
-        "//tensorflow/lite:tflite_with_xnnpack_optional",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/schema:schema_fbs",
-    ],
-)
-
-#  TODO(b/156664104) Remove once runtime flag available.
-cc_library(
-    name = "builtin_ops_ruy_and_caching_enabled",
-    srcs = ["register.cc"],
-    hdrs = [
-        "builtin_op_kernels.h",
-        "fully_connected.h",
-        "register.h",
-    ],
-    deps = [
-        ":builtin_op_kernels_ruy_and_caching",
         "//tensorflow/lite:framework_lib",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
@@ -1361,6 +1338,20 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "multinomial_test",
+    size = "small",
+    srcs = ["multinomial_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

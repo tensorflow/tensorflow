@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
@@ -1785,6 +1786,7 @@ tf_xla_py_test(
     name = "fake_quant_ops_test",
     size = "medium",
     srcs = ["fake_quant_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip

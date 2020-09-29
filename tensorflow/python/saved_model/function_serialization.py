@@ -46,6 +46,14 @@ def _serialize_function_spec(function_spec, coder):
   proto.is_method = function_spec.is_method
   proto.input_signature.CopyFrom(
       coder.encode_structure(function_spec.input_signature))
+
+  # See `tf.function` and the ExperimentalCompile proto for details.
+  proto.experimental_compile = {
+      None: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.DEFAULT,
+      True: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.ON,
+      False: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.OFF,
+  }.get(function_spec.experimental_compile)
+
   return proto
 
 

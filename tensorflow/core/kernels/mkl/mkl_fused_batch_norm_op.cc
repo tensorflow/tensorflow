@@ -1342,8 +1342,10 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
 #ifdef ENABLE_MKLDNN_V1
       if (!native_format) {
-        // Ensure that src and diff_dst are in same blocked memory layout.
-        // As per MKL-DNN doc, this will lead to faster perf.
+        // MKL-DNN requires src and diff_dst to be in same memory layout, either
+        // blocked or native format. If these inputs are in different formats,
+        // convert the one in native format to blocked format as MKL-DNN gives
+        // better performance for blocked format.
         if (dnn_shape_src.IsMklTensor() && !dnn_shape_diff_dst.IsMklTensor()) {
           reorder_diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
           reorder_diff_dst.CheckReorderToOpMem(

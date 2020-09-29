@@ -40,35 +40,29 @@ constexpr int kTensorArenaSize = 95 * 1024;
 constexpr int kRandomSeed = 42;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-MicroBenchmarkRunner<uint8_t>* benchmark_runner = nullptr;
-
-void InitializeBenchmarkRunner() {
-  // NOLINTNEXTLINE
-  static MicroBenchmarkRunner<uint8_t> runner(g_person_detect_model_data,
-                                              tensor_arena, kTensorArenaSize);
-  benchmark_runner = &runner;
-}
+static MicroBenchmarkRunner<uint8_t> benchmark_runner(
+    g_person_detect_model_data, tensor_arena, kTensorArenaSize);
 
 void PersonDetectionTenIterationsWithRandomInput() {
-  benchmark_runner->SetRandomInput(kRandomSeed);
+  benchmark_runner.SetRandomInput(kRandomSeed);
   for (int i = 0; i < 10; i++) {
-    benchmark_runner->RunSingleIteration();
+    benchmark_runner.RunSingleIteration();
   }
 }
 
 void PersonDetectionTenIerationsWithPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  benchmark_runner->SetInput(g_person_data);
+  benchmark_runner.SetInput(g_person_data);
   for (int i = 0; i < 10; i++) {
-    benchmark_runner->RunSingleIteration();
+    benchmark_runner.RunSingleIteration();
   }
 }
 
 void PersonDetectionTenIerationsWithoutPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  benchmark_runner->SetInput(g_no_person_data);
+  benchmark_runner.SetInput(g_no_person_data);
   for (int i = 0; i < 10; i++) {
-    benchmark_runner->RunSingleIteration();
+    benchmark_runner.RunSingleIteration();
   }
 }
 
@@ -76,7 +70,6 @@ void PersonDetectionTenIerationsWithoutPerson() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(InitializeBenchmarkRunner());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIterationsWithRandomInput());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithPerson());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithoutPerson());

@@ -4,9 +4,10 @@
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
 load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
 
-licenses(["notice"])
-
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],
+)
 
 package_group(
     name = "subpackages",
@@ -123,14 +124,18 @@ cc_library(
         "lib/CAPI/IR/IR.cpp",
         "lib/CAPI/IR/StandardAttributes.cpp",
         "lib/CAPI/IR/StandardTypes.cpp",
+        "lib/CAPI/IR/Support.cpp",
     ],
     hdrs = [
         "include/mlir-c/AffineMap.h",
         "include/mlir-c/IR.h",
         "include/mlir-c/StandardAttributes.h",
         "include/mlir-c/StandardTypes.h",
+        "include/mlir-c/Support.h",
         "include/mlir/CAPI/AffineMap.h",
         "include/mlir/CAPI/IR.h",
+        "include/mlir/CAPI/Support.h",
+        "include/mlir/CAPI/Utils.h",
         "include/mlir/CAPI/Wrap.h",
     ],
     includes = ["include"],
@@ -982,7 +987,6 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":Analysis",
         ":IR",
         ":ParserTokenKinds",
         ":Support",
@@ -2682,6 +2686,7 @@ cc_library(
         ":Affine",
         ":CallOpInterfaces",
         ":IR",
+        ":LinalgOps",
         ":SCFDialect",
         ":StandardOps",
         ":Support",
@@ -3006,11 +3011,9 @@ cc_library(
 
 cc_library(
     name = "AllPassesAndDialects",
-    srcs = ["@org_tensorflow//third_party/mlir:mlir-auto-init.cpp"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
     ],
-    alwayslink = 1,
 )
 
 cc_binary(
@@ -3101,10 +3104,10 @@ cc_binary(
     ],
 )
 
-cc_binary(
-    name = "tools/libcuda-runtime-wrappers.so",
+cc_library(
+    name = "tools/libcuda-runtime-wrappers",
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
-    linkshared = True,
+    compatible_with = ["//buildenv/target:prod"],
     deps = [
         ":mlir_c_runner_utils",
         "//third_party/gpus/cuda:cuda_headers",
@@ -3112,6 +3115,12 @@ cc_binary(
         "//third_party/gpus/cuda:libcuda",
         "@llvm-project//llvm:Support",
     ],
+)
+
+cc_binary(
+    name = "tools/libcuda-runtime-wrappers.so",
+    linkshared = True,
+    deps = [":tools/libcuda-runtime-wrappers"],
 )
 
 cc_library(
@@ -3925,6 +3934,7 @@ exports_files(
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "include/mlir/Interfaces/CopyOpInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",

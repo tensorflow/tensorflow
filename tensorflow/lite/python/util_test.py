@@ -358,8 +358,7 @@ class UtilModifyIntegerQuantizedModelIOTypeTest(
     # Run model inference with float input output type
     output_data = _run_tflite_inference(model, tf.float32, tf.float32)
     # Run model inference with modified integer input output type
-    model_io = util.modify_integer_quantized_model_io_type(
-        model, in_tftype, out_tftype)
+    model_io = util.modify_model_io_type(model, in_tftype, out_tftype)
     output_io_data = _run_tflite_inference(model_io, in_tftype, out_tftype)
 
      # Validate that both the outputs are the same

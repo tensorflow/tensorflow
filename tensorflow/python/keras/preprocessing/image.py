@@ -33,11 +33,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 random_rotation = image.random_rotation

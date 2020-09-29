@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import collections
 import enum
+import typing
+from typing import Any
 
 from absl import logging
 import numpy as np
@@ -1422,9 +1424,12 @@ def split_compile_and_replicate(computation,
 
     # tensor_tracer imports tpu.py. Local import to tensor_tracer to avoid
     # import-cycle
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.tpu import tensor_tracer
-    # pylint: enable=g-import-not-at-top
+    if typing.TYPE_CHECKING:
+      tensor_tracer = Any
+    else:
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.python.tpu import tensor_tracer
+      # pylint: enable=g-import-not-at-top
     if tensor_tracer.TensorTracer.is_enabled():
       tt = tensor_tracer.TensorTracer()
       output_tensors = tt.trace_tpu(ops.get_default_graph(),
