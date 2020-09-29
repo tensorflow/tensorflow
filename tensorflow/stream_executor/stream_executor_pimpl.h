@@ -399,19 +399,7 @@ class StreamExecutor {
   // created once and reused for multiple calls to DoBlasLtMatmul().
   // Returns a null pointer on failure.
   std::unique_ptr<blas::IBlasLtMatmulPlan> CreateBlasLtMatmulPlan(
-      blas::DataType ab_type, blas::DataType cd_type,
-      blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
-      uint64 m, uint64 n, uint64 k, int64 lda, int64 ldb, int64 ldc);
-
-  // A more general version of CreateBlasLtMatmulPlan supporting
-  // batched operations.
-  std::unique_ptr<blas::IBlasLtMatmulPlan> CreateBlasLtMatmulPlanStridedBatched(
-      blas::DataType ab_type, blas::DataType cd_type,
-      blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
-      uint64 m, uint64 n, uint64 k, uint64 batch_count, int64 lda,
-      int64 stride_a, int64 ldb, int64 stride_b, int64 ldc, int64 stride_c);
+      const blas::BlasLtMatmulPlanParams& params);
 
   // Gets a list of supported algorithms for DoBlasLtMatmul. The algorithms are
   // returned in the order of increasing estimated compute time according to an

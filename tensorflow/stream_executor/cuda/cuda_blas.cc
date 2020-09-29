@@ -3231,13 +3231,7 @@ blas::ComputationType ToComputationType<std::complex<double>>() {
 
 class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
  public:
-  CUDABlasLtMatmulPlan(blas::DataType ab_type, blas::DataType cd_type,
-                       blas::ComputationType compute_type,
-                       blas::PointerMode pointer_mode, blas::Epilogue epilogue,
-                       blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, int batch_count, int64 lda,
-                       int64 stride_a, int64 ldb, int64 stride_b, int64 ldc,
-                       int64 stride_c, int64 ldd, int64 stride_d);
+  CUDABlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams& params);
 
   cublasLtMatmulDesc_t op_desc() const { return op_desc_.get(); }
   cublasLtMatrixLayout_t a_desc() const { return a_desc_.get(); }
@@ -3280,39 +3274,34 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
 };
 
 CUDABlasLtMatmulPlan::CUDABlasLtMatmulPlan(
-    blas::DataType ab_type, blas::DataType cd_type,
-    blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-    blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
-    uint64 m, uint64 n, uint64 k, int batch_count, int64 lda, int64 stride_a,
-    int64 ldb, int64 stride_b, int64 ldc, int64 stride_c, int64 ldd,
-    int64 stride_d)
+    const blas::BlasLtMatmulPlanParams& p)
     : op_desc_(CreateCublasLtOperationDesc(
-          computation_type, GetScaleType(cd_type, computation_type),
-          pointer_mode, epilogue, transa, transb)),
+          p.computation_type, GetScaleType(p.c_type, p.computation_type),
+          p.pointer_mode, p.epilogue, p.transa, p.transb)),
       a_desc_(nullptr),
       b_desc_(nullptr),
-      c_desc_(
-          CreateCublasLtLayoutDesc(cd_type, m, n, ldc, stride_c, batch_count)),
-      d_desc_(
-          CreateCublasLtLayoutDesc(cd_type, m, n, ldd, stride_d, batch_count)),
-      ab_type_(ab_type),
-      cd_type_(cd_type),
-      scale_type_(GetScaleType(cd_type, computation_type)),
-      pointer_mode_(pointer_mode),
-      epilogue_(epilogue),
-      batch_count_(batch_count),
-      stride_a_(stride_a),
-      stride_b_(stride_b),
-      stride_c_(stride_c),
-      stride_d_(stride_d) {
-  uint64 rows_a = transa == blas::Transpose::kNoTranspose ? m : k;
-  uint64 cols_a = transa == blas::Transpose::kNoTranspose ? k : m;
-  uint64 rows_b = transb == blas::Transpose::kNoTranspose ? k : n;
-  uint64 cols_b = transb == blas::Transpose::kNoTranspose ? n : k;
-  a_desc_ = CreateCublasLtLayoutDesc(ab_type, rows_a, cols_a, lda, stride_a,
-                                     batch_count);
-  b_desc_ = CreateCublasLtLayoutDesc(ab_type, rows_b, cols_b, ldb, stride_b,
-                                     batch_count);
+      c_desc_(CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc, p.stride_c,
+                                       p.batch_count)),
+      d_desc_(CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc, p.stride_c,
+                                       p.batch_count)),
+      ab_type_(p.ab_type),
+      cd_type_(p.c_type),
+      scale_type_(GetScaleType(p.c_type, p.computation_type)),
+      pointer_mode_(p.pointer_mode),
+      epilogue_(p.epilogue),
+      batch_count_(p.batch_count),
+      stride_a_(p.stride_a),
+      stride_b_(p.stride_b),
+      stride_c_(p.stride_c),
+      stride_d_(p.stride_c) {
+  uint64 rows_a = p.transa == blas::Transpose::kNoTranspose ? p.m : p.k;
+  uint64 cols_a = p.transa == blas::Transpose::kNoTranspose ? p.k : p.m;
+  uint64 rows_b = p.transb == blas::Transpose::kNoTranspose ? p.k : p.n;
+  uint64 cols_b = p.transb == blas::Transpose::kNoTranspose ? p.n : p.k;
+  a_desc_ = CreateCublasLtLayoutDesc(p.ab_type, rows_a, cols_a, p.lda,
+                                     p.stride_a, p.batch_count);
+  b_desc_ = CreateCublasLtLayoutDesc(p.ab_type, rows_b, cols_b, p.ldb,
+                                     p.stride_b, p.batch_count);
 }
 
 bool CUDABlasLtMatmulPlan::SetBiasPointer(const void* bias) const {
@@ -3395,18 +3384,10 @@ UniqueMatmulPreference CreateCublasLtMatmulPreference(
 
 #endif  // CUDA_VERSION >= 11000
 
-std::unique_ptr<blas::IBlasLtMatmulPlan>
-CUDABlas::CreateBlasLtMatmulPlanStridedBatched(
-    blas::DataType ab_type, blas::DataType cd_type,
-    blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-    blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
-    uint64 m, uint64 n, uint64 k, int batch_count, int64 lda, int64 stride_a,
-    int64 ldb, int64 stride_b, int64 ldc, int64 stride_c) {
+std::unique_ptr<blas::IBlasLtMatmulPlan> CUDABlas::CreateBlasLtMatmulPlan(
+    const blas::BlasLtMatmulPlanParams& params) {
 #if CUDA_VERSION >= 11000
-  auto result = std::make_unique<CUDABlasLtMatmulPlan>(
-      ab_type, cd_type, computation_type, pointer_mode, epilogue, transa,
-      transb, m, n, k, batch_count, lda, stride_a, ldb, stride_b, ldc, stride_c,
-      ldc, stride_c);
+  auto result = std::make_unique<CUDABlasLtMatmulPlan>(params);
   if (!result->ok()) {
     result.reset();
   }

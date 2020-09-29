@@ -555,23 +555,23 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             GetBlasComputationType(dtype, allow_tf32, &computation_type),
             errors::Internal("Unsupported dtype for batched matmul"));
         std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
-            stream->parent()->CreateBlasLtMatmulPlanStridedBatched(
-                /*ab_type=*/blas_dtype,
-                /*cd_type=*/blas_dtype, computation_type,
-                se::blas::PointerMode::kHost, se::blas::Epilogue::kDefault,
-                blas_transpose_b, blas_transpose_a, n, m, k, batch_size,
-                /*lda=*/in_y.dim_size(2), b_stride,
-                /*ldb=*/in_x.dim_size(2), a_stride, /*ldc=*/n, c_stride);
+            stream->parent()->CreateBlasLtMatmulPlan(
+                {/*ab_type=*/blas_dtype,
+                 /*c_type=*/blas_dtype, computation_type,
+                 se::blas::PointerMode::kHost, se::blas::Epilogue::kDefault,
+                 blas_transpose_b, blas_transpose_a, n, m, k,
+                 /*lda=*/in_y.dim_size(2), /*ldb=*/in_x.dim_size(2), /*ldc=*/n,
+                 batch_size, b_stride, a_stride, c_stride});
         OP_REQUIRES(
             context, plan,
-            errors::Internal(
-                "CreateBlasLtMatmulPlanStridedBatched failed : a.shape=(",
-                in_x.dim_size(0), ", ", in_x.dim_size(1), ", ",
-                in_x.dim_size(2), "), b.shape=(", in_y.dim_size(0), ", ",
-                in_y.dim_size(1), ", ", in_y.dim_size(2), "), m=", m, ", n=", n,
-                ", k=", k, ", batch_size=", batch_size, ", adjoint_a=", adj_x,
-                ", adjoint_b=", adj_x, ", dtype=", dtype,
-                ", computation_type=", computation_type));
+            errors::Internal("CreateBlasLtMatmulPlan failed : a.shape=(",
+                             in_x.dim_size(0), ", ", in_x.dim_size(1), ", ",
+                             in_x.dim_size(2), "), b.shape=(", in_y.dim_size(0),
+                             ", ", in_y.dim_size(1), ", ", in_y.dim_size(2),
+                             "), m=", m, ", n=", n, ", k=", k,
+                             ", batch_size=", batch_size, ", adjoint_a=", adj_x,
+                             ", adjoint_b=", adj_x, ", dtype=", dtype,
+                             ", computation_type=", computation_type));
         std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>
             algorithms;
         OP_REQUIRES(

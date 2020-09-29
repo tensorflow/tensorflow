@@ -242,6 +242,27 @@ struct IBlasLtMatmulAlgorithm {
   virtual size_t workspace_size() const = 0;
 };
 
+// Parameters for the CreateBlasLtMatmulPlan method.
+struct BlasLtMatmulPlanParams {
+  DataType ab_type;
+  DataType c_type;
+  ComputationType computation_type;
+  PointerMode pointer_mode;
+  Epilogue epilogue;
+  Transpose transa;
+  Transpose transb;
+  uint64 m;
+  uint64 n;
+  uint64 k;
+  int64 lda;
+  int64 ldb;
+  int64 ldc;
+  int batch_count = 1;
+  int64 stride_a = 0;
+  int64 stride_b = 0;
+  int64 stride_c = 0;
+};
+
 // BLAS support interface -- this can be derived from a GPU executor when the
 // underlying platform has an BLAS library implementation available. See
 // StreamExecutor::AsBlas().
@@ -1466,25 +1487,8 @@ class BlasSupport {
   // can then be passed to DoBlasLtMatmul(). When possible, plans should be
   // created once and reused for multiple calls to DoBlasLtMatmul().
   // Returns a null pointer on failure.
-  std::unique_ptr<blas::IBlasLtMatmulPlan> CreateBlasLtMatmulPlan(
-      blas::DataType ab_type, blas::DataType c_type,
-      blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
-      uint64 m, uint64 n, uint64 k, int64 lda, int64 ldb, int64 ldc) {
-    return CreateBlasLtMatmulPlanStridedBatched(
-        ab_type, c_type, computation_type, pointer_mode, epilogue, transa,
-        transb, m, n, k, 1, lda, 0, ldb, 0, ldc, 0);
-  }
-
-  // A more general version of CreateBlasLtMatmulPlan supporting
-  // batched operations.
-  virtual std::unique_ptr<blas::IBlasLtMatmulPlan>
-  CreateBlasLtMatmulPlanStridedBatched(
-      blas::DataType ab_type, blas::DataType c_type,
-      blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
-      uint64 m, uint64 n, uint64 k, int batch_count, int64 lda, int64 stride_a,
-      int64 ldb, int64 stride_b, int64 ldc, int64 stride_c) = 0;
+  virtual std::unique_ptr<blas::IBlasLtMatmulPlan> CreateBlasLtMatmulPlan(
+      const blas::BlasLtMatmulPlanParams& params) = 0;
 
   // Gets a list of supported algorithms for DoBlasLtMatmul. The algorithms are
   // returned in the order of increasing estimated compute time according to an
@@ -2372,14 +2376,8 @@ class BlasSupport {
                   uint64 n, std::complex<double> alpha,                        \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   DeviceMemory<std::complex<double>> *b, int ldb) override;    \
-  std::unique_ptr<blas::IBlasLtMatmulPlan>                                     \
-  CreateBlasLtMatmulPlanStridedBatched(                                        \
-      blas::DataType ab_type, blas::DataType cd_type,                          \
-      blas::ComputationType computation_type, blas::PointerMode pointer_mode,  \
-      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb, \
-      uint64 m, uint64 n, uint64 k, int batch_count, int64 lda,                \
-      int64 stride_a, int64 ldb, int64 stride_b, int64 ldc, int64 stride_c)    \
-      override;                                                                \
+  std::unique_ptr<blas::IBlasLtMatmulPlan> CreateBlasLtMatmulPlan(             \
+      const blas::BlasLtMatmulPlanParams& params) override;                    \
   bool GetBlasLtMatmulAlgorithms(                                              \
       const blas::IBlasLtMatmulPlan* plan, size_t max_workspace_size,          \
       int max_algorithm_count,                                                 \
