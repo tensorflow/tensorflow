@@ -1605,29 +1605,6 @@ alias(
     ]
 ]
 
-# The following targets will be moved to core/protobuf. The aliases are only temporary
-# since moving existing users will require several CLs over several projects.
-[
-    [
-        alias(
-            name = "protobuf_%s_pyclif%s" % (proto_name, target_suffix),
-            actual = "//tensorflow/core/protobuf:%s_pyclif%s" % (proto_name, target_suffix),
-            visibility = ["//visibility:public"],
-        )
-        for target_suffix in [
-            "",
-            "_pb2",
-        ]
-    ]
-    for proto_name in [
-        "config",
-        "device_properties",
-        "graph_debug_info",
-        "meta_graph",
-        "saved_model",
-    ]
-]
-
 # -----------------------------------------------------------------------------
 # Internal targets
 
