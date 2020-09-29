@@ -144,12 +144,8 @@ class ResizeBilinearOpTestBase
         TensorShape({batch_size, output_width, output_height, channels})));
     ResizeBilinearBaseline(input->tensor<float, 4>(),
                            expected->tensor<float, 4>());
-#if TENSORFLOW_COMPILER_IS_HIP_CLANG
     // HIP-CLANG requires slightly wider tolerance - investigate
     test::ExpectClose(*expected, *GetOutput(0), /*atol=*/4e-5);
-#else
-    test::ExpectClose(*expected, *GetOutput(0), /*atol=*/3e-5);
-#endif
   }
 
   void RunManyRandomTests(int channels) {

@@ -29,7 +29,6 @@ CPU_COMPILER = ('%{cpu_compiler}')
 
 HIPCC_PATH = '%{hipcc_path}'
 HIPCC_ENV = '%{hipcc_env}'
-HIPCC_IS_HIPCLANG = '%{hipcc_is_hipclang}'=="True"
 HIP_RUNTIME_PATH = '%{hip_runtime_path}'
 HIP_RUNTIME_LIBRARY = '%{hip_runtime_library}'
 ROCR_RUNTIME_PATH = '%{rocr_runtime_path}'
@@ -96,27 +95,6 @@ def GetHostCompilerOptions(argv):
 
   return opts
 
-def GetHipccOptions(argv):
-  """Collect the -hipcc_options values from argv.
-
-  Args:
-    argv: A list of strings, possibly the argv passed to main().
-
-  Returns:
-    The string that can be passed directly to hipcc.
-  """
-
-  parser = ArgumentParser()
-  parser.add_argument('-hipcc_options', nargs='*', action='append')
-
-  args, _ = parser.parse_known_args(argv)
-
-  if args.hipcc_options:
-    options = _update_options(sum(args.hipcc_options, []))
-    return ' '.join(['--'+a for a in options])
-  return ''
-
-
 def system(cmd):
   """Invokes cmd with os.system().
 
@@ -146,7 +124,6 @@ def InvokeHipcc(argv, log=False):
   """
 
   host_compiler_options = GetHostCompilerOptions(argv)
-  hipcc_compiler_options = GetHipccOptions(argv)
   opt_option = GetOptionValue(argv, 'O')
   m_options = GetOptionValue(argv, 'm')
   m_options = ''.join([' -m' + m for m in m_options if m in ['32', '64']])
@@ -191,9 +168,7 @@ def InvokeHipcc(argv, log=False):
   # Otherwise, we get build error.
   # Also we need to retain warning about uninitialised shared variable as
   # warning only, even when -Werror option is specified.
-  if HIPCC_IS_HIPCLANG:
-    hipccopts += ' --include=hip/hip_runtime.h '
-  hipccopts += ' ' + hipcc_compiler_options
+  hipccopts += ' --include=hip/hip_runtime.h '
   # Use -fno-gpu-rdc by default for early GPU kernel finalization
   # This flag would trigger GPU kernels be generated at compile time, instead
   # of link time. This allows the default host compiler (gcc) be used as the
@@ -205,17 +180,15 @@ def InvokeHipcc(argv, log=False):
   hipccopts += std_options
   hipccopts += m_options
 
-  dash_x_hip = ""
-  if HIPCC_IS_HIPCLANG:
-    # When the underlying hip compiler is hipclang, all sources files are
-    # treated as C++ source fiels by default. (previous default was that
-    # hipclang would treat all source files as HIP files)
-    # So now when using hipclang, hipcc needs to be passed the "-x hip" option
-    # when compiling HIP source files
-    #
-    # Since this path (i.e. the InvokeHipcc) function is only invoked for HIP
-    # source files, we can pass the "-x hip" option unconditionally
-    dash_x_hip += ' -x hip '
+  # When the underlying hip compiler is hipclang, all sources files are
+  # treated as C++ source fiels by default. (previous default was that
+  # hipclang would treat all source files as HIP files)
+  # So now when using hipclang, hipcc needs to be passed the "-x hip" option
+  # when compiling HIP source files
+  #
+  # Since this path (i.e. the InvokeHipcc) function is only invoked for HIP
+  # source files, we can pass the "-x hip" option unconditionally
+  dash_x_hip = ' -x hip '
 
   if depfiles:
     # Generate the dependency file
@@ -276,8 +249,7 @@ def main():
     gpu_linker_flags.append('-L' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-Wl,-rpath=' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-l' + HIP_RUNTIME_LIBRARY)
-    if HIPCC_IS_HIPCLANG:
-      gpu_linker_flags.append("-lrt")
+    gpu_linker_flags.append("-lrt")
 
     if VERBOSE: print(' '.join([CPU_COMPILER] + gpu_linker_flags))
     return subprocess.call([CPU_COMPILER] + gpu_linker_flags)
