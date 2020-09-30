@@ -34,6 +34,7 @@ limitations under the License.
 
 namespace {
 
+using PersonDetectionOpResolver = tflite::AllOpsResolver;
 using PersonDetectionBenchmarkRunner = MicroBenchmarkRunner<uint8_t>;
 
 constexpr int kRandomSeed = 42;
@@ -43,18 +44,22 @@ constexpr int kRandomSeed = 42;
 constexpr int kTensorArenaSize = 95 * 1024;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-uint8_t benchmark_runner_buffer[sizeof(PersonDetectionBenchmarkRunner)]
+uint8_t op_resolver_buffer[sizeof(PersonDetectionOpResolver)];
+uint8_t benchmark_runner_buffer[sizeof(PersonDetectionBenchmarkRunner)];
 PersonDetectionBenchmarkRunner* benchmark_runner = nullptr;
 
 // Initialize benchmark runner instance explicitly to avoid global init order
 // issues on Sparkfun. Use new since static variables within a method
 // are automatically surrounded by locking, which breaks bluepill and stm32f4.
 void CreateBenchmarkRunner() {
-  // We allocate AllOpsResolver from a global buffer because the object's
-  // lifetime must exceed that of the PersonDetectionBenchmarkRunner object.
-  benchmark_runner = new (benchmark_runner_buffer) PersonDetectionBenchmarkRunner(
-      g_person_detect_model_data, new (op_resolver_buffer) AllOpsResolver(),
-      tensor_arena, kTensorArenaSize);
+  // We allocate PersonDetectionOpResolver from a global buffer because the
+  // object's lifetime must exceed that of the PersonDetectionBenchmarkRunner
+  // object.
+  benchmark_runner = new (benchmark_runner_buffer)
+      PersonDetectionBenchmarkRunner(g_person_detect_model_data,
+                                     new (op_resolver_buffer)
+                                         PersonDetectionOpResolver(),
+                                     tensor_arena, kTensorArenaSize);
 }
 
 void PersonDetectionTenIterationsWithRandomInput() {
@@ -66,17 +71,17 @@ void PersonDetectionTenIterationsWithRandomInput() {
 
 void PersonDetectionTenIerationsWithPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  benchmark_runner.SetInput(g_person_data);
+  benchmark_runner->SetInput(g_person_data);
   for (int i = 0; i < 10; i++) {
-    benchmark_runner.RunSingleIteration();
+    benchmark_runner->RunSingleIteration();
   }
 }
 
 void PersonDetectionTenIerationsWithoutPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  benchmark_runner.SetInput(g_no_person_data);
+  benchmark_runner->SetInput(g_no_person_data);
   for (int i = 0; i < 10; i++) {
-    benchmark_runner.RunSingleIteration();
+    benchmark_runner->RunSingleIteration();
   }
 }
 

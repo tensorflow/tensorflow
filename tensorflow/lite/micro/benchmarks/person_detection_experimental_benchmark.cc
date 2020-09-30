@@ -34,6 +34,7 @@ limitations under the License.
 
 namespace {
 
+using PersonDetectionExperimentalOpResolver = tflite::AllOpsResolver;
 using PersonDetectionExperimentalBenchmarkRunner = MicroBenchmarkRunner<int8_t>;
 
 // Create an area of memory to use for input, output, and intermediate arrays.
@@ -41,6 +42,7 @@ using PersonDetectionExperimentalBenchmarkRunner = MicroBenchmarkRunner<int8_t>;
 constexpr int kTensorArenaSize = 135 * 1024;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
+uint8_t op_resolver_buffer[sizeof(PersonDetectionExperimentalOpResolver)];
 uint8_t
     benchmark_runner_buffer[sizeof(PersonDetectionExperimentalBenchmarkRunner)];
 PersonDetectionExperimentalBenchmarkRunner* benchmark_runner = nullptr;
@@ -49,11 +51,13 @@ PersonDetectionExperimentalBenchmarkRunner* benchmark_runner = nullptr;
 // issues on Sparkfun. Use new since static variables within a method
 // are automatically surrounded by locking, which breaks bluepill and stm32f4.
 void CreateBenchmarkRunner() {
-  // We allocate AllOpsResolver from a global buffer because the object's
-  // lifetime must exceed that of the PersonDetectionBenchmarkRunner object.
+  // We allocate PersonDetectionExperimentalOpResolver from a global buffer
+  // because the object's lifetime must exceed that of the
+  // PersonDetectionBenchmarkRunner object.
   benchmark_runner =
-      new (tensor_arena) PersonDetectionExperimentalBenchmarkRunner(
-          g_person_detect_model_data, new (op_resolver_buffer) AllOpsResolver(),
+      new (benchmark_runner_buffer) PersonDetectionExperimentalBenchmarkRunner(
+          g_person_detect_model_data,
+          new (op_resolver_buffer) PersonDetectionExperimentalOpResolver(),
           tensor_arena, kTensorArenaSize);
 }
 
