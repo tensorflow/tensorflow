@@ -236,6 +236,21 @@ func @complex(%real: memref<2x2xf32>,
 
 // -----
 
+// BOTH-LABEL: func @complex_dyn
+func @complex_dyn(%real: memref<?xf32>,
+                  %imag: memref<?xf32>,
+                  %result: memref<?xcomplex<f32>>) {
+  %tensor_real = tensor_load %real : memref<?xf32>
+  %tensor_imag = tensor_load %imag : memref<?xf32>
+  %tensor_result = "mhlo.complex"(%tensor_real, %tensor_imag)
+      : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xcomplex<f32>>
+  // BOTH: "lmhlo.complex"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<?xcomplex<f32>>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @real
 func @real(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>

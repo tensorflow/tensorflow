@@ -889,9 +889,10 @@ static LogicalResult Verify(ClampOp op) {
 // ComplexOp
 //===----------------------------------------------------------------------===//
 
-void ComplexOp::build(OpBuilder& builder, OperationState& state, Value lhs,
-                      Value rhs) {
-  auto type = lhs.getType();
+LogicalResult ComplexOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto type = operands[0].getType();
   auto element_ty = ComplexType::get(getElementTypeOrSelf(type));
   Type result_ty;
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
@@ -901,8 +902,8 @@ void ComplexOp::build(OpBuilder& builder, OperationState& state, Value lhs,
   } else {
     result_ty = element_ty;
   }
-
-  build(builder, state, result_ty, lhs, rhs);
+  inferredReturnTypes.push_back(result_ty);
+  return success();
 }
 
 OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
