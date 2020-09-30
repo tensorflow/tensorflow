@@ -184,15 +184,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_FLOOR(), ParseFloor);
   }
 
-
-  TfLiteStatus AddFullyConnected(const TfLiteRegistration& registration) {
+  TfLiteStatus AddFullyConnected(
+      const TfLiteRegistration& registration = Register_FULLY_CONNECTED()) {
     return AddBuiltin(BuiltinOperator_FULLY_CONNECTED, registration,
                       ParseFullyConnected);
-  }
-
-  TfLiteStatus AddFullyConnected() {
-    return AddBuiltin(BuiltinOperator_FULLY_CONNECTED,
-                      Register_FULLY_CONNECTED(), ParseFullyConnected);
   }
 
   TfLiteStatus AddGreater() {
@@ -467,7 +462,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int num_buitin_ops_ = 0;
 
   ErrorReporter* error_reporter_;
-
 };
 
 };  // namespace tflite

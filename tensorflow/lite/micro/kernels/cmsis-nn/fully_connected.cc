@@ -53,6 +53,11 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
+// This global struct is needed for the linker to drop unused code (for example,
+// by using Register_FULLY_CONNECTED_INT8 instead of Register_FULLY_CONNECTED).
+// See b/ for more details.
+TfLiteRegistration fully_connected_registration;
+
 TfLiteStatus CalculateOpData(TfLiteContext* context,
                              TfLiteFusedActivation activation,
                              TfLiteType data_type, const TfLiteTensor* input,
@@ -360,25 +365,27 @@ TfLiteStatus EvalInt8(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 
 TfLiteRegistration Register_FULLY_CONNECTED() {
-  return {/*init=*/Init,
-          /*free=*/nullptr,
-          /*prepare=*/Prepare,
-          /*invoke=*/Eval,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+  fully_connected_registration.init = Init;
+  fully_connected_registration.free = nullptr;
+  fully_connected_registration.prepare = Prepare;
+  fully_connected_registration.invoke = Eval;
+  fully_connected_registration.profiling_string = nullptr;
+  fully_connected_registration.builtin_code = 0;
+  fully_connected_registration.custom_name = nullptr;
+  fully_connected_registration.version = 0;
+  return fully_connected_registration;
 }
 
 TfLiteRegistration Register_FULLY_CONNECTED_INT8() {
-  return {/*init=*/Init,
-          /*free=*/nullptr,
-          /*prepare=*/Prepare,
-          /*invoke=*/EvalInt8,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+  fully_connected_registration.init = Init;
+  fully_connected_registration.free = nullptr;
+  fully_connected_registration.prepare = Prepare;
+  fully_connected_registration.invoke = EvalInt8;
+  fully_connected_registration.profiling_string = nullptr;
+  fully_connected_registration.builtin_code = 0;
+  fully_connected_registration.custom_name = nullptr;
+  fully_connected_registration.version = 0;
+  return fully_connected_registration;
 }
 
 }  // namespace tflite

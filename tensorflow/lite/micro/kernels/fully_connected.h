@@ -28,7 +28,6 @@ TfLiteRegistration Register_FULLY_CONNECTED();
 // Returns a TfLiteRegistration struct for cmsis-nn kernel variant that only
 // supports int8.
 TfLiteRegistration Register_FULLY_CONNECTED_INT8();
-#elif defined(XTENSA_HIFIMINI)
 
 #else
 // Note that while this block gets used for both reference and optimized kernels

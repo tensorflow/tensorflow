@@ -20,10 +20,14 @@ config_setting(
 )
 
 package_group(
+    name = "micro",
+    packages = ["//tensorflow/lite/micro/..."],
+)
+
+package_group(
     name = "micro_top_level",
     packages = ["//tensorflow/lite/micro"],
 )
-
 
 cc_library(
     name = "fixedpoint_utils",
@@ -63,9 +67,8 @@ cc_library(
     hdrs = ["fully_connected.h"],
     copts = micro_copts(),
     visibility = [
-        # Needed for micro:op_resolvers but visibility can not be finer-grained
-        # than a package.
-        ":micro_top_level",
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
     ],
     deps = [
         ":activation_utils",
