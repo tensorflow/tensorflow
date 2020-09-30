@@ -26,11 +26,14 @@ python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Remove need to run configure to set TF_NEED_CUDA=0, TF_NEED_ROCM=0, and
 # CC_OPT_FLAGS='-mavx'.
+# Remove all copt flags other than -mavx
+sed -i "/build:opt --copt=/d" .tf_configure.bazelrc
 echo "build:opt --copt=-mavx" >> .tf_configure.bazelrc
-sed "/build:opt --copt=-Wno-sign-compare/d".tf_configure.bazelrc
-echo "build --action_env PYTHON_BIN_PATH=\"/usr/local/bin/python3.5\""
-echo "build --action_env PYTHON_LIB_PATH=\"/usr/local/lib/python3.5/site-packages\""
-echo "build --python_path=\"/usr/local/bin/python3.5\""
+# Build with python3.5, not python3.
+sed -i "/build --action_env PYTHON_BIN_PATH=\"\/usr\/local\/bin\/python3/d" .tf_configure.bazelrc
+echo "build --action_env PYTHON_BIN_PATH=\"/usr/local/bin/python3.5\"" >> .tf_configure.bazelrc
+sed -i "/build --python_path=\"\/usr\/local\/bin\/python3/d" .tf_configure.bazelrc
+echo "build --python_path=\"/usr/local/bin/python3.5\"" >> .tf_configure.bazelrc
 
 
 # Build the pip package
