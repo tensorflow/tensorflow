@@ -360,6 +360,7 @@ tf_py_test(
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )

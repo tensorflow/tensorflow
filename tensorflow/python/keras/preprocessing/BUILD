@@ -31,6 +31,7 @@ py_library(
         ":sequence",
         ":text",
         ":timeseries",
+        "//tensorflow/python/keras/utils:all_utils",
     ],
 )
 
