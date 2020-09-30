@@ -50,7 +50,7 @@ class GpuKernelToBlobPass
     : public GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation, int32_t arch) {
-    blob_annotation_ = blob_annotation;
+    blob_annotation_ = blob_annotation.str();
     arch_ = arch;
   }
 
