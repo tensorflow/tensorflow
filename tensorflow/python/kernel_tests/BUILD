@@ -287,6 +287,9 @@ tf_py_test(
     name = "collective_ops_test",
     size = "medium",
     srcs = ["collective_ops_test.py"],
+    tags = [
+        "no_rocm",
+    ],
     tfrt_enabled = False,
     deps = [
         "//tensorflow/python:client_testlib",
