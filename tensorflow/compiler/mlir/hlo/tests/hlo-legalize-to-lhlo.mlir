@@ -248,6 +248,18 @@ func @real(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
 
 // -----
 
+// BOTH-LABEL: func @real_dyn
+func @real_dyn(%operand: memref<?xcomplex<f32>>, %result: memref<?xf32>) {
+  %tensor_operand = tensor_load %operand : memref<?xcomplex<f32>>
+  %tensor_result = "mhlo.real"(%tensor_operand)
+      : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // BOTH: "lmhlo.real"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<?xf32>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @imag
 func @imag(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>
@@ -255,6 +267,18 @@ func @imag(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
       : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
   // BOTH: "lmhlo.imag"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// BOTH-LABEL: func @imag_dyn
+func @imag_dyn(%operand: memref<?xcomplex<f32>>, %result: memref<?xf32>) {
+  %tensor_operand = tensor_load %operand : memref<?xcomplex<f32>>
+  %tensor_result = "mhlo.imag"(%tensor_operand)
+      : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // BOTH: "lmhlo.imag"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<?xf32>
   return
 }
 

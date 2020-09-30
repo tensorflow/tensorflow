@@ -932,8 +932,11 @@ Type CreateRealType(Type type) {
 }
 }  // namespace
 
-void ImagOp::build(OpBuilder& builder, OperationState& state, Value val) {
-  build(builder, state, CreateRealType(val.getType()), val);
+LogicalResult ImagOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(CreateRealType(operands[0].getType()));
+  return success();
 }
 
 OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
@@ -945,8 +948,11 @@ OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-void RealOp::build(OpBuilder& builder, OperationState& state, Value val) {
-  build(builder, state, CreateRealType(val.getType()), val);
+LogicalResult RealOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(CreateRealType(operands[0].getType()));
+  return success();
 }
 
 OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
