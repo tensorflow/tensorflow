@@ -616,6 +616,18 @@ class DefFunctionTest(xla_test.XLATestCase):
           'label',
           f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo_dot'))
 
+  def testGetCompilerIrNonTensors(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(l):
+        return l[0] + l[1]
+
+      l = [constant_op.constant(1.1), constant_op.constant(2.2)]
+
+      self.assertIn('tuple',
+                    f.experimental_get_compiler_ir(l)())
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

@@ -985,7 +985,7 @@ class Function(object):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    canon_args, _, _, _ = \
+    _, _, _, filtered_flat_args = \
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
@@ -999,7 +999,7 @@ class Function(object):
       return context.context().get_compiler_ir(
           stage=stage,
           function_name=fn_name,
-          args=list(canon_args) + concrete_fn.captured_inputs)
+          args=list(filtered_flat_args) + concrete_fn.captured_inputs)
 
     return compiler_ir_generator
 
