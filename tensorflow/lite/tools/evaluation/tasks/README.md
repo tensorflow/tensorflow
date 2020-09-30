@@ -3,10 +3,10 @@
 This page describes how you can check the accuracy of quantized models to verify that any degradation in accuracy is within acceptable limits.
 
 ## Tools
-There are three different binaries which are supported. A breif description of each is provided below.
+There are three different binaries which are supported. A brief description of each is provided below.
 
 ### Inference Diff Tool
-This binary compares TensorFlow Lite execution in single-threaded CPU inference and user-defined infrence.
+This binary compares TensorFlow Lite execution in single-threaded CPU inference and user-defined inference.
 
 ### Image Classification Evaluation
 This binary evaluates TensorFlow Lite models trained for the [ILSVRC 2012 image classification task.](http://www.image-net.org/challenges/LSVRC/2012/)
