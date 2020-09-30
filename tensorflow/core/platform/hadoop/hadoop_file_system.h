@@ -77,7 +77,7 @@ class HadoopFileSystem : public FileSystem {
   string TranslateName(const string& name) const override;
 
  private:
-  mutable mutex mu_;
+  mutex mu_;
   std::map<std::string, hdfsFS> connectionCache_ TF_GUARDED_BY(mu_);
   Status Connect(StringPiece fname, hdfsFS* fs);
 };
