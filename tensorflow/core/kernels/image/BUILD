@@ -133,7 +133,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:jpeg_internal",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:png_internal",
+    "//tensorflow/core/lib/png:png_io",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/kernels:bounds_check",
     "//tensorflow/core/kernels:eigen_helpers",
@@ -420,8 +420,8 @@ cc_library(
     deps = [
         "//tensorflow/core:android_gif_internal",
         "//tensorflow/core:android_jpeg_internal",
-        "//tensorflow/core:android_png_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
+        "//tensorflow/core/lib/png:png_io",
     ],
     alwayslink = 1,
 )

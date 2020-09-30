@@ -1985,21 +1985,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
-alias(
-    name = "portable_png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
-alias(
-    name = "android_png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
 cc_library(
     name = "tflite_portable_logging",
     hdrs = [
