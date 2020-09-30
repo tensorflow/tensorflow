@@ -6249,6 +6249,7 @@ filegroup(
         "string_lower_op.cc",
         "string_util.cc",
         "string_split_op.cc",
+        "string_strip_op.cc",
         "string_to_hash_bucket_op.cc",
         "substr_op.cc",
         "tensor_array.cc",
