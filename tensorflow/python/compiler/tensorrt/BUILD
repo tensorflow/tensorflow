@@ -3,7 +3,11 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test", "cuda_py_tests")
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 # cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
 # combine XLA with TensorRT currently and should set

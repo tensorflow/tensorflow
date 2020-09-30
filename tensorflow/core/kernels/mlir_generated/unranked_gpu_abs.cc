@@ -90,7 +90,6 @@ class MlirTensorBuffer : public TensorBuffer {
 
   TensorBuffer* root_buffer() override { return this; }
 
-  // TODO(b/169083346): Fix memory leaks.
   void FillAllocationDescription(AllocationDescription* proto) const override {
     proto->set_allocated_bytes(size_);
   }
@@ -110,9 +109,14 @@ Tensor ConvertDescriptorToTensor(
   for (int i = 0; i < unranked_descriptor.rank; ++i) {
     result_shape.AddDim(pointers[3 + i]);
   }
-  return Tensor{
-      tf_data_type, result_shape,
-      new MlirTensorBuffer<ElemType>(base_ptr, result_shape, allocator)};
+  auto* buffer =
+      new MlirTensorBuffer<ElemType>(base_ptr, result_shape, allocator);
+  // Tensor takes ownership of the buffer.
+  Tensor tensor{tf_data_type, result_shape, buffer};
+  // When Tensor is constructed, its ref-counter is incremented. We need to
+  // decrement it back.
+  buffer->Unref();
+  return tensor;
 }
 
 }  // namespace
@@ -133,17 +137,18 @@ Tensor ConvertDescriptorToTensor(
                                                                             \
     void Compute(OpKernelContext* ctx) override {                           \
       const Tensor& input = ctx->input(0);                                  \
-      auto unranked_desc = ConvertTensorToDescriptor<data_type>(input);     \
                                                                             \
-      auto result_desc = MLIR_FUNCTION(type_name)(ctx, &unranked_desc);     \
+      auto input_desc = ConvertTensorToDescriptor<data_type>(input);        \
+      auto result_desc = MLIR_FUNCTION(type_name)(ctx, &input_desc);        \
+      free(input_desc.descriptor);                                          \
                                                                             \
       tensorflow::AllocatorAttributes attrs;                                \
       auto* allocator = ctx->get_allocator(attrs);                          \
                                                                             \
       Tensor result_tensor = ConvertDescriptorToTensor<data_type>(          \
           result_desc, tf_data_type, allocator);                            \
+      free(result_desc.descriptor);                                         \
       ctx->set_output(0, result_tensor);                                    \
-      free(unranked_desc.descriptor);                                       \
     }                                                                       \
   };                                                                        \
   }                                                                         \

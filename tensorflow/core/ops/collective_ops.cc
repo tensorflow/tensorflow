@@ -114,6 +114,7 @@ REGISTER_OP("CollectiveReduceV2")
     .Attr("merge_op: {'Min', 'Max', 'Mul', 'Add'}")
     .Attr("final_op: {'Id', 'Div'}")
     .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 

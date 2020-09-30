@@ -222,8 +222,8 @@ class RingGathererTest : public ::testing::Test {
           dev_name =
               strings::StrCat(task_name, "/gpu:", di % gpu_devices_.size());
         }
-        col_params_.instance.device_names.push_back(dev_name);
-        col_params_.instance.task_names.push_back(task_name);
+        col_params_.group.device_names.push_back(dev_name);
+        col_params_.group.task_names.push_back(task_name);
         // Normally each device would set is_local to its own perspective but
         // this test runs in a single process so is_local is always true.
         col_params_.task.is_local.push_back(true);
@@ -240,7 +240,7 @@ class RingGathererTest : public ::testing::Test {
       for (int di = 0; di < num_devices; ++di) {
         int rank = wi * num_devices + di;
         instances_.push_back(new DeviceInstance(
-            rank, col_params_.instance.device_names[rank], device_type_, this));
+            rank, col_params_.group.device_names[rank], device_type_, this));
       }
     }
   }
@@ -389,9 +389,7 @@ class RingGathererTest : public ::testing::Test {
           << "Couldn't find device " << dev_name
           << " existing devices: " << parent_->dev_mgr_->DebugString();
       col_params_.name = parent_->col_params_.name;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
+      col_params_.group = parent_->col_params_.group;
       col_params_.instance = parent->col_params_.instance;
       col_params_.task.is_local = parent_->col_params_.task.is_local;
       col_params_.subdiv_rank = parent_->col_params_.subdiv_rank;
@@ -399,7 +397,7 @@ class RingGathererTest : public ::testing::Test {
       int num_subdivs = static_cast<int>(col_params_.subdiv_rank.size());
       int group_size = col_params_.group.group_size;
       CHECK_EQ(group_size,
-               static_cast<int>(col_params_.instance.device_names.size()));
+               static_cast<int>(col_params_.group.device_names.size()));
       // Id of this device is at rank position in first subdiv perm.
       int my_device_id =
           col_params_.instance.impl_details.subdiv_permutations[0][rank];
@@ -547,8 +545,8 @@ CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
     int dev_id = i % num_devs_per_task;
     string task_name = strings::StrCat("/job:worker/replica:0/task:", task_id);
     string device_name = strings::StrCat(task_name, "/device:GPU:", dev_id);
-    cp.instance.task_names.push_back(task_name);
-    cp.instance.device_names.push_back(device_name);
+    cp.group.task_names.push_back(task_name);
+    cp.group.device_names.push_back(device_name);
   }
   return cp;
 }

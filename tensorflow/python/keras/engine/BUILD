@@ -572,6 +572,7 @@ tf_py_test(
     deps = [
         ":base_layer",
         ":engine",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/utils:layer_utils",
     ],

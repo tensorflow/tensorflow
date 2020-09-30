@@ -42,9 +42,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
-        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
@@ -60,9 +58,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/mlir_gpu:passes",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
@@ -72,9 +67,7 @@ cc_library(
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Parser",
@@ -85,8 +78,6 @@ cc_library(
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TargetNVVMIR",
-        "@llvm-project//mlir:TargetROCDLIR",
         "@llvm-project//mlir:Transforms",
     ],
 )

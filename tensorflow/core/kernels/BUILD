@@ -3114,7 +3114,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "summary_image_op",
     prefix = "summary_image_op",
-    deps = LOGGING_DEPS + ["//tensorflow/core:png_internal"],
+    deps = LOGGING_DEPS + ["//tensorflow/core/lib/png:png_io"],
 )
 
 # TODO(b/162630222): remove this target
@@ -6465,9 +6465,9 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
-        "//tensorflow/core:portable_png_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",

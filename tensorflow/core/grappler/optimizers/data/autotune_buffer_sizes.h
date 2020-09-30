@@ -33,9 +33,6 @@ constexpr char kAutotune[] = "autotune";
 // 2. If there exists any `prefetch(buffer_size=N)` for `N>=0`,  it will replace
 // the transformation with autotunable version of `prefetch` which uses N as
 // the minimum size of the buffer.
-//
-// 3. Switches from using legacy autotuning for `prefetch` to using an algorithm
-// based on the performance model.
 class AutotuneBufferSizes : public TFDataOptimizerBase {
  public:
   AutotuneBufferSizes() = default;

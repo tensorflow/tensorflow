@@ -1143,15 +1143,22 @@ class ModelCheckpoint(Callback):
     the end of every epoch, or after a fixed number of training batches.
   - Whether only weights are saved, or the whole model is saved.
 
+  Note: If you get `WARNING:tensorflow:Can save best model only with <name>
+  available, skipping` see the description of the `monitor` argument for
+  details on how to get this right.
+
   Example:
 
   ```python
+  model.compile(loss=..., optimizer=...,
+                metrics=['accuracy'])
+
   EPOCHS = 10
   checkpoint_filepath = '/tmp/checkpoint'
   model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
       filepath=checkpoint_filepath,
       save_weights_only=True,
-      monitor='val_acc',
+      monitor='val_accuracy',
       mode='max',
       save_best_only=True)
 
@@ -1170,17 +1177,30 @@ class ModelCheckpoint(Callback):
         `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
         checkpoints will be saved with the epoch number and the validation loss
         in the filename.
-      monitor: quantity to monitor.
+      monitor: The metric name to monitor. Typically the metrics are set by the
+        `Model.compile` method. Note:
+
+        * Prefix the name with `"val_`" to monitor validation metrics.
+        * Use `"loss"` or "`val_loss`" to monitor the model's total loss.
+        * If you specify metrics as strings, like `"accuracy"`, pass the same
+          string (with or without the `"val_"` prefix).
+        * If you pass `metrics.Metric` objects, `monitor` should be set to
+          `metric.name`
+        * If you're not sure about the metric names you can check the contents
+          of the `history.history` dictionary returned by
+          `history = model.fit()`
+        * Multi-output models set additional prefixes on the metric names.
+
       verbose: verbosity mode, 0 or 1.
-      save_best_only: if `save_best_only=True`, it only saves when the model 
-        is considered the "best" and the latest best model according to the 
-        quantity monitored will not be overwritten. If `filepath` doesn't 
-        contain formatting options like `{epoch}` then `filepath` will be 
+      save_best_only: if `save_best_only=True`, it only saves when the model
+        is considered the "best" and the latest best model according to the
+        quantity monitored will not be overwritten. If `filepath` doesn't
+        contain formatting options like `{epoch}` then `filepath` will be
         overwritten by each new better model.
-      mode: one of {'auto', 'min', 'max'}. If `save_best_only=True`, the 
-        decision to overwrite the current save file is made based on either 
-        the maximization or the minimization of the monitored quantity. 
-        For `val_acc`, this should be `max`, for `val_loss` this should be 
+      mode: one of {'auto', 'min', 'max'}. If `save_best_only=True`, the
+        decision to overwrite the current save file is made based on either
+        the maximization or the minimization of the monitored quantity.
+        For `val_acc`, this should be `max`, for `val_loss` this should be
         `min`, etc. In `auto` mode, the direction is automatically inferred
         from the name of the monitored quantity.
       save_weights_only: if True, then only the model's weights will be saved

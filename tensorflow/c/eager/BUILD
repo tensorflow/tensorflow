@@ -313,6 +313,7 @@ cc_library(
         ":gradients_internal",
         ":gradients_util",
         ":tape",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",

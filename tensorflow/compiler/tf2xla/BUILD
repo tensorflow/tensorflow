@@ -45,6 +45,7 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_models/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
+        "//third_party/py/keras/...",
     ],
 )
 

@@ -240,6 +240,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaDotOp>(),
     TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
+    TypeID::get<TF::XlaEinsumOp>(),
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
     TypeID::get<TF::XlogyOp>()

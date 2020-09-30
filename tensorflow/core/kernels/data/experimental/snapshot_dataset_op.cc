@@ -821,6 +821,9 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
   OP_REQUIRES_OK(ctx, HashGraph(graph_def, &graph_hash));
 
+  // Different compression modes should result in different graph hashes.
+  graph_hash = Hash64Combine(graph_hash, Hash64(compression_));
+
   std::unique_ptr<CapturedFunction> reader_func;
   OP_REQUIRES_OK(ctx,
                  CapturedFunction::Create(ctx, reader_func_metadata_,

@@ -62,6 +62,7 @@ visibility = [
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
+    "//third_party/py/keras:__subpackages__",
 ]
 
 package(
@@ -127,6 +128,7 @@ py_library(
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
+        "//third_party/py/keras:__subpackages__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
@@ -5939,9 +5941,9 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:replay_log_proto_cc",
+        "//tensorflow/core/protobuf:master_proto_cc",
     ],
 )
 

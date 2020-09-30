@@ -715,7 +715,7 @@ TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
   // handles are placed in the head.
 
   // Allocate space for the new scratch buffer handle.
-  TF_LITE_ENSURE_STATUS(memory_allocator_->EnsureHeadSize(
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadSize(
       sizeof(internal::ScratchBufferHandle) * (scratch_buffer_count_ + 1),
       alignof(internal::ScratchBufferHandle)));
 
@@ -1078,8 +1078,20 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
     head_usage = planner.GetMaximumMemorySize();
   }
 
+  // The head is used to store memory plans for one model at a time during the
+  // model preparation stage, and is re-purposed to store scratch buffer handles
+  // during model invocation. The head must be as large as the greater of the
+  // largest model memory plan's size and the total space required for all
+  // scratch buffer handles.
+  if (max_head_buffer_usage_ < head_usage) {
+    max_head_buffer_usage_ = head_usage;
+  }
+
+  // The head is used for storing scratch buffer allocations before finalizing a
+  // memory plan in this function. Ensure that the head is set to the largest
+  // memory plan sent through the allocator:
   TF_LITE_ENSURE_STATUS(
-      memory_allocator_->EnsureHeadSize(head_usage, kBufferAlignment));
+      memory_allocator_->SetHeadSize(max_head_buffer_usage_, kBufferAlignment));
   return kTfLiteOk;
 }
 
