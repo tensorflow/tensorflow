@@ -53,9 +53,9 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
-// This global struct is needed for the linker to drop unused code (for example,
-// by using Register_FULLY_CONNECTED_INT8 instead of Register_FULLY_CONNECTED).
-// See b/ for more details.
+// TODO(b/169801227): This global struct is needed for the linker to drop unused
+// code (for example, by using Register_FULLY_CONNECTED_INT8 instead of
+// Register_FULLY_CONNECTED).
 TfLiteRegistration fully_connected_registration;
 
 TfLiteStatus CalculateOpData(TfLiteContext* context,
