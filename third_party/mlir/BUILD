@@ -155,6 +155,10 @@ cc_library(
     hdrs = [
         "include/mlir-c/Bindings/Python/Interop.h",
     ],
+    deps = [
+        ":CAPIIR",
+        "//third_party/python_runtime:headers",
+    ],
 )
 
 cc_library(
