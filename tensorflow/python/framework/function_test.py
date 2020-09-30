@@ -1629,6 +1629,10 @@ class FunctionInlineControlTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters((True), (False))
   @test_util.disable_xla("XLA changes the names, breaking graph analysis")
   def testFoo(self, noinline):
+    if test.is_built_with_rocm():
+      self.skipTest("Skip the newly created test which has yet been verified on ROCm.")
+      return
+
     dtype = dtypes.float32
     cfg = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(
