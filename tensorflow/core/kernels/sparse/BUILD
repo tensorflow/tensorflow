@@ -1,11 +1,12 @@
 # Description: Op kernels for sparse matrix operations.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
     "tf_cc_test",
-    "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],

@@ -26,6 +26,7 @@ limitations under the License.
 using stream_executor::DeviceMemoryBase;
 
 namespace tensorflow {
+namespace tpu {
 
 namespace {
 using ::stream_executor::port::Status;
@@ -372,4 +373,5 @@ TpuExecutor::CreateDeviceDescription() const {
   return status.status();
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

@@ -193,12 +193,9 @@ def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
-def HLO_ImagOp: HLO_Op<
-    "imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value val">];
-
-  let arguments = (ins HLO_ComplexTensor);
+def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
+    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    HLO_ComplexTensor>, BASE_HLO_ImagOp {
   let results = (outs HLO_FpTensor);
   let hasFolder = 1;
 }
@@ -237,12 +234,9 @@ def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
     BASE_HLO_PopulationCountOp;
 
-def HLO_RealOp: HLO_Op<
-    "real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value val">];
-
-  let arguments = (ins HLO_ComplexTensor);
+def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
+    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    HLO_ComplexTensor>, BASE_HLO_RealOp {
   let results = (outs HLO_FpTensor);
   let hasFolder = 1;
 }
@@ -688,6 +682,8 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let results = (outs HLO_PredTensor);
+
+  let hasFolder = 1;
 
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
@@ -1196,14 +1192,14 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]>,
   let results = (outs HLO_Tensor);
 }
 
-def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects]>, BASE_HLO_SortOp {
+def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects, SameOperandsAndResultShape]>, BASE_HLO_SortOp {
   let arguments = (ins
     Variadic<HLO_Tensor>:$operands,
     DefaultValuedAttr<I64Attr, "-1">:$dimension,
     DefaultValuedAttr<BoolAttr, "false">:$is_stable
   );
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs Variadic<HLO_Tensor>);
 
   let regions = (region SizedRegion<1>:$comparator);
 

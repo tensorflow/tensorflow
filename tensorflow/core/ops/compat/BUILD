@@ -2,6 +2,7 @@
 # For keeping the history of OpDefs for every major version of TensorFlow,
 # to validate that we don't make backwards-incompatible changes.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",

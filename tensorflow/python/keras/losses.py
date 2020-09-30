@@ -25,6 +25,7 @@ import six
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import tensor_util
@@ -144,8 +145,11 @@ class Loss(object):
     graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
         y_true, y_pred, sample_weight)
     with K.name_scope(self._name_scope), graph_ctx:
-      ag_call = autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
-      losses = ag_call(y_true, y_pred)
+      if context.executing_eagerly():
+        call_fn = self.call
+      else:
+        call_fn = autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
+      losses = call_fn(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())
 

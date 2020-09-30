@@ -41,9 +41,9 @@ def LegalizeGatherToTorchIndexSelectPass : Pass<"mhlo-legalize-gather-to-torch-i
 }
 
 
-def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-tanh-to-approximation", "FuncOp"> {
-  let summary = "Legalize tanh from standard dialect to an approximation.";
-  let constructor = "createLegalizeTanhToApproximationPass()";
+def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-trigonometric-to-approximation", "FuncOp"> {
+  let summary = "Legalize trigonometric operations from standard dialect to an approximation.";
+  let constructor = "createLegalizeTrigonometricToApproximationPass()";
 }
 
 
@@ -88,7 +88,7 @@ def OptimizeMhloPass : Pass<"mhlo-test-optimize", "FuncOp"> {
 }
 
 
-def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow", "FuncOp"> {
+def SinkConstantsToControlFlowPass : FunctionPass<"mhlo-sink-constants-to-control-flow"> {
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
   let constructor = "createSinkConstantsToControlFlowPass()";

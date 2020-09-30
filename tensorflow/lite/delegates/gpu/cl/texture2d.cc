@@ -24,10 +24,9 @@ namespace {
 absl::Status CreateTexture2D(int width, int height, DataType type, void* data,
                              CLContext* context, Texture2D* result) {
   cl_mem texture;
-  RETURN_IF_ERROR(CreateFloatRGBAImage2D(context->context(), width, height,
-                                         type, data, &texture));
-  cl_channel_type channel_type =
-      type == DataType::FLOAT32 ? CL_FLOAT : CL_HALF_FLOAT;
+  cl_channel_type channel_type = DataTypeToChannelType(type);
+  RETURN_IF_ERROR(CreateRGBAImage2D(context->context(), width, height,
+                                    channel_type, data, &texture));
   *result = Texture2D(texture, width, height, channel_type);
 
   return absl::OkStatus();
@@ -37,6 +36,8 @@ absl::Status CreateTexture2D(int width, int height, DataType type, void* data,
 Texture2DDescriptor::Texture2DDescriptor(Texture2DDescriptor&& desc)
     : GPUObjectDescriptor(std::move(desc)),
       element_type(desc.element_type),
+      normalized(desc.normalized),
+      normalized_type(desc.normalized_type),
       size(desc.size),
       data(std::move(desc.data)) {}
 
@@ -44,6 +45,8 @@ Texture2DDescriptor& Texture2DDescriptor::operator=(
     Texture2DDescriptor&& desc) {
   if (this != &desc) {
     std::swap(element_type, desc.element_type);
+    std::swap(normalized, desc.normalized);
+    std::swap(normalized_type, desc.normalized_type);
     std::swap(size, desc.size);
     data = std::move(desc.data);
     GPUObjectDescriptor::operator=(std::move(desc));
@@ -80,8 +83,38 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
         absl::StrCat("Texture2DDescriptor Read require two arguments, but ",
                      args.size(), " was passed"));
   }
-  const std::string read =
-      element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
+  std::string read;
+  switch (element_type) {
+    case DataType::FLOAT32:
+      read = "read_imagef";
+      break;
+    case DataType::FLOAT16:
+      read = "read_imageh";
+      break;
+    case DataType::INT8:
+    case DataType::INT16:
+    case DataType::INT32:
+      if (normalized) {
+        read = normalized_type == DataType::FLOAT16 ? "read_imageh"
+                                                    : "read_imagef";
+      } else {
+        read = "read_imagei";
+      }
+      break;
+    case DataType::UINT8:
+    case DataType::UINT16:
+    case DataType::UINT32:
+      if (normalized) {
+        read = normalized_type == DataType::FLOAT16 ? "read_imageh"
+                                                    : "read_imagef";
+      } else {
+        read = "read_imageui";
+      }
+      break;
+    default:
+      read = "unknown_type";
+      break;
+  }
   *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0],
                          ", " + args[1] + "))");
   return absl::OkStatus();
@@ -145,13 +178,12 @@ absl::Status Texture2D::CreateFromTexture2DDescriptor(
     const Texture2DDescriptor& desc, CLContext* context) {
   width_ = desc.size.x;
   height_ = desc.size.y;
-  channel_type_ =
-      desc.element_type == DataType::FLOAT32 ? CL_FLOAT : CL_HALF_FLOAT;
+  channel_type_ = DataTypeToChannelType(desc.element_type, desc.normalized);
   uint8_t* data_ptr = desc.data.empty()
                           ? nullptr
                           : const_cast<unsigned char*>(desc.data.data());
-  return CreateFloatRGBAImage2D(context->context(), desc.size.x, desc.size.y,
-                                desc.element_type, data_ptr, &texture_);
+  return CreateRGBAImage2D(context->context(), desc.size.x, desc.size.y,
+                           channel_type_, data_ptr, &texture_);
 }
 
 // Creates new 4-channel 2D texture with f32 elements

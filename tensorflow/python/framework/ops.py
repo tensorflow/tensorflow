@@ -595,12 +595,12 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
 
     In some cases, the inferred shape may have unknown dimensions. If
     the caller has additional information about the values of these
-    dimensions, `Tensor.set_shape()` can be used to augment the
-    inferred shape.
+    dimensions, `tf.ensure_shape` or `Tensor.set_shape()` can be used to augment
+    the inferred shape.
 
     >>> @tf.function
     ... def my_fun(a):
-    ...   a.set_shape([5, 5])
+    ...   a = tf.ensure_shape(a, [5, 5])
     ...   # the `print` executes during tracing.
     ...   print("Result shape: ", a.shape)
     ...   return a
@@ -617,6 +617,11 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
+
+    Note: It is recommended to use `tf.ensure_shape` instead of
+    `Tensor.set_shape`, because `tf.ensure_shape` provides better checking for
+    programming errors and can create guarantees for compiler
+    optimization.
 
     With eager execution this operates as a shape assertion.
     Here the shapes match:

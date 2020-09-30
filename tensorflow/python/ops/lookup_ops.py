@@ -1985,10 +1985,8 @@ class DenseHashTable(LookupInterface):
     self._checkpoint = checkpoint
     self._name = name
 
-    self._empty_key = ops.convert_to_tensor(
-        empty_key, dtype=key_dtype, name="empty_key")
-    self._deleted_key = ops.convert_to_tensor(
-        deleted_key, dtype=key_dtype, name="deleted_key")
+    self._empty_key = empty_key
+    self._deleted_key = deleted_key
     self._shared_name = None
     if context.executing_eagerly():
       # TODO(allenl): This will leak memory due to kernel caching by the
@@ -2010,9 +2008,13 @@ class DenseHashTable(LookupInterface):
     # training to work correctly. Use the node name if no shared_name has been
     # explicitly specified.
     use_node_name_sharing = self._checkpoint and self._shared_name is None
+    empty_key = ops.convert_to_tensor(
+        self._empty_key, dtype=self._key_dtype, name="empty_key")
+    deleted_key = ops.convert_to_tensor(
+        self._deleted_key, dtype=self._key_dtype, name="deleted_key")
     table_ref = gen_lookup_ops.mutable_dense_hash_table_v2(
-        empty_key=self._empty_key,
-        deleted_key=self._deleted_key,
+        empty_key=empty_key,
+        deleted_key=deleted_key,
         shared_name=self._shared_name,
         use_node_name_sharing=use_node_name_sharing,
         value_dtype=self._value_dtype,

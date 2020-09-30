@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -39,6 +40,7 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
 
   VLOG(1) << "Run MLIR Graph Optimization Passes";
   PassManager pm(module.getContext());
+  ::tensorflow::SetCrashReproducer(pm);
 
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.

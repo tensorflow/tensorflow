@@ -42,6 +42,7 @@ tf_py_test(
     srcs = ["api_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
@@ -54,6 +55,7 @@ tf_py_test(
 tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",

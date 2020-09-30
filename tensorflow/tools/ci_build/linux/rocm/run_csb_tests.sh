@@ -28,7 +28,11 @@ echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} 
 echo ""
 
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
+<<<<<<< HEAD
 ROCM_INSTALL_DIR=/opt/rocm-3.8.0
+=======
+ROCM_INSTALL_DIR=/opt/rocm-3.7.0
+>>>>>>> upstream/master
 if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 fi
@@ -60,6 +64,8 @@ bazel test \
       -//tensorflow/compiler/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
+      -//tensorflow/python/integration_testing/... \
+      -//tensorflow/core/tpu/... \
 && bazel test \
       --config=rocm \
       -k \

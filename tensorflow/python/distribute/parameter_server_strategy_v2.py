@@ -21,8 +21,9 @@ This is currently under development and the API is subject to change.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import os
-from absl import logging
+
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import parameter_server_strategy
@@ -32,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import tf_inspect
@@ -236,8 +238,7 @@ class ParameterServerStrategyV2Extended(
     def init_shard_fn(shard_index):
       if not init_from_fn:
         logging.log_if(
-            logging.WARNING, _INEFFICIENT_INIT_WARNING % name,
-            shard_index == 0 and
+            logging.WARN, _INEFFICIENT_INIT_WARNING % name, shard_index == 0 and
             shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS)
         return initial_value[offsets[shard_index]:offsets[shard_index + 1]]
       arg_spec = tf_inspect.getfullargspec(initial_value)
@@ -245,8 +246,7 @@ class ParameterServerStrategyV2Extended(
           "shard_info" not in arg_spec.kwonlyargs):
         # `initial_value` is a callable that doesn't accept `shard_info`.
         logging.log_if(
-            logging.WARNING, _INEFFICIENT_INIT_WARNING % name,
-            shard_index == 0 and
+            logging.WARN, _INEFFICIENT_INIT_WARNING % name, shard_index == 0 and
             shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS)
         full_value = initial_value()
         return full_value[offsets[shard_index]:offsets[shard_index + 1]]

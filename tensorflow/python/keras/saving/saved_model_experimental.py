@@ -25,7 +25,7 @@ import six
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import saving_utils
@@ -206,7 +206,7 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
 
   has_saved_vars = False
   if model.optimizer:
-    if isinstance(model.optimizer, (optimizers.TFOptimizer,
+    if isinstance(model.optimizer, (optimizer_v1.TFOptimizer,
                                     optimizer_v2.OptimizerV2)):
       _export_mode(mode_keys.ModeKeys.TRAIN, has_saved_vars, **export_args)
       has_saved_vars = True

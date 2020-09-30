@@ -100,6 +100,8 @@ CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL) \
             $(TAG_DEFINES)
 ARFLAGS := -r
 
+LDFLAGS += -Wl,--fatal-warnings
+
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
 TARGET_TOOLCHAIN_ROOT :=

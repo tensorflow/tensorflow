@@ -46,14 +46,17 @@ enum EventType {
   HOST_TO_DEVICE = 40,
   // Host is preparing to launch a computation on device.
   HOST_PREPARE = 50,
-  // Host is waiting for input.
-  HOST_WAIT_INPUT = 60,
-  // Device-to-device communication.
-  DEVICE_TO_DEVICE = 70,
-  // Device-to-host communication.
-  DEVICE_TO_HOST = 80,
+  // Assigns a smaller priority to DEVICE_COLLECTIVES than HOST_WAIT_INPUT,
+  // because if an all-reduce event is overlapped with an host-wait-input event,
+  // we want to count it as waiting for input.
   // Collective Ops such as All-Reduce.
-  DEVICE_COLLECTIVES = 90,
+  DEVICE_COLLECTIVES = 60,
+  // Host is waiting for input.
+  HOST_WAIT_INPUT = 70,
+  // Device-to-device communication.
+  DEVICE_TO_DEVICE = 80,
+  // Device-to-host communication.
+  DEVICE_TO_HOST = 90,
   // Device is computing with 32-bit precision.
   DEVICE_COMPUTE_32 = 100,
   // Device is computing with 16-bit precision.

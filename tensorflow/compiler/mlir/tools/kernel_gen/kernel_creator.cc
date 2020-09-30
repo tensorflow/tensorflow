@@ -21,14 +21,12 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
-#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -48,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
@@ -71,6 +70,8 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
                     llvm::ArrayRef<uint32_t> unroll_factors) {
   mlir::PassManager pm(module.getContext());
   applyPassManagerCLOptions(pm);
+  // TODO(b/169357508): renable when pipeline is serializable.
+  //  SetCrashReproducer(pm);
 
   pm.addPass(mlir::mhlo::createLegalizeTFPass(false));
   if (gpu_binary_only) {
@@ -88,6 +89,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     pm.addPass(mlir::createTransformUnrankedHloPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
+    pm.addPass(mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   }
 
   // Clean up the IR for further processing.
@@ -153,7 +155,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   }
   // Approximate Tanh using standard operations.
   pm.addNestedPass<::mlir::FuncOp>(
-      ::mlir::mhlo::createLegalizeTanhToApproximationPass());
+      ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(xla::mlir_gpu::createMoveScalarComputationsIntoGpuLaunchPass());
   // Take launches to launches with kernels.
@@ -177,14 +179,15 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
                       int32_t architecture) {
   mlir::PassManager pm(module.getContext());
   applyPassManagerCLOptions(pm);
+  // TODO(b/169357508): renable when pipeline is serializable.
+  //  SetCrashReproducer(pm);
 
   auto& kernel_pm = pm.nest<mlir::gpu::GPUModuleOp>();
   if (gpu_binary_only) {
     // Grab the original signature from the single function.
-    auto func = *module.getBody()->op_begin<mlir::FuncOp>();
     kernel_pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(
         mlir::kernel_gen::transforms::CreatePropagateTensorFlowABIKnowledgePass(
-            func.getType(), same_shape));
+            same_shape));
   }
   kernel_pm.addPass(mlir::createStripDebugInfoPass());
   kernel_pm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToBlobPass(

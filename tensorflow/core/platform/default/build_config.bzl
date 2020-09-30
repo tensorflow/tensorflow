@@ -498,6 +498,7 @@ def tf_proto_library(
         visibility = None,
         testonly = 0,
         cc_libs = [],
+        cc_stubby_versions = None,
         cc_api_version = 2,
         cc_grpc_version = None,
         use_grpc_namespace = False,
@@ -505,6 +506,7 @@ def tf_proto_library(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_grpc_library = False,
         make_default_target_header_only = False,
         exports = [],
         tags = []):
@@ -513,7 +515,14 @@ def tf_proto_library(
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports, create_service, create_java_proto)
+    _ignore = (
+        js_codegen,
+        exports,
+        create_service,
+        create_java_proto,
+        create_grpc_library,
+        cc_stubby_versions,
+    )
 
     native.proto_library(
         name = name,
@@ -671,6 +680,7 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:linux_s390x"): [],
         clean_dep("//tensorflow:windows"): [],
         clean_dep("//tensorflow:no_hdfs_support"): [],
+        clean_dep("//tensorflow:with_tpu_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/hadoop:hadoop_file_system"),
         ],

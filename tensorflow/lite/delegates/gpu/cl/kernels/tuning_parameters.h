@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_TUNING_PARAMETERS_H_
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 
 namespace tflite {
 namespace gpu {

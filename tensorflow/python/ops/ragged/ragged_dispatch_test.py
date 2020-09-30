@@ -142,7 +142,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if test_util.IsBuiltWithROCm():
       # TODO(rocm):
       # This fails on ROCm...see JIRA ticket 236756
+<<<<<<< HEAD
       return
+=======
+      self.skipTest('Fails on ROCM')
+>>>>>>> upstream/master
 
     result = op(x, **extra_args)
 

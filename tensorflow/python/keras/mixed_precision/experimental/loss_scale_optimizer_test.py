@@ -189,6 +189,52 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # 1.
       self.assertAllClose([1.], self.evaluate(var))
 
+  # pylint: disable=cell-var-from-loop
+  @parameterized.named_parameters(*TESTCASES)
+  def testClipping(self, strategy_fn):
+    strategy = strategy_fn()
+    learning_rate = 2.
+    for clip_type in ('clipnorm', 'global_clipnorm', 'clipvalue'):
+      with strategy.scope(), self.subTest(clip_type=clip_type):
+        var = variables.Variable([5.0])
+        opt = gradient_descent.SGD(learning_rate, **{clip_type: 2.0})
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=2, increment_period=1, multiplier=2)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+        self.assertEqual(getattr(opt, clip_type), 2.0)
+        self.assertEqual(
+            loss_scale.initial_loss_scale % strategy.num_replicas_in_sync, 0)
+
+        loss = lambda: var * 4 / strategy.num_replicas_in_sync
+        run_fn = lambda: opt.minimize(loss, var_list=[var])
+
+        # Test running with clipped gradients
+        run_op = strategy.experimental_run(run_fn)
+        self.evaluate(variables.global_variables_initializer())
+        self._run_if_in_graph_mode(run_op)
+        # The gradient is 4 but is clipped to 2, so the variable will be
+        # init_val - clipped_grad * lr == 5 - 2 * 2 == 1
+        self.assertAllClose([1.], self.evaluate(var))
+        self.assertEqual(self.evaluate(opt.loss_scale()), 4)
+
+        # Test changing the clip amount and running again
+        setattr(opt, clip_type, 3.0)
+        run_op = strategy.experimental_run(run_fn)
+        self._run_if_in_graph_mode(run_op)
+        # The gradient is 4 but is clipped to 3, so the variable will be
+        # prev_var - clipped_grad * lr == 1 - 3 * 2 == -5
+        self.assertAllClose([-5.], self.evaluate(var))
+        self.assertEqual(self.evaluate(opt.loss_scale()), 8)
+
+        # Test Inf gradients are still skipped instead of being clipped
+        loss = lambda: var * float('Inf')
+        run_fn = lambda: opt.minimize(loss, var_list=[var])
+        run_op = strategy.experimental_run(run_fn)
+        self._run_if_in_graph_mode(run_op)
+        self.assertAllClose([-5.], self.evaluate(var))  # Var does not change
+        self.assertEqual(self.evaluate(opt.loss_scale()), 4)
+  # pylint: enable=cell-var-from-loop
+
   @parameterized.named_parameters(*TESTCASES)
   def testDynamicUpdate(self, strategy_fn):
     with strategy_fn().scope() as strategy:

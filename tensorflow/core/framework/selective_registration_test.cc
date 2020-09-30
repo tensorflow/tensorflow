@@ -58,7 +58,8 @@ InitOnStartupMarker const kConditionalInitMarker =
 template InitOnStartupMarker const kConditionalInitMarker<true>;
 template InitOnStartupMarker const kConditionalInitMarker<false>;
 
-TEST(InitOnStartupTest, Conditional) {
+// TODO(b/169282173): Enable once the issue is fixed.
+TEST(InitOnStartupTest, DISABLED_Conditional) {
   EXPECT_THAT(observed_conditional_init<true>, Eq(1));
   EXPECT_THAT(observed_conditional_init<false>, Eq(0));
 }
@@ -75,7 +76,8 @@ InitOnStartupMarker const kConditionalInitImmediateMarker =
 template InitOnStartupMarker const kConditionalInitImmediateMarker<true>;
 template InitOnStartupMarker const kConditionalInitImmediateMarker<false>;
 
-TEST(InitOnStartupTest, ConditionalImmediate) {
+// TODO(b/169282173): Enable once the issue is fixed.
+TEST(InitOnStartupTest, DISABLED_ConditionalImmediate) {
   EXPECT_THAT(observed_conditional_init_immediate<true>, Eq(1));
   EXPECT_THAT(observed_conditional_init_immediate<false>, Eq(0));
 }

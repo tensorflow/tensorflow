@@ -230,7 +230,7 @@ void ConvPowerVR::GenerateCode(const DeviceInfo& device_info) {
       device_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
   }
-  if (conv_params_.IsPrivateMemBroadcast()) {
+  if (conv_params_.IsPrivateMemBroadcast() && device_info.IsCL20OrHigher()) {
     compiler_options_.push_back(CompilerOptions::CL_2_0);
   }
 }
@@ -453,6 +453,8 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
   if (use_simd_broadcast) {
     if (device_info.cl_version == OpenCLVersion::CL_2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
+    } else if (device_info.SupportsExtension("cl_intel_subgroups")) {
+      c += "#pragma OPENCL EXTENSION cl_intel_subgroups : enable\n";
     }
   }
   const int4 block_size = conv_params.block_size;
@@ -1213,10 +1215,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.block_size = int4(1, 1, 1, 4);
     conv_params.src_depth_loop_size = 1;
     int sub_group_size = 16;
+    const bool supports_subgroups =
+        device_info.SupportsExtension("cl_khr_subgroups") ||
+        device_info.SupportsExtension("cl_intel_subgroups");
     if (definition.precision != CalculationsPrecision::F32_F16 &&
-        device_info.SupportsExtension("cl_khr_subgroups") &&
+        supports_subgroups &&
         device_info.SupportsExtension("cl_intel_required_subgroup_size") &&
-        device_info.IsCL20OrHigher() &&
         device_info.SupportsSubGroupWithSize(sub_group_size)) {
       conv_params.weights_upload_type =
           WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;

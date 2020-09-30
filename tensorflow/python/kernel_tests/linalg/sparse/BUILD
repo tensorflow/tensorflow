@@ -11,6 +11,7 @@ cuda_py_test(
     name = "conjugate_gradient_test",
     size = "medium",
     srcs = ["conjugate_gradient_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -28,6 +29,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["csr_sparse_matrix_test.py"],
     main = "csr_sparse_matrix_test.py",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
     ],
@@ -56,6 +58,7 @@ cuda_py_test(
     srcs = ["csr_sparse_matrix_grad_test.py"],
     main = "csr_sparse_matrix_grad_test.py",
     shard_count = 50,
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
     ],
@@ -67,6 +70,7 @@ cuda_py_test(
     srcs = ["csr_sparse_matrix_dense_mat_mul_grad_test.py"],
     main = "csr_sparse_matrix_dense_mat_mul_grad_test.py",
     shard_count = 50,
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
     ],
@@ -78,6 +82,7 @@ cuda_py_test(
     srcs = ["csr_sparse_matrix_sparse_mat_mul_grad_test.py"],
     main = "csr_sparse_matrix_sparse_mat_mul_grad_test.py",
     shard_count = 50,
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
     ],

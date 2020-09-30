@@ -42,7 +42,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -71,11 +71,11 @@ def _clone_and_build_model(model, strategy):
     cloned_model = models.clone_model(model)
 
   # Compile and build model.
-  if isinstance(model.optimizer, optimizers.TFOptimizer):
+  if isinstance(model.optimizer, optimizer_v1.TFOptimizer):
     optimizer = model.optimizer
     # TODO(yuefengz): figure out why the optimizer here is still a
     # TFOptimizer.
-    while isinstance(optimizer, optimizers.TFOptimizer):
+    while isinstance(optimizer, optimizer_v1.TFOptimizer):
       optimizer = optimizer.optimizer
     optimizer = copy.deepcopy(optimizer)
   else:

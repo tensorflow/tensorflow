@@ -104,15 +104,19 @@ except Exception:  # pylint: disable=broad-except
   pass
 
 
-# Uses the same mechanism as above to selectively enable MLIR compilation.
+# Uses the same mechanism as above to selectively enable/disable MLIR
+# compilation.
 def is_mlir_bridge_enabled():
   return False
 
 
 try:
-  from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
-except Exception:  # pylint: disable=broad-except
-  pass
+  from tensorflow.python.framework.is_mlir_bridge_test_false import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except ImportError:
+  try:
+    from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+  except ImportError:
+    pass
 
 
 # Uses the same mechanism as above to selectively enable TFRT.
