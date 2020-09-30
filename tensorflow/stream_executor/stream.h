@@ -74,6 +74,19 @@ class AlgorithmDesc;
 class StreamExecutor;
 class ScratchAllocator;
 
+namespace detail {
+
+// Helper class to prevent a template function argument from being deduced. This
+// is identical to std::type_identity in C++20.
+template <typename T>
+struct NonDeduced {
+  using type = T;
+};
+template <typename T>
+using NonDeducedType = typename NonDeduced<T>::type;
+
+}  // namespace detail
+
 // Convert a type to the corresponding QuantizedActivationMode.
 template <typename ElementType>
 struct Quantization;
@@ -1666,60 +1679,33 @@ class Stream {
                        DeviceMemory<std::complex<double>> *b, int ldb);
 
   // See BlasSupport::DoBlatLtMatmul.
+  Stream& ThenBlasLtMatmul(const blas::IBlasLtMatmulPlan* plan,
+                           const HostOrDeviceScalar<void>& alpha,
+                           DeviceMemoryBase a, DeviceMemoryBase b,
+                           const HostOrDeviceScalar<void>& beta,
+                           DeviceMemoryBase c,
+                           ScratchAllocator* scratch_allocator,
+                           const blas::IBlasLtMatmulAlgorithm* algorithm,
+                           DeviceMemoryBase bias,
+                           blas::ProfileResult* output_profile_result);
+
+  // Note that we prevent alpha and beta from being used to deduce CType so that
+  // they can be constructed implicitly from values of type CType. Without this,
+  // type deduction would fail when this function is called with a value of type
+  // CType for alpha or beta.
+  template <typename ABType, typename CType>
   Stream& ThenBlasLtMatmul(
       const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<int32>& alpha, const DeviceMemory<int8>& a,
-      const DeviceMemory<int8>& b, const HostOrDeviceScalar<int32>& beta,
-      DeviceMemory<int32>* c, ScratchAllocator* scratch_allocator,
+      const detail::NonDeducedType<HostOrDeviceScalar<CType>>& alpha,
+      const DeviceMemory<ABType>& a, const DeviceMemory<ABType>& b,
+      const detail::NonDeducedType<HostOrDeviceScalar<CType>>& beta,
+      DeviceMemory<CType>* c, ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
-      const DeviceMemory<int32>& bias = {},
-      blas::ProfileResult* output_profile_result = nullptr);
-  Stream& ThenBlasLtMatmul(
-      const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<Eigen::half>& alpha,
-      const DeviceMemory<Eigen::half>& a, const DeviceMemory<Eigen::half>& b,
-      const HostOrDeviceScalar<Eigen::half>& beta, DeviceMemory<Eigen::half>* c,
-      ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm,
-      const DeviceMemory<Eigen::half>& bias = {},
-      blas::ProfileResult* output_profile_result = nullptr);
-  Stream& ThenBlasLtMatmul(
-      const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<float>& alpha, const DeviceMemory<float>& a,
-      const DeviceMemory<float>& b, const HostOrDeviceScalar<float>& beta,
-      DeviceMemory<float>* c, ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm,
-      const DeviceMemory<float>& bias = {},
-      blas::ProfileResult* output_profile_result = nullptr);
-  Stream& ThenBlasLtMatmul(
-      const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<double>& alpha, const DeviceMemory<double>& a,
-      const DeviceMemory<double>& b, const HostOrDeviceScalar<double>& beta,
-      DeviceMemory<double>* c, ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm,
-      const DeviceMemory<double>& bias = {},
-      blas::ProfileResult* output_profile_result = nullptr);
-  Stream& ThenBlasLtMatmul(
-      const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<std::complex<float>>& alpha,
-      const DeviceMemory<std::complex<float>>& a,
-      const DeviceMemory<std::complex<float>>& b,
-      const HostOrDeviceScalar<std::complex<float>>& beta,
-      DeviceMemory<std::complex<float>>* c, ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm,
-      const DeviceMemory<std::complex<float>>& bias = {},
-      blas::ProfileResult* output_profile_result = nullptr);
-  Stream& ThenBlasLtMatmul(
-      const blas::IBlasLtMatmulPlan* plan,
-      const HostOrDeviceScalar<std::complex<double>>& alpha,
-      const DeviceMemory<std::complex<double>>& a,
-      const DeviceMemory<std::complex<double>>& b,
-      const HostOrDeviceScalar<std::complex<double>>& beta,
-      DeviceMemory<std::complex<double>>* c,
-      ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm,
-      const DeviceMemory<std::complex<double>>& bias = {},
-      blas::ProfileResult* output_profile_result = nullptr);
+      const DeviceMemory<CType>& bias = {},
+      blas::ProfileResult* output_profile_result = nullptr) {
+    return ThenBlasLtMatmul(plan, alpha, a, b, beta, *c, scratch_allocator,
+                            algorithm, bias, output_profile_result);
+  }
 
   // See FftSupport::DoFft.
   Stream &ThenFft(fft::Plan *plan,
