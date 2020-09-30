@@ -389,13 +389,8 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     // 1D array necessary due to bug in CUDA 9 compiler.
     // TODO(nluehr) revert to 2D array when compiler is ready.
     // This is to mimic the following, but without constructors:
-<<<<<<< HEAD
-    //     __shared__ storage_type<value_type> partial_sums[WARPSIZE *
-    //     (WARPSIZE + 1)];
-=======
     //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE *
     //     (TF_RED_WARPSIZE + 1)];
->>>>>>> upstream/master
 #if GOOGLE_CUDA
   __shared__ __align__(alignof(value_type)) char
       partial_sums_raw[WARPSIZE * (WARPSIZE + 1) *

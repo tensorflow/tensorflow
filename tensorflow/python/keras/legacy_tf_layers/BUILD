@@ -168,11 +168,8 @@ tf_py_test(
     srcs = ["pooling_test.py"],
     main = "pooling_test.py",
     python_version = "PY3",
-<<<<<<< HEAD
-=======
     tags = ["no_rocm"],
     tfrt_enabled = True,
->>>>>>> upstream/master
     deps = [
         ":pooling",
         "//tensorflow/python:array_ops",

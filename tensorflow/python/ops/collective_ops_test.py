@@ -515,27 +515,6 @@ class CollectiveOpTest(test.TestCase):
     result = fn([in0, in1])
     self.assertAllClose(result, [2, 2])
 
-<<<<<<< HEAD
-  @test_util.run_v2_only
-  def testCollectiveGroupSizeOne(self):
-    group_size = 1
-    group_key = 100
-    instance_key = 100
-    in_value = [1, 2, 3, 4]
-    in_tensor = constant_op.constant(in_value)
-
-    with ops.device('/CPU:0'):
-        reduced_tensor = collective_ops.all_reduce(
-            in_tensor, group_size, group_key, instance_key, 'Add', 'Id')
-        self.assertAllEqual(in_value, reduced_tensor.numpy())
-
-    with ops.device('/CPU:0'):
-        gathered_tensor = collective_ops.all_gather(
-            in_tensor, group_size, group_key, instance_key)
-        self.assertAllEqual(in_value, gathered_tensor.numpy())
-
-=======
->>>>>>> upstream/master
   def testConstantWithScopedAllocator(self):
     group_size = 2
     group_key = 1

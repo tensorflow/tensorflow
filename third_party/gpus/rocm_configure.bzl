@@ -324,11 +324,7 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-<<<<<<< HEAD
-            ("amdhip64", rocm_config.rocm_toolkit_path),
-=======
             ("amdhip64", rocm_config.rocm_toolkit_path + "/hip"),
->>>>>>> upstream/master
             ("rocblas", rocm_config.rocm_toolkit_path + "/rocblas"),
             ("rocfft", rocm_config.rocm_toolkit_path + "/rocfft"),
             ("hiprand", rocm_config.rocm_toolkit_path + "/hiprand"),

@@ -7,12 +7,8 @@ load(
     "stream_executor_friends",
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
-<<<<<<< HEAD
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
-=======
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
->>>>>>> upstream/master
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(

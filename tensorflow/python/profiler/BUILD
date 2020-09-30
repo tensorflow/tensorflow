@@ -122,14 +122,8 @@ cuda_py_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-    tags = [
-        "no_pip",
-    ],
-=======
     tags = ["no_pip"],
     tfrt_enabled = True,
->>>>>>> upstream/master
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":model_analyzer",
