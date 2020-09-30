@@ -217,6 +217,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
+            "//tensorflow/c/experimental/filesystem:modular_filesystem",
         ],
     }),
     alwayslink = 1,
