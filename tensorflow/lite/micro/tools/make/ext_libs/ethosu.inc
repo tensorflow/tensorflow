@@ -1,4 +1,5 @@
 ifneq ($(filter ethos-u,$(ALL_TAGS)),)
+    # Do not link Math library
     MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
 
     ifneq (,$(filter $(TARGET_ARCH), x86_64))
