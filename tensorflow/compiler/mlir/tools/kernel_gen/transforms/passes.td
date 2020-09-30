@@ -51,19 +51,22 @@ def UnfuseBatchNormPass : FunctionPass<"unfuse-batch-norm"> {
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [
-    Option<"blob_annotation_", "blob-annotation", "mlir::StringRef",
+    Option<"blob_annotation_", "blob-annotation", "std::string",
            /*default=*/"", "Blob attribute name">,
     Option<"arch_", "arch", "int32_t", /*default=*/"0", "GPU architecture">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
 
+def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
+  let summary = "Pass to convert scf::ParallelOp to scf::ForOp";
+  let constructor = "transforms::CreateParallelLoopsToSequential()";
+}
+
 def PropagateTensorFlowABIKnowledgePass
     : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
   let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";
   let options = [
-    Option<"func_type_", "func-type", "mlir::FunctionType",
-           /*default=*/"", "Function type">,
     ListOption<"same_shape_", "same-shape", "uint32_t",
                "List of same shape args">,
   ];

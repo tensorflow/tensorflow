@@ -38,6 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -47,6 +48,8 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load as saved_model_load
+from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import graph_view
@@ -1704,6 +1707,47 @@ class DenseHashTableOpTest(test.TestCase):
     input_string = constant_op.constant([10, 11, 12, 13, 14], dtypes.int64)
     output = load_table.lookup(input_string)
     self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
+
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    default_value = -1
+    empty_key = 0
+    deleted_key = -1
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    root.table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        deleted_key=deleted_key,
+        name="t1",
+        checkpoint=True,
+        initial_num_buckets=32)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    root.lookup = lookup
+
+    self.assertAllEqual(0, root.table.size())
+    root.table.insert(keys, values)
+    self.assertAllEqual(3, self.evaluate(root.table.size()))
+    self.assertAllEqual(32, len(self.evaluate(root.table.export()[0])))
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), -1)
 
   @test_util.run_v1_only("Saver V1 only")
   def testVectorSaveRestore(self):

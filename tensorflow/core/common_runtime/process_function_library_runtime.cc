@@ -88,7 +88,6 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent,
-    const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     Rendezvous::Factory rendezvous_factory)
     : parent_(parent),
@@ -106,14 +105,14 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, config_ ? &(*config_) : nullptr, nullptr,
         graph_def_version, lib_def_, default_thread_pool, optimizer_options,
-        custom_kernel_creator, session_metadata_, this);
+        session_metadata_, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
     (*flr_map_)[d] = NewFunctionLibraryRuntime(
         device_mgr, env, config_ ? &(*config_) : nullptr, d, graph_def_version,
-        lib_def_, default_thread_pool, optimizer_options, custom_kernel_creator,
-        session_metadata_, this);
+        lib_def_, default_thread_pool, optimizer_options, session_metadata_,
+        this);
   }
 
   InitializeDeviceSet();
@@ -1715,7 +1714,6 @@ void ProcessFunctionLibraryRuntime::CleanUp(
 
 Status ProcessFunctionLibraryRuntime::Clone(
     Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
-    const CustomKernelCreator* custom_kernel_creator,
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
     bool skip_flib_def) const {
@@ -1728,7 +1726,7 @@ Status ProcessFunctionLibraryRuntime::Clone(
   *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, config_ ? &(*config_) : nullptr, graph_def_version,
       out_lib_def->get(), optimizer_options, default_thread_pool_, parent_,
-      custom_kernel_creator, session_metadata_, rendezvous_factory_);
+      session_metadata_, rendezvous_factory_);
   {
     tf_shared_lock l(mu_);
     for (auto* d : composite_devices_) (*out_pflr)->AddCompositeDevice(d);

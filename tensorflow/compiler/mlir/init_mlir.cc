@@ -20,6 +20,11 @@ limitations under the License.
 namespace tensorflow {
 
 InitMlir::InitMlir(int *argc, char ***argv) : init_llvm_(*argc, *argv) {
+  llvm::setBugReportMsg(
+      "TensorFlow crashed, please file a bug on "
+      "https://github.com/tensorflow/tensorflow/issues with the trace "
+      "below.\n");
+
   constexpr char kSeparator[] = "--";
 
   // Find index of separator between two sets of flags.

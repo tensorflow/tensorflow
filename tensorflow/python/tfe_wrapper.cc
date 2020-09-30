@@ -301,10 +301,12 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
       return IrExportStage::HLO;
     } else if (s_stage == "optimized_hlo") {
       return IrExportStage::OPTIMIZED_HLO;
+    } else if (s_stage == "optimized_hlo_dot") {
+      return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
       ThrowValueError(
           absl::StrFormat("Invalid stage selected: '%s'. Valid values are: "
-                          "'hlo', 'optimized_hlo'",
+                          "'hlo', 'optimized_hlo', 'optimized_hlo_dot'",
                           s_stage)
               .c_str());
     }

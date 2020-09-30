@@ -29,6 +29,7 @@ py_library(
     srcs = [
         "__init__.py",
         "distributed_training_utils.py",
+        "distributed_training_utils_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -137,6 +138,7 @@ cuda_py_test(
     srcs = ["worker_training_state_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":multi_worker_testing_utils",
         ":worker_training_state",

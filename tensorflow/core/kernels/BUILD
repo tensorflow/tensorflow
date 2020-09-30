@@ -1,7 +1,7 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
     "if_android",
     "if_cuda_or_rocm",
     "if_mobile",
@@ -12,10 +12,15 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
-    "tf_kernel_library",
     "tf_opts_nortti_if_lite_protos",
 )
 load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
@@ -25,6 +30,9 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -3106,7 +3114,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "summary_image_op",
     prefix = "summary_image_op",
-    deps = LOGGING_DEPS + ["//tensorflow/core:png_internal"],
+    deps = LOGGING_DEPS + ["//tensorflow/core/lib/png:png_io"],
 )
 
 # TODO(b/162630222): remove this target
@@ -3841,13 +3849,13 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
-        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
     }) + if_cuda([
+        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
     ]) + if_cuda_or_rocm([
@@ -6262,6 +6270,7 @@ filegroup(
         "string_lower_op.cc",
         "string_util.cc",
         "string_split_op.cc",
+        "string_strip_op.cc",
         "string_to_hash_bucket_op.cc",
         "substr_op.cc",
         "tensor_array.cc",
@@ -6478,9 +6487,9 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
-        "//tensorflow/core:portable_png_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
@@ -7497,7 +7506,7 @@ test_suite(
         ":variable_ops_test",
         "//tensorflow/core/kernels/image:crop_and_resize_op_test",
         "//tensorflow/core/kernels/image:non_max_suppression_op_test",
-        "//tensorflow/core/kernels/image:resize_bilinear_op_test",
+        "//tensorflow/core/kernels/image:resize_ops_test",
     ],
 )
 
@@ -7524,6 +7533,7 @@ exports_files([
     "cwise_op_gpu_floor_div.cu.cc",
     "cwise_op_gpu_greater.cu.cc",
     "cwise_op_gpu_greater_equal.cu.cc",
+    "cwise_op_gpu_isinf.cu.cc",
     "cwise_op_gpu_less.cu.cc",
     "cwise_op_gpu_less_equal.cu.cc",
     "cwise_op_gpu_log.cu.cc",
@@ -7536,6 +7546,7 @@ exports_files([
     "cwise_op_gpu_mul.cu.cc",
     "cwise_op_gpu_neg.cu.cc",
     "cwise_op_gpu_not_equal_to.cu.cc",
+    "cwise_op_gpu_pow.cu.cc",
     "cwise_op_gpu_round.cu.cc",
     "cwise_op_gpu_rsqrt.cu.cc",
     "cwise_op_gpu_select.cu.cc",
@@ -7547,6 +7558,7 @@ exports_files([
     "cwise_op_gpu_tanh.cu.cc",
     "cwise_op_greater.cc",
     "cwise_op_greater_equal.cc",
+    "cwise_op_isinf.cc",
     "cwise_op_less.cc",
     "cwise_op_less_equal.cc",
     "cwise_op_log.cc",
@@ -7562,6 +7574,7 @@ exports_files([
     "cwise_op_neg_2.cc",
     "cwise_op_not_equal_to_1.cc",
     "cwise_op_not_equal_to_2.cc",
+    "cwise_op_pow.cc",
     "cwise_op_round.cc",
     "cwise_op_rsqrt.cc",
     "cwise_op_select.cc",

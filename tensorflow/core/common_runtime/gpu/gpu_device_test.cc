@@ -255,7 +255,8 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
   {
 #if TENSORFLOW_USE_ROCM
     // Priority outside the range (-1, 1) for AMD GPUs
-    SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-1, 2}});
+    SessionOptions opts =
+        MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-1, 2}});
 #else
     // Priority outside the range (-2, 0) for NVidia GPUs
     SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 1}});

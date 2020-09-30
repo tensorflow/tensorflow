@@ -105,26 +105,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<Tensor>& received);
 
-// Returns a stable hash of the subgraph rooted at the given node.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
-Status HashNode(const GraphDef& graph, const NodeDef& node,
-                const FunctionLibraryDefinition& flib_def, uint64* hash);
-
-// Returns a stable hash of the given tensor.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashTensor(const Tensor& tensor, uint64* hash);
-
-// Returns a stable hash of the given graph.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashGraph(const GraphDef& graph, uint64* hash);
-
 // Writes dataset elements to the checkpoint writer using the given key prefix.
 // The elements can be read back by passing the same key prefix to
 // ReadElementsFromCheckpoint. Only one list of elements can be written under

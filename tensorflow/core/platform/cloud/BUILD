@@ -1,6 +1,7 @@
 # Description:
 # Cloud file system implementation.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_windows",

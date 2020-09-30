@@ -92,11 +92,6 @@ int64 GetEventType(bool is_host_plane, const EventNode& event) {
   }
 }
 
-void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
-  AddOrUpdateIntStat(*visitor.GetStatMetadataId(StatType::kGroupId), group_id,
-                     event);
-}
-
 void SetContextGroup(EventNode* event, ContextGroupMap* context_groups) {
   auto producer = event->GetProducerContext();
   if (producer.has_value()) {
@@ -413,22 +408,34 @@ std::string EventNode::GetGroupName() const {
   return name;
 }
 
+void EventNode::SetGroupId(int64 group_id) {
+  group_id_ = group_id;
+  AddOrUpdateIntStat(*plane_->GetStatMetadataId(StatType::kGroupId), group_id,
+                     raw_event_);
+}
+
 void EventNode::PropagateGroupId(int64 group_id,
                                  GroupMetadataMap* group_metadata_map) {
-  group_id_ = group_id;
-  SetGroupId(*plane_, group_id, raw_event_);
-  for (const auto& child : children_) {
-    absl::optional<int64> child_group_id = child->GetGroupId();
-    if (child_group_id.has_value()) {
-      if (*child_group_id != group_id) {
-        (*group_metadata_map)[group_id].children.insert(*child_group_id);
-        (*group_metadata_map)[*child_group_id].parents.insert(group_id);
+  std::queue<EventNode*> nodes;
+  absl::flat_hash_set<EventNode*> seen = {this};
+  nodes.push(this);
+  while (!nodes.empty()) {
+    EventNode* node = nodes.front();
+    nodes.pop();
+    absl::optional<int64> node_group_id = node->GetGroupId();
+    if (node_group_id.has_value()) {
+      if (*node_group_id != group_id) {
+        (*group_metadata_map)[group_id].children.insert(*node_group_id);
+        (*group_metadata_map)[*node_group_id].parents.insert(group_id);
       }
-      // Stop propagation if it already belongs to a group. It may have been
-      // grouped by another root.
-      continue;
+    } else {
+      node->SetGroupId(group_id);
+      for (EventNode* child : node->GetChildren()) {
+        if (seen.contains(child)) continue;
+        nodes.push(child);
+        seen.insert(child);
+      }
     }
-    child->PropagateGroupId(group_id, group_metadata_map);
   }
 }
 
@@ -571,14 +578,14 @@ void EventForest::ProcessLegacyRootEvents(
   }
 }
 
-void EventForest::CreateEventGroup() {
+void EventForest::CreateEventGroup(GroupMetadataMap* group_metadata_map) {
   // Handle inference batching profiles.
   if (event_node_map_.contains(HostEventType::kProcessBatch)) {
     // Assign group_id per batch.
     for (const auto& process_batch_node :
          event_node_map_[HostEventType::kProcessBatch]) {
       ProcessRootEvent(next_group_id_++, /*set_step_name=*/false,
-                       process_batch_node.get(), &group_metadata_map_);
+                       process_batch_node.get(), group_metadata_map);
     }
     HostEventType request_event_type =
         event_node_map_.contains(HostEventType::kBatchingSessionRun)
@@ -589,15 +596,15 @@ void EventForest::CreateEventGroup() {
       // Assign group_id per request.
       for (const auto& request_event : *request_events) {
         ProcessRootEvent(next_group_id_++, /*set_step_name=*/false,
-                         request_event.get(), &group_metadata_map_);
+                         request_event.get(), group_metadata_map);
         // Also, set a helper stat for selected_group_ids.
-        request_event->AddSelectedGroupIds(group_metadata_map_);
+        request_event->AddSelectedGroupIds(*group_metadata_map);
       }
     }
     // Set a helper stat for selected_group_ids per batch.
     for (const auto& process_batch_node :
          event_node_map_[HostEventType::kProcessBatch]) {
-      process_batch_node->AddSelectedGroupIds(group_metadata_map_);
+      process_batch_node->AddSelectedGroupIds(*group_metadata_map);
     }
     return;
   }
@@ -605,7 +612,7 @@ void EventForest::CreateEventGroup() {
   if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
     for (EventNode* root_event : tf_loop_root_events_) {
       ProcessRootEvent(next_group_id_++, /*set_step_name=*/true, root_event,
-                       &group_metadata_map_);
+                       group_metadata_map);
     }
     return;
   }
@@ -617,7 +624,7 @@ void EventForest::CreateEventGroup() {
         (!HasJaxEvent(event_node_map_) ||
          !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
       ProcessRootEvent(next_group_id_++, /*set_step_name=*/true, root_event,
-                       &group_metadata_map_);
+                       group_metadata_map);
     }
   }
 }
@@ -725,7 +732,7 @@ void EventForest::ProcessWorker() {
   }
 }
 
-void EventForest::ProcessModelIds() {
+void EventForest::ProcessModelIds(GroupMetadataMap* group_metadata_map) {
   auto session_run_event_list =
       gtl::FindOrNull(event_node_map_, HostEventType::kSessionRun);
   if (!session_run_event_list) return;
@@ -735,7 +742,7 @@ void EventForest::ProcessModelIds() {
     absl::optional<XStatVisitor> model_id =
         session_run_event->GetEventVisitor().GetStat(StatType::kModelId);
     if (!model_id.has_value()) continue;
-    group_metadata_map_[*group_id].model_id = model_id->ToString();
+    (*group_metadata_map)[*group_id].model_id = model_id->ToString();
   }
 }
 
@@ -816,7 +823,7 @@ EventForest::EventForest(
     const std::vector<InterThreadConnectInfo>& connect_info_list,
     const std::vector<int64>& root_event_types,
     const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    XSpace* space) {
+    XSpace* space, GroupMetadataMap* group_metadata_map) {
   ContextGroupMap context_groups;
   visitors_.reserve(space->planes_size());
   for (auto& plane : *space->mutable_planes()) {
@@ -829,10 +836,10 @@ EventForest::EventForest(
   ProcessTensorFlowLoop();
   ProcessWorker();
   ProcessLegacyRootEvents(root_event_types);
-  CreateEventGroup();
+  CreateEventGroup(group_metadata_map);
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
-  ProcessModelIds();
+  ProcessModelIds(group_metadata_map);
 }
 
 EventForest::EventForest(
@@ -861,13 +868,15 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
 }
 
 void GroupTfEvents(XSpace* space, GroupMetadataMap* group_metadata_map) {
-  if (!space) return;
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  EventForest event_forest(connect_info_list, {}, CreateTfXPlaneVisitor, space);
-  if (group_metadata_map) {
-    *group_metadata_map = event_forest.GetGroupMetadataMap();
-  }
+  EventForest event_forest(connect_info_list, {}, CreateTfXPlaneVisitor, space,
+                           group_metadata_map);
+}
+
+void GroupTfEvents(XSpace* space) {
+  GroupMetadataMap group_metadata_map;
+  GroupTfEvents(space, &group_metadata_map);
 }
 
 }  // namespace profiler

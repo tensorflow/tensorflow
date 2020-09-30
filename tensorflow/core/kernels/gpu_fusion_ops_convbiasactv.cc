@@ -144,7 +144,7 @@ class ROCmFusionKernelConvolutionBiasActivation : public OpKernel {
               ctx->eigen_device<GPUDevice>(),
               To32Bit(const_cast<const Tensor&>(fusion_input).tensor<T, 4>()),
               {{0, 0}}, {{rows_odd, cols_odd}},
-              To32Bit(padded_input.tensor<T, 4>()), data_format_);
+              To32Bit(padded_input.tensor<T, 4>()), data_format_, T{});
 
           fusion_input = padded_input;
 
@@ -302,7 +302,7 @@ namespace functor {
       const std::array<int, 2>& padding_left,                            \
       const std::array<int, 2>& padding_right,                           \
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format,  \
-      T padding_value);                                                  \
+      const T& padding_value);                                                  \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);

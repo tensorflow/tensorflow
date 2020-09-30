@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import atexit
 import collections
 import os
 
@@ -103,7 +102,7 @@ class MultiProcessPoolRunner():
 # expensive initialization cost of TensorFlow in new processes.
 #
 # Note that they have to be globals and can't be owned by test classes because
-# usually proc_func usually captures the test class instance, and test class
+# usually fn usually captures the test class instance, and test class
 # instance can't be pickled if it has mpr as a member (it is not allowed to
 # pickle Process objects).
 # TODO(crccw): Use `num_workers` combination once it is ready.
@@ -119,16 +118,6 @@ def get_global_mpr(num_processes):
   else:
     raise ValueError("get_global_mpr: num_processes must be 1 or 2, got %d" %
                      num_processes)
-
-
-# Shutdown the runners gracefully to avoid the processes getting SIGTERM and
-# make tsan happy.
-def _shutdown_at_exit():
-  global_mpr_2p.runner.shutdown()
-  global_mpr_1p.runner.shutdown()
-
-
-atexit.register(_shutdown_at_exit)
 
 
 class CollectiveOpsTest(test.TestCase, parameterized.TestCase):

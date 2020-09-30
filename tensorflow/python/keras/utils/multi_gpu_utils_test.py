@@ -24,6 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.utils import multi_gpu_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
@@ -191,7 +192,7 @@ class TestMultiGPUModel(test.TestCase):
 
       parallel_model.compile(
           loss='categorical_crossentropy',
-          optimizer=keras.optimizers.RMSprop(lr=0.0001, decay=1e-6),
+          optimizer=optimizer_v1.RMSprop(lr=0.0001, decay=1e-6),
           metrics=['accuracy'],
           target_tensors=[targets])
       parallel_model.fit(epochs=1, steps_per_epoch=3)

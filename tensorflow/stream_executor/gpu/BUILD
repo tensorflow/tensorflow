@@ -1,6 +1,7 @@
 # Description:
 #   GPU-platform specific StreamExecutor support code.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -9,8 +10,12 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_tpu", "tf_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -65,8 +70,10 @@ cc_library(
         "//tensorflow/stream_executor:device_options",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ] + if_tpu(
+        if_false = ["@local_config_cuda//cuda:cuda_headers"],
+        if_true = [],
+    ),
 )
 
 cc_library(

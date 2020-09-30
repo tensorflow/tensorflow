@@ -288,7 +288,6 @@ absl::Status BuildCellStateUpdate(GraphFloat32* graph, ObjectReader* reader,
     return absl::OkStatus();
   }
 
-  // TODO(b/157166356): Maybe add OperationType::CLAMP ?
   Value* max_clipped_state = CreateNewSimilarValue(graph, new_cell_state);
   {
     // #4 elementwise minimum: min(#3, clip)
@@ -398,7 +397,6 @@ absl::Status BuildOutputStateUpdate(GraphFloat32* graph, ObjectReader* reader,
     return absl::OkStatus();
   }
 
-  // TODO(b/157166356): Maybe add OperationType::CLAMP ?
   Value* max_clipped_state =
       CreateNewSimilarValue(graph, projected_output_state);
   {

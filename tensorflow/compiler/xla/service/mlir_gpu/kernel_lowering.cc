@@ -122,7 +122,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Approximate of requested.
   if (options.use_approximations) {
     pm.addNestedPass<::mlir::FuncOp>(
-        ::mlir::mhlo::createLegalizeTanhToApproximationPass());
+        ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   }
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(createMoveScalarComputationsIntoGpuLaunchPass());

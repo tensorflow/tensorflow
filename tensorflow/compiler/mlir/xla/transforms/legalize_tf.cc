@@ -3252,11 +3252,12 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     SmallVector<Value, 4> slice_begin_indices;
     // For the dimensions that are to be sliced, all have slice sizes of 1.
     SmallVector<int64_t, 4> slice_sizes(slicing_dim_size, 1);
-    auto input_element_ty = input_ty.getElementType();
+    auto begin_element_ty =
+        op.begin().getType().cast<ShapedType>().getElementType();
     // Scalar tensor type.
-    TensorType type = RankedTensorType::get(/*shape=*/{}, input_element_ty);
+    TensorType type = RankedTensorType::get(/*shape=*/{}, begin_element_ty);
     Location loc = op.getLoc();
-    auto zero = GetScalarConstOfType(input_element_ty, loc, 0, &rewriter);
+    auto zero = GetScalarConstOfType(begin_element_ty, loc, 0, &rewriter);
     for (int d = 0; d < slicing_dim_size; ++d) {
       auto index = rewriter.create<SliceOp>(
           loc, op.begin(), GetI64ElementsAttr({d}, &rewriter),
@@ -3267,7 +3268,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
       // If the index is negative, wrap it around with dimension size.
       auto index_negative =
           rewriter.create<TF::LessOp>(loc, reshaped_index, zero);
-      auto input_val = GetScalarConstOfType(input_element_ty, loc,
+      auto input_val = GetScalarConstOfType(begin_element_ty, loc,
                                             input_shape[d], &rewriter);
       auto wrapped_index =
           rewriter.create<TF::AddOp>(loc, input_val, reshaped_index);
@@ -3606,6 +3607,13 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
 /// `is_accumulation` controls whether it uses higher precision for the actual
 /// reduction. This is set to false for ops like max where there is no precision
 /// concerns.
+//
+// The Derived class should have a static method to return the initial value to
+// use for reduction:
+//   static Value GetInitialValue(Type reduce_element_type, Location loc,
+//                                PatternRewriter *rewriter);
+// The reduce_element_type is guaranteed to be a float, int, or complex type
+// suitable for use with GetScalarConstOfType or GetScalarLimitConstOfType.
 template <typename Derived, typename OpTy, typename ReductionOp,
           bool is_accumulation = true>
 class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
@@ -3639,6 +3647,14 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
     Location loc = op.getLoc();
     Type element_type = input_ty.getElementType();
+
+    // Only float, int, and complex types are currently supported.
+    if (!element_type.isa<FloatType>() && !element_type.isa<IntegerType>() &&
+        !element_type.isa<ComplexType>()) {
+      return rewriter.notifyMatchFailure(
+          op, "element type must be float, int, or complex type");
+    }
+
     // Convert to an accumulation type to not lose precision when doing
     // repeated arithmetic operations.
     Type reduce_element_type =
@@ -4706,10 +4722,8 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
                             &rewriter);
 
     // Get the sorted input and index tuple element.
-    auto tuple_first_element =
-        rewriter.create<mhlo::GetTupleElementOp>(op.getLoc(), sort_op, 0);
-    auto tuple_second_element =
-        rewriter.create<mhlo::GetTupleElementOp>(op.getLoc(), sort_op, 1);
+    auto tuple_first_element = sort_op.getResult(0);
+    auto tuple_second_element = sort_op.getResult(1);
 
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
     auto end_indices = llvm::to_vector<4>(input_type.getShape());
@@ -4995,8 +5009,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         BuildSortComparisonBody({i32_type, input_type.getElementType()},
                                 /*direction=*/"LT", &sorted.comparator(),
                                 &rewriter);
-        current = rewriter.create<GetTupleElementOp>(op.getLoc(),
-                                                     sorted.getResult(), 1);
+        current = sorted.getResult(1);
       }
       rewriter.replaceOp(op, current);
       return success();
@@ -5190,6 +5203,46 @@ class ConvertXlaDynamicUpdateSliceOp
         IntegerAttr::get(rewriter.getIntegerType(64), 0));
     rewriter.replaceOpWithNewOp<mhlo::DynamicUpdateSliceOp>(
         op, op.getType(), op.input(), op.update(), unpacked_indices.output());
+    return success();
+  }
+};
+
+// Converts ClipByValue to XLA's clamp operation. Includes the broadcasting
+// semantics for static and dynamic cases.
+class ConvertClipByValueOp : public OpRewritePattern<TF::ClipByValueOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::ClipByValueOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.t();
+    Value min = op.clip_value_min();
+    Value max = op.clip_value_max();
+
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto min_ty = min.getType().cast<ShapedType>();
+    auto max_ty = max.getType().cast<ShapedType>();
+
+    if (!input_ty.hasRank() || !min_ty.hasRank() || !max_ty.hasRank()) {
+      return failure();
+    }
+
+    auto shape = rewriter.create<TF::ShapeOp>(
+        op.getLoc(),
+        RankedTensorType::get({input_ty.getRank()}, rewriter.getI32Type()),
+        input);
+
+    if (min_ty != input_ty) {
+      min =
+          rewriter.create<TF::BroadcastToOp>(op.getLoc(), input_ty, min, shape);
+    }
+
+    if (max_ty != input_ty) {
+      max =
+          rewriter.create<TF::BroadcastToOp>(op.getLoc(), input_ty, max, shape);
+    }
+
+    rewriter.replaceOpWithNewOp<mhlo::ClampOp>(op, input_ty, min, input, max);
     return success();
   }
 };
@@ -6055,22 +6108,22 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
   patterns->insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
       ConvertBiasAddOp, ConvertBroadcastToOp, ConvertBF16FloorDivOp,
-      ConvertConv2DOp, ConvertConv3DOp, ConvertDepthConv2DOp,
-      ConvertConv2DBackpropFilterOp, ConvertConv3DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
-      ConvertCumprodOp, ConvertCumsumOp, ConvertDiagPartOp,
-      ConvertDynamicExpandDimsOp, ConvertDynamicReshapeOp, ConvertEinsumOp,
-      ConvertRFFTOp, ConvertIRFFTOp, ConvertFusedBatchNormGradOp,
-      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
-      ConvertFusedBatchNormV2Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPool2DOp, ConvertAvgPool3DOp,
-      ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
-      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertClipByValueOp, ConvertConv2DOp, ConvertConv3DOp,
+      ConvertDepthConv2DOp, ConvertConv2DBackpropFilterOp,
+      ConvertConv3DBackpropFilterOp, ConvertConv2DBackpropInputOp,
+      ConvertConv3DBackpropInputOp, ConvertCumprodOp, ConvertCumsumOp,
+      ConvertDiagPartOp, ConvertDynamicExpandDimsOp, ConvertDynamicReshapeOp,
+      ConvertEinsumOp, ConvertRFFTOp, ConvertIRFFTOp,
+      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
+      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
+      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
+      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
+      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
+      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
+      ConvertDynamicRangeOp, ConvertMatrixDiagPartV3Op, ConvertRangeOp,
+      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,

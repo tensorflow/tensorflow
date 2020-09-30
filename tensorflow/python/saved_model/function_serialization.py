@@ -49,9 +49,9 @@ def _serialize_function_spec(function_spec, coder):
 
   # See `tf.function` and the ExperimentalCompile proto for details.
   proto.experimental_compile = {
-      None: saved_object_graph_pb2.ExperimentalCompile.NONE,
-      True: saved_object_graph_pb2.ExperimentalCompile.TRUE,
-      False: saved_object_graph_pb2.ExperimentalCompile.FALSE,
+      None: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.DEFAULT,
+      True: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.ON,
+      False: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.OFF,
   }.get(function_spec.experimental_compile)
 
   return proto

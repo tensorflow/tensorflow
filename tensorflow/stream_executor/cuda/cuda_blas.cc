@@ -1686,6 +1686,15 @@ bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
 #else
   cublasMath_t math_type = CUBLAS_TF32_TENSOR_OP_MATH;
+  int cc_major, cc_minor;
+  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
+          &cc_major, &cc_minor) &&
+      cc_major >= 8) {
+    // TODO(reedwm): Remove or make this VLOG(1) once TensorFloat-32 is more
+    // well tested.
+    LOG_FIRST_N(INFO, 1) << "TensorFloat-32 will be used for the matrix "
+                            "multiplication. This will only be logged once.";
+  }
 #endif
 
   return DoBlasInternalImpl(

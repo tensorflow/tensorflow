@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
+#include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
@@ -27,7 +28,8 @@ namespace tensorflow {
 namespace gradients {
 
 Status RegisterGradients(GradientRegistry* registry) {
-  TF_RETURN_IF_ERROR(registry->Register("Add", AddRegisterer));
+  // TODO(srbs): Rename ops::Add and AddRegisterer to AddV2.
+  TF_RETURN_IF_ERROR(registry->Register("AddV2", AddRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("MatMul", MatMulRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Relu", ReluRegisterer));
@@ -74,6 +76,11 @@ PYBIND11_MODULE(_tape, m) {
     MaybeRaiseRegisteredFromStatus(RegisterGradients(registry));
     return registry;
   }));
+  py::class_<TapeContext, AbstractContext>(m, "TapeContext")
+      .def(py::init(
+          [](AbstractContext* ctx, Tape* tape, GradientRegistry* registry) {
+            return new TapeContext(ctx, tape, *registry);
+          }));
 }
 }  // namespace gradients
 }  // namespace tensorflow

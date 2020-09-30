@@ -164,6 +164,7 @@ py_test(
     tags = [
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
+        "noasan",  # b/168812578
         "notsan",  # b/168812578
     ],
     deps = [

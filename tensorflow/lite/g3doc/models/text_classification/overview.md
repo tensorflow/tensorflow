@@ -60,7 +60,7 @@ Performance benchmark numbers are generated with the tool
   </thead>
   <tr>
     <td rowspan = 3>
-      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification.tflite">Text Classification</a>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification_v2.tflite">Text Classification</a>
     </td>
     <td rowspan = 3>
       0.6 Mb

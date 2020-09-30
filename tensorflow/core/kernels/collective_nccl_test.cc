@@ -136,15 +136,14 @@ class NcclTestBase : public ::testing::Test {
     col_params_.instance.data_type = DT_FLOAT;
     col_params_.instance.impl_details.collective_name = collective_name_;
     const string task_name = "/job:worker/replica:0/task:0";
-    col_params_.instance.num_devices_per_task[task_name] = num_ranks;
+    col_params_.group.num_devices_per_task[task_name] = num_ranks;
     for (int rank = 0; rank < num_ranks; ++rank) {
-      col_params_.instance.device_names.push_back(
-          device_names[rank % num_gpus]);
-      col_params_.instance.task_names.push_back(task_name);
+      col_params_.group.device_names.push_back(device_names[rank % num_gpus]);
+      col_params_.group.task_names.push_back(task_name);
     }
     for (int rank = 0; rank < num_ranks; ++rank) {
       instances_.push_back(absl::make_unique<DeviceInstance>(
-          rank, col_params_.instance.device_names[rank], this));
+          rank, col_params_.group.device_names[rank], this));
     }
   }
 
@@ -251,9 +250,7 @@ class NcclTestBase : public ::testing::Test {
           << parent_->dev_mgr_->DebugString();
       col_params_.name = parent_->col_params_.name;
       col_params_.default_rank = rank;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
+      col_params_.group = parent_->col_params_.group;
       col_params_.instance = parent->col_params_.instance;
     }
 

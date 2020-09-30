@@ -234,9 +234,11 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
     const uint64* counter, random::PhiloxRandom gen,
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
+  if (size == 0) return;
   const int32 block_size = d.maxGpuThreadsPerBlock();
   const int32 num_blocks =
-      min(d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
+      std::min<int64>(
+          d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
           size + block_size - 1) /
       block_size;
   TF_CHECK_OK(GpuLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>,
