@@ -79,7 +79,10 @@ tf_cc_test(
         "profiler_client_test.cc",
         "profiler_client_test_util.h",
     ],
-    tags = ["external"],  # So that test suite reruns unconditionally.
+    tags = [
+        "external",  # So that test suite reruns unconditionally.
+        "no_rocm",
+    ],
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:test",
@@ -122,7 +125,10 @@ tf_cc_test(
         "profiler_client_test_util.h",
         "remote_profiler_session_manager_test.cc",
     ],
-    tags = ["external"],  # So that test suite reruns unconditionally.
+    tags = [
+        "external",  # So that test suite reruns unconditionally.
+        "no_rocm",
+    ],
     deps = [
         ":remote_profiler_session_manager",
         "//tensorflow/core:test",
