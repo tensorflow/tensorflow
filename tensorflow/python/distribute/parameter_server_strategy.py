@@ -351,14 +351,14 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
