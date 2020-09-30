@@ -86,10 +86,19 @@ func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32
   return %0 : tensor<2x3xf32>
 }
 
+// CHECK-LABEL: @is_inf
+func @is_inf(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
+  // CHECK: %[[INF:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[ABS:.*]] = "tf.Abs"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%[[ABS]], %[[INF]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  %0 = "tf.IsInf"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<3x4xi1>
+}
+
 // CHECK-LABEL: @is_nan
 func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
-  // CHECK: %[[NAN:.*]] = "tf.Const"() {value = dense<0x7FC00000> : tensor<f32>} : () -> tensor<f32>
-  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%arg0, %[[NAN]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  // CHECK: %[[RESULT:.*]] = "tf.NotEqual"(%arg0, %arg0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xi1>
   %0 = "tf.IsNan"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
   // CHECK: return %[[RESULT]]
   return %0 : tensor<3x4xi1>
@@ -267,6 +276,58 @@ func @sixdim_SpaceToBatchND(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: ten
   // CHECK-DAG: [[OUTPUT_SHAPE:%.+]] = "tf.ConcatV2"([[OUTPUT_BATCH]], [[OUTER_SHAPE_0]], [[OUTER_SHAPE_1]], [[OUTER_SHAPE_2]], [[PADDED_SHAPE_SPLITS]]#4, [[PADDED_SHAPE_SPLITS]]#5, {{.+}})
   %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x9x10x11xf32>, tensor<3xi64>, tensor<3x2xi64>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+func @fake_quant_with_min_max_args(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<1.275000e+02> : tensor<f32>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<1.00392163> : tensor<f32>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<-0.996078491> : tensor<f32>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<0.00784313772> : tensor<f32>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.ClipByValue"(%arg0, [[VAL2]], [[VAL1]])
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Sub"([[VAL5]], [[VAL2]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Mul"([[VAL6]], [[VAL0]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.Add"([[VAL7]], [[VAL4]])
+  // CHECK-DAG: [[VAL9:%.+]] = "tf.Floor"([[VAL8]])
+  // CHECK-DAG: [[VAL10:%.+]] = "tf.Mul"([[VAL9]], [[VAL3]])
+  // CHECK-DAG: [[VAL11:%.+]] = "tf.Add"([[VAL10]], [[VAL2]])
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {max = 1.0 : f32, min = -1.0 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+
+  // CHECK: return [[VAL11]]
+  return %0 : tensor<?x?xf32>
+}
+
+func @fake_quant_with_min_max_vars(%arg0 : tensor<?x?xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<?x?xf32> {
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<0.000000e+00>
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<2.550000e+02>
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<1.000000e+00>
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<5.000000e-01>
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Sub"(%arg2, %arg1)
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.Div"([[VAL4]], [[VAL1]])
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Div"([[VAL1]], [[VAL4]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Div"(%arg1, [[VAL5]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.Sub"([[VAL0]], [[VAL7]])
+  // CHECK-DAG: [[VAL9:%.+]] = "tf.Floor"([[VAL8]])
+  // CHECK-DAG: [[VAL10:%.+]] = "tf.Sub"([[VAL8]], [[VAL9]])
+  // CHECK-DAG: [[VAL11:%.+]] = "tf.Less"([[VAL10]], [[VAL3]])
+  // CHECK-DAG: [[VAL12:%.+]] = "tf.Add"([[VAL2]], [[VAL9]])
+  // CHECK-DAG: [[VAL13:%.+]] = "tf.Select"([[VAL11]], [[VAL9]], [[VAL12]])
+  // CHECK-DAG: [[VAL14:%.+]] = "tf.ClipByValue"([[VAL13]], [[VAL0]], [[VAL1]]) :
+  // CHECK-DAG: [[VAL15:%.+]] = "tf.Sub"([[VAL0]], [[VAL14]])
+  // CHECK-DAG: [[VAL16:%.+]] = "tf.Sub"([[VAL1]], [[VAL14]])
+  // CHECK-DAG: [[VAL17:%.+]] = "tf.Mul"([[VAL15]], [[VAL5]])
+  // CHECK-DAG: [[VAL18:%.+]] = "tf.Mul"([[VAL16]], [[VAL5]])
+  // CHECK-DAG: [[VAL19:%.+]] = "tf.ClipByValue"(%arg0, [[VAL17]], [[VAL18]])
+  // CHECK-DAG: [[VAL20:%.+]] = "tf.Sub"([[VAL19]], [[VAL17]])
+  // CHECK-DAG: [[VAL21:%.+]] = "tf.Mul"([[VAL20]], [[VAL6]])
+  // CHECK-DAG: [[VAL22:%.+]] = "tf.Add"([[VAL21]], [[VAL3]])
+  // CHECK-DAG: [[VAL23:%.+]] = "tf.Floor"([[VAL22]])
+  // CHECK-DAG: [[VAL24:%.+]] = "tf.Mul"([[VAL23]], [[VAL5]])
+  // CHECK-DAG: [[VAL25:%.+]] = "tf.Add"([[VAL24]], [[VAL17]])
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {narrow_range = false, num_bits = 8 : i64} : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+
+  // CHECK: return [[VAL25]]
+  return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: SoftmaxCrossEntropyWithLogits

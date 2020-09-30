@@ -274,10 +274,12 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
     if (consumed_nodes.find(node.id) != consumed_nodes.end()) {
       continue;
     }
+    std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
         GPUSubgraphFromGraph(device_info, precision_, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+                             tensor_descriptors, &consumed_nodes, &gpu_subgraph,
+                             &op_name)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -346,7 +348,7 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
           cl_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      cl_node.name = node.operation.type + " " + std::to_string(node.id);
+      cl_node.name = op_name;
       nodes_.push_back(std::move(cl_node));
     }
   }

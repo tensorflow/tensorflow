@@ -163,16 +163,12 @@ class EventForest {
   EventForest(const std::vector<InterThreadConnectInfo>& connect_info_list,
               const std::vector<int64>& root_event_types,
               const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-              XSpace* space);
+              XSpace* space, GroupMetadataMap* group_metadata_map);
 
   EventForest(const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
               XPlane* plane);
 
   const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
-
-  const GroupMetadataMap& GetGroupMetadataMap() const {
-    return group_metadata_map_;
-  }
 
   // Connects tf.data events across threads.
   void ProcessTfDataEvents();
@@ -190,11 +186,11 @@ class EventForest {
   void ProcessLegacyRootEvents(
       const std::vector<int64 /*EventType*/>& root_event_types);
 
-  // Creates event groups and populates event_group_name_map_. If a TF loop is
+  // Creates event groups and populates group_metadata_map. If a TF loop is
   // used, each TF loop iteration becomes a root. Otherwise, top root events
   // (i.e., none of their ancestors is a root event) are used as roots. A new
   // group is created with all events reachable from a root.
-  void CreateEventGroup();
+  void CreateEventGroup(GroupMetadataMap* group_metadata_map);
 
   // Sets the is_eager stat to true for the eagerly executed GPU kernel events.
   void MarkEagerlyExecutedGpuKernels();
@@ -210,12 +206,11 @@ class EventForest {
   // eager ops (e.g., for Keras callback).
   void ProcessWorker();
 
-  // Adds model ids to group_metadata_map_ for inference profiles.
-  void ProcessModelIds();
+  // Adds model ids to group_metadata_map for inference profiles.
+  void ProcessModelIds(GroupMetadataMap* group_metadata_map);
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
-  GroupMetadataMap group_metadata_map_;
   EventList root_events_;
   EventList tf_loop_root_events_;
   int64 next_group_id_ = 0;
@@ -226,6 +221,7 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.
 void GroupTfEvents(XSpace* space, GroupMetadataMap* group_metadata_map);
+void GroupTfEvents(XSpace* space);
 
 }  // namespace profiler
 }  // namespace tensorflow

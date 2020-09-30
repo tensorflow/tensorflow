@@ -269,8 +269,6 @@ ParseResult SetReplicateOpOperands(
         replicated_inputs,
     llvm::ArrayRef<OpAsmParser::OperandType> packed_inputs,
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
-  if (replicated_inputs.empty() && packed_inputs.empty()) return success();
-
   for (const auto& attr : state->attributes)
     if (attr.first.strref() == "n")
       if (auto n_attr = attr.second.dyn_cast<IntegerAttr>())
@@ -278,6 +276,8 @@ ParseResult SetReplicateOpOperands(
 
   if (*n < 2)
     return parser->emitError(loc) << "expects 'n' to be at least 2, got " << *n;
+
+  if (replicated_inputs.empty() && packed_inputs.empty()) return success();
 
   for (auto replicated_input_and_idx : llvm::enumerate(replicated_inputs)) {
     const int32_t idx = replicated_input_and_idx.index();

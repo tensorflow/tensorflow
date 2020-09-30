@@ -69,8 +69,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                                StatusCallback done) {
   const CollectiveParams& col_params = col_ctx->col_params;
   const int num_global_devices = col_params.group.group_size;
-  const int num_local_devices = col_params.instance.num_devices_per_task.at(
-      col_params.instance.task_names[col_params.default_rank]);
+  const int num_local_devices = col_params.group.num_devices_per_task.at(
+      col_params.group.task_names[col_params.default_rank]);
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
@@ -84,7 +84,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       col_params.source_rank);
   VLOG(1) << "NcclCommunicator::Enqueue type " << col_params.instance.type
           << " num_tasks " << col_params.group.num_tasks << " current task "
-          << col_params.instance.task_names[col_params.default_rank]
+          << col_params.group.task_names[col_params.default_rank]
           << " num local devices " << num_local_devices
           << " num global devices " << num_global_devices << " device "
           << col_ctx->device_name << " instance "

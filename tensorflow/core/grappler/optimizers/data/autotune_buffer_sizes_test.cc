@@ -190,53 +190,67 @@ TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
   std::vector<string> prefetch_inputs(2);
   prefetch_inputs[0] = map_node1->name();
   prefetch_inputs[1] = buffer_size_val->name();
-  std::vector<std::pair<string, AttrValue>> prefetch_attrs(2);
+  std::vector<std::pair<string, AttrValue>> prefetch_attrs(4);
   AttrValue legacy_autotune_attr;
   SetAttrValue(legacy_autotune, &legacy_autotune_attr);
-  prefetch_attrs[0] = std::make_pair("legacy_autotune", legacy_autotune_attr);
   AttrValue buffer_size_min_attr;
   SetAttrValue(0, &buffer_size_min_attr);
+  prefetch_attrs[0] = std::make_pair("legacy_autotune", legacy_autotune_attr);
   prefetch_attrs[1] = std::make_pair("buffer_size_min", buffer_size_min_attr);
+  prefetch_attrs[2] = std::make_pair("output_types", attr_val);
+  prefetch_attrs[3] = std::make_pair("output_shapes", attr_val);
   NodeDef *prefetch_node = graph_utils::AddNode(
       "prefetch", "PrefetchDataset", prefetch_inputs, prefetch_attrs, &graph);
 
   std::vector<string> map_inputs2(2);
   map_inputs2[0] = prefetch_node->name();
   map_inputs2[1] = parallelism_val->name();
-  graph_utils::AddNode("map2", "ParallelMapDatasetV2", map_inputs2, map_attrs,
-                       &graph);
+  NodeDef *map_node2 = graph_utils::AddNode("map2", "ParallelMapDatasetV2",
+                                            map_inputs2, map_attrs, &graph);
 
-  EXPECT_EQ(item.graph.node_size(), 9);
+  std::vector<string> map_inputs3(1);
+  map_inputs3[0] = map_node2->name();
+  graph_utils::AddNode("map3", "MapDataset", map_inputs3, map_attrs, &graph);
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithAutotuneBufferSizes(item, &output, true));
-  EXPECT_EQ(output.node_size(), 11);
 
   std::vector<int> prefetch_indices =
       graph_utils::FindAllGraphNodesWithOp("PrefetchDataset", output);
   EXPECT_EQ(prefetch_indices.size(), 2);
-  NodeDef new_prefetch_node1 = output.node(prefetch_indices[0]);
-  NodeDef new_prefetch_node2 = output.node(prefetch_indices[1]);
 
+  NodeDef new_map_node3 =
+      output.node(graph_utils::FindGraphNodeWithName("map3", output));
+
+  NodeDef new_prefetch_node2 = output.node(
+      graph_utils::FindGraphNodeWithName(new_map_node3.input(0), output));
+  EXPECT_EQ(new_prefetch_node2.op(), "PrefetchDataset");
+  EXPECT_EQ(new_prefetch_node2.input_size(), 2);
+  EXPECT_FALSE(new_prefetch_node2.attr().at("legacy_autotune").b());
+  EXPECT_TRUE(new_prefetch_node2.attr().find("buffer_size_min") ==
+              new_prefetch_node2.attr().end());
+  NodeDef new_buffer_size_val2 = output.node(
+      graph_utils::FindGraphNodeWithName(new_prefetch_node2.input(1), output));
+  EXPECT_EQ(new_buffer_size_val2.attr().at("value").tensor().int64_val(0), -1);
+
+  NodeDef new_map_node2 = output.node(
+      graph_utils::FindGraphNodeWithName(new_prefetch_node2.input(0), output));
+  EXPECT_EQ(new_map_node2.name(), "map2");
+
+  NodeDef new_prefetch_node1 = output.node(
+      graph_utils::FindGraphNodeWithName(new_map_node2.input(0), output));
+  EXPECT_EQ(new_prefetch_node1.op(), "PrefetchDataset");
   EXPECT_EQ(new_prefetch_node1.input_size(), 2);
   EXPECT_FALSE(new_prefetch_node1.attr().at("legacy_autotune").b());
   EXPECT_EQ(new_prefetch_node1.attr().at("buffer_size_min").i(),
             (initial_buffer_size == -1 ? 0 : initial_buffer_size));
-  NodeDef new_map_node1 = output.node(
-      graph_utils::FindGraphNodeWithName(new_prefetch_node1.input(0), output));
-  EXPECT_EQ(new_map_node1.name(), "map1");
   NodeDef new_buffer_size_val1 = output.node(
       graph_utils::FindGraphNodeWithName(new_prefetch_node1.input(1), output));
   EXPECT_EQ(new_buffer_size_val1.attr().at("value").tensor().int64_val(0), -1);
 
-  EXPECT_EQ(new_prefetch_node2.input_size(), 2);
-  EXPECT_FALSE(new_prefetch_node2.attr().at("legacy_autotune").b());
-  NodeDef new_map_node2 = output.node(
-      graph_utils::FindGraphNodeWithName(new_prefetch_node2.input(0), output));
-  EXPECT_EQ(new_map_node2.name(), "map2");
-  NodeDef new_buffer_size_val2 = output.node(
-      graph_utils::FindGraphNodeWithName(new_prefetch_node2.input(1), output));
-  EXPECT_EQ(new_buffer_size_val2.attr().at("value").tensor().int64_val(0), -1);
+  NodeDef new_map_node1 = output.node(
+      graph_utils::FindGraphNodeWithName(new_prefetch_node1.input(0), output));
+  EXPECT_EQ(new_map_node1.name(), "map1");
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, MultipleNodes,

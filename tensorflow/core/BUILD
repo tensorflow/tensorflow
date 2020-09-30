@@ -1553,7 +1553,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib",
-        ":protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",

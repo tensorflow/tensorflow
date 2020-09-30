@@ -43,13 +43,6 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-// TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
-// to look up tensorflow op name from hlo_module/hlo_op.
-absl::string_view DummySymbolResolver(absl::string_view hlo_module,
-                                      absl::string_view hlo_op) {
-  return absl::string_view();
-}
-
 const absl::string_view kAnnotationDelimiter = "::";
 
 XEvent CreateXEvent(const XEventMetadata& metadata, int64 offset_ps,
@@ -338,17 +331,17 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only) {
+  // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
+  // to look up tensorflow op name from hlo_module/hlo_op.
+  auto dummy_symbol_resolver = [](absl::string_view hlo_module,
+                                  absl::string_view hlo_op) {
+    return absl::string_view();
+  };
   std::vector<XPlane*> device_traces =
       FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);
-  GenerateDerivedTimeLines(group_metadata_map, device_traces, step_info_only);
-}
-
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              const std::vector<XPlane*>& device_traces,
-                              bool step_info_only) {
   for (XPlane* plane : device_traces) {
-    DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map, plane,
-                                step_info_only);
+    DeriveEventsFromAnnotations(dummy_symbol_resolver, group_metadata_map,
+                                plane, step_info_only);
   }
 }
 

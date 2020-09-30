@@ -276,7 +276,6 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
     //   set_ndims_byte(b.ndims_byte());
     //   set_data_type(b.data_type());
   } else {
-    DCHECK_EQ(b.tag(), REP_OUT_OF_LINE);
     set_ndims_byte(b.ndims_byte());
     set_data_type(b.data_type());
     if (tag() == REP_OUT_OF_LINE) {

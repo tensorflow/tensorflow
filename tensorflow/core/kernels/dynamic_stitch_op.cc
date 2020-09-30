@@ -249,7 +249,8 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
     // merged that aren't covered by an index in indices.  What should we do?
     if (first_dim_size > 0) {
       auto merged_flat = merged->flat_outer_dims<T>();
-      const int slice_size = merged_flat.dimension(1);
+      // slice_size must not be stored as int for cases of tensors over 2GB.
+      const auto slice_size = merged_flat.dimension(1);
       const size_t slice_bytes = slice_size * sizeof(T);
       auto OnInputNumber = [&](int input_num) {
         const Tensor& indices = indices_inputs[input_num];

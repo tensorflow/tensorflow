@@ -145,7 +145,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError('Unknown backend {}'.format(name))
+      raise RuntimeError(
+          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 

@@ -4,7 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
+    "tf_proto_library",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -59,7 +59,7 @@ filegroup(
     ]),
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
     cc_api_version = 2,
@@ -1692,7 +1692,7 @@ tf_cc_test(
     ],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "gpu_autotuning_proto",
     srcs = ["gpu_autotuning.proto"],
     cc_api_version = 2,

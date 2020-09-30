@@ -311,7 +311,9 @@ class OptimizationOptions(options.OptionsBase):
     else:
       graph_rewrite_configs = []
     autotune_only_optimizations = [
-        "map_parallelization", "autotune_buffer_sizes"
+        "autotune_buffer_sizes",
+        "enable_gradient_descent",
+        "map_parallelization"
     ]
     if autotune is False:  # pylint: disable=g-bool-id-comparison
       for optimization in autotune_only_optimizations:

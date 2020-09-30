@@ -579,3 +579,62 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
     ],
 )
+
+cc_library(
+    name = "xplane_to_tools_data",
+    srcs = ["xplane_to_tools_data.cc"],
+    hdrs = ["xplane_to_tools_data.h"],
+    deps = [
+        ":op_stats_to_input_pipeline_analysis",
+        ":op_stats_to_overview_page",
+        ":op_stats_to_tf_stats",
+        ":xplane_to_memory_profile",
+        ":xplane_to_op_stats",
+        ":xplane_to_trace_events",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:input_pipeline_proto_cc",
+        "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
+        "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "xplane_to_tf_data_stats",
+    srcs = ["xplane_to_tf_data_stats.cc"],
+    hdrs = ["xplane_to_tf_data_stats.h"],
+    deps = [
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/core/profiler/utils:tf_op_utils",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "xplane_to_tf_data_stats_test",
+    size = "small",
+    srcs = ["xplane_to_tf_data_stats_test.cc"],
+    deps = [
+        ":xplane_to_tf_data_stats",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
+    ],
+)

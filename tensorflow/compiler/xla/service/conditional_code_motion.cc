@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
@@ -498,7 +499,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
           << conditional_parent->ToString(HloPrintOptions::Fingerprint())
           << "\n";
   int64 op_index = 0;
-  for (Boundary b : new_boundaries) {
+  for (const Boundary& b : new_boundaries) {
     HloInstruction* op = b.operands()[0];
     CHECK(op != nullptr);
     VLOG(2) << "Mapping new boundary instr: " << op->ToString() << "\n";
@@ -545,7 +546,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   for (int i = 0; i < branch_count; i++) {
     auto computation = conditional->branch_computation(i);
     std::vector<HloInstruction*> elements;
-    for (auto b1 : new_boundaries) {
+    for (const auto& b1 : new_boundaries) {
       HloInstruction* op = b1.operands()[i];
       CHECK(op != nullptr);
       VLOG(2) << "Adding to root " << i << " with " << op->ToString() << "\n";
@@ -556,7 +557,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     computation->set_root_instruction(tuple, true);
     VLOG(2) << "computation is :" << computation->ToString() << "\n";
     // Remove hoisted instructions from the branches.
-    for (auto b2 : to_move_out) {
+    for (const auto& b2 : to_move_out) {
       auto instr_to_remove = b2.operands()[i];
       // Double check to make sure it is safe to delete the instruction.
       // Complications may arise due to some operations in the alternative
@@ -781,7 +782,7 @@ class GroupConnectedBoundaries {
     }
   }
   // Returns true if `instruction` is worth hoisting.
-  bool WorthHoisting(HloInstruction* instruction) {
+  bool WorthHoisting(HloInstruction* instruction, bool is_inside_branch) {
     // This is needed for the "moving-in" transformation, to prevent the root
     // of the parent computation (which contains the conditional) to be moved
     // inside the conditional.
@@ -789,6 +790,8 @@ class GroupConnectedBoundaries {
         instruction == conditional_parent_->root_instruction()) {
       return false;
     }
+    // TOOD[b/169182921] The following cost model is rather incomplete. Will
+    // need to extend to cover most of element-wise ops.
     switch (instruction->opcode()) {
       case HloOpcode::kConvert:
         // If Convert is after AllReduce, it is worth moving out AllReduce
@@ -815,6 +818,11 @@ class GroupConnectedBoundaries {
             return true;
         }
       case HloOpcode::kAllReduce:
+        // It is not safe to move collective ops from outside to inside
+        // conditional branches, as it may cause synchronization problems,
+        // when different layouts are assigned to different branches.
+        return is_inside_branch;
+      case HloOpcode::kAbs:
       case HloOpcode::kReduce:
       case HloOpcode::kAdd:
       case HloOpcode::kPower:
@@ -999,7 +1007,8 @@ class GroupConnectedBoundaries {
       VLOG(2) << "visiting boundary " << b.ToString() << "\n";
       if ((b.IsOutsideBranch() || InstructionWithinBranchIdentical(
                                       b.operands(), is_layout_sensitive_)) &&
-          IsSafeToMoveBoundary(b) && WorthHoisting(b.operands()[0])) {
+          IsSafeToMoveBoundary(b) &&
+          WorthHoisting(b.operands()[0], b.IsInsideBranch())) {
         connected_boundaries_.push_back(b);
         VLOG(2) << "boundary can be moved\n";
         int64 operand_count = (b.IsInsideBranch())
@@ -1087,6 +1096,13 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
 
 StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
   VLOG(2) << "Begin a new pass of conditional code motion optimization.\n";
+  // Use to support debugging of optimization, by disabling the opt after it has
+  // been applied a pre-determined times (to isolate impact of transformations).
+  if (!ConsumeFuel("conditional_code_motion", [&] {
+        return "Skipping conditional opt after allowed limit reaching 0.\n";
+      })) {
+    return false;
+  }
   bool changed = false;
   bool cleanup_changed = false;
   {
@@ -1177,7 +1193,8 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
           benefit_move_out += d.GetBenefit();
           if (benefit_move_out >= benefit_move_in) {
             final_d = Decision::Direction::kMoveOutOfBranch;
-            VLOG(2) << "Current Decision is move out of branch\n";
+            VLOG(2) << "Current Decision is move out of branch ("
+                    << to_move_out.size() << ")\n";
           } else {
             VLOG(2) << "Current Decision remains move into branch\n";
           }
@@ -1191,7 +1208,8 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
             VLOG(2) << "Current Decision remains move out of branch\n";
           } else {
             final_d = Decision::Direction::kMoveIntoBranch;
-            VLOG(2) << "Current Decision is move into branch\n";
+            VLOG(2) << "Current Decision is move into branch ("
+                    << to_move_in.size() << ")\n";
           }
           break;
         case Decision::Direction::kNoChange:
@@ -1260,6 +1278,13 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
                                                new_boundaries_for_moveout[i]));
         changed |= result;
       }
+      VLOG(2) << "Done moving out of branches " << to_move_out.size()
+              << " times. \n";
+      if (!ConsumeFuel("conditional_code_motion", [&] {
+            return "Skipping conditional opt after allowed limit reaching 0.\n";
+          })) {
+        break;
+      }
     } else if (final_d == Decision::Direction::kMoveIntoBranch) {
       CHECK(to_move_in.size() == new_boundaries_for_movein.size());
       for (int i = 0; i < to_move_in.size(); ++i) {
@@ -1267,6 +1292,13 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
                             MoveInstructionIn(conditional, to_move_in[i],
                                               new_boundaries_for_movein[i]));
         changed |= result;
+      }
+      VLOG(2) << "Done moving into branches " << to_move_in.size()
+              << " times. \n";
+      if (!ConsumeFuel("conditional_code_motion", [&] {
+            return "Skipping conditional opt after allowed limit reaching 0.\n";
+          })) {
+        break;
       }
     } else if (pursue_full_conditional_code_motion_ && !conditional_is_shared) {
       // Invoke special handling for convert rematerialization/hoisting
@@ -1276,8 +1308,16 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
       TF_ASSIGN_OR_RETURN(
           bool convert_result,
           ConvertSpecialMove(conditional, is_layout_sensitive_));
+      if (convert_result) {
+        VLOG(2) << "Done special moving of convert\n";
+        if (!ConsumeFuel("conditional_code_motion", [&] {
+              return "Skipping conditional opt after allowed limit reaching "
+                     "0.\n";
+            })) {
+          break;
+        }
+      }
       changed |= convert_result;
-      VLOG(2) << "Done special moving of convert\n";
     }
   }
   if (changed) {

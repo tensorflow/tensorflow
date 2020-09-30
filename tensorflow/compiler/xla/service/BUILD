@@ -2374,6 +2374,7 @@ cc_library(
         ":hlo_pass_pipeline",
         ":hlo_verifier",
         ":tuple_simplifier",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

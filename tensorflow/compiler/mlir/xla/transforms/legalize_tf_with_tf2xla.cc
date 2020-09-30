@@ -227,6 +227,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::StatelessTruncatedNormalOp>(),
     TypeID::get<TF::SubOp>(),
     TypeID::get<TF::TanOp>(),
+    TypeID::get<TF::TPUEmbeddingActivationsOp>(),
     TypeID::get<TF::TransposeOp>(),
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncatedNormalOp>(),
@@ -239,6 +240,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaDotOp>(),
     TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
+    TypeID::get<TF::XlaEinsumOp>(),
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
     TypeID::get<TF::XlogyOp>()

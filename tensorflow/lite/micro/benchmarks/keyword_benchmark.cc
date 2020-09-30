@@ -31,23 +31,48 @@ limitations under the License.
 
 namespace {
 
-// Create an area of memory to use for input, output, and intermediate arrays.
-// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
-constexpr int tensor_arena_size = 21 * 1024;
-alignas(16) uint8_t tensor_arena[tensor_arena_size];
-// A random number generator seed to generate input values.
+using KeywordBenchmarkRunner = MicroBenchmarkRunner<int16_t>;
+using KeywordOpResolver = tflite::MicroMutableOpResolver<6>;
+
 constexpr int kRandomSeed = 42;
 
-static MicroBenchmarkRunner<int16_t> benchmark_runner(
-    g_keyword_scrambled_model_data, tensor_arena, tensor_arena_size);
+// Create an area of memory to use for input, output, and intermediate arrays.
+// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
+constexpr int kTensorArenaSize = 21 * 1024;
+alignas(16) uint8_t tensor_arena[kTensorArenaSize];
+
+uint8_t benchmark_runner_buffer[sizeof(KeywordBenchmarkRunner)];
+uint8_t op_resolver_buffer[sizeof(KeywordOpResolver)];
+KeywordBenchmarkRunner* benchmark_runner = nullptr;
+
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  // We allocate the KeywordOpResolver from a global buffer because the object's
+  // lifetime must exceed that of the KeywordBenchmarkRunner object.
+  KeywordOpResolver* op_resolver = new (op_resolver_buffer) KeywordOpResolver();
+  op_resolver->AddDequantize();
+  op_resolver->AddFullyConnected();
+  op_resolver->AddQuantize();
+  op_resolver->AddSoftmax();
+  op_resolver->AddSvdf();
+
+  benchmark_runner = new (benchmark_runner_buffer)
+      KeywordBenchmarkRunner(g_keyword_scrambled_model_data, op_resolver,
+                             tensor_arena, kTensorArenaSize);
+}
 
 // Initializes keyword runner and sets random inputs.
-void InitializeKeywordRunner() { benchmark_runner.SetRandomInput(kRandomSeed); }
+void InitializeKeywordRunner() {
+  CreateBenchmarkRunner();
+  benchmark_runner->SetRandomInput(kRandomSeed);
+}
 
 // This method assumes InitializeKeywordRunner has already been run.
 void KeywordRunNIerations(int iterations) {
   for (int i = 0; i < iterations; i++) {
-    benchmark_runner.RunSingleIteration();
+    benchmark_runner->RunSingleIteration();
   }
 }
 

@@ -161,9 +161,9 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
     >>> stage = FunctionalPreprocessingStage(inputs, outputs)
     >>> ds = tf.data.Dataset.from_tensor_slices({'x1': tf.ones((4,5)),
     ...                                          'x2': tf.ones((4,1))})
-    >>> ds.element_spec # Check element_spec
-    {'x1': TensorSpec(shape=(5,), dtype=tf.float32, name=None),
-     'x2': TensorSpec(shape=(1,), dtype=tf.float32, name=None)}
+    >>> sorted(ds.element_spec.items()) # Check element_spec
+    [('x1', TensorSpec(shape=(5,), dtype=tf.float32, name=None)),
+     ('x2', TensorSpec(shape=(1,), dtype=tf.float32, name=None))]
     >>> stage.adapt(ds)
     >>> data_np = {'x1': np.ones((4, 5)), 'x2': np.ones((4, 1))}
     >>> stage.adapt(data_np)

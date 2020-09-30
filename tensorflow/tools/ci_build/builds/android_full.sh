@@ -46,11 +46,11 @@ do
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tensorflow/core:android_tensorflow_lib \
         //tensorflow/tools/android/inference_interface:libtensorflow_inference.so \
-        //tensorflow/examples/android:libtensorflow_demo.so \
+        //tensorflow/tools/android/test:libtensorflow_demo.so \
         //tensorflow/tools/benchmark:benchmark_model
 
     copy_lib bazel-bin/tensorflow/tools/android/inference_interface/libtensorflow_inference.so
-    copy_lib bazel-bin/tensorflow/examples/android/libtensorflow_demo.so
+    copy_lib bazel-bin/tensorflow/tools/android/test/libtensorflow_demo.so
     copy_lib bazel-bin/tensorflow/tools/benchmark/benchmark_model
 
     mkdir -p ${AAR_LIB_TMP}/jni/${CPU}
@@ -68,10 +68,10 @@ bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java \
     //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java.aar \
-    //tensorflow/examples/android:tensorflow_demo
+    //tensorflow/tools/android/test:tensorflow_demo
 
 echo "Copying demo, AAR and Jar to ${OUT_DIR}"
-cp bazel-bin/tensorflow/examples/android/tensorflow_demo.apk \
+cp bazel-bin/tensorflow/tools/android/test/tensorflow_demo.apk \
     bazel-bin/tensorflow/tools/android/inference_interface/libandroid_tensorflow_inference_java.jar ${OUT_DIR}
 
 cp bazel-bin/tensorflow/tools/android/inference_interface/android_tensorflow_inference_java.aar \

@@ -1448,6 +1448,99 @@ func @testSoftmaxCrossEntropyWithLogits(%arg0: tensor<3xf32>, %arg1: tensor<3xf3
 
 // -----
 
+//===--------------------------------------------------------------------===//
+//  tf.SpaceToBatchND
+//===--------------------------------------------------------------------===//
+
+// Test valid tf.SpaceToBatchND
+// CHECK-LABEL: func @testSpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<*xf32> {
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2x2xi64>, %paddings: tensor<2x2xi64>) -> tensor<*xf32> {
+  // expected-error @+1 {{requires rank of block_shape = 1; got 2}}
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2x2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2xi64>) -> tensor<*xf32> {
+  // expected-error @+1 {{requires rank of paddings = 2; got 1}}
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x10xi64>) -> tensor<*xf32> {
+  // expected-error @+1 {{requires paddings.shape[1] to be 2; got 10}}
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x10xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<4xi64>, %paddings: tensor<2x2xi64>) -> tensor<*xf32> {
+  // expected-error @+1 {{requires block_shape.shape[0] must equal paddings.shape[0]}}
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<4xi64>, tensor<2x2xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<*xf32> {
+  // expected-error @+1 {{requires rank of input >= 1 + rank of block}}
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>, %paddings: tensor<2x2xi64>) -> tensor<*xf32> {
+  %block_shape = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{requires all values of block_shape to be >= 1; failed for dimension 1}}
+  %1 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>) -> tensor<*xf32> {
+  %paddings = "tf.Const"() {value = dense<[[1, 0], [-1, 0]]> : tensor<2x2xi64>} : () -> tensor<2x2xi64>
+  // expected-error @+1 {{requires all values of paddings to be >= 0; failed for dimension 1}}
+  %1 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+}
+
+// -----
+
+// Test invalid tf.SpaceToBatchND
+func @testSpaceToBatchND(%input: tensor<3x5x7x10xf32>) -> tensor<*xf32> {
+  %block_shape = "tf.Const"() {value = dense<[4, 3]> : tensor<2xi64>} : () -> tensor<2xi64>
+  %paddings = "tf.Const"() {value = dense<[[1, 2], [1, 2]]> : tensor<2x2xi64>} : () -> tensor<2x2xi64>
+  // expected-error @+1 {{requires block_shape[i] divides input_shape[i + 1] + paddings[i, 0] + paddings[i, 1]; failed for i=1}}
+  %1 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.SparseSoftmaxCrossEntropyWithLogits
+//===--------------------------------------------------------------------===//
+
 // Test valid tf.SparseSoftmaxCrossEntropyWithLogits
 // CHECK-LABEL: func @testSparseSoftmaxCrossEntropyWithLogits
 func @testSparseSoftmaxCrossEntropyWithLogits(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>) -> (tensor<3xf32>, tensor<2x3xf32>) {

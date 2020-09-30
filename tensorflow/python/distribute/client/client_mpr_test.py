@@ -49,7 +49,7 @@ class ClientMprTest(test.TestCase):
                                        test_schedule=False,
                                        test_join=False):
 
-    def proc_func(functions_scheduled_event, test_finished_event):
+    def fn(functions_scheduled_event, test_finished_event):
       cluster_resolver = TFConfigClusterResolver()
       if cluster_resolver.task_type != "chief":
         utils.start_server(cluster_resolver, "grpc")
@@ -107,12 +107,12 @@ class ClientMprTest(test.TestCase):
     functions_scheduled_event = manager.Event()
     test_finished_event = manager.Event()
     mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
+        fn,
         multi_worker_test_base.create_cluster_spec(
             has_chief=True, num_workers=3, num_ps=1, has_eval=False),
         args=(functions_scheduled_event, test_finished_event),
         rpc_layer="grpc",
-        list_stdout=True,
+        return_output=True,
         use_dill_for_args=False)
 
     mpr.start()
