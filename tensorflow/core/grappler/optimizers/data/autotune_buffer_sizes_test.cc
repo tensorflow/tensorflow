@@ -105,7 +105,8 @@ TEST_P(SimpleInject, AutotuneBufferSizesTest) {
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp("PrefetchDataset", output));
   int index = graph_utils::FindGraphNodeWithOp("PrefetchDataset", output);
   const NodeDef prefetch_node = output.node(index);
-  EXPECT_FALSE(prefetch_node.attr().at("legacy_autotune").b());
+  EXPECT_TRUE(prefetch_node.attr().find("legacy_autotune") ==
+              prefetch_node.attr().end());
   EXPECT_EQ(prefetch_node.input_size(), 2);
   NodeDef async_node = output.node(
       graph_utils::FindGraphNodeWithName(prefetch_node.input(0), output));
@@ -226,7 +227,8 @@ TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
       graph_utils::FindGraphNodeWithName(new_map_node3.input(0), output));
   EXPECT_EQ(new_prefetch_node2.op(), "PrefetchDataset");
   EXPECT_EQ(new_prefetch_node2.input_size(), 2);
-  EXPECT_FALSE(new_prefetch_node2.attr().at("legacy_autotune").b());
+  EXPECT_TRUE(new_prefetch_node2.attr().find("legacy_autotune") ==
+              new_prefetch_node2.attr().end());
   EXPECT_TRUE(new_prefetch_node2.attr().find("buffer_size_min") ==
               new_prefetch_node2.attr().end());
   NodeDef new_buffer_size_val2 = output.node(
@@ -241,7 +243,8 @@ TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
       graph_utils::FindGraphNodeWithName(new_map_node2.input(0), output));
   EXPECT_EQ(new_prefetch_node1.op(), "PrefetchDataset");
   EXPECT_EQ(new_prefetch_node1.input_size(), 2);
-  EXPECT_FALSE(new_prefetch_node1.attr().at("legacy_autotune").b());
+  EXPECT_EQ(new_prefetch_node1.attr().at("legacy_autotune").b(),
+            legacy_autotune);
   EXPECT_EQ(new_prefetch_node1.attr().at("buffer_size_min").i(),
             (initial_buffer_size == -1 ? 0 : initial_buffer_size));
   NodeDef new_buffer_size_val1 = output.node(

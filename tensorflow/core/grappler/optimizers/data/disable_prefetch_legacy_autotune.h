@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_DISABLE_PREFETCH_LEGACY_AUTOTUNE_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_DISABLE_PREFETCH_LEGACY_AUTOTUNE_H_
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
@@ -24,21 +24,13 @@ namespace grappler {
 
 constexpr char kAutotune[] = "autotune";
 
-// This optimization does the following:
-//
-// 1. Adds `prefetch(AUTOTUNE)` after all asynchronous tf.data transformations
-// (e.g. parallel map, parallel interleave, and map + batch) if they are not
-// followed by a `prefetch` yet.
-//
-// 2. If there exists any `prefetch(buffer_size=N)` for `N>=0`,  it will replace
-// the transformation with autotunable version of `prefetch` which uses N as
-// the minimum size of the buffer.
-class AutotuneBufferSizes : public TFDataOptimizerBase {
+// This optimization disables the lagacy autotune option for PrefetchDataset.
+class DisablePrefetchLegacyAutotune : public TFDataOptimizerBase {
  public:
-  AutotuneBufferSizes() = default;
-  ~AutotuneBufferSizes() override = default;
+  DisablePrefetchLegacyAutotune() = default;
+  ~DisablePrefetchLegacyAutotune() override = default;
 
-  string name() const override { return "autotune_buffer_sizes"; };
+  string name() const override { return "disable_prefetch_legacy_autotune"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -72,4 +64,4 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_DISABLE_PREFETCH_LEGACY_AUTOTUNE_H_

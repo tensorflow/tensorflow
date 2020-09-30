@@ -74,6 +74,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
                                                {buffer_size_node->name(), 0},
                                                {autotune_value->name(), 0}));
           node.mutable_attr()->at(kBufferSizeMin).set_i(initial_buffer_size);
+          stats->num_changes++;
         }
       } else {
         return errors::FailedPrecondition(
@@ -97,6 +98,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
     for (const auto& async_dataset_op : kAsyncDatasetOps) {
       if (node.op() == async_dataset_op) {
         async_datasets.push_back(&node);
+        stats->num_changes++;
         break;
       }
     }
@@ -122,15 +124,6 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
     auto* added_node = graph.AddNode(std::move(prefetch_node));
     TF_RETURN_IF_ERROR(
         graph.UpdateFanouts(async_dataset_node->name(), added_node->name()));
-  }
-
-  for (NodeDef& node : *output->mutable_node()) {
-    // 3) Switch from using legacy algorithm to using performance model
-    // based algorithm for autotuning of all `prefetch` nodes.
-    if (node.op() == kPrefetchDataset) {
-      (*node.mutable_attr())[kLegacyAutotune].set_b(false);
-      stats->num_changes++;
-    }
   }
 
   return Status::OK();

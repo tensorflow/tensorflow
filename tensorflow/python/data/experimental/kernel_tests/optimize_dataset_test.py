@@ -393,6 +393,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "make_sloppy",
         "latency_all_edges",
         "slack",
+        "disable_prefetch_legacy_autotune",
     ]
     expected_optimizations_disabled = []
     expected_optimizations_default = []
@@ -441,6 +442,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "make_sloppy",
         "latency_all_edges",
         "slack",
+        "disable_prefetch_legacy_autotune",
     ]
     expected_optimizations_default = []
     graph_rewrites = options._graph_rewrites()
@@ -470,6 +472,9 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.autotune_ram_budget = 999999999
     options.experimental_optimization.autotune_buffers = True
     self.assertIn("autotune_buffer_sizes", options._graph_rewrites().enabled)
+    self.assertIn("disable_prefetch_legacy_autotune",
+                  options._graph_rewrites().enabled)
+
     autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,
