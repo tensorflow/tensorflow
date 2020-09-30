@@ -1594,47 +1594,6 @@ alias(
 
 # -----------------------------------------------------------------------------
 # Internal targets
-alias(
-    name = "worker_proto_cc",
-    actual = "//tensorflow/core/protobuf:worker_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "worker_service_proto_cc",
-    actual = "//tensorflow/core/protobuf:worker_service_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "master_proto_cc",
-    actual = "//tensorflow/core/protobuf:master_proto_cc",
-    visibility = [
-        "//learning/brain/frameworks/uptc:__subpackages__",
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "master_service_proto_cc",
-    actual = "//tensorflow/core/protobuf:master_service_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "eager_service_proto_cc",
-    actual = "//tensorflow/core/protobuf:eager_service_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
 filegroup(
     name = "lib_internal_private_headers",
     srcs = [
