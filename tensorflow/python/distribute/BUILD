@@ -1753,14 +1753,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
-        ":cross_device_utils",
-        ":distribute_utils",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/types",
     ],
 )
 
