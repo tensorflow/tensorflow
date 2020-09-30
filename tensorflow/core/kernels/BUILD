@@ -511,10 +511,10 @@ tf_cuda_library(
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
-        "//tensorflow/core:autotuning_proto_cc",
-        "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor/gpu:asm_compiler",

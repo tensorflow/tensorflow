@@ -1594,39 +1594,6 @@ alias(
 
 # -----------------------------------------------------------------------------
 # Internal targets
-
-alias(
-    name = "autotuning_proto",
-    actual = "//tensorflow/core/protobuf:autotuning_proto",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "autotuning_proto_cc",
-    actual = "//tensorflow/core/protobuf:autotuning_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "conv_autotuning_proto",
-    actual = "//tensorflow/core/protobuf:conv_autotuning_proto",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "conv_autotuning_proto_cc",
-    actual = "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
 alias(
     name = "worker_proto_cc",
     actual = "//tensorflow/core/protobuf:worker_proto_cc",
