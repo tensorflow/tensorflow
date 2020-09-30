@@ -1363,7 +1363,6 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_ndhwc_to_ncdhw('Conv3D-0', nodes)
       self._assert_trans_ndhwc_to_ncdhw('FusedBatchNormGradV3-1', nodes)
       self._assert_trans_ncdhw_to_ndhwc('FusedBatchNormGradV3-0-0', nodes)
->>>>>>> LO supports FusedBatchNormGradV3 and tests
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   @test_util.deprecated_graph_mode_only
