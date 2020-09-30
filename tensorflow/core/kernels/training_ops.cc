@@ -391,6 +391,7 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
           auto g = grad.template chip<0>(i);
           auto v = var.template chip<0>(index);
 
+// TODO(sanjoy): Remove this macro.
 // Use a macro to implement the computation here due to the templating of the
 // eigen tensor library.
 #define COMPUTE_FTRL(g, g_maybe_with_shrinkage)                         \
