@@ -55,6 +55,7 @@ cc_library(
     hdrs = ["profiler_server.h"],
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
+        "//tensorflow/core/profiler:internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
