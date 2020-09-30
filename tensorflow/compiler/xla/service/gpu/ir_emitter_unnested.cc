@@ -2885,7 +2885,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
                                              current_output);
         llvm::Value* warp_id =
             b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
-        ksl.If(is_zero(thread_id_info.lane_id), [&] {
+        ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
           llvm::Value* shmem_output_addr =
               shared_to_global(b_.CreateInBoundsGEP(
                   shared_cache, {b_.getInt32(0), constant(j), warp_id}));
@@ -2893,7 +2893,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
         });
 
         EmitSyncThreads();
-        ksl.If(is_zero(warp_id), [&] {
+        ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
           llvm::Value* block_accum_addr = shared_to_global(b_.CreateInBoundsGEP(
               shared_cache,
               {b_.getInt32(0), constant(j), thread_id_info.lane_id}));
@@ -2913,7 +2913,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
           EmitFullWarpShuffleDownLoopForReduce(
               reducers[i], element_type,
               /*block_accum_addr*/ selected_value);
-          ksl.If(is_zero(thread_id_info.thread_id_x), [&] {
+          ksl.If("reduction_atomic_update", is_zero(thread_id_info.thread_id_x), [&] {
             TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
                 *reducers[i], output_address, block_accum_addr));
           });
@@ -2951,7 +2951,8 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
             b_.CreateICmpULT(thread_id_info.thread_id_x,
                              tiling_kernel_info.output_tile_bounds[kDimY]));
 
-        ksl.If(b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
+        ksl.If("reduction_atomic_update",
+	       b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
           TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
               *reducers[i], output_address, shmem_transposed_addr));
         });
