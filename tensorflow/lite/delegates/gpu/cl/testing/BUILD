@@ -24,6 +24,10 @@ cc_binary(
 cc_binary(
     name = "internal_api_samples",
     srcs = ["internal_api_samples.cc"],
+    tags = [
+        "nobuilder",
+        "notap",
+    ],
     deps = [
         "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu/cl:api",
