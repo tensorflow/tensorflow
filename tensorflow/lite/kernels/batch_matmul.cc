@@ -154,7 +154,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   // Temp tensor for Transposed LHS;
   {
     node->temporaries->data[0] = op_data->scratch_tensor_index;
-    TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
+    TfLiteTensor* scratch_buffer;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/0, &scratch_buffer));
     TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(lhs_rank);
     for (int i = 0; i < lhs_rank - 2; ++i) {
       scratch_buffer_size->data[i] = lhs->dims->data[i];
@@ -175,7 +177,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   // is set by the caller, the data is already in the desired layout.
   {
     node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
-    TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/1);
+    TfLiteTensor* scratch_buffer;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/1, &scratch_buffer));
     const TfLiteTensor* rhs = op_context->rhs;
     int rhs_rank = NumDimensions(rhs);
     TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(rhs_rank);
@@ -215,7 +219,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     }
     op_data->compute_row_sums = true;
     node->temporaries->data[2] = op_data->scratch_tensor_index + 2;
-    TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/2);
+    TfLiteTensor* input_quantized;
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/2,
+                                                &input_quantized));
     input_quantized->type = op_context->rhs->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
 
@@ -225,7 +231,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
                                                      input_quantized_size));
 
     node->temporaries->data[3] = op_data->scratch_tensor_index + 3;
-    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/3);
+    TfLiteTensor* scaling_factors;
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/3,
+                                                &scaling_factors));
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
     // Total size of scaling factors is batch size * number of total batches
@@ -238,7 +246,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     }
 
     node->temporaries->data[4] = op_data->scratch_tensor_index + 4;
-    TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/4);
+    TfLiteTensor* accum_scratch;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/4, &accum_scratch));
     accum_scratch->type = kTfLiteInt32;
     accum_scratch->allocation_type = kTfLiteArenaRw;
     int accum_scratch_dims[2] = {num_units, batch_size};
@@ -252,7 +262,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     }
 
     node->temporaries->data[5] = op_data->scratch_tensor_index + 5;
-    TfLiteTensor* input_offsets = GetTemporary(context, node, /*index=*/5);
+    TfLiteTensor* input_offsets;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/5, &input_offsets));
     input_offsets->type = kTfLiteInt32;
     input_offsets->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, scaling_dims)) {
@@ -262,7 +274,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
                                                        input_offsets_size));
     }
     node->temporaries->data[6] = op_data->scratch_tensor_index + 6;
-    TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/6);
+    TfLiteTensor* row_sums;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, /*index=*/6, &row_sums));
     row_sums->type = kTfLiteInt32;
     row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int row_sums_dims[1] = {num_weights_matrices * num_units};
@@ -288,9 +302,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   bool adj_x = op_context.params->adj_x;
   bool adj_y = op_context.params->adj_y;
 
-  const TfLiteTensor* lhs_data = GetInput(context, node, kInputLHSTensor);
-  const TfLiteTensor* rhs_data = GetInput(context, node, kInputRHSTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* lhs_data;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputLHSTensor, &lhs_data));
+  const TfLiteTensor* rhs_data;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputRHSTensor, &rhs_data));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
@@ -502,11 +522,21 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            const RuntimeShape& rhs_shape,
                            const TfLiteTensor* rhs, TfLiteTensor* output) {
   if (lhs->type == kTfLiteFloat32) {
-    TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/2);
-    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/3);
-    TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/4);
-    TfLiteTensor* input_offsets = GetTemporary(context, node, /*index=*/5);
-    TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/6);
+    TfLiteTensor* input_quantized;
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/2,
+                                                &input_quantized));
+    TfLiteTensor* scaling_factors;
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/3,
+                                                &scaling_factors));
+    TfLiteTensor* accum_scratch;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/4, &accum_scratch));
+    TfLiteTensor* input_offsets;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/5, &input_offsets));
+    TfLiteTensor* row_sums;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, /*index=*/6, &row_sums));
     return EvalHybrid<kernel_type>(
         context, node, data, lhs_shape, lhs, rhs_shape, rhs, input_quantized,
         scaling_factors, accum_scratch, row_sums, input_offsets, output);
@@ -524,6 +554,10 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 TfLiteTensor* GetTempRhs(TfLiteContext* context, TfLiteNode* node,
                          const TfLiteTensor* rhs) {
   TfLiteTensor* transposed_rhs = GetTemporary(context, node, 1);
+  if (transposed_rhs == nullptr) {
+    return nullptr;
+  }
+
   if (rhs->type == kTfLiteInt8) {
     // Get the quantization params from the RHS tensor.
     transposed_rhs->params.scale = rhs->params.scale;
@@ -535,6 +569,10 @@ TfLiteTensor* GetTempRhs(TfLiteContext* context, TfLiteNode* node,
 TfLiteTensor* GetTempLhs(TfLiteContext* context, TfLiteNode* node,
                          const TfLiteTensor* lhs) {
   TfLiteTensor* transposed_lhs = GetTemporary(context, node, 0);
+  if (transposed_lhs == nullptr) {
+    return nullptr;
+  }
+
   if (lhs->type == kTfLiteInt8) {
     // Get the quantization params from the LHS tensor.
     transposed_lhs->params.scale = lhs->params.scale;
@@ -558,9 +596,15 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
-  const TfLiteTensor* lhs = GetInput(context, node, kInputLHSTensor);
-  const TfLiteTensor* rhs = GetInput(context, node, kInputRHSTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* lhs;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputLHSTensor, &lhs));
+  const TfLiteTensor* rhs;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputRHSTensor, &rhs));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   RuntimeShape orig_lhs_shape = GetTensorShape(lhs);
   RuntimeShape orig_rhs_shape = GetTensorShape(rhs);
 

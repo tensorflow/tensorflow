@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -15,7 +16,7 @@ cc_library(
     srcs = ["grpc_eager_service.h"],
     hdrs = ["grpc_eager_service.h"],
     deps = [
-        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
         "//tensorflow/stream_executor/platform",
         tf_grpc_cc_dependency(),
     ],
@@ -27,7 +28,6 @@ cc_library(
     hdrs = ["grpc_eager_client.h"],
     deps = [
         ":grpc_eager_service",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",
@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -46,7 +47,6 @@ cc_library(
     hdrs = ["grpc_eager_service_impl.h"],
     deps = [
         ":grpc_eager_service",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/eager:eager_service_impl",
@@ -55,6 +55,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
         tf_grpc_cc_dependency(),
     ],
 )

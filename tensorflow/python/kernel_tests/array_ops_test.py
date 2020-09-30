@@ -1234,6 +1234,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
+  @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
   def testTensorStridedSliceUpdateWithInputForward(self):
     """Tests tensor_strided_slice_update with input-forwarding taking effect."""
@@ -1243,6 +1244,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
     self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
 
+  @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
   def testTensorStridedSliceUpdateNoInputForward(self):
     """Tests tensor_strided_slice_update with no input-forwarding."""
@@ -1254,6 +1256,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     ans = y + z
     self.assertAllClose([1.6, 2.6], self.evaluate(ans))
 
+  @test_util.disable_xla("b/123559667")
   def testTensorStridedSliceUpdateGradSimple(self):
     original = constant_op.constant([0.2, 0.3])
     updates = constant_op.constant([0.4])
@@ -1272,6 +1275,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           ([4], [5], [3], [1], [3], 1, 0, 0, 0, 0),
           ([2, 2, 3, 2], [0, 0, 1], [1, 0, 2], [1, 0, 1], [2, 3], 0, 0, 2, 0, 5)
       ]))
+  @test_util.disable_xla("b/123559667")
   def testTensorStridedSliceUpdateGrad(
       self, shape, begin, end, strides, updates_shape, *args):
     with self.cached_session():
@@ -1398,6 +1402,34 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       check_dtypes(dtypes.int32, dtypes.int64)
       check_dtypes(dtypes.int64, dtypes.int32)
       check_dtypes(dtypes.int64, dtypes.int64)
+
+  def testOutputDtype(self):
+
+    def check_output_dtype(output_dtype):
+      res = self.evaluate(
+          array_ops.sequence_mask(
+              constant_op.constant([1, 3, 2], dtype=dtypes.int32),
+              constant_op.constant(5, dtype=dtypes.int32),
+              dtype=output_dtype))
+      self.assertAllEqual(
+          res,
+          self.evaluate(
+              math_ops.cast([[True, False, False, False, False],
+                             [True, True, True, False, False],
+                             [True, True, False, False, False]], output_dtype)))
+
+    check_output_dtype(dtypes.bool)
+    check_output_dtype("bool")
+    check_output_dtype(np.bool)
+    check_output_dtype(dtypes.int32)
+    check_output_dtype("int32")
+    check_output_dtype(np.int32)
+    check_output_dtype(dtypes.float32)
+    check_output_dtype("float32")
+    check_output_dtype(np.float32)
+    check_output_dtype(dtypes.int64)
+    check_output_dtype("float64")
+    check_output_dtype(np.float64)
 
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):

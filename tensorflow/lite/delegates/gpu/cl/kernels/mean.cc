@@ -35,6 +35,15 @@ Mean::Mean(const OperationDef& definition, const DeviceInfo& device_info)
   if (device_info.IsAdreno3xx()) {
     work_group_size_ = int3(16, 8, 1);
   }
+  if (device_info.IsMali()) {
+    const MaliInfo& mali_info = device_info.mali_info;
+    if (mali_info.IsMaliT6xx() || mali_info.IsMaliT7xx() ||
+        mali_info.IsMaliT8xx()) {
+      work_group_size_ = int3(8, 4, 1);
+    } else {
+      work_group_size_ = int3(8, 8, 1);
+    }
+  }
   code_ = GetMeanKernelCode(definition_, work_group_size_);
 }
 

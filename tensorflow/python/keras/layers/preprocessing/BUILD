@@ -18,6 +18,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "preprocessing",
     srcs = [
@@ -531,6 +537,7 @@ tf_py_test(
     name = "table_utils_test",
     srcs = ["table_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":table_utils",
         "//tensorflow/python:client_testlib",
@@ -597,6 +604,9 @@ tf_py_test(
     size = "medium",
     srcs = ["string_lookup_test.py"],
     python_version = "PY3",
+    tags = [
+        "notsan",  #b/168758821
+    ],
     deps = [
         ":preprocessing_test_utils",
         ":string_lookup",

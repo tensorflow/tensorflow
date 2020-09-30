@@ -142,8 +142,8 @@ class _DelegatingTrackableMixin(object):
     return self._trackable._add_variable_with_custom_getter(
         name, shape, dtype, initializer, getter, overwrite, **kwargs_for_getter)
 
-  def _preload_simple_restoration(self, name, shape):
-    return self._trackable._preload_simple_restoration(name, shape)
+  def _preload_simple_restoration(self, name):
+    return self._trackable._preload_simple_restoration(name)
 
   def _track_trackable(self, trackable, name, overwrite=False):  # pylint: disable=redefined-outer-name
     return self._trackable._track_trackable(trackable, name, overwrite)
@@ -248,19 +248,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     if not isinstance(optimizer, optimizer_v2.OptimizerV2):
       raise ValueError('"optimizer" must be an instance of OptimizerV2, but '
                        'got: %s' % optimizer)
-    if optimizer.clipnorm is not None:
-      raise ValueError('LossScaleOptimizer does not support wrapping '
-                       'optimizers with a clipnorm. Optimizer %s has clipnorm '
-                       '%s' % (optimizer, optimizer.clipnorm))
-
-    if optimizer.clipvalue is not None:
-      raise ValueError('LossScaleOptimizer does not support wrapping '
-                       'optimizers with a clipvalue. Optimizer %s has '
-                       'clipvalue %s' % (optimizer, optimizer.clipvalue))
     self._raise_if_strategy_unsupported()
-
-    self.clipnorm = None
-    self.clipvalue = None
 
     self._optimizer = optimizer
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
@@ -485,6 +473,30 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 
   def set_weights(self, weights):
     return self._optimizer.set_weights(weights)
+
+  @property
+  def clipnorm(self):
+    return self._optimizer.clipnorm
+
+  @clipnorm.setter
+  def clipnorm(self, val):
+    self._optimizer.clipnorm = val
+
+  @property
+  def global_clipnorm(self):
+    return self._optimizer.global_clipnorm
+
+  @global_clipnorm.setter
+  def global_clipnorm(self, val):
+    self._optimizer.global_clipnorm = val
+
+  @property
+  def clipvalue(self):
+    return self._optimizer.clipvalue
+
+  @clipvalue.setter
+  def clipvalue(self, val):
+    self._optimizer.clipvalue = val
 
   def _aggregate_gradients(self, grads_and_vars):
     return self._optimizer._aggregate_gradients(grads_and_vars)  # pylint: disable=protected-access

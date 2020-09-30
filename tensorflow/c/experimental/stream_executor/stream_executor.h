@@ -55,7 +55,8 @@ limitations under the License.
 //   constexpr char DEVICE_NAME[] = "MyDevice";
 //   constexpr char DEVICE_TYPE[] = "GPU";
 //
-//   void create_device(SE_CreateDeviceParams* params, TF_Status* status) {
+//   void create_device(const SP_Platform* platform,
+//                      SE_CreateDeviceParams* params, TF_Status* status) {
 //     // Custom actions based on TensorFlow's view of SP_Device.
 //     OnTFDeviceView(params->device->struct_size);
 //     params->device = { SP_DEVICE_STRUCT_SIZE };
@@ -64,7 +65,7 @@ limitations under the License.
 //     ...
 //   }
 //
-//   void destroy_device(SP_Device* device) {
+//   void destroy_device(const SP_Platform* platform, SP_Device* device) {
 //     delete_my_device_handle(device->device_handle);
 //   }
 //
@@ -76,14 +77,14 @@ limitations under the License.
 //     params->platform->name = DEVICE_NAME;
 //     params->platform->type = DEVICE_TYPE;
 //     params->platform->visible_device_count = 2;
-//     params->platform->create_device = create_device;
-//     params->platform->destroy_device = destroy_device;
+//     params->platform_fns->create_device = create_device;
+//     params->platform_fns->destroy_device = destroy_device;
 //     ...
 //   }
 
 #define SE_MAJOR 0
 #define SE_MINOR 0
-#define SE_REVISION 1
+#define SE_PATCH 1
 
 #ifdef __cplusplus
 extern "C" {
@@ -147,7 +148,7 @@ typedef struct SP_DeviceMemoryBase {
 } SP_DeviceMemoryBase;
 
 #define SP_DEVICE_MEMORY_BASE_STRUCT_SIZE \
-  TF_OFFSET_OF_END(SP_DeviceMemoryBase, size)
+  TF_OFFSET_OF_END(SP_DeviceMemoryBase, payload)
 
 typedef struct SP_Device {
   size_t struct_size;
@@ -157,9 +158,30 @@ typedef struct SP_Device {
   // Device vendor can store handle to their device representation
   // here.
   void* device_handle;
+
+  // [Optional]
+  // Device hardware name. Used for printing.
+  // Must be null-terminated.
+  const char* hardware_name;
+
+  // [Optional]
+  // Device vendor name. Used for printing.
+  // Must be null-terminated.
+  const char* device_vendor;
+
+  // [Optional]
+  // Returns the PCI bus identifier for this device, of the form
+  // [domain]:[bus]:[device].[function]
+  // where domain number is usually 0000.
+  // Example: 0000:00:02.1
+  // For more information see:
+  // https://en.wikipedia.org/wiki/PCI_configuration_space
+  // https://www.oreilly.com/library/view/linux-device-drivers/0596005903/ch12.html
+  // Used for printing. Must be null-terminated.
+  const char* pci_bus_id;
 } SP_Device;
 
-#define SP_DEVICE_STRUCT_SIZE TF_OFFSET_OF_END(SP_Device, device_handle)
+#define SP_DEVICE_STRUCT_SIZE TF_OFFSET_OF_END(SP_Device, pci_bus_id)
 
 typedef struct SE_CreateDeviceParams {
   size_t struct_size;
@@ -172,6 +194,42 @@ typedef struct SE_CreateDeviceParams {
 
 #define SE_CREATE_DEVICE_PARAMS_STRUCT_SIZE \
   TF_OFFSET_OF_END(SE_CreateDeviceParams, device)
+
+typedef struct SP_DeviceFns {
+  size_t struct_size;
+  void* ext;  // reserved for future use
+
+  // [Optional]
+  // Returns the NUMA node associated with this device, for use in
+  // determining socket locality. If the NUMA node could not be determined, -1
+  // is returned.
+  // Negative values are treated as "unset".
+  int32_t (*get_numa_node)(const SP_Device* device);
+
+  // [Optional]
+  // Device's memory bandwidth in bytes/sec.  (This is for reads/writes to/from
+  // the device's own memory, not for transfers between the host and device.)
+  // Negative values are treated as "unset".
+  int64_t (*get_memory_bandwidth)(const SP_Device* device);
+
+  // [Optional]
+  // Estimate of average number of floating point operations per second for
+  // this device * 10e-9.
+  // Negative values are treated as "unset".
+  double (*get_gflops)(const SP_Device* device);
+} SP_DeviceFns;
+
+#define SP_DEVICE_FNS_STRUCT_SIZE TF_OFFSET_OF_END(SP_DeviceFns, get_gflops)
+
+typedef struct SE_CreateDeviceFnsParams {
+  size_t struct_size;
+  void* ext;  // reserved for future use
+
+  SP_DeviceFns* device_fns;  // output, to be filled by plugin
+} SE_CreateDeviceFnsParams;
+
+#define SE_CREATE_DEVICE_FNS_PARAMS_STRUCT_SIZE \
+  TF_OFFSET_OF_END(SE_CreateDeviceFnsParams, device_fns)
 
 typedef struct SP_StreamExecutor {
   size_t struct_size;
@@ -197,6 +255,17 @@ typedef struct SP_StreamExecutor {
 
   // Deallocates a region of host memory allocated by `host_memory_allocate`.
   void (*host_memory_deallocate)(const SP_Device* device, void* mem);
+
+  // Allocates unified memory space of the given size, if supported. Unified
+  // memory support should be added by setting `supports_unified_memory` field
+  // in `SP_Platform`.
+  void* (*unified_memory_allocate)(const SP_Device* device, uint64_t bytes);
+
+  // Deallocates unified memory space previously allocated with
+  // `unified_memory_allocate`. Unified
+  // memory support should be added by setting `supports_unified_memory` field
+  // in `SP_Platform`.
+  void (*unified_memory_deallocate)(const SP_Device* device, void* location);
 
   // Fills SP_AllocatorStats with allocator statistics, if it is available.
   // If it is not available, return false.
@@ -309,13 +378,23 @@ typedef struct SP_StreamExecutor {
   void (*block_host_for_event)(const SP_Device* device, SP_Event event,
                                TF_Status* status);
 
+  // [Optional]
+  // Causes the host code to synchronously wait for operations entrained onto
+  // stream to complete. Effectively a join on the asynchronous device
+  // operations enqueued on the stream before this program point.
+  // If not set, then corresponding functionality will be implemented
+  // by registering an event on the `stream` and waiting for it using
+  // `block_host_for_event`.
+  void (*block_host_until_done)(const SP_Device* device, SP_Stream stream,
+                                TF_Status* status);
+
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
   void (*synchronize_all_activity)(const SP_Device* device, TF_Status* status);
 
   // Enqueues on a stream a user-specified function to be run on the host.
   // `callback_arg` should be passed as the first argument to `callback_fn`.
-  TF_Bool (*host_callback)(SP_Device* device, SP_Stream stream,
+  TF_Bool (*host_callback)(const SP_Device* device, SP_Stream stream,
                            SE_StatusCallbackFn callback_fn, void* callback_arg);
 } SP_StreamExecutor;
 
@@ -346,27 +425,56 @@ typedef struct SP_Platform {
   // Number of visible devices
   size_t visible_device_count;
 
+  // Whether this platform supports unified memory.
+  // Unified memory is a single memory address space accessible from any device.
+  TF_Bool supports_unified_memory;
+} SP_Platform;
+
+#define SP_PLATFORM_STRUCT_SIZE \
+  TF_OFFSET_OF_END(SP_Platform, supports_unified_memory)
+
+typedef struct SP_PlatformFns {
+  size_t struct_size;
+
+  void* ext;  // reserved for future use
+
   // Callbacks for creating/destroying SP_Device.
-  void (*create_device)(SE_CreateDeviceParams* params, TF_Status* status);
+  void (*create_device)(const SP_Platform* platform,
+                        SE_CreateDeviceParams* params, TF_Status* status);
 
   // Clean up fields inside SP_Device that were allocated
   // by the plugin. `device` itself should not be deleted here.
-  void (*destroy_device)(SP_Device* device);
+  void (*destroy_device)(const SP_Platform* platform, SP_Device* device);
+
+  // Callbacks for creating/destroying SP_DeviceFns.
+  void (*create_device_fns)(const SP_Platform* platform,
+                            SE_CreateDeviceFnsParams* params,
+                            TF_Status* status);
+
+  // Clean up fields inside SP_DeviceFns that were allocated
+  // by the plugin. `device_fns` itself should not be deleted here.
+  void (*destroy_device_fns)(const SP_Platform* platform,
+                             SP_DeviceFns* device_fns);
 
   // Callbacks for creating/destroying SP_StreamExecutor.
-  void (*create_stream_executor)(SE_CreateStreamExecutorParams* params,
+  void (*create_stream_executor)(const SP_Platform* platform,
+                                 SE_CreateStreamExecutorParams* params,
                                  TF_Status* status);
   // Clean up fields inside SP_StreamExecutor that were allocated
   // by the plugin. `stream_executor` itself should not be deleted here.
-  void (*destroy_stream_executor)(SP_StreamExecutor* stream_executor);
+  void (*destroy_stream_executor)(const SP_Platform* platform,
+                                  SP_StreamExecutor* stream_executor);
 
   // Callbacks for creating/destroying SP_TimerFns.
-  void (*create_timer_fns)(SP_TimerFns* timer, TF_Status* status);
+  void (*create_timer_fns)(const SP_Platform* platform, SP_TimerFns* timer,
+                           TF_Status* status);
 
-  void (*destroy_timer_fns)(SP_TimerFns* timer_fns);
-} SP_Platform;
+  void (*destroy_timer_fns)(const SP_Platform* platform,
+                            SP_TimerFns* timer_fns);
+} SP_PlatformFns;
 
-#define SP_PLATFORM_STRUCT_SIZE TF_OFFSET_OF_END(SP_Platform, destroy_timer_fns)
+#define SP_PLATFORM_FNS_STRUCT_SIZE \
+  TF_OFFSET_OF_END(SP_PlatformFns, destroy_timer_fns)
 
 typedef struct SE_PlatformRegistrationParams {
   size_t struct_size;
@@ -375,16 +483,19 @@ typedef struct SE_PlatformRegistrationParams {
   // StreamExecutor C API version.
   int32_t major_version;
   int32_t minor_version;
-  int32_t revision_version;
+  int32_t patch_version;
 
-  SP_Platform* platform;  // output, set by plugin
+  SP_Platform* platform;         // output, set by plugin
+  SP_PlatformFns* platform_fns;  // output, set by plugin
   // Clean up fields inside SP_Platform that were allocated
   // by the plugin. `platform` itself should not be deleted here.
   void (*destroy_platform)(SP_Platform* platform);  // out, set by plugin
+  void (*destroy_platform_fns)(
+      SP_PlatformFns* platform_fns);  // out, set by plugin
 } SE_PlatformRegistrationParams;
 
 #define SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE \
-  TF_OFFSET_OF_END(SE_PlatformRegistrationParams, destroy_platform)
+  TF_OFFSET_OF_END(SE_PlatformRegistrationParams, destroy_platform_fns)
 
 void SE_InitPlugin(SE_PlatformRegistrationParams* params, TF_Status* status);
 

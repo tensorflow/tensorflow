@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -154,11 +154,8 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     symbol_table.insert(clone);
   }
 
-  // Serialize module and return.
-  {
-    llvm::raw_string_ostream os(*serialized_func_module);
-    module_for_func.get().print(os);
-  }
+  *serialized_func_module =
+      tensorflow::SerializeMlirModule(module_for_func.get());
   return success();
 }
 
@@ -647,7 +644,7 @@ LogicalResult Rewrite(
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
       cluster_func.getParentOfType<tf_device::ReplicateOp>();
-  if (replicate) num_replicas = replicate.n().getLimitedValue();
+  if (replicate) num_replicas = replicate.n();
 
   auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
       tensorflow::kNumCoresPerReplicaAttr);

@@ -32,6 +32,7 @@ from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -41,7 +42,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import tpu
@@ -90,30 +90,9 @@ def _events_from_logdir(test_case, logdir):
 
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
-  def testResourceVariableAssignOnHost(self):
-    strategy = get_tpu_strategy()
-    with strategy.scope():
-      v = variables.Variable(
-          0.0, aggregation=variables.VariableAggregation.MEAN)
-    v2 = variables.Variable(0.0, aggregation=variables.VariableAggregation.MEAN)
-
-    def assign_fn():
-      v2.assign_add(4.0)
-
-    @def_function.function
-    def train_step():
-
-      def assign_add():
-        v.assign_add(2.0)
-        tpu.outside_compilation(assign_fn)
-        v.assign_add(3.0)
-
-      strategy.run(assign_add)
-      return
-
-    train_step()
-    self.assertAllEqual(4.0 * strategy.num_replicas_in_sync, v2.numpy())
-    self.assertAllEqual(5.0, v.numpy())
+  def setUp(self):
+    super(TpuOutsideCompilationTest, self).setUp()
+    config.set_soft_device_placement(False)
 
   def testHostNoInput(self):
     strategy = get_tpu_strategy()
@@ -576,6 +555,9 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       self.assertEqual(events[1].summary.value[0].tag, "cond/x")
       self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/168493455): Reenable this test once deadlock resolved."
+  )
   def testAutoOutsideCompilationWithFunctionalNodes(self):
     strategy = get_tpu_strategy()
 

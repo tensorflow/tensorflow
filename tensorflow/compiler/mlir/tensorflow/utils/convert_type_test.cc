@@ -36,7 +36,6 @@ std::string ConvertToMlirString(const std::vector<int64_t>& dims,
   }
   mlir::MLIRContext context;
   mlir::Builder b(&context);
-  context.loadAllGloballyRegisteredDialects();
   auto status_or = ConvertToMlirTensorType(shape, dtype, &b);
   std::string buf;
   llvm::raw_string_ostream os(buf);

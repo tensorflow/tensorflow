@@ -76,8 +76,10 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
 
   Optionally loads weights pre-trained on ImageNet.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.mobilenet_v3.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For MobileNetV3, call
+  `tf.keras.applications.mobilenet_v3.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     input_shape: Optional shape tuple, to be specified if you would
@@ -158,7 +160,7 @@ def MobileNetV3(stack_fn,
                 pooling=None,
                 dropout_rate=0.2,
                 classifier_activation='softmax'):
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '

@@ -27,6 +27,7 @@ from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -53,7 +54,7 @@ default_strategy_fn = distribution_strategy_context.get_strategy
 
 
 def create_mirrored_strategy():
-  if context.num_gpus() >= 1:
+  if tf_config.list_logical_devices('GPU'):
     return mirrored_strategy.MirroredStrategy(['cpu:0', 'gpu:0'])
   else:
     return mirrored_strategy.MirroredStrategy(['cpu:0'])
@@ -124,10 +125,10 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
   def testGetScaledLoss(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2.)
-    loss = ops.convert_to_tensor_v2(5.)
+    loss = ops.convert_to_tensor_v2_with_dispatch(5.)
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
-    loss = ops.convert_to_tensor_v2(5., dtype='float16')
+    loss = ops.convert_to_tensor_v2_with_dispatch(5., dtype='float16')
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
 
@@ -135,8 +136,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     scaled_grads = [
-        ops.convert_to_tensor_v2(3.), None,
-        ops.convert_to_tensor_v2(-4., dtype='float16')
+        ops.convert_to_tensor_v2_with_dispatch(3.), None,
+        ops.convert_to_tensor_v2_with_dispatch(-4., dtype='float16')
     ]
     grads = opt.get_unscaled_gradients(scaled_grads)
     grads = [self.evaluate(g) if g is not None else g for g in grads]
@@ -146,9 +147,10 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     sparse_scaled_grad = ops.IndexedSlices(
-        ops.convert_to_tensor_v2([[4., 2.], [8., 5.]]),
-        ops.convert_to_tensor_v2([1, 3], dtype='int32'),
-        dense_shape=ops.convert_to_tensor_v2([5, 2], dtype='int32'))
+        ops.convert_to_tensor_v2_with_dispatch([[4., 2.], [8., 5.]]),
+        ops.convert_to_tensor_v2_with_dispatch([1, 3], dtype='int32'),
+        dense_shape=ops.convert_to_tensor_v2_with_dispatch([5, 2],
+                                                           dtype='int32'))
     sparse_grad = opt.get_unscaled_gradients([sparse_scaled_grad])[0]
     self.assertIsInstance(sparse_grad, ops.IndexedSlices)
     self.assertAllEqual([[2., 1.], [4., 2.5]],
@@ -186,6 +188,52 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # As before, the 2 is subtracted from the variable, making it's new value
       # 1.
       self.assertAllClose([1.], self.evaluate(var))
+
+  # pylint: disable=cell-var-from-loop
+  @parameterized.named_parameters(*TESTCASES)
+  def testClipping(self, strategy_fn):
+    strategy = strategy_fn()
+    learning_rate = 2.
+    for clip_type in ('clipnorm', 'global_clipnorm', 'clipvalue'):
+      with strategy.scope(), self.subTest(clip_type=clip_type):
+        var = variables.Variable([5.0])
+        opt = gradient_descent.SGD(learning_rate, **{clip_type: 2.0})
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=2, increment_period=1, multiplier=2)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+        self.assertEqual(getattr(opt, clip_type), 2.0)
+        self.assertEqual(
+            loss_scale.initial_loss_scale % strategy.num_replicas_in_sync, 0)
+
+        loss = lambda: var * 4 / strategy.num_replicas_in_sync
+        run_fn = lambda: opt.minimize(loss, var_list=[var])
+
+        # Test running with clipped gradients
+        run_op = strategy.experimental_run(run_fn)
+        self.evaluate(variables.global_variables_initializer())
+        self._run_if_in_graph_mode(run_op)
+        # The gradient is 4 but is clipped to 2, so the variable will be
+        # init_val - clipped_grad * lr == 5 - 2 * 2 == 1
+        self.assertAllClose([1.], self.evaluate(var))
+        self.assertEqual(self.evaluate(opt.loss_scale()), 4)
+
+        # Test changing the clip amount and running again
+        setattr(opt, clip_type, 3.0)
+        run_op = strategy.experimental_run(run_fn)
+        self._run_if_in_graph_mode(run_op)
+        # The gradient is 4 but is clipped to 3, so the variable will be
+        # prev_var - clipped_grad * lr == 1 - 3 * 2 == -5
+        self.assertAllClose([-5.], self.evaluate(var))
+        self.assertEqual(self.evaluate(opt.loss_scale()), 8)
+
+        # Test Inf gradients are still skipped instead of being clipped
+        loss = lambda: var * float('Inf')
+        run_fn = lambda: opt.minimize(loss, var_list=[var])
+        run_op = strategy.experimental_run(run_fn)
+        self._run_if_in_graph_mode(run_op)
+        self.assertAllClose([-5.], self.evaluate(var))  # Var does not change
+        self.assertEqual(self.evaluate(opt.loss_scale()), 4)
+  # pylint: enable=cell-var-from-loop
 
   @parameterized.named_parameters(*TESTCASES)
   def testDynamicUpdate(self, strategy_fn):

@@ -344,7 +344,7 @@ class Interpreter(object):
     tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
         tensor_index)
 
-    if not tensor_name or not tensor_type:
+    if not tensor_type:
       raise ValueError('Could not get tensor details')
 
     details = {

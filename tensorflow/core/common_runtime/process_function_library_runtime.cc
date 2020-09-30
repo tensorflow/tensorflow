@@ -88,7 +88,6 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent,
-    const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     Rendezvous::Factory rendezvous_factory)
     : parent_(parent),
@@ -106,14 +105,14 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, config_ ? &(*config_) : nullptr, nullptr,
         graph_def_version, lib_def_, default_thread_pool, optimizer_options,
-        custom_kernel_creator, session_metadata_, this);
+        session_metadata_, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
     (*flr_map_)[d] = NewFunctionLibraryRuntime(
         device_mgr, env, config_ ? &(*config_) : nullptr, d, graph_def_version,
-        lib_def_, default_thread_pool, optimizer_options, custom_kernel_creator,
-        session_metadata_, this);
+        lib_def_, default_thread_pool, optimizer_options, session_metadata_,
+        this);
   }
 
   InitializeDeviceSet();
@@ -1130,10 +1129,11 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     rets->resize(data->num_outputs_);
 
     auto component_fn_callback = [comp_rets, rets, comp_data, refcounted_done,
-                                  cm, local_cm, data,
+                                  cm, local_cm, data, handle,
                                   target](const Status& status) {
       if (!status.ok()) {
         VLOG(2) << "Component function execution on target " << target
+                << " from " << data->function_name_ << " with handle " << handle
                 << " failed: " << status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
@@ -1143,6 +1143,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
         cm->StartCancel();
       } else {
         VLOG(2) << "Component function execution on target " << target
+                << " from " << data->function_name_ << " with handle " << handle
                 << " succeeded.";
         for (int i = 0; i < comp_rets->size(); ++i) {
           (*rets)[comp_data.ret_indices[i]] = (*comp_rets)[i];
@@ -1161,8 +1162,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
       opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
 
-      VLOG(1) << "Running component function on device " << target
-              << " with handle " << handle;
+      VLOG(1) << "Running component function on device " << target << " from "
+              << data->function_name_ << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
       std::vector<Tensor>* comp_tensor_rets = new std::vector<Tensor>;
@@ -1173,8 +1174,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     } else {
       opts_copy.remote_execution = true;
 
-      VLOG(1) << "Running component function on device " << target
-              << " with handle " << handle;
+      VLOG(1) << "Running component function on device " << target << " from "
+              << data->function_name_ << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
       RunInternal(opts_copy, handle, comp_args.args, comp_rets, cleanup_items,
@@ -1713,7 +1714,6 @@ void ProcessFunctionLibraryRuntime::CleanUp(
 
 Status ProcessFunctionLibraryRuntime::Clone(
     Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
-    const CustomKernelCreator* custom_kernel_creator,
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
     bool skip_flib_def) const {
@@ -1726,7 +1726,7 @@ Status ProcessFunctionLibraryRuntime::Clone(
   *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, config_ ? &(*config_) : nullptr, graph_def_version,
       out_lib_def->get(), optimizer_options, default_thread_pool_, parent_,
-      custom_kernel_creator, session_metadata_, rendezvous_factory_);
+      session_metadata_, rendezvous_factory_);
   {
     tf_shared_lock l(mu_);
     for (auto* d : composite_devices_) (*out_pflr)->AddCompositeDevice(d);

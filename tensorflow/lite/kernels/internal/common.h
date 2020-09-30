@@ -241,8 +241,12 @@ inline Integer FloorLog2(Integer n) {
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
 // softmax
-inline void gen_lut(const std::function<double(double)>& func, double min,
-                    double max, int16_t* table, const int num) {
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(double (*func)(double), double min, double max,
+                    int16_t* table, const int num) {
   // size of table should equal to num + 1
   // last element only for slope calculation
   double step = (max - min) / (num - 1);
@@ -261,6 +265,34 @@ inline void gen_lut(const std::function<double(double)>& func, double min,
   }
   table[num - 1] =
       std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
+}
+
+// generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
+// softmax
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(float (*func)(float), float min, float max, int16_t* table,
+                    const int num) {
+  // size of table should equal to num + 1
+  // last element only for slope calculation
+  float step = (max - min) / (num - 1);
+  float half_step = step / 2.0f;
+  for (int i = 0; i < num - 1; i++) {
+    float sample_val = TfLiteRound(func(min + i * step) * 32768.0f);
+    float midpoint_interp_val =
+        TfLiteRound((func(min + (i + 1) * step) * 32768.0f +
+                     TfLiteRound(func(min + i * step) * 32768.0f)) /
+                    2.0f);
+    float midpoint_val =
+        TfLiteRound(func(min + i * step + half_step) * 32768.0f);
+    float midpoint_err = midpoint_interp_val - midpoint_val;
+    float bias = TfLiteRound(midpoint_err / 2.0f);
+    table[i] = std::min(std::max(sample_val - bias, -32768.0f), 32767.0f);
+  }
+  table[num - 1] = std::min(
+      std::max(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
 }
 
 // int16_t func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax

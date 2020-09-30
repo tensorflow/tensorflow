@@ -18,12 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import threading
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import tf2
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
@@ -33,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.ops import array_ops
@@ -52,14 +54,14 @@ def get_var(val, dtype, name=None):
   return variables.VariableV1(val, use_resource=True, dtype=dtype, name=name)
 
 
-@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+@ds_combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     strategy_combinations.set_virtual_cpus_to_at_least(3)
     super(AutoCastVariableTest, self).setUp()
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_read(self, distribution):
     with distribution.scope():
       x = get_var(1., dtypes.float32)
@@ -73,16 +75,14 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(array_ops.identity(x).dtype, dtypes.float32)
 
       # within auto cast scope of different dtype
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.assertEqual(x.dtype, dtypes.float16)
         self.assertEqual(x.value().dtype, dtypes.float16)
         self.assertEqual(x.read_value().dtype, dtypes.float16)
         self.assertEqual(array_ops.identity(x).dtype, dtypes.float16)
 
       # within auto cast scope of same dtype
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float32):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float32):
         self.assertEqual(x.dtype, dtypes.float32)
         self.assertEqual(x.value().dtype, dtypes.float32)
         self.assertEqual(x.read_value().dtype, dtypes.float32)
@@ -98,32 +98,29 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(x.sparse_read([0]).dtype, dtypes.float32)
     self.assertEqual(x.gather_nd([0]).dtype, dtypes.float32)
 
-    with ops.get_default_graph()._enable_auto_casting_variables(
-        dtypes.float16):
+    with autocast_variable.enable_auto_cast_variables(dtypes.float16):
       self.assertEqual(x.sparse_read([0]).dtype, dtypes.float16)
       self.assertEqual(x.gather_nd([0]).dtype, dtypes.float16)
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_read_nested_scopes(self, distribution):
     with distribution.scope():
       x = get_var(1., dtypes.float32)
       x = autocast_variable.create_autocast_variable(x)
       self.evaluate(x.initializer)
 
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.assertEqual(x.dtype, dtypes.float16)
         self.assertEqual(x.read_value().dtype, dtypes.float16)
 
-        with ops.get_default_graph()._enable_auto_casting_variables(
-            dtypes.float32):
+        with autocast_variable.enable_auto_cast_variables(dtypes.float32):
           self.assertEqual(x.dtype, dtypes.float32)
           self.assertEqual(x.read_value().dtype, dtypes.float32)
 
         self.assertEqual(x.dtype, dtypes.float16)
         self.assertEqual(x.read_value().dtype, dtypes.float16)
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_dtype_is_not_string(self, distribution):
     with distribution.scope():
       x = get_var(1., dtypes.float32)
@@ -134,13 +131,13 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(x.true_dtype, dtypes.DType)
 
       dtype = dtypes.float16
-      with ops.get_default_graph()._enable_auto_casting_variables(dtype):
+      with autocast_variable.enable_auto_cast_variables(dtype):
         self.assertEqual(x.dtype, dtypes.float16)
         self.assertIsInstance(x.dtype, dtypes.DType)
         self.assertEqual(x.true_dtype, dtypes.float32)
         self.assertIsInstance(x.true_dtype, dtypes.DType)
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_method_delegations(self, distribution):
     # Test AutoCastVariable correctly delegates Variable methods to the
     # underlying variable.
@@ -160,8 +157,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
         x = get_var(7., dtypes.float32)
         x = autocast_variable.create_autocast_variable(x)
-        with ops.get_default_graph()._enable_auto_casting_variables(
-            read_dtype):
+        with autocast_variable.enable_auto_cast_variables(read_dtype):
           self.evaluate(x.initializer)
           self.assertEqual(self.evaluate(x.value()), 7)
           self.assertEqual(self.evaluate(x.read_value()), 7)
@@ -194,8 +190,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           # DistributedVariables
           x = get_var([7, 8], dtypes.float32)
           x = autocast_variable.create_autocast_variable(x)
-          with ops.get_default_graph()._enable_auto_casting_variables(
-              read_dtype):
+          with autocast_variable.enable_auto_cast_variables(read_dtype):
             self.evaluate(x.initializer)
             self.assertAllEqual(self.evaluate(x.value()), [7, 8])
 
@@ -220,14 +215,13 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
             self.assertAllEqual(
                 evaluate(x.scatter_nd_update([[0], [1]], [1., 2.])), [1, 2])
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_operator_overloads(self, distribution):
     with distribution.scope():
       for read_dtype in (dtypes.float32, dtypes.float16):
         x = get_var(7., dtypes.float32)
         x = autocast_variable.create_autocast_variable(x)
-        with ops.get_default_graph()._enable_auto_casting_variables(
-            read_dtype):
+        with autocast_variable.enable_auto_cast_variables(read_dtype):
           self.evaluate(x.initializer)
           self.assertAlmostEqual(8, self.evaluate(x + 1))
           self.assertAlmostEqual(10, self.evaluate(3 + x))
@@ -267,7 +261,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
             self.assertAllEqual(x == [7., 8., 10.], [True, True, False])
             self.assertAllEqual(x != [7., 8., 10.], [False, False, True])
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_assign(self, distribution):
     with distribution.scope():
       x = get_var(0., dtypes.float32)
@@ -339,12 +333,11 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       # reset x
       self.evaluate(x.assign(0.))
       # within auto cast scope.
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         # assign still expect float32 value even if in float16 scope
         run_and_check()
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_assign_tf_function(self, distribution):
     if not context.executing_eagerly():
       self.skipTest('Test is not compatible with graph mode')
@@ -357,11 +350,10 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       def run_assign():
         return x.assign(1.).assign_add(3.).assign_add(3.).assign_sub(2.)
 
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.assertAllClose(5., self.evaluate(run_assign()))
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_assign_op(self, distribution):
     with distribution.scope():
       x = get_var(0., dtypes.float32)
@@ -375,7 +367,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
       func()
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_tf_function_control_dependencies(self, distribution):
     if not context.executing_eagerly():
       self.skipTest('Test is not compatible with graph mode')
@@ -393,7 +385,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       func()
       self.assertAllClose(2., self.evaluate(x))
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_assign_stays_in_true_dtype(self, distribution):
     with distribution.scope():
       x = get_var(1., dtypes.float32)
@@ -403,8 +395,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       # in fp32
       small_val = np.finfo('float16').eps / 2
       small_tensor = constant_op.constant(small_val, dtype=dtypes.float32)
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         # Variable should be increased, despite it appearing to be the same
         # float16 value.
         self.evaluate(x.assign(1. + small_tensor))
@@ -412,13 +403,30 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(1. + small_val, self.evaluate(x))
 
       self.evaluate(x.assign(1.))
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.evaluate(x.assign_add(small_tensor))
         self.assertEqual(1., self.evaluate(x.value()))
       self.assertEqual(1. + small_val, self.evaluate(x))
 
-  @combinations.generate(maybe_distribute)
+  def test_thread_local_autocast_dtype(self):
+    x = get_var(1., dtypes.float32)
+    x = autocast_variable.create_autocast_variable(x)
+    self.evaluate(x.initializer)
+
+    with autocast_variable.enable_auto_cast_variables(dtypes.float16):
+      self.assertEqual(x.dtype, dtypes.float16)
+
+      # New threads should not see the modified value of the autocast dtype.
+      var_dtype = None
+      def f():
+        nonlocal var_dtype
+        var_dtype = x.dtype
+      thread = threading.Thread(target=f)
+      thread.start()
+      thread.join()
+      self.assertEqual(var_dtype, dtypes.float32)
+
+  @ds_combinations.generate(maybe_distribute)
   def test_checkpoint(self, distribution):
     with self.test_session():
       with distribution.scope():
@@ -434,7 +442,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       checkpoint.restore(save_path).assert_consumed().run_restore_ops()
       self.assertEqual(self.evaluate(x), 123.)
 
-  @combinations.generate(maybe_distribute)
+  @ds_combinations.generate(maybe_distribute)
   def test_invalid_wrapped_variable(self, distribution):
     with distribution.scope():
       # Wrap a non-variable
@@ -459,8 +467,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           "<AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32, "
           "numpy="
       )
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.assertStartsWith(
             repr(x),
             "<AutoCastVariable 'x:0' shape=() dtype=float16 "
@@ -471,8 +478,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           repr(x),
           "<AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32>"
       )
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
+      with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.assertEqual(
             repr(x),
             "<AutoCastVariable 'x:0' shape=() dtype=float16 true_dtype=float32>"

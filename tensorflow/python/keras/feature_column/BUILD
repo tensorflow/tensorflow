@@ -10,6 +10,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "feature_column",
     srcs = ["__init__.py"],
@@ -18,7 +24,6 @@ py_library(
         ":dense_features",
         ":dense_features_v2",
         ":sequence_feature_column",
-        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -60,7 +65,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tf_export",
         "//tensorflow/python/feature_column:feature_column_v2",
-        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -85,6 +89,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -108,6 +113,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 

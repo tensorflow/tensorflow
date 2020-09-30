@@ -10,6 +10,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "wrappers",
     srcs = [
@@ -32,6 +38,7 @@ tf_py_test(
     srcs = ["scikit_learn_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
+    tfrt_enabled = True,
     deps = [
         ":wrappers",
         "//tensorflow/python:client_testlib",

@@ -30,13 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-#include "tensorflow/lite/experimental/tf_runtime/public/subgraph.h"
-#endif
-
 namespace tflite {
-
-namespace impl {
 
 // Forward declare since NNAPIDelegate uses Interpreter.
 class NNAPIDelegate;
@@ -342,8 +336,8 @@ class Subgraph {
   // for the tensor, it can no longer be reset to the TFLite arena memory.
   //
   // Parameters should satisfy the following conditions:
-  // 1. tensor->allocation_type == kTfLiteArenaRw
-  //    In general, this is true for all non-constants such as I/O tensors.
+  // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  //    In general, this is true for I/O tensors & variable tensors.
   // 2. allocation->data has the appropriate permissions for runtime access
   //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
   // 3. allocation->bytes >= tensor->bytes.
@@ -456,6 +450,15 @@ class Subgraph {
   // NOTE: this changes consistent_ to be false if indices are out of bounds.
   TfLiteStatus CheckTensorIndices(const char* label, const int* indices,
                                   int length);
+
+  // Check that the input indices and the output indices don't overlap.
+  // This is needed because same tensor must not be used both as input and
+  // output for an operator.
+  // NOTE: this changes consistent_ to be false if indices are out of bounds.
+  TfLiteStatus CheckInputAndOutputForOverlap(const int* input_indices,
+                                             int num_inputs,
+                                             const int* output_indices,
+                                             int num_outputs);
 
   // Compute the number of bytes required to represent a tensor with dimensions
   // specified by the array dims (of length dims_size). Returns the status code
@@ -738,14 +741,6 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 };
-
-}  // namespace impl
-
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-using Subgraph = tflrt::Subgraph;
-#else
-using Subgraph = impl::Subgraph;
-#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_SUBGRAPH_H_

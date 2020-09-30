@@ -362,14 +362,15 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsent(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
     CompilationRefHolder* per_step_ref_holder, int64* uid,
-    std::vector<std::string>* proto_key,
+    std::vector<std::string>* proto_key, std::vector<std::string>* sharding_key,
     std::vector<bool>* may_modify_variables,
     absl::Span<const xla::HloProto* const>* hlo_metadatas,
     const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
   std::vector<CompiledSubgraph*> removed_entries;
   auto status = CompileIfKeyAbsentHelper(
       subgraph_key, session_metadata, per_step_ref_holder, uid, proto_key,
-      may_modify_variables, &removed_entries, hlo_metadatas, compile_function);
+      sharding_key, may_modify_variables, &removed_entries, hlo_metadatas,
+      compile_function);
   for (auto entry : removed_entries) {
     UnloadAndDestroy(entry);
   }
@@ -399,7 +400,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
     CompilationRefHolder* per_step_ref_holder, int64* uid,
-    std::vector<std::string>* proto_key,
+    std::vector<std::string>* proto_key, std::vector<std::string>* sharding_key,
     std::vector<bool>* may_modify_variables,
     std::vector<CompiledSubgraph*>* removed_entries,
     absl::Span<const xla::HloProto* const>* hlo_metadatas,
@@ -497,7 +498,8 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
   *uid = entry->uid;
   // Let the caller know the keys for each of the cached protos.
   *proto_key = entry->proto_key;
-  *may_modify_variables = entry->tpu_program_group->may_modify_variables();
+  *sharding_key = entry->sharding_key;
+  *may_modify_variables = entry->tpu_program_group->may_modify_variables_list();
   *hlo_metadatas = entry->tpu_program_group->hlo_metadatas();
 
   // If the caller didn't supply a per_step_ref_holder then the caller is going

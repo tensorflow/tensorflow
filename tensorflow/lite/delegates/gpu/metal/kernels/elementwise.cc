@@ -45,6 +45,7 @@ std::string OneInputFunctor(OperationType op_type, const std::string& value) {
        "$0.w < FLT(0.0f) ? exp($0.w) - FLT(1.0f) : $0.w)"},
       {OperationType::EXP, "exp($0)"},
       {OperationType::LOG, "log($0)"},
+      {OperationType::NEG, "-($0)"},
       {OperationType::SQRT, "sqrt($0)"},
       {OperationType::RSQRT, "1.0 / sqrt($0)"},
       {OperationType::SQUARE, "$0 * $0"},

@@ -1,5 +1,6 @@
 # Description: Utilities for TPU Operations
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_windows",
@@ -26,6 +27,9 @@ cc_library(
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -155,8 +159,10 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
+        ":tpu_api_dlsym_set_fn",
         ":tpu_compilation_device",
         ":tpu_config_c_api",
+        ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_node_device",
         ":tpu_system_device",
@@ -173,9 +179,16 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_api_dlsym_set_fn",
+    hdrs = ["tpu_api_dlsym_set_fn.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
+    deps = [":tpu_executor_init_fns"],
 )
 
 cc_library(
@@ -284,6 +297,7 @@ cc_library(
     srcs = ["tpu_on_demand_compiler.cc"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
@@ -293,8 +307,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "//tensorflow/stream_executor/tpu:status_helper",
+        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/types:span",

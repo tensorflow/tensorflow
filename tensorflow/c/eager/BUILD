@@ -1,13 +1,20 @@
 # Experimental extensions to the C API for eager execution of kernels.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_tpu",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
     "tf_cuda_library",
-    "tfe_xla_copts",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "internal_tfrt_deps")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -31,7 +38,7 @@ tf_cuda_library(
         "c_api_unified_experimental.h",
     ],
     hdrs = ["c_api.h"],
-    copts = tf_copts() + tfe_xla_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
@@ -72,13 +79,6 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
         ],
-    }) + select({
-        "//tensorflow:with_xla_support": [
-            "//tensorflow/compiler/tf2xla:xla_compiler",
-            "//tensorflow/compiler/jit",
-            "//tensorflow/compiler/jit:xla_device",
-        ],
-        "//conditions:default": [],
     }) + [
         "@com_google_absl//absl/memory",
         "//tensorflow/core/common_runtime/eager:eager_operation",
@@ -95,7 +95,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core:gpu_runtime",
-    ],
+    ] + internal_tfrt_deps(),
     alwayslink = 1,
 )
 
@@ -109,11 +109,16 @@ filegroup(
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
+        "c_api_unified_experimental_internal.h",
         "dlpack.h",
+        "gradients.h",
+        "gradients_internal.h",
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
+        "tape.h",
         "tfe_cancellation_manager_internal.h",
+        "tfe_context_internal.h",
         "tfe_executor_internal.h",
         "tfe_monitoring_internal.h",
         "tfe_op_attrs_internal.h",
@@ -172,27 +177,20 @@ cc_library(
 )
 
 cc_library(
-    name = "gradients",
-    srcs = [
-        "gradients.cc",
-        "gradients_internal.h",
-    ],
+    name = "tracing_utils",
+    srcs = ["tracing_utils.cc"],
     hdrs = [
-        "gradients.h",
+        "tracing_utils.h",
     ],
     visibility = [
         "//tensorflow:internal",
     ],
     deps = [
-        ":abstract_context",
         ":abstract_operation",
-        ":abstract_tensor_handle",
         ":c_api_unified_internal",
-        ":tape",
-        "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/c/experimental/gradients/tape:tape_operation",
         "//tensorflow/core/lib/llvm_rtti",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -228,10 +226,10 @@ tf_cuda_cc_test(
         "gradients_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":abstract_context",
         ":abstract_tensor_handle",
         ":c_api_experimental",
         ":c_api_test_util",
@@ -242,7 +240,190 @@ tf_cuda_cc_test(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/gradients:array_grad",
         "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gradients_util",
+    srcs = [
+        "gradients_util.cc",
+    ],
+    hdrs = [
+        "gradients_util.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":tape",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+    ] + if_tpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
+        if_true = [],
+    ),
+)
+
+cc_library(
+    name = "mnist_gradients_testutil",
+    srcs = [
+        "mnist_gradients_testutil.cc",
+    ],
+    hdrs = [
+        "mnist_gradients_testutil.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":gradients_util",
+        ":tape",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gradient_checker",
+    srcs = [
+        "gradient_checker.cc",
+    ],
+    hdrs = [
+        "gradient_checker.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":gradients_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+    ] + if_tpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
+        if_true = [],
+    ),
+)
+
+tf_cuda_cc_test(
+    name = "gradient_checker_test",
+    size = "small",
+    srcs = [
+        "gradient_checker_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":c_api_unified_internal",
+        ":gradient_checker",
+        ":gradients_internal",
+        ":gradients_util",
+        ":mnist_gradients_testutil",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "mnist_gradients_test",
+    size = "small",
+    srcs = [
+        "mnist_gradients_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+    ],
+    deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":gradients_util",
+        ":mnist_gradients_testutil",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
@@ -470,6 +651,8 @@ tf_cuda_library(
         ":c_api",
         ":c_api_experimental",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -484,7 +667,6 @@ tf_cuda_cc_test(
         "c_api_debug_test.cc",
         "c_api_test.cc",
     ],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "noguitar",  # TODO(b/155445984): flaky
         #"guitar",
@@ -539,7 +721,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
     ],
@@ -572,7 +753,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
     ],
@@ -591,7 +771,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
         "noasan",  # leaks gRPC server instances
@@ -625,7 +804,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
     ],
@@ -660,7 +838,7 @@ tf_cuda_library(
         "c_api_experimental.h",
         "c_api_unified_experimental.h",
     ],
-    copts = tf_copts() + tfe_xla_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
@@ -732,7 +910,6 @@ tf_cuda_cc_test(
         "c_api_experimental_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -745,6 +922,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -756,7 +934,6 @@ tf_cuda_cc_test(
         "c_api_unified_experimental_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -765,6 +942,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
@@ -874,7 +1052,13 @@ filegroup(
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
             "c_api_unified_experimental_internal.h",
+            "gradient_checker.cc",
+            "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.
+            "gradients_util.cc",
+            "gradients_util.h",
+            "tracing_utils.h",
+            "tracing_utils.cc",
             "*test*",
             "*dlpack*",
         ],

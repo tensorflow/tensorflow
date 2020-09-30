@@ -19,13 +19,18 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python import keras
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.eager import context
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
-from tensorflow.python.platform import test
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul. Even if Dense layers run in '
+    'float64, the test sometimes fails with TensorFloat-32 enabled for unknown '
+    'reasons')
 class DistributionStrategyCnnCorrectnessTest(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
@@ -91,24 +96,26 @@ class DistributionStrategyCnnCorrectnessTest(
     x_eval, y_eval = self._get_data(count=1000)
     return x_train, y_train, x_eval, y_eval, x_eval
 
-  @combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  @ds_combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_cnn_correctness(self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  @ds_combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
                                            use_validation_data):
-    self.skipTest('Flakily times out, b/134670856')
     self.run_correctness_test(
         distribution,
         use_numpy,
         use_validation_data,
         with_batch_norm='regular')
 
-  @combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  @ds_combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_cnn_with_sync_batch_norm_correctness(self, distribution, use_numpy,
                                                 use_validation_data):
     if not context.executing_eagerly():
@@ -120,10 +127,11 @@ class DistributionStrategyCnnCorrectnessTest(
         use_validation_data,
         with_batch_norm='sync')
 
-  @combinations.generate(
-      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
+  @ds_combinations.generate(
       keras_correctness_test_base
-      .strategy_minus_tpu_and_input_config_combinations_eager())
+      .all_strategy_and_input_config_combinations_eager() +
+      keras_correctness_test_base.multi_worker_mirrored_eager() +
+      keras_correctness_test_base.test_combinations_with_tpu_strategies_graph())
   def test_cnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
                                                         use_validation_data):
@@ -134,10 +142,11 @@ class DistributionStrategyCnnCorrectnessTest(
         partial_last_batch=True,
         training_epochs=1)
 
-  @combinations.generate(
-      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
-      keras_correctness_test_base
-      .strategy_minus_tpu_and_input_config_combinations_eager())
+  @ds_combinations.generate(
+      keras_correctness_test_base.
+      all_strategy_and_input_config_combinations_eager() +
+      keras_correctness_test_base.multi_worker_mirrored_eager() +
+      keras_correctness_test_base.test_combinations_with_tpu_strategies_graph())
   def test_cnn_with_batch_norm_correctness_and_partial_last_batch_eval(
       self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(
@@ -149,4 +158,4 @@ class DistributionStrategyCnnCorrectnessTest(
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

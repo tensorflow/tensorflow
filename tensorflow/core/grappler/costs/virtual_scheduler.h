@@ -358,6 +358,29 @@ class SchedulerState {
                                                const Costs& node_costs,
                                                const OpContext& op_context);
 
+  // Some getter functions.
+  const GrapplerItem* GetGrapplerItem() { return grappler_item_; }
+  Costs GetGraphCost() { return graph_costs_; }
+  Cluster* GetCluster() { return cluster_; }
+  bool GetUseStaticShape() { return use_static_shapes_; }
+  bool GetUseAggressiveShapeInference() {
+    return use_aggressive_shape_inference_;
+  }
+  const std::unordered_map<const NodeDef*, NodeState>& GetNodeMap() {
+    return node_map_;
+  }
+
+ protected:
+  // Assigns the time_scheduled in the NodeState of node to the current
+  // execution_time of the device executing this node.
+  void SetNodeStateTimeScheduled(const NodeDef* node);
+
+  // This method can be used by a class derived from SchedulerState to
+  // access the device state map.
+  std::unordered_map<string, DeviceState>* GetMutableDeviceState() {
+    return &device_;
+  }
+
  private:
   // Methods called from Init(). Fails if initialize_ is set.
 

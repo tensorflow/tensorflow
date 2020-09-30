@@ -185,15 +185,11 @@ Status AddOpRetvalsToResponse(
   } else {
     for (int i = 0; i < num_retvals; i++) {
       TF_RETURN_IF_ERROR(TensorHandleShape(retvals[i], add_shape_proto_fn()));
-      const bool is_remote = retvals[i]->Type() == TensorHandle::REMOTE;
       if (add_device_fn) {
-        *add_device_fn() =
-            is_remote ? absl::get<Device*>(
-                            retvals[i]->DeviceOrHostCPU(*eager_context))
-                            ->name()
-                      : "";
+        Device* device = absl::get<Device*>(retvals[i]->device());
+        *add_device_fn() = device ? device->name() : "";
       }
-      if (is_remote) {
+      if (retvals[i]->Type() == TensorHandle::REMOTE) {
         retvals[i]->Unref();
       } else {
         const int output_num = output_nums.empty() ? i : output_nums.at(i);
@@ -278,9 +274,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
-      request->lazy_copy_remote_function_inputs(), device_mgr, false, r,
-      GetDefaultCustomKernelCreator(), worker_session->cluster_flr());
+      request->async(), request->lazy_copy_remote_function_inputs(), device_mgr,
+      false, r, worker_session->cluster_flr());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);

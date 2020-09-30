@@ -31,6 +31,7 @@ namespace {
 
 constexpr char kRetValOp[] = "_Retval";
 constexpr char kMaxIntraOpParallelismDataset[] = "MaxIntraOpParallelismDataset";
+constexpr char kModelDataset[] = "ModelDataset";
 
 constexpr std::array<const char*, 2> kMaxIntraOpParallelismDatasetOps = {
     "MaxIntraOpParallelismDataset",
@@ -75,9 +76,20 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
 
   NodeDef* sink_node = graph.GetNode(item.fetch.at(0));
   NodeDef* last_node = graph_utils::GetInputNode(*sink_node, graph);
+  // If the pipeline is autotuned (ModelDataset exists as the last dataset in
+  // the pipeline), we insert MaxIntraOpParallelismDataset before ModelDataset.
+  // If the pipeline is not autotuned (ModelDataset doesn't exist), we insert
+  // MaxIntraOpParallelismDataset as the last dataset in the pipeline.
+  //
+  // In general, if exists, ModelDataset should be the last dataset in the
+  // pipeline.
+  if (last_node->op() == kModelDataset) {
+    last_node = graph_utils::GetInputNode(*last_node, graph);
+  }
 
   // Add a const node with value 1
-  NodeDef* max_parallelism_value = graph_utils::AddScalarConstNode(1LL, &graph);
+  NodeDef* max_parallelism_value =
+      graph_utils::AddScalarConstNode(int64{1}, &graph);
 
   NodeDef insert_node;
   graph_utils::SetUniqueGraphNodeName("intra_op_parallelism", graph.graph(),
@@ -89,8 +101,15 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   // `max_intra_op_parallelism` input
   *insert_node.mutable_input()->Add() = max_parallelism_value->name();
 
-  for (const auto& attr_name : {"output_types", "output_shapes"}) {
-    graph_utils::CopyAttribute(attr_name, *last_node, &insert_node);
+  // Set `output_types` and `output_shapes` attributes by copying the relevant
+  // attrs from the input node. If we fail to set the attributes, we abort the
+  // rewrite.
+  for (auto attr : {"output_shapes", "output_types"}) {
+    if (last_node->attr().find(attr) != last_node->attr().end()) {
+      graph_utils::CopyAttribute(attr, *last_node, &insert_node);
+    } else {
+      return Status::OK();
+    }
   }
 
   auto* added_node = graph.AddNode(std::move(insert_node));

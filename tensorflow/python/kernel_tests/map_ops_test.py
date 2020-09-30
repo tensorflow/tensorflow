@@ -26,6 +26,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
 
 
@@ -57,7 +58,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Trying to lookup non-existent key."):
+                                "Trying to lookup non-existent key. *"):
       l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
       self.evaluate(l)
 
@@ -68,7 +69,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant(11.0)
     m = map_ops.tensor_map_insert(m, k, v)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Trying to lookup non-existent key."):
+                                "Trying to lookup non-existent key. *"):
       l = map_ops.tensor_map_lookup(m, k2, dtypes.float32)
       self.evaluate(l)
 
@@ -87,7 +88,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Trying to erase non-existent item."):
+                                "Trying to erase non-existent item. *"):
       m = map_ops.tensor_map_erase(m, k, dtypes.float32)
       self.evaluate(m)
 
@@ -98,7 +99,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k2, v)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Trying to erase non-existent item."):
+                                "Trying to erase non-existent item. *"):
       m = map_ops.tensor_map_erase(m, k, dtypes.float32)
       self.evaluate(m)
 
@@ -132,6 +133,58 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         lambda: default_value)
     self.assertAllClose(l, v)
     self.assertAllClose(l2, default_value)
+
+  def testStackKeys(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    k2 = constant_op.constant(2.0)
+    k3 = constant_op.constant(3.0)
+    v = constant_op.constant(21.0)
+    v2 = constant_op.constant(22.0)
+    v3 = constant_op.constant(23.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    m = map_ops.tensor_map_insert(m, k2, v2)
+    keys = map_ops.tensor_map_stack_keys(m, k.dtype)
+    expected = constant_op.constant([1.0, 2.0])
+    self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
+    self.assertAllClose(sort_ops.sort(keys), expected)
+
+    m = map_ops.tensor_map_insert(m, k3, v3)
+    keys = map_ops.tensor_map_stack_keys(m, k.dtype)
+    expected = constant_op.constant([1.0, 2.0, 3.0])
+    self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
+    self.assertAllClose(sort_ops.sort(keys), expected)
+
+  def testStackKeysEmptyMapFails(self):
+    m = map_ops.empty_tensor_map()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "TensorMapStackKeys cannot be called "
+        "on empty map."):
+      keys = map_ops.tensor_map_stack_keys(m, dtypes.float32)
+      self.evaluate(keys)
+
+  def testStackKeysIncorrectDtypeFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant("key_with_wrong_dtype")
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    simple = "Key does not match requested dtype."
+    with self.assertRaisesRegex(errors.InvalidArgumentError, simple):
+      keys = map_ops.tensor_map_stack_keys(m, dtypes.float32)
+      self.evaluate(keys)
+
+  def testStackKeysIncorrectShapeFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    k2 = constant_op.constant([1.0, 11.0])
+    v = constant_op.constant(2.0)
+    v2 = constant_op.constant(22.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    m = map_ops.tensor_map_insert(m, k2, v2)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Keys must all have the same shape."):
+      keys = map_ops.tensor_map_stack_keys(m, dtypes.float32)
+      self.evaluate(keys)
 
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
@@ -396,7 +449,6 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
     self.assertAllEqual(map_ops.tensor_map_has_key(m, k), False)
-
 
 if __name__ == "__main__":
   test.main()

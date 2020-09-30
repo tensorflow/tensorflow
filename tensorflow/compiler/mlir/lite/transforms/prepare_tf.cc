@@ -80,9 +80,11 @@ namespace {
 // Prepare TF operations in functions for subsequent legalization.
 class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
-  explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul)
-      : unfold_batch_matmul_(unfold_batch_matmul) {}
+  PrepareTFPass() = default;
+  PrepareTFPass(const PrepareTFPass &) {}
+  explicit PrepareTFPass(bool unfold_batch_matmul) {
+    unfold_batch_matmul_ = unfold_batch_matmul;
+  }
   void runOnFunction() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -91,7 +93,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   }
 
  private:
-  bool unfold_batch_matmul_;
+  Option<bool> unfold_batch_matmul_{
+      *this, "tfl-unfold-batch-matmul",
+      llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
+      llvm::cl::init(true)};
 };
 
 template <class TFFakeQuantOp>
@@ -210,9 +215,8 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPointAfter(tf_op);
-    IntegerAttr num_bits =
-        rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
+    rewriter.setInsertionPointAfter(tf_op.getOperation());
+    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
@@ -533,8 +537,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
         loc, new_output_type, original_input, shape);
 
     // Replace the original strided_slice.
-    llvm::APInt new_begin_mask = strided_slice_op.begin_mask();
-    llvm::APInt new_end_mask = strided_slice_op.end_mask();
+    uint64_t new_begin_mask = strided_slice_op.begin_mask();
+    uint64_t new_end_mask = strided_slice_op.end_mask();
     // Since we expand the dims, we need to apply them to the begin_mask &
     // end_mask.
     new_begin_mask |= strided_slice_op.new_axis_mask();
@@ -597,8 +601,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
 
-    int64_t begin_mask = strided_slice_op.begin_mask().getSExtValue();
-    int64_t end_mask = strided_slice_op.end_mask().getSExtValue();
+    int64_t begin_mask = strided_slice_op.begin_mask();
+    int64_t end_mask = strided_slice_op.end_mask();
     int64_t new_begin_mask = 0;
     int64_t new_end_mask = 0;
 
@@ -634,13 +638,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
     ++index;
 
     // After the ellipsis.
-    for (; index < begin_shape[0]; ++index) {
+    for (; index < begin_shape[0];) {
       padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
       padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
       padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
 
       if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+
+      ++index;
+      ++new_index;
     }
 
     auto attribute_type = rewriter.getIntegerType(64);
@@ -676,16 +683,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // TODO(renjieliu): Consider expand the transformation for shrink mask as
     // well.
-    if (strided_slice_op.shrink_axis_mask().getZExtValue()) return failure();
+    if (strided_slice_op.shrink_axis_mask()) return failure();
 
     // Handle new axis mask.
-    uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
     if (new_axis_mask != 0) {
       return RewriteNewAxisMask(strided_slice_op, new_axis_mask, rewriter);
     }
 
     // Handle ellipsis mask.
-    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask().getZExtValue();
+    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
     if (ellipsis_mask != 0) {
       return RewriteEllipsisMask(strided_slice_op, ellipsis_mask, rewriter);
     }
@@ -733,6 +740,31 @@ struct ConvertTFBroadcastTo : public RewritePattern {
   }
 };
 
+struct ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
+  explicit ConvertFusedBatchNorm(MLIRContext *context)
+      : OpRewritePattern<TF::FusedBatchNormOp>(context) {}
+
+  LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
+                                PatternRewriter &rewriter) const override {
+    auto new_result_types =
+        llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
+    // reserve_space_3
+    new_result_types.push_back(
+        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
+
+    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
+                             TF::FusedBatchNormV3Op::getOperationName(),
+                             tf_fused_batch_norm_op.getOperands(),
+                             new_result_types,
+                             tf_fused_batch_norm_op.getAttrs());
+    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
+
+    rewriter.replaceOp(tf_fused_batch_norm_op,
+                       tf_fused_batch_norm_op_v3->getResults().drop_back());
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
 
 // Returns success if all the operations in the `op`'s regions including `op`
@@ -758,10 +790,13 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
   target.addIllegalOp<TF::XlaConvOp>();
+  target.addIllegalOp<TF::XlaGatherOp>();
 
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
+  mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
   return applyPartialConversion(func, target, patterns);
 }
@@ -894,6 +929,8 @@ void PrepareTFPass::runOnFunction() {
   // replaced with a single Conv op with dilation parameter.
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
+
+  patterns.insert<ConvertFusedBatchNorm>(ctx);
   TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.

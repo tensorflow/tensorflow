@@ -31,7 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import training_generator
+from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import sparse_ops
@@ -149,7 +149,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
     else:
       accumulator = self._combiner.restore(self._restore_updates())
     if isinstance(data, (list, tuple)):
-      data = ops.convert_to_tensor_v2(data)
+      data = ops.convert_to_tensor_v2_with_dispatch(data)
     if not isinstance(data,
                       (dataset_ops.DatasetV2,
                        np.ndarray,
@@ -175,7 +175,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       next_data = self._get_dataset_iterator(
           dataset_ops.Dataset.from_tensor_slices(data).batch(512))
     else:
-      generator, _ = training_generator.convert_to_generator_like(
+      generator, _ = training_generator_v1.convert_to_generator_like(
           data, batch_size=512)
       # If the data is not a dataset, we can iterate over it using next(foo);
       # here, we wrap that into a callable.
@@ -271,7 +271,7 @@ def convert_to_list(values, sparse_default_value=None):
         values, default_value=sparse_default_value)
     values = K.get_value(dense_tensor)
 
-  if isinstance(values, (ops.EagerTensor, ops.Tensor)):
+  if isinstance(values, ops.Tensor):
     values = K.get_value(values)
 
   # We may get passed a ndarray or the code above may give us a ndarray.

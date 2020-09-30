@@ -302,12 +302,19 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
     TF_RETURN_IF_ERROR(
         ctx.FindDeviceFromName(device_name.c_str(), &input_device));
     *result = input_device;
-  } else if (MTypeFromDType(tensor_handle->dtype) == HOST_MEMORY) {
-    *result = cpu_device;
   } else {
     Device* device = absl::get<Device*>(tensor_handle->device());
-    device_name = device != nullptr ? device->name() : cpu_device->name();
-    *result = (device == nullptr ? cpu_device : device);
+    const bool is_tpu = device != nullptr && device->device_type() == "TPU";
+    // int32 return values can be placed on TPUs.
+    const bool use_host_memory =
+        is_tpu ? MTypeFromDTypeIntsOnDevice(tensor_handle->dtype)
+               : MTypeFromDType(tensor_handle->dtype);
+    if (use_host_memory) {
+      *result = cpu_device;
+    } else {
+      device_name = device != nullptr ? device->name() : cpu_device->name();
+      *result = (device == nullptr ? cpu_device : device);
+    }
   }
   return Status::OK();
 }
@@ -330,6 +337,30 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
   }
 }
 
+Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
+                   const char* attr_name, bool* value) {
+  Status status = op->Attrs().Get(attr_name, value);
+  if (status.ok()) {
+    DVLOG(2) << "Caller explicitly specifies "
+             << (attr_name ? "=true " : "=false, ") << op->DebugString();
+    return Status::OK();
+  }
+
+  const FunctionDef* function_def =
+      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op->Name());
+  if (function_def == nullptr) {
+    return errors::NotFound("Failed to find function '", op->Name(), "'");
+  }
+
+  status = GetNodeAttr(AttrSlice(&function_def->attr()), attr_name, value);
+  if (status.ok()) {
+    DVLOG(2) << "Function definition explicitly specifies "
+             << (attr_name ? "=true" : "=false");
+    return Status::OK();
+  }
+  return status;
+}
+
 Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
                           bool* compile_with_xla) {
   if (!op->is_function()) {
@@ -345,27 +376,8 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
     return Status::OK();
   }
 
-  // Does node have an explicit request to compile or not?
-  Status status = op->Attrs().Get(kXlaMustCompileAttr, compile_with_xla);
+  Status status = GetFuncAttr(op, ctx, kXlaMustCompileAttr, compile_with_xla);
   if (status.ok()) {
-    DVLOG(2) << "Caller explicitly requested "
-             << (*compile_with_xla ? "" : "not ")
-             << "to compile with XLA: " << op->DebugString();
-    return Status::OK();
-  }
-
-  // Does FunctionDef have an explicit request to compile or not?
-  const FunctionDef* function_def =
-      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op->Name());
-  if (function_def == nullptr) {
-    return errors::NotFound("Failed to find function '", op->Name(), "'");
-  }
-
-  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaMustCompileAttr,
-                       compile_with_xla);
-  if (status.ok()) {
-    DVLOG(2) << "Function definition explicitly specifies "
-             << (*compile_with_xla ? "" : "not ") << "to compile with XLA";
     return Status::OK();
   }
 
@@ -481,6 +493,7 @@ Status GetOrCreateKernelAndDevice(
     DVLOG(2) << "Creating new kernel for " << op->Name() << " on device "
              << DeviceNameOrUnspecified(op->Device());
     bool run_function_with_flr = false;
+    bool function_outputs_on_op_device = false;
     if (op->is_function()) {
       bool compile_with_xla;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
@@ -492,6 +505,8 @@ Status GetOrCreateKernelAndDevice(
       } else {
         run_function_with_flr = true;
       }
+      GetFuncAttr(op, ctx, kOutputsOnOpDevice, &function_outputs_on_op_device)
+          .IgnoreError();
     }
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
@@ -541,6 +556,7 @@ Status GetOrCreateKernelAndDevice(
           std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
+          function_outputs_on_op_device,
           [&ctx](const int64 step_id) { return ctx.CreateRendezvous(step_id); },
           get_op_id));
     } else {
@@ -1069,11 +1085,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
-
-  if (VariantDeviceIsCustom(op->Device())) {
-    return absl::get<CustomDevice*>(op->Device())
-        ->Execute(op, retvals, num_retvals);
-  }
 
   if (!op->Executor().Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.

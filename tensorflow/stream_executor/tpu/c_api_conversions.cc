@@ -43,14 +43,20 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   return xla_shaped_buffer;
 }
 
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem) {
+SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem,
+                               bool aliased) {
   SE_MaybeOwningDeviceMemory se_mem;
   se_mem.owned = mem.HasOwnership();
   se_mem.memory = ApiConverter::ToC(mem.AsDeviceMemoryBase());
   if (mem.HasOwnership()) {
-    auto owned = mem.Release().value();
-    se_mem.device_ordinal = owned.device_ordinal();
-    se_mem.allocator = ApiConverter::ToC(owned.allocator());
+    const stream_executor::OwningDeviceMemory* owned =
+        mem.AsOwningDeviceMemory();
+    se_mem.device_ordinal = owned->device_ordinal();
+    se_mem.allocator = ApiConverter::ToC(owned->allocator());
+    if (!aliased) {
+      // Underlying buffer is owned by se_mem now.
+      mem.Release()->Release();
+    }
   } else {
     se_mem.allocator =
         ToC(static_cast<stream_executor::DeviceMemoryAllocator*>(nullptr));
@@ -144,7 +150,7 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
   return base;
 }
 
-xla::Shape FromC(XLA_Shape* shape) {
+xla::Shape FromC(const XLA_Shape* shape) {
   xla::ShapeProto p;
   p.ParseFromArray(shape->bytes, shape->size);
   return xla::Shape(p);
@@ -209,7 +215,7 @@ void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer) {
 }
 
 void Free(XLA_Shape* shape) { delete[] shape->bytes; }
-void Free(XLA_ShapeIndex*) {}
+void Free(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
 void Free(SE_DeviceMemoryBase*) {}
 
 void Free(XLA_Literal* c_literal) {
@@ -222,6 +228,108 @@ void Free(XLA_ShapedBuffer* c_buffer) {
   ApiConverter::Free(&c_buffer->on_device_shape);
   ApiConverter::Free(&c_buffer->on_host_shape);
   delete[] c_buffer->bases;
+}
+
+XLA_HloModule ToC(const xla::HloModule& module) {
+  XLA_HloModule c_module;
+  c_module.proto = stream_executor::tpu::SerializeProto(module.ToProto());
+  c_module.module_config = ApiConverter::ToC(module.config());
+  return c_module;
+}
+
+xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+    const XLA_HloModule& c_module) {
+  xla::HloModuleProto module_proto =
+      stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
+          c_module.proto);
+  return xla::HloModule::CreateFromProto(
+      module_proto, ApiConverter::FromC(c_module.module_config));
+}
+
+void Free(XLA_HloModule* c_module) {
+  stream_executor::tpu::SerializedProto_Free(c_module->proto);
+  Free(&c_module->module_config);
+}
+
+static xla::HloModuleConfig ConfigWithLayout(
+    const XLA_HloModuleConfig& se_config) {
+  xla::ShapeLayout result_layout(
+      FromC(&se_config.entry_computation_layout.result_layout));
+  xla::ComputationLayout layout(result_layout);
+  for (int i = 0; i < se_config.entry_computation_layout.parameter_count; ++i) {
+    layout.add_parameter_layout(xla::ShapeLayout(
+        FromC(&se_config.entry_computation_layout.parameter_layouts[i])));
+  }
+  return xla::HloModuleConfig(layout);
+}
+
+XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
+  XLA_HloModuleConfig hlo_config;
+
+  hlo_config.seed = config.seed();
+  hlo_config.launch_id = config.launch_id();
+  hlo_config.replica_count = config.replica_count();
+  hlo_config.num_partitions = config.num_partitions();
+  hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
+  hlo_config.has_static_device_assignment =
+      config.has_static_device_assignment();
+  hlo_config.has_entry_computation_layout =
+      config.has_entry_computation_layout();
+
+  if (config.has_static_device_assignment()) {
+    xla::DeviceAssignmentProto dev_proto;
+    config.static_device_assignment().Serialize(&dev_proto).IgnoreError();
+    hlo_config.static_device_assignment =
+        stream_executor::tpu::SerializeProto(dev_proto);
+  }
+  if (config.has_entry_computation_layout()) {
+    const auto& layout = config.entry_computation_layout();
+    ApiConverter::ToC(layout.result_layout().shape(),
+                      &hlo_config.entry_computation_layout.result_layout);
+    hlo_config.entry_computation_layout.parameter_layouts =
+        new XLA_Shape[layout.parameter_count()];
+    for (int i = 0; i < layout.parameter_count(); ++i) {
+      ApiConverter::ToC(
+          layout.parameter_layout(i).shape(),
+          &hlo_config.entry_computation_layout.parameter_layouts[i]);
+    }
+    hlo_config.entry_computation_layout.parameter_count =
+        layout.parameter_count();
+  }
+  return hlo_config;
+}
+
+xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
+  xla::HloModuleConfig config = c_config.has_entry_computation_layout
+                                    ? ConfigWithLayout(c_config)
+                                    : xla::HloModuleConfig();
+  config.set_launch_id(c_config.launch_id);
+  config.set_seed(c_config.seed);
+  config.set_replica_count(c_config.replica_count);
+  config.set_num_partitions(c_config.num_partitions);
+  config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
+  if (c_config.has_static_device_assignment) {
+    auto device_assignment = xla::DeviceAssignment::Deserialize(
+        stream_executor::tpu::DeserializeProto<xla::DeviceAssignmentProto>(
+            c_config.static_device_assignment));
+    config.set_static_device_assignment(
+        *(device_assignment.ConsumeValueOrDie()));
+  }
+  return config;
+}
+
+void Free(XLA_HloModuleConfig* c_config) {
+  for (auto i = 0; i < c_config->entry_computation_layout.parameter_count;
+       ++i) {
+    ApiConverter::Free(
+        &c_config->entry_computation_layout.parameter_layouts[i]);
+  }
+  delete[] c_config->entry_computation_layout.parameter_layouts;
+  ApiConverter::Free(&c_config->entry_computation_layout.result_layout);
+  if (c_config->has_static_device_assignment) {
+    stream_executor::tpu::SerializedProto_Free(
+        c_config->static_device_assignment);
+  }
 }
 
 }  // namespace ApiConverter

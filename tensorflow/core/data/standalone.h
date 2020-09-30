@@ -98,6 +98,12 @@ class Dataset {
 
   // Creates an iterator for this dataset.
   Status MakeIterator(std::unique_ptr<Iterator>* result);
+  // Creates an iterator, optionally with a split provider.
+  Status MakeIterator(std::unique_ptr<SplitProvider> split_provider,
+                      std::unique_ptr<Iterator>* result);
+
+  // Creates a split provider for this dataset.
+  Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
 
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,

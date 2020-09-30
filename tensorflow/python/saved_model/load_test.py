@@ -854,6 +854,25 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
 
+  def test_experimental_compile(self, cycles):
+
+    # It'd be nice to use parameterize here, but the library does not support
+    # having parameterized test methods inside already-parameterized classes.
+    for experimental_compile in (None, True, False):
+
+      @def_function.function(experimental_compile=experimental_compile)
+      def f(x):
+        return x + 1.
+
+      root = module.Module()
+      root.f = f
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(root, save_dir)
+
+      imported = cycle(root, cycles)
+
+      self.assertEqual(imported.f._experimental_compile, experimental_compile)
+
   def test_get_concrete_function(self, cycles):
 
     @def_function.function
@@ -1800,6 +1819,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
     root.table.insert("foo", 15)
+    root.table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
+    root.table2.insert("idk", 21)
 
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])

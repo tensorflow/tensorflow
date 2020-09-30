@@ -492,3 +492,13 @@ func @DontFoldTile() -> (tensor<8x10000xi32>) {
   return %3 : tensor<8x10000xi32>
 }
 // LINT.ThenChange(../transforms/constant_fold.cc:folding-policy)
+
+func @fold_conv() -> tensor<1x520x520x1xf32> {
+  %0 = "tf.Const"() {value = dense<0.111111112> : tensor<3x3x1x1xf32>} : () -> tensor<3x3x1x1xf32>
+  %1 = "tf.Const"() {value = dense<1.000000e+00> : tensor<1x520x520x1xf32>} : () -> tensor<1x520x520x1xf32>
+  %2 = "tf.DepthwiseConv2dNative"(%1, %0) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x520x520x1xf32>, tensor<3x3x1x1xf32>) -> tensor<1x520x520x1xf32>
+  return %2 : tensor<1x520x520x1xf32>
+
+  // CHECK: tf.Const
+  // CHECK-NOT: tf.DepthwiseConv2dNative
+}

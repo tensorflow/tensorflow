@@ -52,7 +52,7 @@ from setuptools.dist import Distribution
 _VERSION = '2.4.0'
 
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.7.0',
+    'absl-py >= 0.9.0',
     'astunparse == 1.6.3',
     'flatbuffers >= 1.12',
     'gast == 0.3.3',
@@ -260,6 +260,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
+    long_description_content_type="text/markdown",
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -288,6 +289,8 @@ setup(
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
+        # TODO(angerson) Add IFTTT when possible
+        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

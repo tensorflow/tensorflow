@@ -468,17 +468,6 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
       c = a + 1.0
       return c
 
-    context.context().mirroring_policy = context.MIRRORING_NONE
-
-    with ops.device('/job:worker/replica:0/task:0'):
-      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
-
-    if test_util.is_gpu_available():
-      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
-        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
-
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
@@ -519,17 +508,6 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
         return a + 1.0, 1
 
       return control_flow_ops.while_loop_v2(lambda _, d: d < 1, body, [i, 0])[0]
-
-    context.context().mirroring_policy = context.MIRRORING_NONE
-
-    with ops.device('/job:worker/replica:0/task:0'):
-      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
-
-    if test_util.is_gpu_available():
-      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
-        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
 
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])

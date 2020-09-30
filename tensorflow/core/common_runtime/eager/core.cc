@@ -208,12 +208,18 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
       device = ctx_.HostCPU();
     }
   }
+
+  tensorflow::TensorHandle** retval_array =
+      reinterpret_cast<tensorflow::TensorHandle**>(retvals.data());
+  if (VariantDeviceIsCustom(device)) {
+    return absl::get<CustomDevice*>(device)->Execute(this, retval_array,
+                                                     num_retvals);
+  }
+
   if (device != kVariantDeviceNull) {
     SetDevice(device);
   }
-  return EagerExecute(
-      this, reinterpret_cast<tensorflow::TensorHandle**>(retvals.data()),
-      num_retvals);
+  return EagerExecute(this, retval_array, num_retvals);
 }
 
 }  //  namespace tensorflow

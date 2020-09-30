@@ -104,6 +104,26 @@ def make_gradient_clipnorm_fn(clipnorm):
   return gradient_clipnorm_fn
 
 
+def make_global_gradient_clipnorm_fn(clipnorm):
+  """Creates a gradient transformation function for clipping by norm."""
+  if clipnorm is None:
+    return lambda grads_and_vars: grads_and_vars
+
+  def gradient_clipnorm_fn(grads_and_vars):
+
+    if isinstance(distribute_ctx.get_strategy(),
+                  central_storage_strategy.CentralStorageStrategy):
+      raise ValueError(
+          "`global_clipnorm` is not supported with `CenteralStorageStrategy`")
+
+    grads, variables = zip(*grads_and_vars)
+    clipped_grads, _ = clip_ops.clip_by_global_norm(grads, clipnorm)
+    clipped_grads_and_vars = list(zip(clipped_grads, variables))
+    return clipped_grads_and_vars
+
+  return gradient_clipnorm_fn
+
+
 def make_gradient_clipvalue_fn(clipvalue):
   """Creates a gradient transformation function for clipping by value."""
   if clipvalue is None:

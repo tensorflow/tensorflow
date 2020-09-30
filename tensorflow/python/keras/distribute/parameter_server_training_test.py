@@ -26,11 +26,11 @@ from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute.client import parameter_server_client
+from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute.client import client as client_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
@@ -40,6 +40,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
@@ -51,7 +52,8 @@ def make_client(num_workers, num_ps):
   ]
   cluster_resolver = SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer="grpc")
-  return parameter_server_client.ParameterServerClient(cluster_resolver)
+  return client_lib.Client(
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver))
 
 
 class KPLTest(test.TestCase):

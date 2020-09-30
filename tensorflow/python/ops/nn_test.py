@@ -166,6 +166,8 @@ class LogPoissonLossTest(test_lib.TestCase):
     return lpl
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt("b/163084901: does not support convert ScalarHost "
+                          "tensor to RuntimeFallbackTensor.")
   def testLogPoissonLoss(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
@@ -541,6 +543,8 @@ class DropoutTest(test_lib.TestCase):
       _ = nn_ops.dropout(x, 0.5)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests _compute_sampled_logits and related functions, which call matmul")
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
   def setUp(self):
@@ -1227,6 +1231,33 @@ class DataFormatDimMapTest(test_lib.TestCase):
     y_val_expected = [3, 1, 0, 2, 3, 1, 0, 2]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNDHWCtoNCDHW(self):
+    x_val = [1, -4, -3, -2]
+    y_val_expected = [2, 2, 3, 4]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="NCDHW")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNDHWCtoDHWNC(self):
+    x_val = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+    y_val_expected = [3, 0, 1, 2, 4, 3, 0, 1, 2, 4]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="DHWNC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testDNHWCtoWHDCN(self):
+    x_val = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+    y_val_expected = [4, 2, 1, 0, 3, 4, 2, 1, 0, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="WHDCN")
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, y_val_expected)

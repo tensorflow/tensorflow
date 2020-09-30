@@ -109,7 +109,7 @@ void NotEqualOp::build(OpBuilder &builder, OperationState &result, Value x,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(OneHotOp op) {
-  int64_t axis = op.axis().getSExtValue();
+  int64_t axis = op.axis();
 
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
   if (indices_ty &&
@@ -207,7 +207,7 @@ static LogicalResult Verify(PackOp op) {
   // the axis value range is [-(R+1), R+1).
   int64_t range_begin = -inputs_rank - 1;  // Inclusive
   int64_t range_end = inputs_rank + 1;     // Exclusive
-  int64_t axis = op.axis().getSExtValue();
+  int64_t axis = op.axis();
   if (axis < range_begin || axis >= range_end) {
     return op.emitError() << "attribute 'axis' should be within range ["
                           << range_begin << ", " << range_end
@@ -232,7 +232,7 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   if (values().size() < 2) return {};
 
   // Dimensions packed along axis = 0 (pack scalars into vector).
-  if (axis().getSExtValue() != 0) return {};
+  if (axis() != 0) return {};
 
   // First packed value is defined by a strided slice operation.
   auto slice_op = dyn_cast_or_null<StridedSliceOp>(values()[0].getDefiningOp());
@@ -247,11 +247,9 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
 
   // All masks are `0` except `shrink_axis_mask` which is equal to `1` (slicing
   // scalar value from input vector).
-  if (slice_op.begin_mask().getSExtValue() != 0 ||
-      slice_op.ellipsis_mask().getSExtValue() != 0 ||
-      slice_op.end_mask().getSExtValue() != 0 ||
-      slice_op.new_axis_mask().getSExtValue() != 0 ||
-      slice_op.shrink_axis_mask().getSExtValue() != 1)
+  if (slice_op.begin_mask() != 0 || slice_op.ellipsis_mask() != 0 ||
+      slice_op.end_mask() != 0 || slice_op.new_axis_mask() != 0 ||
+      slice_op.shrink_axis_mask() != 1)
     return {};
 
   // Returns a value if the `value` is defined by a ConstOp with a single
@@ -564,6 +562,17 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<RealDivOp>(*this, operands);
+}
+
+//===----------------------------------------------------------------------===//
+// ReluOp
+//===----------------------------------------------------------------------===//
+
+Optional<ContractionFusion> ReluOp::GetContractionFusion() {
+  // Only f32 is supported for fusion.
+  if (!T().isF32()) return None;
+
+  return ContractionFusion("Relu", /*additional_arguments=*/{});
 }
 
 //===----------------------------------------------------------------------===//
@@ -1023,6 +1032,7 @@ static LogicalResult Verify(SizeOp op) {
 
 OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
   ShapedType output_type = getType().cast<ShapedType>();
+  if (!output_type.hasRank()) return {};
   ShapedType input_type = getOperand().getType().cast<ShapedType>();
   if (!input_type.hasStaticShape()) return {};
   int size = input_type.getNumElements();
@@ -1042,8 +1052,11 @@ OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
 //   of elements in operands begin and size.
 // - if begin are constants, that
 //   0 <= begin[i] <= begin[i] + size[i] <= input_ty.getShape()[i]
+//   and
+//   size[i] == output_ty.getShape()[i]
 // - if begins aren't constant but the input is a ranked tensor, that
 //   size[i] <= input_ty.getShape()[i]
+// - output rank is the same as input rank
 //
 static LogicalResult Verify(SliceOp op) {
   RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
@@ -1071,20 +1084,39 @@ static LogicalResult Verify(SliceOp op) {
                                "are equal to input rank";
   }
 
+  auto output_ty = op.output().getType().dyn_cast<RankedTensorType>();
+  if (output_ty && input_ty && output_ty.getRank() != input_ty.getRank()) {
+    return op.emitOpError()
+           << "requires output to have the same rank as input, but got input "
+              "rank "
+           << input_ty.getRank() << " and output rank " << output_ty.getRank();
+  }
+
   DenseIntElementsAttr begin_indices;
   if (matchPattern(op.begin(), m_Constant(&begin_indices))) {
     DenseIntElementsAttr slice_sizes;
     bool constant_slice_sizes =
         matchPattern(op.size(), m_Constant(&slice_sizes));
     int dim = 0;
+    // TODO(jpienaar): Reformulate the shape verification below to not use magic
+    // constants.
     for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
       int64_t slice_size = constant_slice_sizes
                                ? slice_sizes.getValue<APInt>(dim).getSExtValue()
                                : 0;
+      int64_t output_size = output_ty ? output_ty.getShape()[dim] : -1;
+
       if (slice_size == -1 && input_size != -1) {
         slice_size = input_size - begin_index;
+      }
+      if (output_size != -1 && constant_slice_sizes &&
+          output_size != slice_size) {
+        return op.emitOpError()
+               << "requires output size to have the same size of slice, got "
+                  "slice size "
+               << slice_size << " and output size " << output_size;
       }
       if (begin_index < 0 ||
           (input_size != -1 && begin_index + slice_size > input_size)) {
@@ -1142,6 +1174,115 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// SpaceToBatchNDOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SpaceToBatchNDOp op) {
+  const auto input_type = op.input().getType().cast<TensorType>();
+  const auto block_shape_type = op.block_shape().getType().cast<TensorType>();
+  const auto paddings_type = op.paddings().getType().cast<TensorType>();
+
+  // Check that block_shape has rank 1.
+  if (!IsOfRankOrUnranked(op.block_shape(), 1)) {
+    return op.emitOpError() << "requires rank of block_shape = 1; got "
+                            << block_shape_type.getRank();
+  }
+
+  // Check that paddings has rank 2.
+  if (!IsOfRankOrUnranked(op.paddings(), 2)) {
+    return op.emitOpError()
+           << "requires rank of paddings = 2; got " << paddings_type.getRank();
+  }
+
+  // Check that paddings.shape[1]=2.
+  if (paddings_type.hasStaticShape() && paddings_type.getShape()[1] != 2) {
+    return op.emitOpError() << "requires paddings.shape[1] to be 2; got "
+                            << paddings_type.getShape()[1];
+  }
+
+  // Check that block_shape and paddings have consistent ranks.
+  if (block_shape_type.hasStaticShape() && paddings_type.hasStaticShape() &&
+      block_shape_type.getShape()[0] != paddings_type.getShape()[0]) {
+    return op.emitOpError()
+           << "requires block_shape.shape[0] must equal paddings.shape[0]";
+  }
+
+  int64_t block_rank = -1;
+  if (block_shape_type.hasStaticShape()) {
+    block_rank = block_shape_type.getShape()[0];
+  } else if (paddings_type.hasStaticShape()) {
+    block_rank = paddings_type.getShape()[0];
+  }
+
+  // Further checks require block_rank to be known.
+  if (block_rank == -1) {
+    return success();
+  }
+
+  // check that rank of input_type >= block_rank + 1
+  if (input_type.hasRank() && input_type.getRank() < 1 + block_rank) {
+    return op.emitOpError() << "requires rank of input >= 1 + rank of block";
+  }
+
+  ElementsAttr block_shape_attr = nullptr;
+  ElementsAttr paddings_attr = nullptr;
+
+  // Check that block_shape[*] >= 1.
+  if (matchPattern(op.block_shape(), m_Constant(&block_shape_attr))) {
+    uint64_t i = 0;
+    for (auto block_len : block_shape_attr.getValues<APInt>()) {
+      if (block_len.getSExtValue() < 1) {
+        return op.emitOpError()
+               << "requires all values of block_shape to be >= 1; "
+                  "failed for dimension "
+               << i;
+      }
+      ++i;
+    }
+  }
+
+  // Check that paddings[*] >= 0.
+  if (matchPattern(op.paddings(), m_Constant(&paddings_attr))) {
+    for (uint64_t i = 0; i < block_rank; ++i) {
+      const int64_t pad_start =
+          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+      const int64_t pad_end =
+          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+      if (pad_start < 0 || pad_end < 0) {
+        return op.emitOpError()
+               << "requires all values of paddings to be >= 0; "
+                  "failed for dimension "
+               << i;
+      }
+    }
+  }
+
+  // Check that block_shape divides the padded input.
+  if (input_type.hasStaticShape() && block_shape_attr && paddings_attr) {
+    for (uint64_t i = 0; i < block_rank; ++i) {
+      const int64_t input_len = input_type.getShape()[1 + i];
+      const int64_t pad_start =
+          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+      const int64_t pad_end =
+          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+      const int64_t block_len =
+          block_shape_attr.getValue({i}).cast<IntegerAttr>().getInt();
+      if ((input_len + pad_start + pad_end) % block_len != 0) {
+        return op.emitOpError()
+               << "requires block_shape[i] divides "
+                  "input_shape[i + 1] + paddings[i, 0] + paddings[i, 1]; "
+                  "failed for i="
+               << i;
+      }
+    }
+  }
+
+  return success();
+}
+
+// TODO(b/157475606): Add SpaceToBatchNDOp::inferReturnTypes
 
 //===----------------------------------------------------------------------===//
 // SparseSoftmaxCrossEntropyWithLogitsOp
@@ -1389,7 +1530,7 @@ static LogicalResult VerifyStridedSliceBase(OpTy op) {
 
   // Use bit compares to ensure ellipsis_mask is 0 or a power of 2, i.e. there
   // exists only no more than one ellipsis.
-  uint32_t ellipsis_mask = op.ellipsis_mask().getZExtValue();
+  uint32_t ellipsis_mask = op.ellipsis_mask();
   if (ellipsis_mask != 0 && !llvm::isPowerOf2_32(ellipsis_mask))
     return op.emitOpError("cannot have multiple ellipses");
 
@@ -1645,10 +1786,9 @@ bool StridedSliceOp::GetSlicedBoundRanges(
     sparse_strides.push_back(stride.getSExtValue());
 
   CalculateSlicedShapeFromSparseIndices(
-      input_shape, sparse_begin, sparse_end, sparse_strides,
-      begin_mask().getZExtValue(), end_mask().getZExtValue(),
-      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
-      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
+      input_shape, sparse_begin, sparse_end, sparse_strides, begin_mask(),
+      end_mask(), ellipsis_mask(), new_axis_mask(), shrink_axis_mask(),
+      slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -1699,10 +1839,9 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
     sparse_strides.push_back(stride.getSExtValue());
 
   CalculateSlicedShapeFromSparseIndices(
-      *input_shape, sparse_begin, sparse_end, sparse_strides,
-      begin_mask().getZExtValue(), end_mask().getZExtValue(),
-      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
-      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
+      *input_shape, sparse_begin, sparse_end, sparse_strides, begin_mask(),
+      end_mask(), ellipsis_mask(), new_axis_mask(), shrink_axis_mask(),
+      slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -1774,6 +1913,87 @@ static LogicalResult Verify(TensorScatterUpdateOp op) {
         "requires tensor operand with rank greater than or equal to the "
         "indices operand's last dimensions");
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// - input has at least rank 1
+// - multiples is rank 1
+// - multiples.size() == input.rank()
+// - input.rank() == output.rank()
+// - Elements in multiples are non-negative
+// - input.shape[i] * multiples[i] == output.shape[i]
+//   for i in [0, input.rank() - 1]
+
+static LogicalResult Verify(TileOp op) {
+  auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
+  auto multiples_type = op.multiples().getType().dyn_cast<RankedTensorType>();
+  auto output_type = op.output().getType().dyn_cast<RankedTensorType>();
+
+  if (multiples_type && multiples_type.getRank() != 1) {
+    return op.emitOpError() << "expected multiples to be rank 1, got rank = "
+                            << multiples_type.getRank();
+  }
+
+  if (input_type && multiples_type && multiples_type.hasStaticShape() &&
+      (input_type.getRank() != multiples_type.getNumElements() ||
+       (input_type.getRank() == 0 && multiples_type.getNumElements() == 1))) {
+    return op.emitOpError()
+           << "expected size of multiples equal to rank of input"
+           << ", got multiples of size " << multiples_type.getNumElements()
+           << ", and input of rank " << input_type.getRank();
+  }
+
+  if (input_type && output_type) {
+    if (input_type.getRank() != output_type.getRank()) {
+      return op.emitOpError()
+             << "expected rank of input to equal to rank of output"
+             << ", got input of rank " << input_type.getRank()
+             << ", and output of rank " << output_type.getRank();
+    }
+
+    DenseIntElementsAttr multiples_attr;
+    if (matchPattern(op.multiples(), m_Constant(&multiples_attr))) {
+      for (int32_t i = 0, e = input_type.getRank(); i < e; ++i) {
+        const int64_t input_dim = input_type.getDimSize(i);
+        const int64_t output_dim = output_type.getDimSize(i);
+        const int64_t m = multiples_attr.getValue<APInt>(i).getSExtValue();
+
+        if (m < 0) {
+          return op.emitOpError()
+                 << "expected multiples to be non-negative, got "
+                 << "multiples[" << i << "] = " << m;
+        }
+
+        if (!ShapedType::isDynamic(input_dim) &&
+            !ShapedType::isDynamic(output_dim) && output_dim != input_dim * m) {
+          return op.emitOpError()
+                 << "requires input.shape[" << i << "] (" << input_dim << ")"
+                 << " * " << m << " to be equal to "
+                 << "output.shape[" << i << "] (" << output_dim << ")";
+        }
+      }
+    }
+  }
+
+  return success();
+}
+
+OpFoldResult TileOp::fold(ArrayRef<Attribute> operands) {
+  DenseIntElementsAttr multiples_attr;
+  if (matchPattern(multiples(), m_Constant(&multiples_attr))) {
+    // Return input directly when multiples are all ones,
+    // regardless what input is.
+    if (multiples_attr.isSplat() &&
+        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1) {
+      return input();
+    }
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1939,11 +2159,9 @@ void TransposeOp::build(OpBuilder &builder, OperationState &result, Value x,
 namespace {
 
 OpFoldResult FoldIdentityTranspose(TransposeOp op) {
-  auto const_perm = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
-  if (!const_perm) return {};
-
-  auto const_value = const_perm.value();
-  const auto elements = const_value.getValues<APInt>();
+  DenseIntElementsAttr perm;
+  if (!matchPattern(op.perm(), m_Constant(&perm))) return {};
+  const auto elements = perm.getValues<APInt>();
 
   for (auto it : llvm::enumerate(elements)) {
     if (it.index() != it.value()) return {};
@@ -1966,14 +2184,14 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   if (!transpose) return {};
 
   // Permutations defined by constant operations.
-  auto perm0 = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
-  auto perm1 = dyn_cast_or_null<TF::ConstOp>(transpose.perm().getDefiningOp());
-  if (!perm0 || !perm1) return {};
+  DenseIntElementsAttr perm0;
+  DenseIntElementsAttr perm1;
+  if (!matchPattern(op.perm(), m_Constant(&perm0)) ||
+      !matchPattern(transpose.perm(), m_Constant(&perm1)))
+    return {};
 
   // With permutation indices that cancel each other
-  auto perm0_value = perm0.value().cast<DenseIntElementsAttr>();
-  auto perm1_value = perm1.value().cast<DenseIntElementsAttr>();
-  if (!AreCancellablePermutations(perm0_value, perm1_value)) return {};
+  if (!AreCancellablePermutations(perm0, perm1)) return {};
 
   return transpose.x();
 }
@@ -1996,6 +2214,45 @@ void TruncateDivOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// NonMaxSuppressionV3Op
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Canonicalize NonMaxSuppressionV3Op to NonMaxSuppressionV4Op.
+class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
+  using OpRewritePattern<NonMaxSuppressionV3Op>::OpRewritePattern;
+  LogicalResult matchAndRewrite(NonMaxSuppressionV3Op nms_op,
+                                PatternRewriter &rewriter) const override {
+    if (nms_op.getNumOperands() != 5) {
+      return failure();
+    }
+    SmallVector<Type, 2> new_result_types;
+    new_result_types.push_back(nms_op.getType());
+    auto input_ty = nms_op.getType().template cast<ShapedType>();
+    // corresponds to the second result type of nmsv4
+    RankedTensorType valid_output_type =
+        RankedTensorType::get({}, input_ty.getElementType());
+    new_result_types.push_back(valid_output_type);
+
+    auto nmsv4 = rewriter.create<TF::NonMaxSuppressionV4Op>(
+        nms_op.getLoc(), new_result_types, nms_op.boxes(), nms_op.scores(),
+        nms_op.max_output_size(), nms_op.iou_threshold(),
+        nms_op.score_threshold());
+    // Cannot replace the NMSv3 Op with NMSv4 since the outputs between the
+    // two are different (v4 expects two output values vs v3 requires only one.
+    nms_op.replaceAllUsesWith(nmsv4.getResult(0));
+    return success();
+  }
+};
+}  // namespace.
+
+void NonMaxSuppressionV3Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<NMSV3ToNMSV4Op>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // UnpackOp
 //===----------------------------------------------------------------------===//
 
@@ -2004,7 +2261,7 @@ static LogicalResult Verify(UnpackOp op) {
   if (!value_type) return success();
 
   int64_t value_rank = value_type.getRank();
-  int64_t axis = op.axis().getSExtValue();
+  int64_t axis = op.axis();
   if (axis < -value_rank || axis >= value_rank)
     return op.emitOpError("axis attribute must be in the range of [-")
            << value_rank << ", " << value_rank << ')';
@@ -2124,38 +2381,19 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_func();
-  auto body_fn = op.body_func();
-  if (!cond_fn) {
-    return op.emitOpError("cond refers to an undefined function : ")
-           << op.cond();
-  }
-  if (!body_fn) {
-    return op.emitOpError("body refers to an undefined function : ")
-           << op.body();
-  }
-
-  auto cond_fn_type = cond_fn.getType();
-  auto body_fn_type = body_fn.getType();
-
-  // Verify that the cond function has exactly one result.
-  if (cond_fn_type.getNumResults() != 1)
-    return op.emitOpError("requires cond function to have exactly one result");
-
-  SmallVector<Type, 4> operands(op.getOperandTypes());
-
+static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
+                                      TypeRange body_input,
+                                      TypeRange body_result) {
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
   constexpr int kNumTypeLists = 5;
-  const std::array<std::pair<std::string, ArrayRef<Type>>, kNumTypeLists>
-      type_lists = {{
-          {"operand", operands},
-          {"body function result", body_fn_type.getResults()},
-          {"result", op.getResultTypes()},
-          {"cond function input", cond_fn_type.getInputs()},
-          {"body function input", body_fn_type.getInputs()},
-      }};
+  const std::array<TypeRangeWithDesc, kNumTypeLists> type_lists = {{
+      {op->getOperandTypes(), "input"},
+      {body_result, "body result"},
+      {op->getResultTypes(), "result"},
+      {cond_input, "condition input"},
+      {body_input, "body input"},
+  }};
 
   // A pair of type lists should be cast compatible with each other if one is
   // converted to the another for a function call or assignment or there is a
@@ -2185,25 +2423,35 @@ static LogicalResult Verify(WhileOp op) {
     for (int j = std::max(2, i + 1); j < kNumTypeLists; ++j) {
       auto &a = type_lists[i];
       auto &b = type_lists[j];
-
-      int a_size = a.second.size();
-      if (a_size != b.second.size())
-        return op.emitOpError(
-            llvm::formatv("requires the number of {0}s to be equal to the "
-                          "number of {1}s. Found {2} and {3}, respectively",
-                          a.first, b.first, a_size, b.second.size()));
-
-      for (int idx = 0; idx < a_size; ++idx) {
-        auto a_type = a.second[idx];
-        auto b_type = b.second[idx];
-
-        if (!AreCastCompatible({a_type, b_type}))
-          return op.emitError(llvm::formatv(
-              "{0} type {1} is incompatible with {2} type {3} at index {4}",
-              a.first, a_type, b.first, b_type, idx));
-      }
+      if (failed(VerifyTypeRangesAreCompatible(op, a, b))) return failure();
     }
   }
+  return success();
+}
+
+static LogicalResult Verify(WhileOp op) {
+  auto cond_fn = op.cond_function();
+  auto body_fn = op.body_function();
+  if (!cond_fn) {
+    return op.emitOpError("cond refers to an undefined function : ")
+           << op.cond();
+  }
+  if (!body_fn) {
+    return op.emitOpError("body refers to an undefined function : ")
+           << op.body();
+  }
+
+  auto cond_fn_type = cond_fn.getType();
+  auto body_fn_type = body_fn.getType();
+
+  // Verify that the cond function has exactly one result.
+  if (cond_fn_type.getNumResults() != 1)
+    return op.emitOpError("requires cond function to have exactly one result");
+
+  if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
+                              /*body_input=*/body_fn_type.getInputs(),
+                              /*body_result=*/body_fn_type.getResults())))
+    return failure();
   return success();
 }
 
@@ -2220,50 +2468,23 @@ void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(WhileRegionOp op) {
   // Verify that the condition generates a single tensor<i1> result.
-  YieldOp yield = cast<YieldOp>(op.cond().front().getTerminator());
-  if (yield.getNumOperands() != 1)
+  Operation *cond_yield = op.cond().front().getTerminator();
+  if (cond_yield->getNumOperands() != 1)
     return op.emitOpError()
            << "condition should have a single tensor<i1> result";
 
-  auto cond_type = yield.getOperand(0).getType().dyn_cast<RankedTensorType>();
+  auto cond_type =
+      cond_yield->getOperand(0).getType().dyn_cast<RankedTensorType>();
   if (!cond_type || !cond_type.getShape().equals({}) ||
       !cond_type.getElementType().isInteger(/*width=*/1))
     return op.emitOpError()
            << "condition should have a single tensor<i1> result";
 
-  // The body result types should match while op result types.
-  if (failed(VerifyRegionResults(op, op.body(), "body"))) return failure();
-
-  // Both condition and body should have same number and type of operands as
-  // the WhileRegion inputs.
-  const int num_inputs = op.getNumOperands();
-  auto block_inputs_match_op_inputs = [&](Region &region,
-                                          StringRef name) -> LogicalResult {
-    Block &block = region.front();
-    if (block.getNumArguments() != num_inputs)
-      return op.emitOpError()
-             << name << " should have same number of inputs (" << num_inputs
-             << ") as " << WhileRegionOp::getOperationName() << " but has "
-             << block.getNumArguments() << " inputs";
-
-    for (auto types_idx : llvm::enumerate(
-             llvm::zip(op.getOperandTypes(), block.getArgumentTypes()))) {
-      auto op_input_type = std::get<0>(types_idx.value());
-      auto block_input_type = std::get<1>(types_idx.value());
-      if (!AreCastCompatible({block_input_type, op_input_type}))
-        return op.emitOpError(llvm::formatv(
-            "{0} input type {1} is incompatible with {2} "
-            "input type {3} at index {4}",
-            name, block_input_type, WhileRegionOp::getOperationName(),
-            op_input_type, types_idx.index()));
-    }
-    return success();
-  };
-
-  if (failed(block_inputs_match_op_inputs(op.cond(), "condition")) ||
-      failed(block_inputs_match_op_inputs(op.body(), "body")))
+  Operation *body_yield = op.body().front().getTerminator();
+  if (failed(VerifyWhileTypes(op, /*cond_input=*/op.cond().getArgumentTypes(),
+                              /*body_input=*/op.body().getArgumentTypes(),
+                              /*body_result=*/body_yield->getOperandTypes())))
     return failure();
-
   return success();
 }
 
@@ -2375,7 +2596,8 @@ struct WhileRegionEliminatePassThrough
     auto &new_body_block = new_while_op.body().front();
     auto &new_yield = *new_body_block.getTerminator();
 
-    // Build a vector of new results. Also patch up the region bodies and yield.
+    // Build a vector of new results. Also patch up the region bodies and
+    // yield.
     SmallVector<Value, 4> new_results;
     next_idx = 0;
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
@@ -2410,12 +2632,12 @@ void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<XdivyWithSqrtDivisor>(context);
 }
 
+}  // namespace TF
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc.inc"
-
-}  // namespace TF
-}  // namespace mlir

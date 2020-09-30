@@ -54,7 +54,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/kernels/internal:optimized",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "@flatbuffers",

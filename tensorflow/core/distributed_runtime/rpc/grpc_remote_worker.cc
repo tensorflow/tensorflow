@@ -35,10 +35,9 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
-
-const int kMaxWorkerRpcRetries = 10;
 
 class GrpcRemoteWorker : public WorkerInterface {
  public:
@@ -274,7 +273,7 @@ class GrpcRemoteWorker : public WorkerInterface {
                     bool fail_fast = true) {
     new RPCState<protobuf::Message>(
         &stub_, cq_, method, *request, response, std::move(done), call_opts,
-        callback_threadpool_, /*max_retries=*/0, fail_fast, &target_);
+        callback_threadpool_, MaxRetries(), fail_fast, &target_);
   }
 
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
@@ -282,7 +281,7 @@ class GrpcRemoteWorker : public WorkerInterface {
                     CallOptions* call_opts = nullptr) {
     new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
                                  std::move(done), call_opts,
-                                 callback_threadpool_, /*max_retries=*/0,
+                                 callback_threadpool_, MaxRetries(),
                                  /*fail_fast=*/true, &target_);
   }
 
@@ -298,6 +297,14 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Helper function for initializing the RpcMethod objects below.
   const char* Method(GrpcWorkerMethod id) { return GrpcWorkerMethodName(id); }
+
+  // Helper function for configuring max GRPC retries. Defaults to 0 (no
+  // retries).
+  const int64 MaxRetries() {
+    int64 max_retries = -1;
+    TF_CHECK_OK(ReadInt64FromEnvVar("GRPC_MAX_RETRIES", 0, &max_retries));
+    return max_retries;
+  }
 
   SharedGrpcChannelPtr channel_;
   ::grpc::GenericStub stub_;

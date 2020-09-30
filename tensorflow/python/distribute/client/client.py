@@ -30,8 +30,9 @@ import re
 import sys
 import threading
 import weakref
-from absl import logging
 from six.moves import queue
+
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import metric_utils
@@ -40,13 +41,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import function as tf_function
-from tensorflow.python.eager import remote
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import server_lib
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 # Maximum time for failed worker to come back is 1 hour
@@ -196,17 +196,21 @@ class FunctionRetryableError(Exception):
   pass
 
 
-def _maybe_get_error_and_rebuild_remote_values(worker, structure):
+def _maybe_rebuild_remote_values(worker, structure):
   """Attempts to return errors from `RemoteValue`s. Rebuilds them if needed."""
   errors_in_structure = []
 
   def _get_error(val):
     if isinstance(val, RemoteValue):
       if val._status is _RemoteValueStatus.ABORTED:  # pylint: disable=protected-access
-        with worker.failure_handler.wait_on_failure(
-            on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
-            worker_device_name=worker.device_name):
-          val._rebuild_on(worker)  # pylint: disable=protected-access
+        try:
+          with worker.failure_handler.wait_on_failure(
+              on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
+              worker_device_name=worker.device_name):
+            val._rebuild_on(worker)  # pylint: disable=protected-access
+        except Exception as e:  # pylint: disable=broad-except
+          val._set_error(e)  # pylint: disable=protected-access
+
       error = val._get_error()  # pylint: disable=protected-access
       if error:
         errors_in_structure.append(error)
@@ -257,6 +261,18 @@ def _select_worker_slice(worker_id, structured):
   return nest.map_structure(_get, structured)
 
 
+def _disallow_remote_value_as_input(structured):
+  """Raises if any element of `structured` is a RemoteValue."""
+
+  def _raise_if_remote_value(x):
+    if isinstance(x, RemoteValue):
+      raise ValueError("RemoteValue cannot be used as an input to scheduled "
+                       "function. Please file a feature request if you need "
+                       "this feature.")
+
+  nest.map_structure(_raise_if_remote_value, structured)
+
+
 class Closure(object):
   """Hold a function to be scheduled and its arguments."""
 
@@ -266,6 +282,9 @@ class Closure(object):
                        "callable object.")
     self._args = args or ()
     self._kwargs = kwargs or {}
+
+    _disallow_remote_value_as_input(self._args)
+    _disallow_remote_value_as_input(self._kwargs)
 
     if isinstance(function, def_function.Function):
       replica_args = _select_worker_slice(0, self._args)
@@ -328,8 +347,8 @@ class Closure(object):
     replica_kwargs = _select_worker_slice(worker.worker_index, self._kwargs)
 
     e = (
-        _maybe_get_error_and_rebuild_remote_values(worker, replica_args) or
-        _maybe_get_error_and_rebuild_remote_values(worker, replica_kwargs))
+        _maybe_rebuild_remote_values(worker, replica_args) or
+        _maybe_rebuild_remote_values(worker, replica_kwargs))
     if e:
       if not isinstance(e, InputError):
         e = InputError(e)
@@ -384,7 +403,7 @@ class _CoordinatedClosureQueue(object):
 
     if _CLOSURE_QUEUE_MAX_SIZE <= 0:
       logging.warning(
-          "In ParameterServerClient, creating an infinite closure queue can "
+          "In a `Client`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
     self._error = None
@@ -757,32 +776,11 @@ class Cluster(object):
     workers: a list of `Worker` objects in the cluster.
   """
 
-  def __init__(self, cluster_resolver, client_name="chief"):
-    """Initializes the cluster instance and connect to the remote cluster."""
-    if client_name in ["worker", "ps"]:
-      raise ValueError("Client name should not be 'worker' or 'ps'.")
-    cluster_spec = cluster_resolver.cluster_spec()
+  def __init__(self, strategy):
+    """Initializes the cluster instance."""
 
-    self._num_workers = len(cluster_spec.as_dict().get("worker", ()))
-    self._num_ps = len(cluster_spec.as_dict().get("ps", ()))
-    device_filters = server_lib.ClusterDeviceFilters()
-    # For any worker, only the devices on PS and chief nodes are visible
-    for i in range(self._num_workers):
-      device_filters.set_device_filters(
-          "worker", i, ["/job:ps", "/job:%s" % client_name])
-    # Similarly for any ps, only the devices on workers and chief are visible
-    for i in range(self._num_ps):
-      device_filters.set_device_filters(
-          "ps", i, ["/job:worker", "/job:%s" % client_name])
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
-    # Allow at most one outstanding RPC for each worker at a certain time. This
-    # is to simplify worker failure handling in the runtime
-    os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"
-    remote.connect_to_cluster(cluster_spec,
-                              job_name=client_name,
-                              protocol=cluster_resolver.rpc_layer,
-                              cluster_device_filters=device_filters)
+    self._num_workers = strategy._num_workers
+    self._num_ps = strategy._num_ps
 
     # Ignore PS failures reported by workers due to transient connection errors.
     # Transient connectivity issues between workers and PS are relayed by the
@@ -867,9 +865,7 @@ class Client(object):
   functions to be executed, and fetch the results of the functions.
 
   Currently, `Client` is not supported to be used in a standalone manner.
-  It should be used in conjunction with `ParameterServerStrategyV2`. The
-  recommended way of using the combination is through a `ParameterServerClient`
-  object. Please see `ParameterServerClient` for more information.
+  It should be used in conjunction with `ParameterServerStrategyV2`.
 
   This is currently under development, and the API as well as implementation
   is subject to changes.
@@ -893,20 +889,11 @@ class Client(object):
       raise ValueError("Only `ParameterServerStrategyV2` is supported in "
                        "`Client` currently.")
     self._strategy = strategy
-    self.cluster = Cluster(strategy._cluster_resolver)
+    self.cluster = Cluster(strategy)
 
   @property
   def strategy(self):
     return self._strategy
-
-  @contextlib.contextmanager
-  def experimental_variable_partitioning_scope(self):
-    with self._strategy.experimental_variable_partitioning_scope():
-      yield
-
-  (experimental_variable_partitioning_scope.__doc__) = (
-      parameter_server_strategy_v2.ParameterServerStrategyV2
-      .experimental_variable_partitioning_scope.__doc__)
 
   def schedule(self, fn, args=None, kwargs=None):
     """Schedules `fn` to be dispatched to a worker for execution asynchronously.
@@ -945,7 +932,8 @@ class Client(object):
     of values, each of which represents a component specific to a worker; in
     this case, the argument will be substituted with the corresponding component
     on the target worker. Arguments that are not `PerWorkerValues` will be
-    passed into `fn` as-is.
+    passed into `fn` as-is. Currently, `RemoteValue` is not supported to be
+    input `args` or `kwargs`.
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
@@ -985,8 +973,6 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    # TODO(b/159486639): Update the docs once we can cancel the functions being
-    # executed on workers, that when `join` returns, the system is stabilized.
     with _translate_parameter_server_failure():
       self.cluster.join()
 
@@ -1157,15 +1143,12 @@ class _PerWorkerDistributedDataset(object):
     per_worker_iterator = self._client._create_per_worker_resources(
         _create_per_worker_iterator)
 
-    # Create an iterator, so the consumer function of this iterator can start
-    # tracing using this iterator without needing to wait for the completion of
-    # the iterater creation. Note: the iterator shouldn't use memory until it is
-    # consumed.
-    # TODO(b/154675763): get rid of this workaround once we can make input_fn a
-    # tf.function.
-    iterator = _create_per_worker_iterator()
+    # Setting type_spec of each RemoteValue so that functions taking these
+    # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._set_type_spec(iterator._type_spec)
+      iterator_remote_value._set_type_spec(
+          iterator_ops.IteratorSpec(
+              self._dataset_fn.structured_outputs.element_spec))
     return _PerWorkerDistributedIterator(per_worker_iterator._values)
 
   @property

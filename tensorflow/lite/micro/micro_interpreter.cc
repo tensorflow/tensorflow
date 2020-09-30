@@ -59,13 +59,31 @@ TfLiteStatus ContextHelper::RequestScratchBufferInArena(TfLiteContext* ctx,
                                                         size_t bytes,
                                                         int* buffer_idx) {
   ContextHelper* helper = reinterpret_cast<ContextHelper*>(ctx->impl_);
-  return helper->allocator_->RequestScratchBufferInArena(
-      helper->current_node_idx_, bytes, buffer_idx);
+
+  // We can not forward the scratch buffer request to the allocator yet,
+  // otherwise the scratch buffer handles will ruin the data in `temp` section.
+  // These requests will be processed once the `temp` section is deallocated,
+  // i.e. after a node has been prepared.
+
+  if (helper->scratch_buffer_count_ >= kMaxScratchBuffersPerOp) {
+    TF_LITE_REPORT_ERROR(
+        helper->error_reporter_,
+        "Node %d is allocating too many scratch buffers per op, max=%d",
+        helper->current_node_idx_, helper->scratch_buffer_count_);
+  }
+  helper->scrach_buffer_sizes_[helper->scratch_buffer_count_] = bytes;
+  // buffer_idx is 0 indexed.
+  *buffer_idx = helper->scratch_buffer_count_ +
+                helper->allocator_->GetScratchBufferCount();
+  helper->scratch_buffer_count_++;
+  return kTfLiteOk;
 }
 
 void* ContextHelper::GetScratchBuffer(TfLiteContext* ctx, int buffer_idx) {
-  return reinterpret_cast<ContextHelper*>(ctx->impl_)
-      ->allocator_->GetScratchBuffer(buffer_idx);
+  ContextHelper* helper = reinterpret_cast<ContextHelper*>(ctx->impl_);
+
+  return helper->allocator_->GetScratchBuffer(helper->scratch_buffer_handles_,
+                                              buffer_idx);
 }
 
 void ContextHelper::ReportOpError(struct TfLiteContext* context,
@@ -92,10 +110,37 @@ TfLiteEvalTensor* ContextHelper::GetEvalTensor(
   return &helper->eval_tensors_[tensor_idx];
 }
 
-void ContextHelper::SetNodeIndex(int idx) { current_node_idx_ = idx; }
+void ContextHelper::SetNodeIndex(int idx) {
+  if (scratch_buffer_count_ != 0) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Internal error: Please commit scratch buffers "
+                         "befrore moving to the next node");
+  }
+  current_node_idx_ = idx;
+}
 
 void ContextHelper::SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors) {
   eval_tensors_ = eval_tensors;
+}
+
+void ContextHelper::SetScratchBufferHandles(void* scratch_buffer_handle) {
+  scratch_buffer_handles_ = scratch_buffer_handle;
+}
+
+TfLiteStatus ContextHelper::CommitScratchBuffers() {
+  size_t initial_buffer_count = allocator_->GetScratchBufferCount();
+  for (size_t i = 0; i < scratch_buffer_count_; i++) {
+    int buffer_id;
+    allocator_->RequestScratchBufferInArena(
+        current_node_idx_, scrach_buffer_sizes_[i], &buffer_id);
+    if (static_cast<size_t>(buffer_id) != initial_buffer_count + i) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Internal error. Scratch buffers are not contiguous.\n");
+    }
+  }
+  scratch_buffer_count_ = 0;
+  return kTfLiteOk;
 }
 
 }  // namespace internal
@@ -229,6 +274,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   // TODO(b/16157777): This call would not be needed if ContextHelper rolled
   // into the interpreter.
   context_helper_.SetTfLiteEvalTensors(eval_tensors_);
+  context_.tensors_size = subgraph_->tensors()->size();
 
   // If the system is big endian then convert weights from the flatbuffer from
   // little to big endian on startup so that it does not need to be done during
@@ -297,6 +343,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
       }
     }
     allocator_.ResetTempAllocations();
+    context_helper_.CommitScratchBuffers();
   }
   context_helper_.SetNodeIndex(-1);
 
@@ -306,8 +353,12 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   context_.RequestScratchBufferInArena = nullptr;
   context_.GetScratchBuffer = context_helper_.GetScratchBuffer;
 
+  void* scratch_buffer_handles = nullptr;
+
   TF_LITE_ENSURE_OK(&context_,
-                    allocator_.FinishModelAllocation(model_, eval_tensors_));
+                    allocator_.FinishModelAllocation(model_, eval_tensors_,
+                                                     &scratch_buffer_handles));
+  context_helper_.SetScratchBufferHandles(scratch_buffer_handles);
   TF_LITE_ENSURE_STATUS(ResetVariableTensors());
 
   tensors_allocated_ = true;

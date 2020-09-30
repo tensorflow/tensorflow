@@ -27,10 +27,11 @@ from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.datasets import mnist
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
@@ -56,7 +57,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
       else:
         raise
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['eager'],
           shard_policy=[None] + list(distribute_options.AutoShardPolicy)))
@@ -108,7 +109,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
 
     num_workers = 4
 
-    def proc_func(model_path, checkpoint_dir):
+    def fn(model_path, checkpoint_dir):
       global_batch_size = per_worker_batch_size * num_workers
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       with strategy.scope():
@@ -159,9 +160,10 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
       # Make sure chief finishes saving before non-chief's assertions.
       multi_process_runner.barrier().wait()
 
-      if not file_io.file_exists(model_path):
+      if not file_io.file_exists_v2(model_path):
         raise RuntimeError()
-      if file_io.file_exists(write_model_path) != _is_chief(task_type, task_id):
+      if file_io.file_exists_v2(write_model_path) != _is_chief(
+          task_type, task_id):
         raise RuntimeError()
 
       loaded_model = keras.saving.save.load_model(model_path)
@@ -179,9 +181,9 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
       # Make sure chief finishes saving before non-chief's assertions.
       multi_process_runner.barrier().wait()
 
-      if not file_io.file_exists(checkpoint_dir):
+      if not file_io.file_exists_v2(checkpoint_dir):
         raise RuntimeError()
-      if file_io.file_exists(write_checkpoint_dir) != _is_chief(
+      if file_io.file_exists_v2(write_checkpoint_dir) != _is_chief(
           task_type, task_id):
         raise RuntimeError()
 
@@ -196,10 +198,10 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'ckpt')
     with test_util.skip_if_error(self, errors_impl.UnavailableError):
       mpr_result = multi_process_runner.run(
-          proc_func,
+          fn,
           multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
           args=(model_path, checkpoint_dir),
-          list_stdout=True)
+          return_output=True)
 
     self.assertTrue(
         any([

@@ -82,6 +82,16 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
 
+  bool SupportsZeroClamp(const Axis& axis) const;
+  bool CanReadOutOfBorder(const Axis& axis) const;
+  bool IsLinear() const;
+
+  // applicable only for types that: IsLinear -> true.
+  // In this case for address we have 1d component - addr (int)
+  // If for addr == -1 this linear storage type returns FLT4(0.0), this function
+  // returns true, otherwise false
+  bool ReturnsZeroForNegOneRead() const;
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
   // This field describes logical layout, actual(physical) GPU layout can be

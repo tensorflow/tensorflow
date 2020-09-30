@@ -35,102 +35,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class DepthwiseConvolution : public GPUOperation {
- public:
-  DepthwiseConvolution() = default;
-  absl::Status BindArguments() override;
-  int3 GetGridSize() const override;
-
-  // Move only
-  DepthwiseConvolution(DepthwiseConvolution&& operation);
-  DepthwiseConvolution& operator=(DepthwiseConvolution&& operation);
-  DepthwiseConvolution(const DepthwiseConvolution&) = delete;
-  DepthwiseConvolution& operator=(const DepthwiseConvolution&) = delete;
-
- private:
-  friend DepthwiseConvolution CreateDepthwiseConvolution(
-      const DeviceInfo& device_info, const OperationDef& definition,
-      const DepthwiseConvolution2DAttributes& attr);
-  friend DepthwiseConvolution CreateDepthwiseConvolution(
-      const DeviceInfo& device_info, const OperationDef& definition,
-      const DepthwiseConvolution3DAttributes& attr);
-  DepthwiseConvolution(const OperationDef& definition,
-                       const DepthwiseConvolution2DAttributes& attr,
-                       bool weights_are_buffer);
-  DepthwiseConvolution(const OperationDef& definition,
-                       const DepthwiseConvolution3DAttributes& attr,
-                       bool weights_are_buffer);
-
-  template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
-
-  template <DataType S, typename T>
-  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
-                            absl::Span<T> dst);
-
-  template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights);
-
-  template <DataType S, typename T>
-  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
-                            absl::Span<T> dst);
-
-  std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
-                                               bool stride_correction,
-                                               int channel_multiplier,
-                                               bool weights_are_buffer);
-
-  bool weights_are_buffer_;
-
-  int4 kernel_size_;
-  int4 stride_;
-  int4 padding_;
-  int4 dilation_;
-  int channel_multiplier_;
-};
-
-template <DataType T>
-void DepthwiseConvolution::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights) {
-  const int dst_channels = weights.shape.i * weights.shape.o;
-  const int dst_slices = DivideRoundUp(dst_channels, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
-
-  const int elements_count = kernel_x * kernel_y * dst_slices;
-
-  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
-  const int float4_size = fp32_weights ? 16 : 8;
-
-  std::vector<uint8_t> data(float4_size * elements_count);
-
-  if (fp32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
-  } else {
-    half4* ptr = reinterpret_cast<half4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
-  }
-
-  if (weights_are_buffer_) {
-    BufferDescriptor desc;
-    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.element_size = 4;
-    desc.size = float4_size * elements_count;
-    desc.data = std::move(data);
-    args_.AddObject("weights", absl::make_unique<BufferDescriptor>(desc));
-  } else {
-    Texture2DDescriptor desc;
-    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.size = int2(kernel_x * kernel_y, dst_slices);
-    desc.data = std::move(data);
-    args_.AddObject("weights", absl::make_unique<Texture2DDescriptor>(desc));
-  }
-}
-
 template <DataType S, typename T>
-void DepthwiseConvolution::RearrangeWeightsData(
-    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+void RearrangeWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, S>& weights,
+                                 absl::Span<T> dst) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_depth = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -158,50 +65,50 @@ void DepthwiseConvolution::RearrangeWeightsData(
 }
 
 template <DataType T>
-void DepthwiseConvolution::UploadWeights(
-    const tflite::gpu::Tensor<OHWDI, T>& weights) {
+void UploadWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, T>& weights,
+                              bool weights_are_buffer,
+                              CalculationsPrecision precision,
+                              GPUOperation* op) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
-  const int kernel_z = weights.shape.d;
 
-  const int elements_count = kernel_x * kernel_y * kernel_z * dst_slices;
+  const int elements_count = kernel_x * kernel_y * dst_slices;
 
-  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
+  const bool fp32_weights = precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
   std::vector<uint8_t> data(float4_size * elements_count);
 
   if (fp32_weights) {
     float4* ptr = reinterpret_cast<float4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
+    RearrangeWeightsForDWConv2D(weights, absl::MakeSpan(ptr, elements_count));
   } else {
     half4* ptr = reinterpret_cast<half4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
+    RearrangeWeightsForDWConv2D(weights, absl::MakeSpan(ptr, elements_count));
   }
 
-  if (weights_are_buffer_) {
+  if (weights_are_buffer) {
     BufferDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.element_size = 4;
     desc.size = float4_size * elements_count;
     desc.data = std::move(data);
-    args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+    op->args_.AddObject("weights", absl::make_unique<BufferDescriptor>(desc));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.size = int2(kernel_x * kernel_y * kernel_z, dst_slices);
+    desc.size = int2(kernel_x * kernel_y, dst_slices);
     desc.data = std::move(data);
-    args_.AddObject("weights",
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+    op->args_.AddObject("weights",
+                        absl::make_unique<Texture2DDescriptor>(desc));
   }
 }
 
 template <DataType S, typename T>
-void DepthwiseConvolution::RearrangeWeightsData(
-    const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
+void RearrangeWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, S>& weights,
+                                 absl::Span<T> dst) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -231,11 +138,55 @@ void DepthwiseConvolution::RearrangeWeightsData(
   }
 }
 
-DepthwiseConvolution CreateDepthwiseConvolution(
+template <DataType T>
+void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                              bool weights_are_buffer,
+                              CalculationsPrecision precision,
+                              GPUOperation* op) {
+  const int dst_channels = weights.shape.i * weights.shape.o;
+  const int dst_slices = DivideRoundUp(dst_channels, 4);
+  const int kernel_x = weights.shape.w;
+  const int kernel_y = weights.shape.h;
+  const int kernel_z = weights.shape.d;
+
+  const int elements_count = kernel_x * kernel_y * kernel_z * dst_slices;
+
+  const bool fp32_weights = precision == CalculationsPrecision::F32;
+  const int float4_size = fp32_weights ? 16 : 8;
+
+  std::vector<uint8_t> data(float4_size * elements_count);
+
+  if (fp32_weights) {
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    RearrangeWeightsForDWConv3D(weights, absl::MakeSpan(ptr, elements_count));
+  } else {
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    RearrangeWeightsForDWConv3D(weights, absl::MakeSpan(ptr, elements_count));
+  }
+
+  if (weights_are_buffer) {
+    BufferDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 4;
+    desc.size = float4_size * elements_count;
+    desc.data = std::move(data);
+    op->args_.AddObject("weights",
+                        absl::make_unique<BufferDescriptor>(std::move(desc)));
+  } else {
+    Texture2DDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.size = int2(kernel_x * kernel_y * kernel_z, dst_slices);
+    desc.data = std::move(data);
+    op->args_.AddObject(
+        "weights", absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+  }
+}
+
+GPUOperation CreateDepthwiseConvolution2D(
     const DeviceInfo& device_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr);
 
-DepthwiseConvolution CreateDepthwiseConvolution(
+GPUOperation CreateDepthwiseConvolution3D(
     const DeviceInfo& device_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr);
 

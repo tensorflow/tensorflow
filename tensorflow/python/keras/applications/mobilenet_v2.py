@@ -111,8 +111,9 @@ def MobileNetV2(input_shape=None,
 
   Optionally loads weights pre-trained on ImageNet.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.mobilenet_v2.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For MobileNetV2, call `tf.keras.applications.mobilenet_v2.preprocess_input`
+  on your inputs before passing them to the model.
 
   Arguments:
     input_shape: Optional shape tuple, to be specified if you would
@@ -180,7 +181,7 @@ def MobileNetV2(input_shape=None,
     layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '

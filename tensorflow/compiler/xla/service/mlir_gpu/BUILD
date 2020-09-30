@@ -1,6 +1,14 @@
 # Description:
 #   MLIR-GPU-specific components in XLA service implementation.
 
+load("//third_party/mlir:tblgen.bzl", "gentbl")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -41,9 +49,12 @@ cc_library(
     srcs = ["emission_context.cc"],
     hdrs = ["emission_context.h"],
     deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla/service:hlo",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -84,7 +95,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
@@ -156,11 +167,21 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [("-gen-pass-decls -name XlaMlirGpu", "passes.h.inc")],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
 cc_library(
     name = "passes",
     srcs = ["passes.cc"],
     hdrs = ["passes.h"],
     deps = [
+        ":passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
@@ -182,12 +203,10 @@ cc_library(
     deps = [
         ":passes",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_force_registration",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
-        "//tensorflow/compiler/mlir/hlo:legalize_tanh_to_approximation",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_copy_removal",
         "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
@@ -199,6 +218,7 @@ cc_library(
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToNVVMTransforms",
+        "@llvm-project//mlir:GPUToROCDLTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
@@ -207,6 +227,7 @@ cc_library(
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToGPUPass",
         "@llvm-project//mlir:SCFTransforms",
@@ -254,6 +275,23 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "xla-mlir-gpu-opt",
+    srcs = ["xla_mlir_gpu_opt.cc"],
+    visibility = ["//tensorflow/compiler/xla/service/mlir_gpu/tests:__subpackages__"],
+    deps = [
+        ":passes",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],

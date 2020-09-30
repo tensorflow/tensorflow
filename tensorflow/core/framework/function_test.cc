@@ -1068,6 +1068,16 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
   EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
 }
 
+TEST(FunctionLibraryDefinitionTest, Clear) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XAddX()));
+
+  lib_def.Clear();
+  EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
+  EXPECT_FALSE(lib_def.Contains("XAddX"));
+}
+
 TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   // Create lib def with single function
   FunctionDefLibrary proto;

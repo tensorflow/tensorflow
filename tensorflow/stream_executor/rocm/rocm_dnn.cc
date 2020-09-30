@@ -113,9 +113,6 @@ string ToString(miopenConvFwdAlgorithm_t algorithm) {
     case miopenConvolutionFwdAlgoImplicitGEMM:
       s = "Implicit GEMM";
       break;
-    case miopenConvolutionFwdAlgoStaticCompiledGEMM:
-      s = "Static Compiled GEMM";
-      break;
   }
   return s;
 }
@@ -181,9 +178,6 @@ string ToString(miopenConvAlgorithm_t algorithm) {
       break;
     case miopenConvolutionAlgoImplicitGEMM:
       s = "Implicit GEMM";
-      break;
-    case miopenConvolutionAlgoStaticCompiledGEMM:
-      s = "Static Compiled GEMM";
       break;
   }
   return s;
@@ -3680,7 +3674,7 @@ bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
   return true;
 }
 
-bool MIOpenSupport::DoFusedConvolve(
+port::Status MIOpenSupport::DoFusedConvolve(
     Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
     const DeviceMemory<double>& conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -3693,11 +3687,10 @@ bool MIOpenSupport::DoFusedConvolve(
     DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  LOG(ERROR) << "fused convolve not implemented yet";
-  return false;
+  return port::UnimplementedError("fused convolve not implemented yet");
 }
 
-bool MIOpenSupport::DoFusedConvolve(
+port::Status MIOpenSupport::DoFusedConvolve(
     Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
     const DeviceMemory<float>& conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -3710,11 +3703,10 @@ bool MIOpenSupport::DoFusedConvolve(
     DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  LOG(ERROR) << "fused convolve not implemented yet";
-  return false;
+  return port::UnimplementedError("fused convolve not implemented yet");
 }
 
-bool MIOpenSupport::DoFusedConvolve(
+port::Status MIOpenSupport::DoFusedConvolve(
     Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
     const DeviceMemory<Eigen::half>& conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -3728,11 +3720,10 @@ bool MIOpenSupport::DoFusedConvolve(
     DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  LOG(ERROR) << "fused convolve not implemented yet";
-  return false;
+  return port::UnimplementedError("fused convolve not implemented yet");
 }
 
-bool MIOpenSupport::DoFusedConvolve(
+port::Status MIOpenSupport::DoFusedConvolve(
     Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
     const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -3745,8 +3736,7 @@ bool MIOpenSupport::DoFusedConvolve(
     DeviceMemory<int8>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  LOG(ERROR) << "fused convolve not implemented yet";
-  return false;
+  return port::UnimplementedError("fused convolve not implemented yet");
 }
 
 bool MIOpenSupport::DoTransformTensor(Stream* stream,

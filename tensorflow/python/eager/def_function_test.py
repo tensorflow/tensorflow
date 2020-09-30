@@ -70,7 +70,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(4.0)), 8.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testFailIfVariablesAreCreatedMoreThanOnce(self):
 
     @def_function.function
@@ -80,7 +79,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       fn(1.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testFailIfVariablesAreCreatedMoreThanOnceNoWeakRef(self):
     state = []
 
@@ -100,7 +98,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(f(range(5)), 1.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testCorrectVariableCreation(self):
 
     state = []
@@ -114,7 +111,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
     self.assertAllEqual(fn(constant_op.constant(3.0)), 6.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testFunctionInitializer(self):
 
     state = []
@@ -127,7 +123,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testFunctionMultipleVariableInitializer(self):
 
     state = []
@@ -141,7 +136,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), [2.0, 5.0])
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testFunctionInitializationFunction(self):
 
     state = []
@@ -159,7 +153,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     init_fn()
     self.assertEqual(state[0].numpy(), 2.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
+  @test_util.disable_tfrt('Error in native condition op.')
   def testVariableInitializerNotConstant(self):
 
     state = []
@@ -189,7 +183,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(sess.run(state[0]), 2.0)
       self.assertAllEqual(self.evaluate(result), 6.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testLegacyGraphModeVariablesNonTrivialInitializer(self):
     with ops.Graph().as_default(), self.test_session() as sess:
       state = []
@@ -209,7 +202,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(sess.run(state[0]), 6.0)
       self.assertAllEqual(self.evaluate(result), 18.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testLegacyGraphModeInputDependentInitializerFails(self):
     with ops.Graph().as_default():
       state = []
@@ -224,7 +216,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
                                   r'transitively.* mul .* x'):
         fn(constant_op.constant(3.0))
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testMethod(self):
 
     class MyModel(object):
@@ -253,7 +244,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         def_function.function(functools.partial(lambda x, y: x + y, 1.))(
             constant_op.constant(2.)))
 
-  @test_util.disable_tfrt('Partial is not supported')
   def test_functools_partial_new_default(self):
     def f(x=3, y=7):
       return x + y
@@ -262,7 +252,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func().numpy(), 9)
     self.assertEqual(func(y=8).numpy(), 11)
 
-  @test_util.disable_tfrt('Partial is not supported')
   def test_functools_partial_keywords(self):
     def f(x, y):
       return x + y
@@ -271,7 +260,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
     self.assertAllEqual(func(), [0.0])
 
-  @test_util.disable_tfrt('Partial is not supported')
   def test_functools_partial_single_positional(self):
     def f(x, y):
       return x + y
@@ -280,7 +268,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         functools.partial(f, constant_op.constant(1)))
     self.assertAllEqual(func(5), 6)
 
-  @test_util.disable_tfrt('Partial is not supported')
   def test_complicated_partial_with_defaults(self):
 
     def identity(*args):
@@ -328,7 +315,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   @test_util.run_in_graph_and_eager_modes
   def test_variable_naming(self):
     class HasVars(module.Module):
@@ -399,7 +385,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
                                 'defined in another function or code block'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
-  @test_util.disable_tfrt('Control flow is not supported')
+  @test_util.disable_tfrt('b/169375363: error code support')
   def testRuntimeErrorNotSticky(self):
 
     @def_function.function
@@ -504,7 +490,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
                  constant_op.constant(3.),
                  constant_op.constant(4.)))
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testVariableCreatorScope(self):
     created_variables = []
     captured_variables = []
@@ -524,7 +509,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       f()
     self.assertEqual(created_variables, captured_variables)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testVarAlreadyInitializedNoClobbering(self):
     v_holder = []
 
@@ -542,7 +526,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     add_var.get_concrete_function(constant_op.constant(2.))
     self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testSameVariableTwice(self):
     v = variables.Variable(1.0)
 
@@ -552,7 +535,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(add(v, v), 2.0)
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testVariableUpdate(self):
     v1 = variables.Variable(1.0)
     v2 = variables.Variable(2.0)
@@ -604,7 +586,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertIs(func_a, func_c)
 
-  @test_util.disable_tfrt('Nested function is not supported')
   def testInitializationInNestedCall(self):
     v_holder = []
 
@@ -627,7 +608,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
     a = []
@@ -647,7 +627,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     create_variable()
     self.assertRegex(a[0].device, 'CPU')
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   @test_util.run_gpu_only
   def testDeviceAnnotationForInitializerRespected(self):
     a = []
@@ -685,6 +664,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (True, False),                          # compile
       (True, False),                          # override_function
   ))
+
   def testClone(self, input_signature, autograph, autograph_options, implements,
                 relax_shapes, compile_, override_function):
     original_py_function = lambda x: x
@@ -722,7 +702,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(cloned(x)),
                        self.evaluate(cloned_py_function(x)))
 
-  @test_util.disable_tfrt('Variable argument is not supported')
   def testLiftPlaceholderInitializedVariable(self):
     with ops.Graph().as_default():
       var_list = []
@@ -767,6 +746,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (None, 'foo.bar'),  # implements
       (None, True, False),  # relax_shapes
   ))
+
   def test_pickle(self, input_signature, autograph, autograph_options,
                   implements, relax_shapes):
     """@function objects can be pickled and unpickled."""
@@ -876,7 +856,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(logs.output, 1)
     self.assertIn('Tracing is expensive', logs.output[0])
 
-  @test_util.disable_tfrt('Nested function is not supported')
   def test_frequent_retracing_warning_nested(self):
     if sys.version_info[0] < 3:
       self.skipTest('self.assertLogs() call is not available in Python 2.')

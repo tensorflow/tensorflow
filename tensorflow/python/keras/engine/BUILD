@@ -16,6 +16,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "engine",
     srcs = [
@@ -27,11 +33,12 @@ py_library(
         "saving.py",
         "sequential.py",
         "training.py",
-        "training_arrays.py",
-        "training_distributed.py",
-        "training_eager.py",
-        "training_generator.py",
+        "training_arrays_v1.py",
+        "training_distributed_v1.py",
+        "training_eager_v1.py",
+        "training_generator_v1.py",
         "training_utils.py",
+        "training_utils_v1.py",
         "training_v1.py",
     ],
     srcs_version = "PY2AND3",
@@ -68,6 +75,7 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/keras/utils:version_utils",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -96,6 +104,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/utils:tf_inspect",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -171,6 +180,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
 
@@ -255,6 +265,7 @@ tf_py_test(
     size = "medium",
     srcs = ["data_adapter_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_oss_py38",  # TODO(b/150615192)
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -290,6 +301,7 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         ":engine",
         "//tensorflow/python:client_testlib",
@@ -328,6 +340,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -343,6 +356,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -529,14 +543,15 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "training_utils_test",
+    name = "training_utils_v1_test",
     size = "medium",
-    srcs = ["training_utils_test.py"],
+    srcs = ["training_utils_v1_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/135021748) reenable
         "notsan",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -557,6 +572,7 @@ tf_py_test(
     deps = [
         ":base_layer",
         ":engine",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/utils:layer_utils",
     ],
@@ -607,6 +623,7 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    tfrt_enabled = True,
     deps = [
         ":base_layer",
         ":engine",

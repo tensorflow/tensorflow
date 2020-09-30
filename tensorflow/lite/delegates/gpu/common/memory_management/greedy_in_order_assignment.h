@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_IN_ORDER_ASSIGNMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_IN_ORDER_ASSIGNMENT_H_
 
+#include <stddef.h>
+
 #include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <list>
 #include <queue>
 #include <set>

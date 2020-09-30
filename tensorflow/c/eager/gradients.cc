@@ -122,14 +122,12 @@ int64 ToId(AbstractTensorHandle* t) {
   return static_cast<int64>(reinterpret_cast<uintptr_t>(t));
 }
 
-TapeTensor::TapeTensor(AbstractTensorHandle* handle, AbstractContext* ctx)
-    : handle_(handle), ctx_(ctx) {
+TapeTensor::TapeTensor(AbstractTensorHandle* handle) : handle_(handle) {
   handle_->Ref();
 }
 TapeTensor::TapeTensor(const TapeTensor& other) {
   handle_ = other.handle_;
   handle_->Ref();
-  ctx_ = other.ctx_;
 }
 TapeTensor::~TapeTensor() { handle_->Unref(); }
 
@@ -138,33 +136,7 @@ tensorflow::int64 TapeTensor::GetID() const { return ToId(handle_); }
 tensorflow::DataType TapeTensor::GetDType() const {
   return handle_->DataType();
 }
-
-AbstractTensorHandle* TapeTensor::OnesLike() const {
-  AbstractOperationPtr op(ctx_->CreateOperation());
-  Status s = op->Reset("OnesLike", /*raw_device_name=*/nullptr);
-  if (!s.ok()) {
-    return nullptr;
-  }
-  if (isa<tracing::TracingOperation>(op.get())) {
-    s = dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
-        absl::StrCat("OnesLike", ToId(handle_)).c_str());
-    if (!s.ok()) {
-      return nullptr;
-    }
-  }
-  s = op->AddInput(handle_);
-  if (!s.ok()) {
-    return nullptr;
-  }
-  int num_outputs = 1;
-  // TODO(srbs): Figure out who is in charge of releasing this.
-  std::vector<AbstractTensorHandle*> outputs(num_outputs);
-  s = op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs);
-  if (!s.ok()) {
-    return nullptr;
-  }
-  return outputs[0];
-}
+AbstractTensorHandle* TapeTensor::GetHandle() const { return handle_; }
 
 AbstractTensorHandle* TapeTensor::ZerosLike() const { return nullptr; }
 
@@ -219,6 +191,23 @@ Status TapeVSpace::CallBackwardFunction(
       &ctx, incoming_gradients, result);
 }
 
+Status TapeVSpace::BuildOnesLike(TapeTensor t,
+                                 AbstractTensorHandle** result) const {
+  AbstractOperationPtr op(ctx_->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset("OnesLike", /*raw_device_name=*/nullptr));
+  if (isa<tracing::TracingOperation>(op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
+        absl::StrCat("OnesLike", ToId(t.GetHandle())).c_str()));
+  }
+  TF_RETURN_IF_ERROR(op->AddInput(t.GetHandle()));
+  int num_outputs = 1;
+  std::vector<AbstractTensorHandle*> outputs(num_outputs);
+  TF_RETURN_IF_ERROR(
+      op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
+  *result = outputs[0];
+  return Status::OK();
+}
+
 // Looks up the ID of a Gradient.
 int64 TapeVSpace::TensorId(AbstractTensorHandle* tensor) const {
   return ToId(tensor);
@@ -226,7 +215,7 @@ int64 TapeVSpace::TensorId(AbstractTensorHandle* tensor) const {
 
 // Converts a Gradient to a TapeTensor.
 TapeTensor TapeVSpace::TapeTensorFromGradient(AbstractTensorHandle* g) const {
-  return TapeTensor(g, ctx_);
+  return TapeTensor(g);
 }
 
 void TapeVSpace::MarkAsResult(AbstractTensorHandle* gradient) const {}
@@ -242,6 +231,7 @@ namespace internal {
 Status Reset(AbstractOperation* op_, const char* op,
              const char* raw_device_name, ForwardOperation* forward_op_) {
   forward_op_->op_name = op;
+  forward_op_->attrs.Reset(op);
   return op_->Reset(op, raw_device_name);
 }
 Status AddInput(AbstractOperation* op_, AbstractTensorHandle* input,
@@ -418,9 +408,14 @@ Status Execute(AbstractOperation* op_, AbstractContext* ctx,
     // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.
     forward_op_->outputs.push_back(retvals[i]);
   }
+  // TODO(b/166669239): This is needed to support AttrBuilder::Get for string
+  // attributes. Number type attrs and DataType attrs work fine without this.
+  // Consider getting rid of this and making the behavior between number types
+  // and string consistent.
+  forward_op_->attrs.BuildNodeDef();
   std::vector<TapeTensor> tape_tensors;
   for (auto t : retvals) {
-    tape_tensors.push_back(TapeTensor(t, ctx));
+    tape_tensors.push_back(TapeTensor(t));
   }
   tape->RecordOperation(
       op_->Name(), tape_tensors, input_ids, input_dtypes,

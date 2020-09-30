@@ -759,10 +759,9 @@ class ParameterServerStrategyTest(
                            strategy.experimental_distribute_dataset,
                            dataset.batch(2))
 
-    self.assertRaisesRegex(
-        NotImplementedError, 'ParameterServerStrategy*',
-        strategy.experimental_distribute_datasets_from_function,
-        lambda _: dataset)
+    self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
+                           strategy.distribute_datasets_from_function,
+                           lambda _: dataset)
 
     self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
                            strategy.scope)

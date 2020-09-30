@@ -324,7 +324,7 @@ class TFETest(test_util.TensorFlowTestCase):
       else:
         ops.disable_tensor_equality()
 
-  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
+  @test_util.disable_tfrt('Get execution mode not supported in TFRT.')
   def testContext(self):
     ctx = context.Context()
     self.assertTrue(ctx.executing_eagerly())
@@ -384,7 +384,6 @@ class TFETest(test_util.TensorFlowTestCase):
     with ctx.device(device_spec):
       self.assertEqual(device_name, ctx.device_name)
 
-  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testAsyncBasic(self):
     ctx = context.Context(execution_mode=context.ASYNC)
     ctx.ensure_initialized()
@@ -404,8 +403,6 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Device name incorrect (known issue for runtime '
-                          'fallback).')
   def testShouldCopy(self):
     with ops.device('GPU:0'):
       x = array_ops.identity(1.0)
@@ -500,8 +497,6 @@ class TFETest(test_util.TensorFlowTestCase):
     cpu.__exit__()
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Device name incorrect (known issue for runtime '
-                          'fallback).')
   def testReEntrant(self):
     cpu = context.device('cpu:0')
     gpu = context.device('gpu:0')
@@ -548,7 +543,6 @@ class TFETest(test_util.TensorFlowTestCase):
       x.gpu(context.context().num_gpus() + 1)
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testCopyBetweenDevicesAsync(self):
     with context.execution_mode(context.ASYNC):
       x = constant_op.constant([[1., 2.], [3., 4.]])
@@ -565,7 +559,6 @@ class TFETest(test_util.TensorFlowTestCase):
     context.context().executor.clear_error()
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Device placement not implemented.')
   def testCopyScope(self):
     constant = constant_op.constant(1.0)
     with ops.device('gpu:0'):
@@ -588,7 +581,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(test_fn(test_var), 1.0)
 
-  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
+  @test_util.disable_tfrt('PyFunc is not supported in TFRT.')
   def testPyFunctionAsync(self):
 
     def simple_fn(v):
@@ -634,7 +627,6 @@ class TFETest(test_util.TensorFlowTestCase):
         attrs=('T', three.dtype.as_datatype_enum))[0]
     self.assertAllEqual(15, product)
 
-  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testExecuteBasicAsync(self):
     with context.execution_mode(context.ASYNC):
       three = constant_op.constant(3)
@@ -688,7 +680,6 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.int32.as_datatype_enum))[0]
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Device placement not implemented yet.')
   def testMatMulGPU(self):
     three = constant_op.constant([[3.]]).gpu()
     five = constant_op.constant([[5.]]).gpu()
@@ -699,6 +690,19 @@ class TFETest(test_util.TensorFlowTestCase):
         attrs=('transpose_a', False, 'transpose_b', False, 'T',
                three.dtype.as_datatype_enum))[0]
     self.assertAllEqual([[15.0]], product)
+
+  @test_util.run_gpu_only
+  def testMatMulGPUCopyToCPU(self):
+    three = constant_op.constant([[3.]]).gpu()
+    five = constant_op.constant([[5.]]).gpu()
+    with ops.device('CPU:0'):
+      product = execute(
+          b'MatMul',
+          num_outputs=1,
+          inputs=[three, five],
+          attrs=('transpose_a', False, 'transpose_b', False, 'T',
+                 three.dtype.as_datatype_enum))[0]
+      self.assertAllEqual([[15.0]], product)
 
   def testExecuteStringAttr(self):
     checked_three = execute(
@@ -1043,8 +1047,6 @@ class TFETest(test_util.TensorFlowTestCase):
     for t in threads:
       t.join()
 
-  @test_util.disable_tfrt('Does not support converting DT_RESOURCE'
-                          'to op attr type yet.')
   def testEmptyResourceReturned(self):
     with ops.device('CPU:0'):
       v = variables.Variable(1.)

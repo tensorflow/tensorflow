@@ -1,3 +1,9 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
@@ -11,6 +17,7 @@ cc_library(
     hdrs = [
         "tpu_client.h",
     ],
+    compatible_with = [],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -24,6 +31,7 @@ cc_library(
         "//tensorflow/compiler/xla/python/tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:direct_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:grpc_tpu_driver",
+        "//tensorflow/compiler/xla/python/tpu_driver:pod_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",

@@ -34,22 +34,25 @@ namespace {
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
 constexpr int tensor_arena_size = 21 * 1024;
-alignas(16) uint8_t tensor_arena[tensor_arena_size];
+alignas(16) uint8_t
+    tensor_arena[tensor_arena_size + sizeof(MicroBenchmarkRunner<int16_t>)];
 // A random number generator seed to generate input values.
 constexpr int kRandomSeed = 42;
 
 MicroBenchmarkRunner<int16_t>* benchmark_runner = nullptr;
 
-void InitializeBenchmarkRunner() {
-  // NOLINTNEXTLINE
-  static MicroBenchmarkRunner<int16_t> runner(g_keyword_scrambled_model_data,
-                                              tensor_arena, tensor_arena_size);
-  benchmark_runner = &runner;
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  benchmark_runner = new (tensor_arena) MicroBenchmarkRunner<int16_t>(
+      g_keyword_scrambled_model_data,
+      &tensor_arena[sizeof(MicroBenchmarkRunner<int16_t>)], tensor_arena_size);
 }
 
 // Initializes keyword runner and sets random inputs.
 void InitializeKeywordRunner() {
-  InitializeBenchmarkRunner();
+  CreateBenchmarkRunner();
   benchmark_runner->SetRandomInput(kRandomSeed);
 }
 

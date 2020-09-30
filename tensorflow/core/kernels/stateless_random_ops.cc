@@ -121,8 +121,8 @@ class StatelessRandomOp : public StatelessRandomOpBase {
     auto flat = output->flat<T>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), random, flat.data(),
-        flat.size(), Distribution());
+        context, context->eigen_device<Device>(), /*key=*/nullptr,
+        /*counter=*/nullptr, random, flat.data(), flat.size(), Distribution());
   }
 };
 
@@ -158,8 +158,8 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
     auto flat = output->flat<IntType>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), random, flat.data(),
-        flat.size(), dist);
+        context, context->eigen_device<Device>(), /*key=*/nullptr,
+        /*counter=*/nullptr, random, flat.data(), flat.size(), dist);
   }
 };
 
@@ -178,8 +178,8 @@ class StatelessRandomUniformFullIntOp : public StatelessRandomOpBase {
     auto flat = output->flat<IntType>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), random, flat.data(),
-        flat.size(), dist);
+        context, context->eigen_device<Device>(), /*key=*/nullptr,
+        /*counter=*/nullptr, random, flat.data(), flat.size(), dist);
   }
 };
 
@@ -252,7 +252,7 @@ class StatelessRandomGammaOp : public StatelessRandomOpBase {
     // avoid a couple flops which can be done on a per-alpha basis.
 
     auto DoWork = [samples_per_alpha, num_alphas, &random, samples_flat,
-                   alpha_flat](int start_output, int limit_output) {
+                   alpha_flat](int64 start_output, int64 limit_output) {
       // Capturing "random" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "random" by reference and explicitly do a copy assignment.

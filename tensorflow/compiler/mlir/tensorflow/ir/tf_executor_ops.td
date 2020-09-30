@@ -43,14 +43,16 @@ def TfExecutor_Dialect : Dialect {
     value).
 }];
 
-  let cppNamespace = "tf_executor";
+  let cppNamespace = "::mlir::tf_executor";
 }
 
 // Control type.
-def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">;
+def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">,
+                     BuildableType<"$_builder.getType<ControlType>()">;
 
 // Token type.
-def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">,
+                   BuildableType<"$_builder.getType<TokenType>()">;
 
 // TODO(hinsu): Define and use TensorType instead of AnyType for data operands
 // and results. For example, MergeOp output type.
@@ -148,7 +150,11 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
     }]>
    ];
 
+  let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
+
   let verifier = ?;
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_IslandOp : TfExecutor_Op<"island",
@@ -229,7 +235,11 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
     }]>
    ];
 
+  let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
+
   let verifier = ?;
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
@@ -466,6 +476,10 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
     }
   }];
 
+  let assemblyFormat = "`:` type($output) attr-dict";
+
+  let printer = ?;
+  let parser = ?;
 }
 
 
@@ -527,6 +541,11 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
       result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let assemblyFormat = " `[` $token `]` $input (`,` $controlInputs^)? `:` type($input) attr-dict";
+
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
@@ -552,7 +571,7 @@ def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
        .Attr("T: type")
 
     For example:
-     %1:2 = tf_executor.Exit %0#0 {T: "tfdtype$DT_INT32"} : tensor<*xi32>
+     %1:2 = tf_executor.Exit %0#0 : tensor<*xi32> {T: "tfdtype$DT_INT32"}
 
     Note: Additional result corresponds to the control output.
   }];
@@ -607,6 +626,11 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
       result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let assemblyFormat = "$controlInputs attr-dict";
+
+  let printer = ?;
+  let parser = ?;
 }
 
 def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond",

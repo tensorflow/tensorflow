@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -74,15 +76,9 @@ using tensorflow::tracing::TracingTensorHandle;
 
 namespace {
 
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    return true;
-  }();
-  (void)init_once;
+void RegisterDialects(mlir::MLIRContext& ctx) {
+  mlir::RegisterAllTensorFlowDialects(ctx.getDialectRegistry());
+  ctx.getDialectRegistry().loadAll(&ctx);
 }
 
 Status ConvertDataTypeToTensor(tensorflow::DataType dtype, Builder builder,
@@ -239,6 +235,7 @@ class MlirFunctionContext : public TracingContext {
       : TracingContext(kMlir),
         context_(std::make_unique<MLIRContext>()),
         builder_(context_.get()) {
+    RegisterDialects(*context_);
     // TODO(aminim) figure out the location story here
     module_ = ModuleOp::create(builder_.getUnknownLoc());
     func_ = FuncOp::create(builder_.getUnknownLoc(), name,
@@ -456,7 +453,8 @@ Status MlirAbstractOp::SetAttrFloat(const char* attr_name, float value) {
   return Unimplemented("SetAttrFloat has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrBool(const char* attr_name, bool value) {
-  return Unimplemented("SetAttrBool has not been implemented yet.");
+  attrs_[attr_name] = BoolAttr::get(value, context_);
+  return Status::OK();
 }
 Status MlirAbstractOp::SetAttrShape(const char* attr_name, const int64_t* dims,
                                     const int num_dims) {
@@ -514,6 +512,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
     return Status::OK();
   }
   PassManager pm(func_.getContext());
+  ::tensorflow::SetCrashReproducer(pm);
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(CreateBreakUpIslandsPass());
 
@@ -656,9 +655,8 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
   }
   builder_.create<ReturnOp>(func_.getLoc(), ret_operands);
 
-  auto arg_types = llvm::to_vector<8>(body.getArgumentTypes());
-  auto result_types =
-      llvm::to_vector<8>(body.getTerminator()->getOperandTypes());
+  auto arg_types = body.getArgumentTypes();
+  auto result_types = body.getTerminator()->getOperandTypes();
   func_.setType(FunctionType::get(arg_types, result_types, func_.getContext()));
   *f = new MlirFunction(std::move(context_), std::move(module_), func_);
   return Status::OK();
@@ -666,7 +664,6 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
 
 extern "C" {
 TracingContext* MlirTracingFactory(const char* fn_name, TF_Status* s) {
-  RegisterDialects();
   return new MlirFunctionContext(fn_name);
 }
 }

@@ -48,6 +48,7 @@ LoadFromGraphdefOrMlirSource(
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
+    absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
     mlir::MLIRContext* context);
 

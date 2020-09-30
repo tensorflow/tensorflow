@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -72,21 +74,17 @@ auto* eager_context_created =
 
 EagerContext::EagerContext(
     const SessionOptions& opts,
-    ContextDevicePlacementPolicy default_device_placement_policy,
-    ContextMirroringPolicy default_mirroring_policy, bool async,
+    ContextDevicePlacementPolicy default_device_placement_policy, bool async,
     const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
     bool device_mgr_owned, Rendezvous* rendezvous,
-    const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
-      default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
       host_cpu_device_(device_mgr->HostCPU()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
-      custom_kernel_creator_(custom_kernel_creator),
       cluster_flr_(cluster_flr),
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
@@ -100,7 +98,7 @@ EagerContext::EagerContext(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr, custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr);
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
@@ -122,7 +120,7 @@ EagerContext::EagerContext(
       "/job:localhost/replica:0/task:0"));
   collective_executor_mgr_.Reset(
       new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
-                                std::move(cprl)),
+                                std::move(cprl), MaybeCreateNcclCommunicator()),
       /*owned=*/true);
 }
 
@@ -186,8 +184,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options,
                              thread::ThreadPool* thread_pool,
-                             DistributedFunctionLibraryRuntime* cluster_flr,
-                             const CustomKernelCreator* custom_kernel_creator) {
+                             DistributedFunctionLibraryRuntime* cluster_flr) {
   Rendezvous::Factory rendezvous_factory{
       [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
         *r = CreateRendezvous(step_id);
@@ -195,7 +192,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
       }};
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-      thread_pool, cluster_flr, custom_kernel_creator,
+      thread_pool, cluster_flr,
       /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
 }
 
@@ -403,25 +400,6 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
   return default_device_placement_policy_;
 }
 
-void EagerContext::SetThreadLocalMirroringPolicy(
-    ContextMirroringPolicy policy) {
-  mutex_lock ml(policy_map_mu_);
-  mirroring_policy_[std::this_thread::get_id()] = policy;
-}
-
-ContextMirroringPolicy EagerContext::GetMirroringPolicy() const {
-  tf_shared_lock l(policy_map_mu_);
-  auto policy_map_it = mirroring_policy_.find(std::this_thread::get_id());
-  if (policy_map_it != mirroring_policy_.end()) {
-    return policy_map_it->second;
-  }
-  return default_mirroring_policy_;
-}
-
-bool EagerContext::MirrorTensors() const {
-  return GetMirroringPolicy() == MIRRORING_ALL;
-}
-
 bool EagerContext::LazyCopyFunctionRemoteInputs() const {
   return lazy_copy_function_remote_inputs_;
 }
@@ -595,7 +573,7 @@ Status EagerContext::FindFunctionOpData(
   return func_lib_def_.LookUp(name, op_data);
 }
 
-const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
+const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 
@@ -741,6 +719,22 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
       gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
                           registered_function);
     } else {
+      // The function has been registered before. If the function is the same,
+      // then we take a Ref() otherwise we error out.
+      const FunctionDef* prev_fdef =
+          func_lib_def_.Find(fdef.signature().name());
+      if (prev_fdef == nullptr) {
+        return errors::Internal("Function: ", fdef.signature().name(),
+                                " is in the cache but not in the library");
+      }
+      if (!FunctionDefsEqual(fdef, *prev_fdef)) {
+        return errors::InvalidArgument(
+            "Attempting to add a duplicate function with name: ",
+            fdef.signature().name(), " where the previous and current ",
+            "definitions differ. Previous definiton: ",
+            prev_fdef->DebugString(),
+            " and current definition: ", fdef.DebugString());
+      }
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
@@ -1348,7 +1342,7 @@ Status EagerContext::SetMasterContextState(
   const auto* config = pflr_->config();
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr_.Get());
 
   keep_alive_secs_ = keep_alive_secs;
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
@@ -1450,7 +1444,7 @@ Status EagerContext::InitializeRemoteWorker(
   const auto* config = pflr_->config();
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr_.Get());
   InitPrioritizedDeviceTypeList();
 
   ClearCachesAndThreadExecutors();

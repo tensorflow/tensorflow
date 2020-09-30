@@ -10,6 +10,7 @@ cc_library(
     srcs = ["convert.cc"],
     hdrs = ["convert.h"],
     deps = [
+        ":data_type",
         ":shape",
         ":status",
         ":tensor",
@@ -22,7 +23,10 @@ cc_library(
 )
 
 exports_files(
-    ["custom_parsers.h"],
+    [
+        "custom_parsers.h",
+        "custom_transformations.h",
+    ],
     visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
@@ -73,6 +77,7 @@ cc_library(
         ":types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -81,11 +86,11 @@ cc_library(
     srcs = ["model.cc"],
     hdrs = ["model.h"],
     deps = [
-        ":data_type",
         ":shape",
         ":status",
         ":tensor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
         "@com_google_absl//absl/types:optional",
@@ -97,7 +102,34 @@ cc_test(
     srcs = ["model_test.cc"],
     deps = [
         ":model",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "lstm_parser",
+    srcs = ["lstm_parser.cc"],
+    hdrs = ["lstm_parser.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":model_builder_helper",
+        ":object_reader",
+        ":operations",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:lstm_shared",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
     ],
 )
 
@@ -107,6 +139,7 @@ cc_library(
     hdrs = ["model_builder.h"],
     deps = [
         ":data_type",
+        ":lstm_parser",
         ":model",
         ":model_builder_helper",
         ":model_transformer",
@@ -115,14 +148,14 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates:utils",
-        "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -133,10 +166,14 @@ cc_test(
     name = "model_builder_test",
     srcs = ["model_builder_test.cc"],
     deps = [
+        ":data_type",
         ":model_builder",
+        ":shape",
+        ":tensor",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -152,10 +189,8 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
-        "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -186,10 +221,12 @@ cc_library(
         ":model",
         ":model_builder_helper",
         ":status",
+        ":tensor",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -199,9 +236,9 @@ cc_library(
     hdrs = ["operations.h"],
     deps = [
         ":data_type",
-        ":model",
         ":shape",
         ":status",
+        ":tensor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
     ],
@@ -213,11 +250,12 @@ cc_library(
     hdrs = ["quantization_util.h"],
     deps = [
         ":status",
-        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -227,6 +265,9 @@ cc_test(
     deps = [
         ":quantization_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -237,10 +278,7 @@ cc_library(
     name = "shape",
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
-    deps = [
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/strings",
-    ],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 cc_test(
@@ -288,6 +326,9 @@ cc_test(
     srcs = ["memory_management_test.cc"],
     deps = [
         ":memory_management",
+        ":shape",
+        ":types",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -334,9 +375,5 @@ cc_library(
     name = "workgroup_selection",
     srcs = ["workgroup_selection.cc"],
     hdrs = ["workgroup_selection.h"],
-    deps = [
-        ":status",
-        ":types",
-        ":util",
-    ],
+    deps = [":util"],
 )

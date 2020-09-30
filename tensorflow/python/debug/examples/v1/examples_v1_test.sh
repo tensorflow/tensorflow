@@ -105,7 +105,7 @@ EOF
 
 # Test debugging of tf.keras, with non-debug runs included.
 cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline --use_random_config_path
-run -t 10
+run -t 11
 EOF
 
 # Test offline_analyzer.

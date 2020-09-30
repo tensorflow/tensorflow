@@ -28,7 +28,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -44,7 +43,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -130,10 +128,11 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = object_identity.ObjectIdentitySet(
-        trackable_util.list_objects(model))
+    checkpointed_object_ids = {
+        id(o) for o in trackable_util.list_objects(model)
+    }
     for v in model.variables:
-      self.assertIn(v, checkpointed_objects)
+      self.assertIn(id(v), checkpointed_object_ids)
 
   def test_timedistributed_static_batch_size(self):
     model = keras.models.Sequential()
@@ -405,7 +404,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(
-      *tf_test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[keras.layers.LSTM,
                  keras.layers.Dense]))
   def test_TimeDistributed_with_ragged_input(self, layer):
@@ -466,6 +465,13 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         output_ragged, name='tensor')
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
 
+  def test_TimeDistributed_set_static_shape(self):
+    layer = keras.layers.TimeDistributed(keras.layers.Conv2D(16, (3, 3)))
+    inputs = keras.Input(batch_shape=(1, None, 32, 32, 1))
+    outputs = layer(inputs)
+    # Make sure the batch dim is not lost after array_ops.reshape.
+    self.assertListEqual(outputs.shape.as_list(), [1, None, 30, 30, 16])
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
@@ -492,10 +498,11 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
       # check whether the model variables are present in the
       # trackable list of objects
-      checkpointed_objects = object_identity.ObjectIdentitySet(
-          trackable_util.list_objects(model))
+      checkpointed_object_ids = {
+          id(o) for o in trackable_util.list_objects(model)
+      }
       for v in model.variables:
-        self.assertIn(v, checkpointed_objects)
+        self.assertIn(id(v), checkpointed_object_ids)
 
       # test compute output shape
       ref_shape = model.layers[-1].output.shape
@@ -1030,10 +1037,11 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = object_identity.ObjectIdentitySet(
-        trackable_util.list_objects(model))
+    checkpointed_object_ids = {
+        id(o) for o in trackable_util.list_objects(model)
+    }
     for v in model.variables:
-      self.assertIn(v, checkpointed_objects)
+      self.assertIn(id(v), checkpointed_object_ids)
 
     # test compute output shape
     ref_shape = model.layers[-1].output.shape
@@ -1152,7 +1160,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         epochs=1,
         batch_size=10)
 
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_wrapped_rnn_cell(self):
     # See https://github.com/tensorflow/tensorflow/issues/26581.
     batch = 20

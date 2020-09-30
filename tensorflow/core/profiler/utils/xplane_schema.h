@@ -36,6 +36,8 @@ ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
 ABSL_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
 ABSL_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
+// Name of XPlane that contains events from python tracer.
+ABSL_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
 
 // Names of XLines that contain ML-level events.
 ABSL_CONST_INIT extern const absl::string_view kStepLineName;
@@ -97,6 +99,9 @@ enum HostEventType {
   kMapAndBatchConsume,
   kParseExampleProduce,
   kParseExampleConsume,
+  // Batching related.
+  kBatchingSessionRun,
+  kProcessBatch,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -169,6 +174,7 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
+  kSelectedGroupIds,
   // Performance counter related.
   kRawValue,
   kScaledValue,
@@ -189,10 +195,6 @@ enum StatType {
 
 inline std::string GpuPlaneName(int32 device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
-}
-
-inline bool IsGpuPlaneName(absl::string_view plane_name) {
-  return absl::StartsWith(plane_name, kGpuPlanePrefix);
 }
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type);

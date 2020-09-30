@@ -50,6 +50,10 @@ void allocate(const SP_Device* const device, uint64_t size,
               int64_t memory_space, SP_DeviceMemoryBase* const mem) {}
 void deallocate(const SP_Device* const device, SP_DeviceMemoryBase* const mem) {
 }
+void* host_memory_allocate(const SP_Device* const device, uint64_t size) {
+  return nullptr;
+}
+void host_memory_deallocate(const SP_Device* const device, void* mem) {}
 TF_Bool get_allocator_stats(const SP_Device* const device,
                             SP_AllocatorStats* const stats) {
   return true;
@@ -104,16 +108,18 @@ void block_host_for_event(const SP_Device* const device, SP_Event event,
                           TF_Status* const status) {}
 void synchronize_all_activity(const SP_Device* const device,
                               TF_Status* const status) {}
-TF_Bool host_callback(SP_Device* const device, SP_Stream stream,
+TF_Bool host_callback(const SP_Device* const device, SP_Stream stream,
                       SE_StatusCallbackFn const callback_fn,
                       void* const callback_arg) {
   return true;
 }
 
 void PopulateDefaultStreamExecutor(SP_StreamExecutor* se) {
-  se->struct_size = SP_STREAMEXECUTOR_STRUCT_SIZE;
+  *se = {SP_STREAMEXECUTOR_STRUCT_SIZE};
   se->allocate = allocate;
   se->deallocate = deallocate;
+  se->host_memory_allocate = host_memory_allocate;
+  se->host_memory_deallocate = host_memory_deallocate;
   se->get_allocator_stats = get_allocator_stats;
   se->device_memory_usage = device_memory_usage;
   se->create_stream = create_stream;
@@ -138,6 +144,10 @@ void PopulateDefaultStreamExecutor(SP_StreamExecutor* se) {
   se->host_callback = host_callback;
 }
 
+void PopulateDefaultDeviceFns(SP_DeviceFns* device_fns) {
+  *device_fns = {SP_DEVICE_FNS_STRUCT_SIZE};
+}
+
 /*** Create SP_TimerFns ***/
 uint64_t nanoseconds(SP_Timer timer) { return timer->timer_id; }
 
@@ -146,49 +156,66 @@ void PopulateDefaultTimerFns(SP_TimerFns* timer_fns) {
 }
 
 /*** Create SP_Platform ***/
-void create_timer_fns(SP_TimerFns* timer_fns, TF_Status* status) {
+void create_timer_fns(const SP_Platform* platform, SP_TimerFns* timer_fns,
+                      TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   PopulateDefaultTimerFns(timer_fns);
 }
-void destroy_timer_fns(SP_TimerFns* timer_fns) {}
+void destroy_timer_fns(const SP_Platform* platform, SP_TimerFns* timer_fns) {}
 
-void create_stream_executor(SE_CreateStreamExecutorParams* params,
+void create_stream_executor(const SP_Platform* platform,
+                            SE_CreateStreamExecutorParams* params,
                             TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   PopulateDefaultStreamExecutor(params->stream_executor);
 }
-void destroy_stream_executor(SP_StreamExecutor* se) {}
+void destroy_stream_executor(const SP_Platform* platform,
+                             SP_StreamExecutor* se) {}
 
-void create_device(SE_CreateDeviceParams* params, TF_Status* status) {
+void create_device(const SP_Platform* platform, SE_CreateDeviceParams* params,
+                   TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
-  params->device->struct_size = SP_DEVICE_STRUCT_SIZE;
+  params->device->struct_size = {SP_DEVICE_STRUCT_SIZE};
 }
-void destroy_device(SP_Device* device) {}
+void destroy_device(const SP_Platform* platform, SP_Device* device) {}
 
-void PopulateDefaultPlatform(SP_Platform* platform) {
-  platform->struct_size = SP_PLATFORM_STRUCT_SIZE;
+void create_device_fns(const SP_Platform* platform,
+                       SE_CreateDeviceFnsParams* params, TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  params->device_fns->struct_size = {SP_DEVICE_FNS_STRUCT_SIZE};
+}
+void destroy_device_fns(const SP_Platform* platform, SP_DeviceFns* device_fns) {
+}
+
+void PopulateDefaultPlatform(SP_Platform* platform,
+                             SP_PlatformFns* platform_fns) {
+  *platform = {SP_PLATFORM_STRUCT_SIZE};
   platform->name = DEVICE_NAME;
   platform->type = DEVICE_TYPE;
   platform->visible_device_count = DEVICE_COUNT;
-  platform->create_device = create_device;
-  platform->destroy_device = destroy_device;
-  platform->create_stream_executor = create_stream_executor;
-  platform->destroy_stream_executor = destroy_stream_executor;
-  platform->create_timer_fns = create_timer_fns;
-  platform->destroy_timer_fns = destroy_timer_fns;
+  platform_fns->create_device = create_device;
+  platform_fns->destroy_device = destroy_device;
+  platform_fns->create_device_fns = create_device_fns;
+  platform_fns->destroy_device_fns = destroy_device_fns;
+  platform_fns->create_stream_executor = create_stream_executor;
+  platform_fns->destroy_stream_executor = destroy_stream_executor;
+  platform_fns->create_timer_fns = create_timer_fns;
+  platform_fns->destroy_timer_fns = destroy_timer_fns;
 }
 
 void destroy_platform(SP_Platform* const platform) {}
+void destroy_platform_fns(SP_PlatformFns* const platform_fns) {}
 
 /*** Registration tests ***/
 TEST(StreamExecutor, SuccessfulRegistration) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform);
+    PopulateDefaultPlatform(params->platform, params->platform_fns);
     params->destroy_platform = destroy_platform;
+    params->destroy_platform_fns = destroy_platform_fns;
   };
-  port::Status status = RegisterDevicePlugin(plugin_init);
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
   TF_ASSERT_OK(status);
   port::StatusOr<Platform*> maybe_platform =
       MultiPlatformManager::PlatformWithName("MyDevice");
@@ -200,20 +227,19 @@ TEST(StreamExecutor, SuccessfulRegistration) {
   port::StatusOr<StreamExecutor*> maybe_executor =
       platform->ExecutorForDevice(0);
   TF_ASSERT_OK(maybe_executor.status());
-  StreamExecutor* executor = maybe_executor.ConsumeValueOrDie();
-  ASSERT_EQ(executor->GetDeviceDescription().name(), "MyDevice");
 }
 
 TEST(StreamExecutor, NameNotSet) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform);
+    PopulateDefaultPlatform(params->platform, params->platform_fns);
     params->platform->name = nullptr;
     params->destroy_platform = destroy_platform;
+    params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = RegisterDevicePlugin(plugin_init);
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.error_message(), "'name' field in SP_Platform must be set.");
 }
@@ -222,15 +248,33 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform);
-    params->platform->create_device = nullptr;
+    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    params->platform_fns->create_device = nullptr;
     params->destroy_platform = destroy_platform;
+    params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = RegisterDevicePlugin(plugin_init);
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.error_message(),
-            "'create_device' field in SP_Platform must be set.");
+            "'create_device' field in SP_PlatformFns must be set.");
+}
+
+TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
+  auto plugin_init = [](SE_PlatformRegistrationParams* const params,
+                        TF_Status* const status) -> void {
+    TF_SetStatus(status, TF_OK, "");
+    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    params->platform->supports_unified_memory = true;
+    params->destroy_platform = destroy_platform;
+    params->destroy_platform_fns = destroy_platform_fns;
+  };
+
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
+  ASSERT_EQ(
+      status.error_message(),
+      "'unified_memory_allocate' field in SP_StreamExecutor must be set.");
 }
 
 /*** StreamExecutor behavior tests ***/
@@ -238,7 +282,8 @@ class StreamExecutorTest : public ::testing::Test {
  protected:
   StreamExecutorTest() {}
   void SetUp() override {
-    PopulateDefaultPlatform(&platform_);
+    PopulateDefaultPlatform(&platform_, &platform_fns_);
+    PopulateDefaultDeviceFns(&device_fns_);
     PopulateDefaultStreamExecutor(&se_);
     PopulateDefaultTimerFns(&timer_fns_);
   }
@@ -246,8 +291,9 @@ class StreamExecutorTest : public ::testing::Test {
 
   StreamExecutor* GetExecutor(int ordinal) {
     if (!cplatform_) {
-      cplatform_ = absl::make_unique<CPlatform>(platform_, destroy_platform,
-                                                se_, timer_fns_);
+      cplatform_ = absl::make_unique<CPlatform>(
+          platform_, destroy_platform, platform_fns_, destroy_platform_fns,
+          device_fns_, se_, timer_fns_);
     }
     port::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
@@ -255,6 +301,8 @@ class StreamExecutorTest : public ::testing::Test {
     return maybe_executor.ConsumeValueOrDie();
   }
   SP_Platform platform_;
+  SP_PlatformFns platform_fns_;
+  SP_DeviceFns device_fns_;
   SP_StreamExecutor se_;
   SP_TimerFns timer_fns_;
   std::unique_ptr<CPlatform> cplatform_;
@@ -264,13 +312,13 @@ TEST_F(StreamExecutorTest, Allocate) {
   se_.allocate = [](const SP_Device* const device, uint64_t size,
                     int64_t memory_space, SP_DeviceMemoryBase* const mem) {
     mem->struct_size = SP_DEVICE_MEMORY_BASE_STRUCT_SIZE;
-    mem->opaque = std::malloc(size);
+    mem->opaque = malloc(size);
     mem->size = size;
   };
   se_.deallocate = [](const SP_Device* const device,
                       SP_DeviceMemoryBase* const mem) {
     EXPECT_EQ(mem->size, 2 * sizeof(int));
-    std::free(mem->opaque);
+    free(mem->opaque);
     mem->opaque = nullptr;
     mem->size = 0;
   };
@@ -287,10 +335,10 @@ TEST_F(StreamExecutorTest, HostMemoryAllocate) {
   static bool deallocate_called = false;
   se_.host_memory_allocate = [](const SP_Device* const device, uint64_t size) {
     allocate_called = true;
-    return std::malloc(size);
+    return malloc(size);
   };
   se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
-    std::free(mem);
+    free(mem);
     deallocate_called = true;
   };
   StreamExecutor* executor = GetExecutor(0);
@@ -300,6 +348,28 @@ TEST_F(StreamExecutorTest, HostMemoryAllocate) {
   ASSERT_TRUE(allocate_called);
   ASSERT_FALSE(deallocate_called);
   executor->HostMemoryDeallocate(mem);
+  ASSERT_TRUE(deallocate_called);
+}
+
+TEST_F(StreamExecutorTest, UnifiedMemoryAllocate) {
+  static bool allocate_called = false;
+  static bool deallocate_called = false;
+  se_.unified_memory_allocate = [](const SP_Device* const device,
+                                   uint64_t size) {
+    allocate_called = true;
+    return malloc(size);
+  };
+  se_.unified_memory_deallocate = [](const SP_Device* const device, void* mem) {
+    free(mem);
+    deallocate_called = true;
+  };
+  StreamExecutor* executor = GetExecutor(0);
+  ASSERT_FALSE(allocate_called);
+  void* mem = executor->UnifiedMemoryAllocate(8);
+  ASSERT_NE(mem, nullptr);
+  ASSERT_TRUE(allocate_called);
+  ASSERT_FALSE(deallocate_called);
+  executor->UnifiedMemoryDeallocate(mem);
   ASSERT_TRUE(deallocate_called);
 }
 
@@ -745,6 +815,31 @@ TEST_F(StreamExecutorTest, BlockHostForEvent) {
   ASSERT_TRUE(block_host_for_event_called);
 }
 
+TEST_F(StreamExecutorTest, BlockHostUntilDone) {
+  static bool block_host_until_done_called = false;
+  se_.create_stream = [](const SP_Device* const device, SP_Stream* stream,
+                         TF_Status* const status) {
+    *stream = new SP_Stream_st(58);
+  };
+  se_.destroy_stream = [](const SP_Device* const device, SP_Stream stream) {
+    delete stream;
+  };
+  se_.block_host_until_done = [](const SP_Device* const device,
+                                 SP_Stream stream,
+                                 TF_Status* const status) -> void {
+    ASSERT_EQ(stream->stream_id, 58);
+    TF_SetStatus(status, TF_OK, "");
+    block_host_until_done_called = true;
+  };
+
+  StreamExecutor* executor = GetExecutor(0);
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_FALSE(block_host_until_done_called);
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  ASSERT_TRUE(block_host_until_done_called);
+}
+
 TEST_F(StreamExecutorTest, SynchronizeAllActivity) {
   static bool synchronize_all_called = false;
   se_.synchronize_all_activity = [](const SP_Device* const device,
@@ -760,7 +855,7 @@ TEST_F(StreamExecutorTest, SynchronizeAllActivity) {
 }
 
 TEST_F(StreamExecutorTest, HostCallbackOk) {
-  se_.host_callback = [](SP_Device* const device, SP_Stream stream,
+  se_.host_callback = [](const SP_Device* const device, SP_Stream stream,
                          SE_StatusCallbackFn const callback_fn,
                          void* const callback_arg) -> TF_Bool {
     TF_Status* status = TF_NewStatus();
@@ -780,7 +875,7 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
 }
 
 TEST_F(StreamExecutorTest, HostCallbackError) {
-  se_.host_callback = [](SP_Device* const device, SP_Stream stream,
+  se_.host_callback = [](const SP_Device* const device, SP_Stream stream,
                          SE_StatusCallbackFn const callback_fn,
                          void* const callback_arg) -> TF_Bool {
     TF_Status* status = TF_NewStatus();
@@ -798,5 +893,59 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_FALSE(stream.ok());
 }
+
+TEST_F(StreamExecutorTest, DeviceDescription) {
+  static const char* hardware_name = "TestName";
+  static const char* vendor = "TestVendor";
+  static const char* pci_bus_id = "TestPCIBusId";
+  platform_fns_.create_device = [](const SP_Platform* platform,
+                                   SE_CreateDeviceParams* params,
+                                   TF_Status* status) {
+    params->device->hardware_name = hardware_name;
+    params->device->device_vendor = vendor;
+    params->device->pci_bus_id = pci_bus_id;
+  };
+
+  device_fns_.get_numa_node = [](const SP_Device* device) { return 123; };
+  device_fns_.get_memory_bandwidth = [](const SP_Device* device) -> int64_t {
+    return 54;
+  };
+  device_fns_.get_gflops = [](const SP_Device* device) -> double { return 32; };
+
+  StreamExecutor* executor = GetExecutor(0);
+  const DeviceDescription& description = executor->GetDeviceDescription();
+  ASSERT_EQ(description.name(), "TestName");
+  ASSERT_EQ(description.device_vendor(), "TestVendor");
+  ASSERT_EQ(description.pci_bus_id(), "TestPCIBusId");
+  ASSERT_EQ(description.numa_node(), 123);
+  ASSERT_EQ(description.memory_bandwidth(), 54);
+}
+
+TEST_F(StreamExecutorTest, DeviceDescriptionNumaNodeNotSet) {
+  static const char* hardware_name = "TestName";
+  static const char* vendor = "TestVendor";
+  static const char* pci_bus_id = "TestPCIBusId";
+  platform_fns_.create_device = [](const SP_Platform* platform,
+                                   SE_CreateDeviceParams* params,
+                                   TF_Status* status) {
+    params->device->hardware_name = hardware_name;
+    params->device->device_vendor = vendor;
+    params->device->pci_bus_id = pci_bus_id;
+  };
+
+  device_fns_.get_memory_bandwidth = [](const SP_Device* device) -> int64_t {
+    return 54;
+  };
+  device_fns_.get_gflops = [](const SP_Device* device) -> double { return 32; };
+
+  StreamExecutor* executor = GetExecutor(0);
+  const DeviceDescription& description = executor->GetDeviceDescription();
+  ASSERT_EQ(description.name(), "TestName");
+  ASSERT_EQ(description.device_vendor(), "TestVendor");
+  ASSERT_EQ(description.pci_bus_id(), "TestPCIBusId");
+  ASSERT_EQ(description.numa_node(), -1);
+  ASSERT_EQ(description.memory_bandwidth(), 54);
+}
+
 }  // namespace
 }  // namespace stream_executor

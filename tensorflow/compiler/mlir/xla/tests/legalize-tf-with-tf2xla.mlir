@@ -125,9 +125,9 @@ func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 }
 
 // CHECK-LABEL: func @greater
-func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
-  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"}
+  %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
@@ -218,13 +218,6 @@ func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: tenso
   %cst = mhlo.constant dense<3> : tensor<2xi32>
   %0 = "tf.SparseToDense"(%arg0, %cst, %arg1, %arg2) {validate_indices = true}: (tensor<3x2xi32>, tensor<2xi32>, tensor<3xf32>, tensor<f32>) -> tensor<3x3xf32>
   return %0 : tensor<3x3xf32>
-}
-
-// CHECK-LABEL: fft
-func @fft(%arg0: tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>> {
-  // CHECK: "mhlo.fft"(%arg0)
-  %0 = "tf.FFT"(%arg0) : (tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>>
-  return %0 : tensor<3x5x8xcomplex<f32>>
 }
 
 // CHECK-LABEL: reverse_sequence
