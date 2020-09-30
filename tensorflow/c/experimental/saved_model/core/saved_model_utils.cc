@@ -519,6 +519,8 @@ Status PartiallyReviveSavedModelObjects(const MetaGraphDef& metagraph,
     }
   }
 
+  objects->signatures_map = std::move(signatures_map);
+
   return Status();
 }
 
