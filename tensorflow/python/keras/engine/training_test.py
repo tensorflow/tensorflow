@@ -3707,6 +3707,22 @@ class TestBuildCustomModel(keras_parameterized.TestCase):
     model.build([None, 1])
     self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
 
+  @keras_parameterized.run_all_keras_modes
+  def test_build_dict_inputs(self):
+
+    class MyModel(training_module.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.l1 = layers_module.Dense(1)
+
+      def call(self, inputs):
+        return self.l1(inputs['x'])
+
+    model = MyModel()
+    model.build({'x': [None, 16]})
+    self.assertEqual(model.l1.kernel.shape.as_list(), [16, 1])
+
 
 if __name__ == '__main__':
   test.main()

@@ -329,13 +329,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     never throw unexpected errors in an unrelated workflow).
 
     Args:
-     input_shape: Single tuple, TensorShape, or list of shapes, where shapes
-         are tuples, integers, or TensorShapes.
+     input_shape: Single tuple, TensorShape, or list/dict of shapes, where
+         shapes are tuples, integers, or TensorShapes.
 
     Raises:
       ValueError:
         1. In case of invalid user-provided data (not of type tuple,
-           list, or TensorShape).
+           list, TensorShape, or dict).
         2. If the model requires call arguments that are agnostic
            to the input shapes (positional or kwarg in call signature).
         3. If not all layers were properly built.
@@ -351,7 +351,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if input_shape is None:
       raise ValueError('Input shape must be defined when calling build on a '
                        'model subclass network.')
-    valid_types = (tuple, list, tensor_shape.TensorShape)
+    valid_types = (tuple, list, tensor_shape.TensorShape, dict)
     if not isinstance(input_shape, valid_types):
       raise ValueError('Specified input shape is not one of the valid types. '
                        'Please specify a batch input shape of type tuple or '
