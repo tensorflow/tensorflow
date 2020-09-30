@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/experimental/saved_model/public/signature_def_function_metadata.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_param.h"
 
-#include "tensorflow/c/experimental/saved_model/internal/signature_def_function_metadata_type.h"
-#include "tensorflow/c/experimental/saved_model/internal/signature_def_param_list_type.h"
+#include "tensorflow/c/experimental/saved_model/core/signature_def_function_metadata.h"
+#include "tensorflow/c/experimental/saved_model/internal/signature_def_param_type.h"
+#include "tensorflow/c/experimental/saved_model/internal/tensor_spec_type.h"
 
 extern "C" {
 
-extern const TF_SignatureDefParamList* TF_SignatureDefFunctionMetadataArgs(
-    const TF_SignatureDefFunctionMetadata* list) {
-  return tensorflow::wrap(&tensorflow::unwrap(list)->arguments());
+extern const char* TF_SignatureDefParamName(const TF_SignatureDefParam* param) {
+  return tensorflow::unwrap(param)->name().c_str();
 }
 
-extern const TF_SignatureDefParamList* TF_SignatureDefFunctionMetadataReturns(
-    const TF_SignatureDefFunctionMetadata* list) {
-  return tensorflow::wrap(&tensorflow::unwrap(list)->returns());
+extern const TF_TensorSpec* TF_SignatureDefParamTensorSpec(
+    const TF_SignatureDefParam* param) {
+  return tensorflow::wrap(&tensorflow::unwrap(param)->spec());
 }
 
 }  // end extern "C"
