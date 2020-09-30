@@ -191,16 +191,17 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
                                       nn.empty() ? "default" : nn.c_str());
     cacheKey += nn;
   }
-  mtx_.lock();
-  if (connectionCache_.find(cacheKey) == connectionCache_.end()) {
-    hdfsFS cacheFs = libhdfs()->hdfsBuilderConnect(builder);
-    if (cacheFs == nullptr) {
-      return errors::NotFound(strerror(errno));
+  {
+    mutex_lock lock(mu_);
+    if (connectionCache_.find(cacheKey) == connectionCache_.end()) {
+      hdfsFS cacheFs = libhdfs()->hdfsBuilderConnect(builder);
+      if (cacheFs == nullptr) {
+        return errors::NotFound(strerror(errno));
+      }
+      connectionCache_[cacheKey] = cacheFs;
     }
-    connectionCache_[cacheKey] = cacheFs;
+    *fs = connectionCache_[cacheKey];
   }
-  *fs = connectionCache_[cacheKey];
-  mtx_.unlock();
   return Status::OK();
 }
 
