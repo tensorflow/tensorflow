@@ -78,6 +78,7 @@ class HadoopFileSystem : public FileSystem {
 
  private:
   std::map<std::string, hdfsFS> connectionCache_;
+  std::mutex mtx_;
   Status Connect(StringPiece fname, hdfsFS* fs);
 };
 
