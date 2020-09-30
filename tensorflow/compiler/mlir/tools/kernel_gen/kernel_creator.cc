@@ -21,14 +21,12 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
-#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -187,10 +185,9 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
   auto& kernel_pm = pm.nest<mlir::gpu::GPUModuleOp>();
   if (gpu_binary_only) {
     // Grab the original signature from the single function.
-    auto func = *module.getBody()->op_begin<mlir::FuncOp>();
     kernel_pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(
         mlir::kernel_gen::transforms::CreatePropagateTensorFlowABIKnowledgePass(
-            func.getType(), same_shape));
+            same_shape));
   }
   kernel_pm.addPass(mlir::createStripDebugInfoPass());
   kernel_pm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToBlobPass(

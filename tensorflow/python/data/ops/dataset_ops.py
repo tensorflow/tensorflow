@@ -418,7 +418,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       RuntimeError: If not inside of tf.function and not executing eagerly.
     """
     if context.executing_eagerly() or ops.inside_function():
-      with ops.device(self._variant_tensor.device):
+      with ops.colocate_with(self._variant_tensor):
         return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
@@ -2273,7 +2273,7 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      with ops.device(self._variant_tensor.device):
+      with ops.colocate_with(self._variant_tensor):
         return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
@@ -2316,7 +2316,7 @@ class DatasetV1(DatasetV2):
       else:
         six.reraise(ValueError, err)
 
-    with ops.device(self._variant_tensor.device):
+    with ops.colocate_with(self._variant_tensor):
       # pylint: disable=protected-access
       return iterator_ops.Iterator(
           gen_dataset_ops.one_shot_iterator(
@@ -2383,7 +2383,7 @@ class DatasetV1(DatasetV2):
     if shared_name is None:
       shared_name = ""
 
-    with ops.device(self._variant_tensor.device):
+    with ops.colocate_with(self._variant_tensor):
       iterator_resource = gen_dataset_ops.iterator_v2(
           container="", shared_name=shared_name, **self._flat_structure)
 
@@ -4389,7 +4389,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     # pylint: disable=protected-access
     # We colocate the prefetch dataset with its input as this collocation only
     # happens automatically in graph mode.
-    with ops.device(input_dataset._variant_tensor.device):
+    with ops.colocate_with(input_dataset._variant_tensor):
       variant_tensor = gen_dataset_ops.prefetch_dataset(
           input_dataset._variant_tensor,
           buffer_size=self._buffer_size,

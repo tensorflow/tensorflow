@@ -2214,6 +2214,45 @@ void TruncateDivOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// NonMaxSuppressionV3Op
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Canonicalize NonMaxSuppressionV3Op to NonMaxSuppressionV4Op.
+class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
+  using OpRewritePattern<NonMaxSuppressionV3Op>::OpRewritePattern;
+  LogicalResult matchAndRewrite(NonMaxSuppressionV3Op nms_op,
+                                PatternRewriter &rewriter) const override {
+    if (nms_op.getNumOperands() != 5) {
+      return failure();
+    }
+    SmallVector<Type, 2> new_result_types;
+    new_result_types.push_back(nms_op.getType());
+    auto input_ty = nms_op.getType().template cast<ShapedType>();
+    // corresponds to the second result type of nmsv4
+    RankedTensorType valid_output_type =
+        RankedTensorType::get({}, input_ty.getElementType());
+    new_result_types.push_back(valid_output_type);
+
+    auto nmsv4 = rewriter.create<TF::NonMaxSuppressionV4Op>(
+        nms_op.getLoc(), new_result_types, nms_op.boxes(), nms_op.scores(),
+        nms_op.max_output_size(), nms_op.iou_threshold(),
+        nms_op.score_threshold());
+    // Cannot replace the NMSv3 Op with NMSv4 since the outputs between the
+    // two are different (v4 expects two output values vs v3 requires only one.
+    nms_op.replaceAllUsesWith(nmsv4.getResult(0));
+    return success();
+  }
+};
+}  // namespace.
+
+void NonMaxSuppressionV3Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<NMSV3ToNMSV4Op>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // UnpackOp
 //===----------------------------------------------------------------------===//
 

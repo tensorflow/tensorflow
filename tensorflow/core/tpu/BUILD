@@ -27,6 +27,9 @@ cc_library(
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -156,6 +159,7 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
+        ":tpu_api_dlsym_set_fn",
         ":tpu_compilation_device",
         ":tpu_config_c_api",
         ":tpu_executor_init_fns",
@@ -175,9 +179,16 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_api_dlsym_set_fn",
+    hdrs = ["tpu_api_dlsym_set_fn.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
+    deps = [":tpu_executor_init_fns"],
 )
 
 cc_library(

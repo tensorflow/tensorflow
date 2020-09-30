@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -253,7 +254,7 @@ class GraphHasher {
     if (!s.ok()) {
       return errors::FailedPrecondition("Nodes ", this_node->name(), " and ",
                                         that_node->name(),
-                                        " are not the same: ", s);
+                                        " are not the same:\n", s);
     }
     return s;
   }
@@ -297,15 +298,20 @@ class GraphHasher {
 
   Status HashNodeNonInput(const NodeDef* node, bool hash_functions,
                           uint64* hash) {
-    // Hash Op.
-    uint64 op_hash = Hash64(node->op());
-
     // Hash Attrs. We get the list of attrs from the op registry and then look
     // up their values in the NodeDef attr map. This avoids looping over
     // a map which is non-deterministic.
     uint64 attrs_hash = 0;
     const OpRegistrationData* reg;
-    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(node->op(), &reg));
+    TF_RETURN_IF_ERROR(flib_->LookUp(node->op(), &reg));
+    uint64 op_hash = 0;
+    if (reg->is_function_op) {
+      if (hash_functions) {
+        TF_RETURN_IF_ERROR(HashFunction(node->op(), node->attr(), &op_hash));
+      }
+    } else {
+      op_hash = Hash64(node->op());
+    }
 
     for (const auto& attr : reg->op_def.attr()) {
       const auto& attr_key = attr.name();
@@ -331,17 +337,24 @@ class GraphHasher {
   Status CheckNodesEqualNonInput(const NodeDef* this_node, GraphHasher* that,
                                  const NodeDef* that_node,
                                  bool compare_functions) {
-    if (this_node->op() != that_node->op()) {
-      return errors::FailedPrecondition(
-          "ops for nodes ", this_node->name(), " and ", that_node->name(),
-          " are different: ", this_node->op(), " != ", that_node->op());
-    }
-
     // We get the list of attrs from the op registry and then look
     // up their values in the NodeDef attr map. This avoids looping over
     // a map which is non-deterministic.
     const OpRegistrationData* reg;
-    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(this_node->op(), &reg));
+    TF_RETURN_IF_ERROR(flib_->LookUp(this_node->op(), &reg));
+    if (reg->is_function_op) {
+      if (compare_functions) {
+        TF_RETURN_IF_ERROR(
+            CheckFunctionsEqual(this_node->op(), this_node->attr(), that,
+                                that_node->op(), that_node->attr()));
+      }
+    } else {
+      if (this_node->op() != that_node->op()) {
+        return errors::FailedPrecondition(
+            "ops for nodes ", this_node->name(), " and ", that_node->name(),
+            " are different: ", this_node->op(), " != ", that_node->op());
+      }
+    }
 
     for (const auto& attr : reg->op_def.attr()) {
       const auto& attr_key = attr.name();
@@ -443,12 +456,17 @@ class GraphHasher {
   }
 
   Status HashFunction(const NameAttrList& func, uint64* hash) {
-    const FunctionDef* fdef = flib_->Find(func.name());
+    return HashFunction(func.name(), func.attr(), hash);
+  }
+
+  Status HashFunction(const std::string& name, const AttrValueMap& attrs,
+                      uint64* hash) {
+    const FunctionDef* fdef = flib_->Find(name);
 
     // Convert to a GraphDef.
     std::unique_ptr<FunctionBody> fbody;
     TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()), flib_, &fbody));
+        FunctionDefToBodyHelper(*fdef, AttrSlice(&attrs), flib_, &fbody));
     GraphDef graph_def = fbody->graph->ToGraphDefDebug();
 
     // For each return node, we create a new GraphHasher to compute a hash.
@@ -476,35 +494,44 @@ class GraphHasher {
 
   Status CheckFunctionsEqual(const NameAttrList& this_func, GraphHasher* that,
                              const NameAttrList& that_func) {
-    Status s = CheckFunctionsEqualHelper(this_func, that, that_func);
+    return CheckFunctionsEqual(this_func.name(), this_func.attr(), that,
+                               that_func.name(), that_func.attr());
+  }
+  Status CheckFunctionsEqual(const std::string& this_name,
+                             const AttrValueMap& this_attrs, GraphHasher* that,
+                             const std::string& that_name,
+                             const AttrValueMap& that_attrs) {
+    Status s = CheckFunctionsEqualHelper(this_name, this_attrs, that, that_name,
+                                         that_attrs);
     if (!s.ok()) {
-      return errors::FailedPrecondition("Functions ", this_func.name(), " and ",
-                                        that_func.name(),
-                                        " are not the same: ", s);
+      return errors::FailedPrecondition("Functions ", this_name, " and ",
+                                        that_name, " are not the same:\n", s);
     }
     return s;
   }
 
-  Status CheckFunctionsEqualHelper(const NameAttrList& this_func,
+  Status CheckFunctionsEqualHelper(const std::string& this_name,
+                                   const AttrValueMap& this_attrs,
                                    GraphHasher* that,
-                                   const NameAttrList& that_func) {
-    const FunctionDef* this_fdef = flib_->Find(this_func.name());
-    const FunctionDef* that_fdef = that->flib_->Find(that_func.name());
+                                   const std::string& that_name,
+                                   const AttrValueMap& that_attrs) {
+    const FunctionDef* this_fdef = flib_->Find(this_name);
+    const FunctionDef* that_fdef = that->flib_->Find(that_name);
 
     // Convert to GraphDefs.
     std::unique_ptr<FunctionBody> this_fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-        *this_fdef, AttrSlice(&this_func.attr()), flib_, &this_fbody));
+        *this_fdef, AttrSlice(&this_attrs), flib_, &this_fbody));
     GraphDef this_graph_def = this_fbody->graph->ToGraphDefDebug();
     std::unique_ptr<FunctionBody> that_fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-        *that_fdef, AttrSlice(&that_func.attr()), that->flib_, &that_fbody));
+        *that_fdef, AttrSlice(&that_attrs), that->flib_, &that_fbody));
     GraphDef that_graph_def = that_fbody->graph->ToGraphDefDebug();
 
     if (this_fbody->ret_nodes.size() != that_fbody->ret_nodes.size()) {
       return errors::FailedPrecondition(
-          "Different numbers of ret nodes for functions ", this_func.name(),
-          " and ", that_func.name(), ": ", this_fbody->ret_nodes.size(), " vs ",
+          "Different numbers of ret nodes for functions ", this_name, " and ",
+          that_name, ": ", this_fbody->ret_nodes.size(), " vs ",
           that_fbody->ret_nodes.size());
     }
     for (int i = 0; i < this_fbody->ret_nodes.size(); ++i) {

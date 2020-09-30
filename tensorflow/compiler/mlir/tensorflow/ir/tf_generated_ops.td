@@ -3242,8 +3242,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
-              "Value  y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -3389,8 +3388,7 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, "
-              "Value  dim">
+    OpBuilder<"Value condition, Value dim">
   ];
 }
 
@@ -3711,9 +3709,9 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
   let hasFolder = 1;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value dims, Value value"
-  >];
+  let builders = [
+    OpBuilder<"Value dims, Value value">
+  ];
 }
 
 def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, SameOperandsAndResultType]> {
@@ -6426,10 +6424,9 @@ retained with length 1.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value input, "
-    "Value reduction_indices, BoolAttr keep_dims"
-  >];
+  let builders = [
+    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+  ];
 }
 
 def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
@@ -6980,6 +6977,49 @@ def TF_NoOp : TF_Op<"NoOp", [NoSideEffect]> {
   let results = (outs);
 }
 
+def TF_NonMaxSuppressionV3Op : TF_Op<"NonMaxSuppressionV3", [NoSideEffect]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32]>:$boxes,
+    TensorOf<[TF_Float16, TF_Float32]>:$scores,
+    TF_Int32Tensor:$max_output_size,
+    TensorOf<[TF_Float16, TF_Float32]>:$iou_threshold,
+    TensorOf<[TF_Float16, TF_Float32]>:$score_threshold
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$selected_indices
+  );
+
+  TF_DerivedOperandTypeAttr T_threshold = TF_DerivedOperandTypeAttr<3>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_NonMaxSuppressionV4Op : TF_Op<"NonMaxSuppressionV4", [NoSideEffect]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
@@ -7096,8 +7136,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
-              "Value  y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -7215,8 +7254,7 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  indices, "
-              "Value  depth, Value  on_value, Value  off_value, "
+    OpBuilder<"Value indices, Value depth, Value on_value, Value off_value, "
               "IntegerAttr axis">
   ];
 
@@ -8024,8 +8062,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  start, "
-              "Value  limit, Value  delta">
+    OpBuilder<"Value start, Value limit, Value delta">
   ];
 }
 
@@ -8078,7 +8115,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input">
+    OpBuilder<"Value input">
   ];
 
   let hasFolder = 1;
@@ -8349,8 +8386,7 @@ reshape(t, []) ==> 7
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<
-      "OpBuilder& builder, OperationState& result, Value  tensor, Value  shape">
+    OpBuilder<"Value tensor, Value shape">
   ];
 
   let verifier = [{
@@ -10137,7 +10173,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, Value  e, Value  t">
+    OpBuilder<"Value condition, Value e, Value t">
   ];
 }
 
@@ -10247,7 +10283,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input, BoolAttr use32Bit">
+    OpBuilder<"Value input, BoolAttr use32Bit">
   ];
 
   let hasFolder = 1;
@@ -11711,10 +11747,9 @@ retained with length 1.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value input, "
-    "Value reduction_indices, BoolAttr keep_dims"
-  >];
+  let builders = [
+    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+  ];
 }
 
 def TF_SymbolicGradientOp : TF_Op<"SymbolicGradient", [NoSideEffect]> {
@@ -11787,6 +11822,30 @@ For internal use only.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TPUEmbeddingActivationsOp : TF_Op<"TPUEmbeddingActivations", [NoSideEffect]> {
+  let summary = "An op enabling differentiation of TPU Embeddings.";
+
+  let description = [{
+This op simply returns its first input, which is assumed to have been sliced
+from the Tensors returned by TPUEmbeddingDequeueActivations. The presence of
+this op, and its first argument being a trainable Variable, enables automatic
+differentiation of graphs containing embeddings via the TPU Embedding Python
+libraries.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$embedding_variable,
+    TF_Float32Tensor:$sliced_activations,
+
+    Confined<I64Attr, [IntMinValue<0>]>:$table_id,
+    Confined<I64Attr, [IntMinValue<0>]>:$lookup_id
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$output
+  );
 }
 
 def TF_TPUExecuteOp : TF_Op<"TPUExecute", []> {
@@ -12666,10 +12725,8 @@ On GPU, if an out of bound index is found, the index is ignored.
   let verifier = [{ return Verify(*this); }];
 
   let builders = [
-    OpBuilder<
-      "OpBuilder& builder, OperationState& result, "
-      "Value tensor, Value indices, Value updates",
-      [{build(builder, result, tensor.getType(), tensor, indices, updates);}]
+    OpBuilder<"Value tensor, Value indices, Value updates",
+      [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]
     >
   ];
 }
@@ -12813,8 +12870,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<
-      "OpBuilder& builder, OperationState& result, Value  x, Value  perm">
+    OpBuilder<"Value x, Value perm">
   ];
 
   let verifier = [{
@@ -13515,6 +13571,30 @@ Handling of out-of-bounds slice indices is implementation-defined.
   );
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaEinsumOp : TF_Op<"XlaEinsum", [NoSideEffect]> {
+  let summary = [{
+An op which supports basic einsum op with 2 inputs and 1 output.
+  }];
+
+  let description = [{
+This op has better TPU performance since it doesn't have explicitly reshape and
+transpose operations as tf.einsum does.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Complex64, TF_Float32]>:$a,
+    TensorOf<[TF_Bfloat16, TF_Complex64, TF_Float32]>:$b,
+
+    StrAttr:$equation
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex64, TF_Float32]>:$product
+  );
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 

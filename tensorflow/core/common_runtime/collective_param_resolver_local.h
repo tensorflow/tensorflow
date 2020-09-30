@@ -69,8 +69,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   // Used to complete/verify CollGroup.
   struct GroupRec {
-    CollGroupParams group;
     mutable mutex mu;
+    CollGroupParams group TF_GUARDED_BY(mu);
     Status status TF_GUARDED_BY(mu);
     std::unordered_map<string, DeviceAttributes> devices TF_GUARDED_BY(mu);
     std::vector<StatusCallback> waiting TF_GUARDED_BY(mu);
@@ -87,6 +87,9 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   void CompleteGroupLocal(const DeviceAttributes& device, CollectiveParams* cp,
                           const GroupRecCallback& done)
       TF_LOCKS_EXCLUDED(group_mu_);
+
+  // Finishes the group parameters once all members of the group are there.
+  void FinishGroup(GroupRec* gr) TF_EXCLUSIVE_LOCKS_REQUIRED(gr->mu);
 
   // Used to complete/verify CollInstance.
   struct InstanceRec;
@@ -131,11 +134,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   void InitInstanceSharedParams(const GroupRec* gr, const CollectiveParams* cp,
                                 InstanceRec* ir) TF_LOCKS_EXCLUDED(gr->mu);
 
-  // Establishes the final order of ir->shared.instance.device_names and
-  // ir->shared.instance.task_names by considering localities of all devices.
-  void CompleteDefaultRanking(const GroupRec* gr, const CollectiveParams* cp,
-                              InstanceRec* ir,
-                              const std::vector<DeviceAttributes>& attributes);
+  // Establishes the final order of gp->device_names and gp->task_names by
+  // considering localities of all devices.
+  void CompleteDefaultRanking(const std::vector<DeviceAttributes>& attributes,
+                              CollGroupParams* gp);
 
   // Finish populating *cp.
   // Precondition: *gr has been fully populated by CompleteGroupLocal.

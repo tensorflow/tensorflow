@@ -24,6 +24,8 @@ extern "C" {
 #endif  // __cplusplus
 
 /// Resets all variable tensors to zero.
+///
+/// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
     TfLiteInterpreter* interpreter);
 
@@ -39,6 +41,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
 ///
 /// Code that uses this function should NOT call
 /// `TfLiteInterpreterOptionsSetOpResolver' on the same options object.
+///
+/// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
     TfLiteInterpreterOptions* options, TfLiteBuiltinOperator op,
     const TfLiteRegistration* registration, int32_t min_version,
@@ -56,6 +60,8 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
 ///
 /// Code that uses this function should NOT call
 /// `TfLiteInterpreterOptionsSetOpResolver' on the same options object.
+///
+/// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
     TfLiteInterpreterOptions* options, const char* name,
     const TfLiteRegistration* registration, int32_t min_version,
@@ -72,6 +78,8 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 /// Code that uses this function should NOT call
 /// `TfLiteInterpreterOptionsAddBuiltin' or
 /// `TfLiteInterpreterOptionsAddCustomOp' on the same options object.
+///
+/// WARNING: This is an experimental API and subject to change.
 void TfLiteInterpreterOptionsSetOpResolver(
     TfLiteInterpreterOptions* options,
     const TfLiteRegistration* (*find_builtin_op)(void* user_data,
@@ -99,11 +107,15 @@ void TfLiteInterpreterOptionsSetOpResolver(
 ///
 /// NOTE: The client *must* explicitly allocate tensors before attempting to
 /// access input tensor data or invoke the interpreter.
+///
+/// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteInterpreter*
 TfLiteInterpreterCreateWithSelectedOps(const TfLiteModel* model,
                                        const TfLiteInterpreterOptions* options);
 
 /// Enable or disable the NN API for the interpreter (true to enable).
+///
+/// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetUseNNAPI(
     TfLiteInterpreterOptions* options, bool enable);
 

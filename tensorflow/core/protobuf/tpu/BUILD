@@ -30,6 +30,7 @@ tf_proto_library(
         "optimization_parameters.proto",
     ],
     cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla/service:hlo_proto"],
     visibility = ["//visibility:public"],
 )
 

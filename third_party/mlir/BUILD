@@ -3104,10 +3104,10 @@ cc_binary(
     ],
 )
 
-cc_binary(
-    name = "tools/libcuda-runtime-wrappers.so",
+cc_library(
+    name = "tools/libcuda-runtime-wrappers",
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
-    linkshared = True,
+    compatible_with = ["//buildenv/target:prod"],
     deps = [
         ":mlir_c_runner_utils",
         "//third_party/gpus/cuda:cuda_headers",
@@ -3115,6 +3115,12 @@ cc_binary(
         "//third_party/gpus/cuda:libcuda",
         "@llvm-project//llvm:Support",
     ],
+)
+
+cc_binary(
+    name = "tools/libcuda-runtime-wrappers.so",
+    linkshared = True,
+    deps = [":tools/libcuda-runtime-wrappers"],
 )
 
 cc_library(

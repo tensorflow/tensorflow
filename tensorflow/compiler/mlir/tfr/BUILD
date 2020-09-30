@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
@@ -162,4 +162,67 @@ filegroup(
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],
+)
+
+cc_library(
+    name = "tfr_decompose_ctx",
+    srcs = ["integration/tfr_decompose_ctx.cc"],
+    hdrs = ["integration/tfr_decompose_ctx.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/mlir/tfr",
+        "//tensorflow/compiler/mlir/tfr:passes",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:optimization_registry",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "tfr_decompose_ctx_test",
+    srcs = ["integration/tfr_decompose_ctx_test.cc"],
+    deps = [
+        ":tfr_decompose_ctx",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "graph_decompose_pass",
+    srcs = ["integration/graph_decompose_pass.cc"],
+    hdrs = ["integration/graph_decompose_pass.h"],
+    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
+    deps = [
+        ":tfr_decompose_ctx",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/stream_executor/lib",
+        "@llvm-project//mlir:IR",
+    ],
+    alwayslink = 1,
 )

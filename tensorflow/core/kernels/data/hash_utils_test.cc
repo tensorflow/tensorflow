@@ -603,6 +603,106 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionListsDifferentNames) {
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, n2, gd, n3));
 }
 
+TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionsOps) {
+  GraphDef gd;
+
+  FunctionDefLibrary* fl1 = gd.mutable_library();
+  FunctionDef* f1 = fl1->add_function();
+
+  FunctionDef func = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+  *f1 = func;
+
+  FunctionDef* f2 = fl1->add_function();
+  func = FunctionDefHelper::Create(
+      "AddAndMul2", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+  *f2 = func;
+  FunctionLibraryDefinition flib(OpRegistry::Global(), gd.library());
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul", &flib)
+                  .Input(n1->name(), 0, DT_FLOAT)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul2", &flib)
+                  .Input(n1->name(), 0, DT_FLOAT)
+                  .Device("CPU:0")
+                  .Finalize(n3));
+
+  uint64 hash1 = GetHash(gd, *n2);
+  uint64 hash2 = GetHash(gd, *n3);
+  EXPECT_EQ(hash1, hash2);
+  TF_EXPECT_OK(CheckSubgraphsEqual(gd, n2, gd, n3));
+}
+
+TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionsOps) {
+  GraphDef gd;
+
+  FunctionDefLibrary* fl1 = gd.mutable_library();
+  FunctionDef* f1 = fl1->add_function();
+
+  FunctionDef func = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+  *f1 = func;
+
+  FunctionDef* f2 = fl1->add_function();
+  func = FunctionDefHelper::Create(
+      "AddAndMul2", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "ret"}});
+  *f2 = func;
+  FunctionLibraryDefinition flib(OpRegistry::Global(), gd.library());
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul", &flib)
+                  .Input(n1->name(), 0, DT_FLOAT)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul2", &flib)
+                  .Input(n1->name(), 0, DT_FLOAT)
+                  .Device("CPU:0")
+                  .Finalize(n3));
+
+  uint64 hash1 = GetHash(gd, *n2);
+  uint64 hash2 = GetHash(gd, *n3);
+  EXPECT_NE(hash1, hash2);
+  Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
+  EXPECT_NE(s.code(), error::OK);
+  EXPECT_THAT(
+      s.error_message(),
+      ContainsRegex("Functions AddAndMul and AddAndMul2 are not the same"));
+}
+
 TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctions) {
   GraphDef gd;
 

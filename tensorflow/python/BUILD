@@ -62,6 +62,7 @@ visibility = [
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
+    "//third_party/py/keras:__subpackages__",
 ]
 
 package(
@@ -127,6 +128,7 @@ py_library(
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
+        "//third_party/py/keras:__subpackages__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
@@ -5141,6 +5143,7 @@ cuda_py_test(
     srcs = ["ops/image_grad_deterministic_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tfrt_enabled = True,
     deps = [
         ":image_grad_test_base",
     ],
@@ -5236,6 +5239,7 @@ cuda_py_test(
     srcs = ["ops/math_grad_test.py"],
     python_version = "PY3",
     tags = ["no_windows_gpu"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5275,6 +5279,7 @@ cuda_py_test(
     tags = [
         "no_windows_gpu",
     ],
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -5936,9 +5941,9 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:replay_log_proto_cc",
+        "//tensorflow/core/protobuf:master_proto_cc",
     ],
 )
 
@@ -6022,6 +6027,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
+        "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/c/eager:mnist_gradients_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
@@ -7535,6 +7541,7 @@ cc_library(
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/c/experimental/gradients:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/gradients/tape:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime:core_cpu_lib_headers",

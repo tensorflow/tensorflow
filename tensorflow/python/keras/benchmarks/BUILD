@@ -42,7 +42,10 @@ py_library(
 # This lib is mainly for running benchmarks on mlcompass infra.
 py_library(
     name = "profiler_lib",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//learning/brain/contrib/keras_benchmark:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
 )
 
 COMMON_TAGS = [

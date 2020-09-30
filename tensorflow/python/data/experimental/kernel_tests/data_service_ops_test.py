@@ -242,22 +242,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertCountEqual(list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testSharedJobNameDifferentDatasets(self):
-    cluster = self.create_cluster(num_workers=1)
-
-    def make_ds(num_elements):
-      return dataset_ops.Dataset.range(num_elements)
-
-    ds1 = self.make_distributed_dataset(
-        make_ds(num_elements=10), cluster, job_name="job_name")
-    ds2 = self.make_distributed_dataset(
-        make_ds(num_elements=11), cluster, job_name="job_name")
-    iter(ds1)
-    with self.assertRaisesRegex(errors.FailedPreconditionError,
-                                "AttrValues are different"):
-      iter(ds2)
-
-  @combinations.generate(test_base.eager_only_combinations())
   def testDifferentJobNames(self):
     cluster = self.create_cluster(num_workers=1)
     num_elements = 10

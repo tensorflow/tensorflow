@@ -252,6 +252,10 @@ class MicroAllocator {
   // How many scratch buffers have been allocated.
   size_t scratch_buffer_count_ = 0;
 
+  // Holds the byte length of the memory plan with the largest head usage. Used
+  // to ensure that multi-tenant allocations can share the head for buffers.
+  size_t max_head_buffer_usage_ = 0;
+
   virtual TfLiteStatus InitScratchBufferHandles();
   virtual TfLiteStatus MoveScratchBufferHandlesToTail();
 

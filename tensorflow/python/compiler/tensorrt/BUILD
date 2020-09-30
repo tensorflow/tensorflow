@@ -3,7 +3,10 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 # cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
@@ -37,6 +40,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
@@ -101,6 +105,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":trt_convert_py",
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",

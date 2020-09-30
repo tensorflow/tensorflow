@@ -1396,16 +1396,14 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
   std::vector<xla::Shape> output_shapes(sort_op.output().size());
 
   for (int i = 0; i < operand_count; i++) {
-    operand_shapes[i] =
-        TypeToShape(sort_op.operands()[i].getType().cast<mlir::MemRefType>());
+    operand_shapes[i] = TypeToShape(sort_op.operands()[i].getType());
   }
 
   // Craft n + 1 slices, where the first n are output parameters, and the last
   // is the on-device tuple storage. We don't need n operands because sorting
   // kernels are always in-place.
   for (int i = 0; i < operand_count; i++) {
-    output_shapes[i] =
-        TypeToShape(sort_op.output()[i].getType().cast<mlir::MemRefType>());
+    output_shapes[i] = TypeToShape(sort_op.output()[i].getType());
     MlirBufferSlice slice;
     TF_ASSIGN_OR_RETURN(
         slice.buffer_slice,

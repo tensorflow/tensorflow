@@ -1008,9 +1008,14 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
                                                      &comparator)))
     return failure();
 
+  auto tupled = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+                          op.dimension(), op.is_stable());
+
   auto& value_map = *ctx.values;
-  value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
-                            op.dimension(), op.is_stable());
+  // MLIR's sort supports multiple returns, untuple all the results of XLA's.
+  for (auto it : llvm::enumerate(op.getResults())) {
+    value_map[it.value()] = xla::GetTupleElement(tupled, it.index());
+  }
   return success();
 }
 

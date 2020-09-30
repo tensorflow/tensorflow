@@ -36,28 +36,37 @@ namespace {
 
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
-constexpr int tensor_arena_size = 135 * 1024;
-alignas(16) uint8_t tensor_arena[tensor_arena_size];
+constexpr int kTensorArenaSize = 135 * 1024;
+alignas(16) uint8_t
+    tensor_arena[kTensorArenaSize + sizeof(MicroBenchmarkRunner<int8_t>)];
 
-static MicroBenchmarkRunner<int8_t> benchmark_runner(g_person_detect_model_data,
-                                                     tensor_arena,
-                                                     tensor_arena_size);
+MicroBenchmarkRunner<int8_t>* benchmark_runner = nullptr;
+
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  benchmark_runner = new (tensor_arena) MicroBenchmarkRunner<int8_t>(
+      g_person_detect_model_data,
+      &tensor_arena[sizeof(MicroBenchmarkRunner<int8_t>)], kTensorArenaSize);
+}
 
 void InitializeBenchmarkRunner() {
-  benchmark_runner.SetInput(reinterpret_cast<const int8_t*>(g_person_data));
+  CreateBenchmarkRunner();
+  benchmark_runner->SetInput(reinterpret_cast<const int8_t*>(g_person_data));
 }
 
 void PersonDetectionTenIerationsWithPerson() {
-  benchmark_runner.SetInput(reinterpret_cast<const int8_t*>(g_person_data));
+  benchmark_runner->SetInput(reinterpret_cast<const int8_t*>(g_person_data));
   for (int i = 0; i < 10; i++) {
-    benchmark_runner.RunSingleIteration();
+    benchmark_runner->RunSingleIteration();
   }
 }
 
 void PersonDetectionTenIerationsWithoutPerson() {
-  benchmark_runner.SetInput(reinterpret_cast<const int8_t*>(g_no_person_data));
+  benchmark_runner->SetInput(reinterpret_cast<const int8_t*>(g_no_person_data));
   for (int i = 0; i < 10; i++) {
-    benchmark_runner.RunSingleIteration();
+    benchmark_runner->RunSingleIteration();
   }
 }
 
@@ -66,7 +75,7 @@ void PersonDetectionTenIerationsWithoutPerson() {
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
 TF_LITE_MICRO_BENCHMARK(InitializeBenchmarkRunner());
-TF_LITE_MICRO_BENCHMARK(benchmark_runner.RunSingleIteration());
+TF_LITE_MICRO_BENCHMARK(benchmark_runner->RunSingleIteration());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithPerson());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithoutPerson());
 

@@ -47,7 +47,6 @@
 # Public mobile targets, e.g. for Android:
 #
 # filegroup ":android_proto_srcs" - Protos
-# filegroup ":android_srcs" - Core sources
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
@@ -1522,18 +1521,6 @@ filegroup(
 )
 
 # Portable library providing testing functionality for TensorFlow.
-alias(
-    name = "android_tensorflow_test_lib",
-    actual = ":portable_tensorflow_test_lib",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "ios_tensorflow_test_lib",
-    actual = ":portable_tensorflow_test_lib",
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "portable_tensorflow_test_lib",
     testonly = 1,
@@ -1553,7 +1540,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib",
-        ":protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
@@ -1603,29 +1589,6 @@ alias(
     for proto_name in [
         "example",
         "feature",
-    ]
-]
-
-# The following targets will be moved to core/protobuf. The aliases are only temporary
-# since moving existing users will require several CLs over several projects.
-[
-    [
-        alias(
-            name = "protobuf_%s_pyclif%s" % (proto_name, target_suffix),
-            actual = "//tensorflow/core/protobuf:%s_pyclif%s" % (proto_name, target_suffix),
-            visibility = ["//visibility:public"],
-        )
-        for target_suffix in [
-            "",
-            "_pb2",
-        ]
-    ]
-    for proto_name in [
-        "config",
-        "device_properties",
-        "graph_debug_info",
-        "meta_graph",
-        "saved_model",
     ]
 ]
 
@@ -2020,21 +1983,6 @@ cc_library(
         ":lib_internal",
         "//tensorflow/core/platform:jpeg",
     ],
-)
-
-alias(
-    name = "png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
-alias(
-    name = "portable_png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
-alias(
-    name = "android_png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
 )
 
 cc_library(

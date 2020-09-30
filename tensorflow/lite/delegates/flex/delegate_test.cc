@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
 #include <cstdint>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -308,7 +309,7 @@ TEST_F(DelegateTest, MultiThreaded) {
 TEST_F(DelegateTest, TF_AcquireFlexDelegate) {
   auto TF_AcquireFlexDelegate =
       reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
-          SharedLibrary::GetLibrarySymbol(nullptr, "TF_AcquireFlexDelegate"));
+          SharedLibrary::GetSymbol("TF_AcquireFlexDelegate"));
   ASSERT_TRUE(TF_AcquireFlexDelegate);
   auto delegate_ptr = TF_AcquireFlexDelegate();
   ASSERT_TRUE(delegate_ptr != nullptr);
@@ -361,6 +362,7 @@ TEST_F(DelegateTest, StaticOutputRFFT) {
 
   // Define inputs.
   SetShape(0, {3, 512});
+  SetValues(0, std::vector<float>(3 * 512, 1.0f));
 
   ASSERT_TRUE(Invoke());
 
