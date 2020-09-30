@@ -41,11 +41,12 @@ static Graph* SparseXent(int batch_size, int num_classes, DataType value_type) {
   return g;
 }
 
-#define BM_SparseXentDev(BATCH, CLASS, DEVICE, DTType)                          \
-  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTType(int iters) { \
-    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS); \
-    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS, DTType)).Run(iters);      \
-  }                                                                     \
+#define BM_SparseXentDev(BATCH, CLASS, DEVICE, DTType)                     \
+  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTType(       \
+      int iters) {                                                         \
+    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS);    \
+    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS, DTType)).Run(iters); \
+  }                                                                        \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTType);
 
 /// The representative tests for ptb_word on GPU
@@ -87,6 +88,5 @@ BM_SparseXentDev(32, 100000, cpu, DT_BFLOAT16);
 
 BM_SparseXentDev(64, 10000, cpu, DT_BFLOAT16);
 BM_SparseXentDev(64, 100000, cpu, DT_BFLOAT16);
-
 
 }  // end namespace tensorflow
