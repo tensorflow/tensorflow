@@ -1258,12 +1258,12 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     auto g = absl::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
-    const string merged_device = "/job:call/replica:0/task:1/device:CPU:*";
-
+    // Body node keeps its device assignment even if it is not compatible
+    // with call node job/replica.
     ExpandInlineFunctions(flr0_, g.get(), opts);
     GraphDef expected = expected_graph({/*a*/ arg_device,                //
                                         /*input*/ arg_device,            //
-                                        /*body*/ merged_device,          //
+                                        /*body*/ body_device,            //
                                         /*output*/ "",                   //
                                         /*control_output*/ call_device}  //
     );

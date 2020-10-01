@@ -197,8 +197,8 @@ class SingleDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
 
 // Place input nodes on the same device as the corresponding caller input
 // node. Do not place output node. Place control nodes on the same device as
-// caller node. For all function body nodes overrides job, replica and task
-// parts of the device assignment to match function caller node.
+// caller node. Assign all function body nodes with empty device assignment to
+// the function caller node device.
 class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
  public:
   explicit MultiDeviceFunctionBodyPlacer(const Node& caller)
@@ -225,27 +225,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     // tests relying on this assumption. Fix them, and remove this line.
     if (ndef.device().empty()) return caller_device_;
 
-    if (!has_parsed_caller_device_) return ndef.device();
-
-    DeviceNameUtils::ParsedName ndef_parsed_device;
-    if (!DeviceNameUtils::ParseFullName(ndef.device(), &ndef_parsed_device))
-      return ndef.device();
-
-    if (caller_parsed_device_.has_job) {
-      ndef_parsed_device.has_job = caller_parsed_device_.has_job;
-      ndef_parsed_device.job = caller_parsed_device_.job;
-    }
-
-    if (caller_parsed_device_.has_replica) {
-      ndef_parsed_device.has_replica = caller_parsed_device_.has_replica;
-      ndef_parsed_device.replica = caller_parsed_device_.replica;
-    }
-
-    if (caller_parsed_device_.has_task) {
-      ndef_parsed_device.has_task = caller_parsed_device_.has_task;
-      ndef_parsed_device.task = caller_parsed_device_.task;
-    }
-    return DeviceNameUtils::ParsedNameToString(ndef_parsed_device);
+    return ndef.device();
   }
 
  private:
