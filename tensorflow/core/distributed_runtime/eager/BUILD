@@ -17,8 +17,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "remote_tensor_handle",
     hdrs = ["remote_tensor_handle.h"],
