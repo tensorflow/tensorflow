@@ -932,6 +932,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

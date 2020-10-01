@@ -672,6 +672,7 @@ tf_py_test(
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/legacy_tf_layers:core",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:tf_utils",
