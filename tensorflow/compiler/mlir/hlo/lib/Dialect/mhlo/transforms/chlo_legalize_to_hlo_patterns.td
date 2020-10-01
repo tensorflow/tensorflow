@@ -49,14 +49,6 @@ def : Pat<(HLOClient_AcosOp $input),
     ),
     (HLO_ConstantLike<"M_PI"> $input))>;
 
-// Express `atan` as
-//   atan(x) = atan2(x, 1)
-def : Pat<(HLOClient_AtanOp $input),
-  (HLO_Atan2Op
-    $input,
-    (HLO_ConstantLike<"1"> $input)
-  )>;
-
 // Express `sinh` as
 //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
 //           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
@@ -103,3 +95,4 @@ def : Pat<(HLOClient_TanOp $input),
     (HLO_SinOp $input),
     (HLO_CosOp $input)
   )>;
+
