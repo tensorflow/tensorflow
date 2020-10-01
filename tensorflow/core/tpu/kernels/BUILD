@@ -5,11 +5,13 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
 
 # Config setting to enable go/libtpu support.
+WITH_TPU_SUPPORT = "//tensorflow:with_tpu_support"
+
+DEFAULT = "//conditions:default"
 
 package(
     default_visibility = [
@@ -42,10 +44,10 @@ cc_library(
     name = "tpu_compile_op_common",
     srcs = ["tpu_compile_op_common.cc"],
     hdrs = ["tpu_compile_op_common.h"],
-    deps = if_libtpu(
-        [":tpu_compilation_metrics"],
-        ["//tensorflow/core/tpu/kernels:tpu_compilation_metrics"],
-    ) + [
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_metrics"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_metrics"],
+    }) + [
         ":tpu_compilation_cache_entry_unloader",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_metrics_hdrs",
@@ -95,10 +97,14 @@ tf_kernel_library(
     name = "tpu_configuration_ops",
     srcs = ["tpu_configuration_ops.cc"],
     hdrs = ["tpu_configuration_ops.h"],
-    deps = if_libtpu(
-        [":tpu_util"],
-        ["//tensorflow/core/tpu/kernels:tpu_util"],
-    ) + [
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_util"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_util"],
+    }) + [
         ":tpu_compilation_cache_factory",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_local_lookup",
@@ -340,10 +346,10 @@ cc_library(
     name = "tpu_compilation_cache_interface",
     srcs = ["tpu_compilation_cache_interface.cc"],
     hdrs = ["tpu_compilation_cache_interface.h"],
-    deps = if_libtpu(
-        [":tpu_compilation_metrics"],
-        ["//tensorflow/core/tpu/kernels:tpu_compilation_metrics"],
-    ) + [
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_metrics"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_metrics"],
+    }) + [
         ":compiled_subgraph",
         ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_entry",
@@ -418,7 +424,10 @@ cc_library(
 cc_library(
     name = "tpu_compilation_metrics",
     srcs = ["tpu_compilation_metrics.cc"],
-    copts = tf_copts(),
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
         ":tpu_compilation_metrics_hdrs",
     ],
@@ -520,11 +529,14 @@ cc_library(
 cc_library(
     name = "tpu_compilation_cache_rpc_support_hdrs",
     hdrs = ["tpu_compilation_cache_rpc_support.h"],
-    copts = tf_copts(),
-    deps = if_libtpu(
-        [":tpu_compilation_cache_proto_cc"],
-        ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],
-    ) + [
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_proto_cc"],  # build_cleaner: keep
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],  # build_cleaner: keep
+    }) + [
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
@@ -538,7 +550,10 @@ cc_library(
 cc_library(
     name = "tpu_compilation_cache_rpc_support",
     srcs = ["tpu_compilation_cache_rpc_support.cc"],
-    copts = tf_copts(),
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
         ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_proto_cc",
@@ -557,11 +572,14 @@ cc_library(
     name = "tpu_compilation_cache_rpc_lookup",
     srcs = ["tpu_compilation_cache_rpc_lookup.cc"],
     hdrs = ["tpu_compilation_cache_rpc_lookup.h"],
-    copts = tf_copts(),
-    deps = if_libtpu(
-        [":tpu_compilation_cache_rpc_support"],
-        ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support"],
-    ) + [
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_rpc_support"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support"],
+    }) + [
         ":tpu_compilation_cache_grpc",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
@@ -599,11 +617,14 @@ cc_library(
     name = "tpu_compilation_cache_grpc",
     srcs = ["tpu_compilation_cache_grpc.cc"],
     hdrs = ["tpu_compilation_cache_grpc.h"],
-    copts = tf_copts(),
-    deps = if_libtpu(
-        [":tpu_compilation_cache_proto_cc"],
-        ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],
-    ) + [
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_proto_cc"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],
+    }) + [
         ":tpu_compilation_cache_common_proto_cc",
         tf_grpc_cc_dependency(),
     ],
@@ -613,17 +634,20 @@ cc_library(
     name = "tpu_compilation_cache_service",
     srcs = ["tpu_compilation_cache_service.cc"],
     hdrs = ["tpu_compilation_cache_service.h"],
-    copts = tf_copts(),
-    deps = if_libtpu(
-        [
-            ":tpu_compilation_cache_rpc_support",
-            ":tpu_compilation_cache_proto_cc",
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [
+            ":tpu_compilation_cache_rpc_support",  # build_cleaner: keep
+            ":tpu_compilation_cache_proto_cc",  # build_cleaner: keep
         ],
-        [
-            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support",
-            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto",
+        DEFAULT: [
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support",  # build_cleaner: keep
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto",  # build_cleaner: keep
         ],
-    ) + [
+    }) + [
         ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_grpc",
         ":tpu_compilation_cache_interface",
@@ -680,7 +704,10 @@ cc_library(
     name = "tpu_compile_op_impl",
     srcs = ["tpu_compile_op_impl.cc"],
     hdrs = ["tpu_compile_op_impl.h"],
-    copts = tf_copts(),
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
         ":tpu_compilation_cache_key",
         ":tpu_compile_c_api_hdrs",
@@ -925,11 +952,14 @@ cc_library(
     name = "tpu_pod_state",
     srcs = ["tpu_pod_state.cc"],
     hdrs = ["tpu_pod_state.h"],
-    copts = tf_copts(),
-    deps = if_libtpu(
-        [":tpu_util"],
-        ["//tensorflow/core/tpu/kernels:tpu_util"],
-    ) + [
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_util"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_util"],
+    }) + [
         ":tpu_compilation_cache_service",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",

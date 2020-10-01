@@ -4,7 +4,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_tpu", "tf_copts")
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 
 # buildifier: disable=same-origin-load
@@ -77,7 +77,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-    ] + if_libtpu(
+    ] + if_tpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
     ),
@@ -114,7 +114,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-    ] + if_libtpu(
+    ] + if_tpu(
         if_false = [
             "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
         ],
@@ -141,7 +141,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/gpu:gpu_init",
-    ] + if_libtpu(
+    ] + if_tpu(
         if_false = [
             "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
         ],
@@ -375,7 +375,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
-    ] + if_libtpu(
+    ] + if_tpu(
         if_false = [
             "//tensorflow/compiler/mlir:array_container_utils",
             "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",

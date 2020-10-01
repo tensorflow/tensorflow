@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
-#if !defined(LIBTPU_ON_GCE)
+#if !defined(LIBTFTPU)
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #endif
@@ -289,7 +289,7 @@ Status XlaCompilationCache::CompileSingleOp(
         });
     const ConfigProto* config = ctx->function_library()->config_proto();
     bool use_mlir = config && config->experimental().enable_mlir_bridge();
-#ifdef LIBTPU_ON_GCE
+#ifdef LIBTFTPU
     if (use_mlir && has_tensor_list_arg) {
       LOG(WARNING) << "MLIR is not supported in this environment.";
     }

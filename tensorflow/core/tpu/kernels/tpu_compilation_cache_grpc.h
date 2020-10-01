@@ -35,7 +35,7 @@ limitations under the License.
 
 #include <functional>
 
-#if defined(LIBTPU_ON_GCE)
+#if defined(LIBTFTPU)
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #else
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"  // copybara"
@@ -48,7 +48,7 @@ namespace grpc {
 class TpuCompilationCacheService final {
  public:
   using RequestType = ::tensorflow::tpu::GetTpuProgramRequest;
-#if defined(LIBTPU_ON_GCE)
+#if defined(LIBTFTPU)
   using ResponseType = ::tensorflow::tpu::GetTpuProgramResponseExternal;
 #else
   using ResponseType = ::tensorflow::tpu::GetTpuProgramResponse;
@@ -59,7 +59,7 @@ class TpuCompilationCacheService final {
   enum class MethodId { kGetTpuProgram = 0 };
 
   static constexpr char const* service_full_name() {
-#if defined(LIBTPU_ON_GCE)
+#if defined(LIBTFTPU)
     return "tensorflow.tpu.TpuCompilationCacheServiceExternal";
 #else
     return "tensorflow.tpu.TpuCompilationCacheService";

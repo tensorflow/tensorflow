@@ -10,7 +10,7 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_tpu", "tf_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -70,7 +70,7 @@ cc_library(
         "//tensorflow/stream_executor:device_options",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
-    ] + if_libtpu(
+    ] + if_tpu(
         if_false = ["@local_config_cuda//cuda:cuda_headers"],
         if_true = [],
     ),

@@ -68,11 +68,11 @@ class TpuCompileOpImplFactory : public CompileOpImplFactory {
   }
 };
 
-#if defined(LIBTPU_ON_GCE)
+#if defined(LIBTFTPU)
 REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
   VLOG(1) << "register TpuCompileOpImplFactory()";
   CompileOpImplFactory::Register(new TpuCompileOpImplFactory());
 });
-#endif  // LIBTPU_ON_GCE
+#endif  // LIBTFTPU
 }  // namespace tpu
 }  // namespace tensorflow

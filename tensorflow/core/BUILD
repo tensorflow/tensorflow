@@ -68,9 +68,9 @@ load(
     "if_chromiumos",
     "if_cuda_or_rocm",
     "if_ios",
-    "if_libtpu",
     "if_mobile",
     "if_not_windows",
+    "if_tpu",
     "tf_android_core_proto_headers",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -894,7 +894,8 @@ cc_library(
         "//tensorflow/c/kernels:summary_op_lib",
     ] + if_chromiumos(
         [],
-        # Non-tpu platforms don't need tpu dependency.
+        # Non-tpu platforms don't need tpu dependency. It would be best to guard
+        # them by if_tpu. But there is no such flag yet.
         [
             ":tpu_configuration_ops_op_lib",
             ":tpu_cross_replica_ops_op_lib",
@@ -915,7 +916,7 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
-    ]) + if_libtpu(
+    ]) + if_tpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op"],
         if_true = [],
     ),

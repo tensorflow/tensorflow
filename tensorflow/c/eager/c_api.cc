@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTFTPU)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 #endif
 #include "tensorflow/core/common_runtime/device.h"
@@ -729,7 +729,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTFTPU)
     return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");

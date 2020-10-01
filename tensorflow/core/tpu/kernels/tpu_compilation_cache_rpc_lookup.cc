@@ -25,7 +25,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 
-#if defined(LIBTPU_ON_GCE)
+#if defined(LIBTFTPU)
 using ResponseType = GetTpuProgramResponseExternal;
 #else
 using ResponseType = GetTpuProgramResponse;

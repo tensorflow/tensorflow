@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
+    "if_tpu",
     "tf_cc_binary",
     "tf_cc_test",
 )
@@ -57,7 +57,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         tf_grpc_cc_dependency(),
-    ] + if_libtpu(
+    ] + if_tpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
     ),

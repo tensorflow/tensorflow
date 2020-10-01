@@ -56,7 +56,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/util/dump_graph.h"
 
-#ifndef LIBTPU_ON_GCE
+#ifndef LIBTFTPU
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #endif
@@ -733,7 +733,7 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-#ifdef LIBTPU_ON_GCE
+#ifdef LIBTFTPU
   if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
     VLOG(1) << "MLIR is not supported in this environment.";
   }
