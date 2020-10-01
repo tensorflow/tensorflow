@@ -25,7 +25,6 @@ cd "${ROOT_DIR}"
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads
 
 TARGET=cortex_m_gcc_generic
 

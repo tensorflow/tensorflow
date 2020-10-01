@@ -31,7 +31,7 @@ void RegisterDebugLogCallback(void (*cb)(const char* s)) {
 
 void DebugLog(const char* s) {
 #ifndef TF_LITE_STRIP_ERROR_STRINGS
-  if (debug_log_callback) {
+  if (debug_log_callback != nullptr) {
 	  debug_log_callback(s);
   }
 #endif
