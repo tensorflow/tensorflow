@@ -35,14 +35,6 @@ TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
 NO_WORK_DIR = data_service_test_base.NO_WORK_DIR
 
 
-def _all_cluster_configurations():
-  with_work_dir = combinations.combine(
-      work_dir=TMP_WORK_DIR, fault_tolerant_mode=[True, False])
-  without_work_dir = combinations.combine(
-      work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
-  return with_work_dir + without_work_dir
-
-
 class DataServiceOpsTest(data_service_test_base.TestBase,
                          parameterized.TestCase):
 
@@ -112,8 +104,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testDispatcherAndWorkerRestart(self):
     cluster = self.create_cluster(num_workers=1)
     num_elements = 100
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds = self.make_distributed_dataset(ds, cluster)
+    ds = self.make_distributed_range_dataset(num_elements, cluster)
 
     cluster.restart_dispatcher()
     cluster.restart_worker()
@@ -121,6 +112,28 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster.restart_dispatcher()
     cluster.restart_worker()
     self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherAndMultiWorkerRestart(self):
+    num_workers = 2
+    cluster = self.create_cluster(num_workers=num_workers)
+    num_elements = 100
+    ds = self.make_distributed_range_dataset(num_elements, cluster)
+    iterator = iter(ds)
+    results = []
+
+    cluster.restart_dispatcher()
+    for worker_index in range(num_workers):
+      cluster.restart_worker(worker_index=worker_index)
+    for elem in iterator:
+      results.append(elem.numpy())
+    self.assertCountEqual(num_workers * list(range(num_elements)), results)
+    cluster.restart_dispatcher()
+    for worker_index in range(num_workers):
+      cluster.restart_worker(worker_index=worker_index)
+    for elem in iterator:
+      results.append(elem.numpy())
+    self.assertCountEqual(num_workers * list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testStartServersLate(self):
