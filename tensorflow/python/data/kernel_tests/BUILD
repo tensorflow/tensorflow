@@ -448,7 +448,7 @@ cuda_py_test(
     srcs = ["multi_device_iterator_test.py"],
     tags = [
         "no_gpu",  #TODO(b/141255188): Enable test after bug is resolved.
-        "no_oss",
+        #"no_oss",
         "no_windows_gpu",
     ],
     deps = [

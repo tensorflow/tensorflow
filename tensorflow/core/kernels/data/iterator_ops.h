@@ -23,12 +23,15 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
 namespace data {
+
+const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 
 class IteratorResource : public ResourceBase {
  public:
@@ -293,6 +296,76 @@ class DeserializeIteratorOp : public OpKernel {
   explicit DeserializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override;
+};
+
+// Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
+// The get() method returns an VariantTensorData object which contains all the
+// state needed to restore a single iterator.
+//
+// Usage example:
+//
+// Encoding:
+//
+//   Tensor t(DT_VARIANT, TensorShape({}));
+//   t->scalar<Variant>()() = IteratorStateVariant();
+//
+// Encode() sets the type_name of the VariantTensorData object to
+// IteratorStateVariant::TypeName().
+//
+// Decoding:
+//
+//   Variant v = <VariantTensorDataProto object>;
+//   DecodeUnaryVariant(&v);
+//   IteratorStateVariant* wrapper = v.get<IteratorStateVariant>();
+//   IteratorStateReader reader({wrapper->GetData()});
+//   iterator_resource->Restore(ctx, &reader);
+//
+// The type_name of the VariantTensorData object to be decoded must
+// match IteratorStateVariant::TypeName().
+class IteratorStateVariant {
+ public:
+  IteratorStateVariant() : data_(nullptr) {}
+  IteratorStateVariant(const IteratorStateVariant& other) : data_(nullptr) {
+    if (other.data_) {
+      Decode(*other.data_);
+    }
+  }
+  IteratorStateVariant& operator=(IteratorStateVariant&& other) = default;
+  IteratorStateVariant& operator=(const IteratorStateVariant& other) = delete;
+
+  // Initializes `this` from a VariantTensorData object.
+  Status InitializeFromVariantData(std::unique_ptr<VariantTensorData> d) {
+    data_ = std::move(d);
+    return Status::OK();
+  }
+
+  string TypeName() const { return kIteratorVariantTypeName; }
+  void Encode(VariantTensorData* data) const { *data = *data_; }
+  bool Decode(VariantTensorData data) {
+    if (data.type_name() != TypeName()) {
+      VLOG(0) << "Data type " << data.type_name() << " TypeName " << TypeName();
+      return false;
+    }
+    auto tensor_data = absl::make_unique<VariantTensorData>();
+    std::swap(*tensor_data, data);
+    data_ = std::move(tensor_data);
+    return true;
+  }
+
+  // Returns a borrowed pointer to the underlying VariantTensorData.
+  const VariantTensorData* GetData() const { return data_.get(); }
+
+  string DebugString() const {
+    if (data_) {
+      return strings::StrCat("IteratorStateVariant<", data_->DebugString(),
+                             ">");
+    } else {
+      return strings::StrCat("IteratorStateVariant<empty>");
+    }
+  }
+
+ private:
+  std::unique_ptr<VariantTensorData> data_;
 };
 
 }  // namespace data

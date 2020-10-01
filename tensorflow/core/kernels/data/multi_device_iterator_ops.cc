@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -39,6 +40,11 @@ const char kAnonymousMultiDeviceIterator[] = "AnonymousMultiDeviceIterator";
 const char kDevices[] = "devices";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
+constexpr char kBuffer[] = "buffer";
+constexpr char kStatus[] = "status";
+constexpr char kSizeSuffix[] = ".size";
+constexpr char kCodeSuffix[] = ".code";
+constexpr char kErrorMessageSuffix[] = ".error_message";
 
 struct HostBufferElement {
   Status status;
@@ -51,6 +57,7 @@ using MultiDeviceIteratorCallback =
 
 class MultiDeviceIterator : public ResourceBase {
  public:
+  static constexpr const char* const kBufferSize = "buffer_size";
   MultiDeviceIterator(
       Env* env, const DataTypeVector& output_types,
       const std::vector<PartialTensorShape>& output_shapes,
@@ -95,6 +102,48 @@ class MultiDeviceIterator : public ResourceBase {
     multi_device_buffer_ = absl::make_unique<MultiDeviceBuffer>(
         devices_.size(), max_buffer_size, incarnation_id_, std::move(iterator),
         this);
+    return Status::OK();
+  }
+
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+    return multi_device_buffer_->Save(ctx, writer);
+  }
+
+  Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
+    const DatasetBase* dataset = multi_device_buffer_->GetDatasetBase();
+    int64 max_buffer_size = multi_device_buffer_->GetMaxBufferSize();
+    core::ScopedUnref scoped_unref(dataset);
+    IteratorContext::Params params(ctx);
+    params.flr = flr_;
+    params.function_handle_cache = function_handle_cache_.get();
+    params.resource_mgr = &resource_mgr_;
+    params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+    params.thread_pool = &unbounded_thread_pool_;
+    params.cancellation_manager = &cancellation_manager_;
+    std::function<void()> deregister_fn;
+    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+        ctx->cancellation_manager(),
+        [cm = params.cancellation_manager]() { cm->StartCancel(); },
+        &deregister_fn));
+    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+    std::unique_ptr<IteratorBase> iterator_base;
+    TF_RETURN_IF_ERROR(dataset->MakeIteratorFromCheckpoint(
+        IteratorContext(std::move(params)), "Iterator", reader,
+        &iterator_base));
+    TF_RETURN_IF_ERROR(
+        VerifyTypesMatch(output_types_, iterator_base->output_dtypes()));
+    TF_RETURN_IF_ERROR(
+        VerifyShapesCompatible(output_shapes_, iterator_base->output_shapes()));
+
+    mutex_lock l(mu_);
+    if (multi_device_buffer_) {
+      multi_device_buffer_->Reset();
+    }
+    multi_device_buffer_ = absl::make_unique<MultiDeviceBuffer>(
+        devices_.size(), max_buffer_size, incarnation_id_,
+        std::move(iterator_base), this);
+
+    TF_RETURN_IF_ERROR(multi_device_buffer_->Restore(ctx, reader));
     return Status::OK();
   }
 
@@ -168,6 +217,153 @@ class MultiDeviceIterator : public ResourceBase {
       }
       Reset();
     }
+
+    string prefix() { return "MultiDevice"; }
+
+    string CodeKey() { return absl::StrCat("status", ".code"); }
+
+    string ErrorMessageKey() {
+      return absl::StrCat("status", ".error_message");
+    }
+
+    Status WriteStatus(IteratorStateWriter* writer, size_t hindex, size_t index,
+                       const Status& status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(absl::StrCat(prefix(), "::", hindex, "::", index),
+                              CodeKey(), static_cast<int64>(status.code())));
+      if (!status.ok()) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            absl::StrCat(prefix(), "::", hindex, "::", index),
+            ErrorMessageKey(), status.error_message()));
+      }
+      return Status::OK();
+    }
+
+    Status ReadStatus(IteratorStateReader* reader, size_t hindex, size_t index,
+                      Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+      int64 code_int;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(absl::StrCat(prefix(), "::", hindex, "::", index),
+                             CodeKey(), &code_int));
+      error::Code code = static_cast<error::Code>(code_int);
+      if (code != error::Code::OK) {
+        tstring error_message;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            absl::StrCat(prefix(), "::", hindex, "::", index),
+            ErrorMessageKey(), &error_message));
+        *status = Status(code, error_message);
+      } else {
+        *status = Status::OK();
+      }
+      return Status::OK();
+    }
+
+    Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+      mutex_lock l(mu_);
+      /*
+      To save the multiDevice buffer
+      Save the buffer vector
+      const size_t size_;
+      const int64 max_buffer_size_;
+      */
+      // Save size_ to verify when restoring
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), "size", size_));
+      // Save max_bufffer_size_
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(prefix(), "max_buffer_size", max_buffer_size_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(prefix(), "host_buffer_size", buffer_.size()));
+      for (size_t h = 0; h < buffer_.size(); h++) {
+        auto& host_buffer = buffer_[h];
+        TF_RETURN_IF_ERROR(writer->WriteScalar(absl::StrCat(prefix(), "::", h),
+                                               "buffer_size",
+                                               host_buffer.data.size()));
+        for (size_t i = 0; i < host_buffer.data.size(); i++) {
+          auto& buffer_element = host_buffer.data[i];
+          TF_RETURN_IF_ERROR(WriteStatus(writer, h, i, buffer_element.status));
+          if (buffer_element.status.ok()) {
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                absl::StrCat(prefix(), "::", h, "::", i), "end_of_sequence",
+                buffer_element.end_of_sequence));
+            TF_RETURN_IF_ERROR(
+                writer->WriteScalar(absl::StrCat(prefix(), "::", h, "::", i),
+                                    absl::StrCat(kBuffer, kSizeSuffix),
+                                    buffer_element.value.size()));
+            for (size_t j = 0; j < buffer_element.value.size(); j++) {
+              TF_RETURN_IF_ERROR(writer->WriteTensor(
+                  absl::StrCat(prefix(), "::", h, "::", i),
+                  absl::StrCat(kBuffer, "[", j, "]"), buffer_element.value[j]));
+            }
+          }
+        }
+      }
+      return host_iterator_->Save(ctx, writer);
+    }
+
+    const DatasetBase* GetDatasetBase() {
+      return static_cast<DatasetBaseIterator*>(host_iterator_.get())->dataset();
+    }
+    template <class T>
+    Status AssignToVar(IteratorStateReader* reader, T* var, string name,
+                       string key) {
+      int64 temp;
+      TF_RETURN_IF_ERROR(reader->ReadScalar(name, key, &temp));
+      *var = static_cast<T>(temp);
+      return Status::OK();
+    }
+
+    Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
+      // Verify the buffer sizes and restore the buffer
+      mutex_lock l(mu_);
+      // Save size_ to verify when restoring
+      buffer_.clear();
+      size_t size;
+      AssignToVar(reader, &size, prefix(), "size");
+      // Save max_bufffer_size_
+
+      int64 max_buffer_size;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), "max_buffer_size", &max_buffer_size));
+
+      size_t host_buffer_size;
+      AssignToVar(reader, &host_buffer_size, prefix(), "host_buffer_size");
+
+      for (size_t h = 0; h < host_buffer_size; h++) {
+        buffer_.emplace_back();
+        auto& host_buffer = buffer_.back();
+
+        size_t buffer_size;
+        AssignToVar(reader, &buffer_size, absl::StrCat(prefix(), "::", h),
+                    kBufferSize);
+
+        for (size_t i = 0; i < buffer_size; i++) {
+          host_buffer.data.emplace_back();
+          auto& buffer_element = host_buffer.data.back();
+          TF_RETURN_IF_ERROR(ReadStatus(reader, h, i, &buffer_element.status));
+          if (buffer_element.status.ok()) {
+            AssignToVar(reader, &buffer_element.end_of_sequence,
+                        absl::StrCat(prefix(), "::", h, "::", i),
+                        "end_of_sequence");
+            size_t value_size;
+            AssignToVar(reader, &value_size,
+                        absl::StrCat(prefix(), "::", h, "::", i),
+                        absl::StrCat(kBuffer, kSizeSuffix));
+            buffer_element.value.reserve(value_size);
+
+            for (size_t j = 0; j < value_size; j++) {
+              buffer_element.value.emplace_back();
+              TF_RETURN_IF_ERROR(
+                  reader->ReadTensor(absl::StrCat(prefix(), "::", h, "::", i),
+                                     absl::StrCat(kBuffer, "[", j, "]"),
+                                     &buffer_element.value.back()));
+            }
+          }
+        }
+      }
+      return Status::OK();
+    }
+
+    int64 GetMaxBufferSize() { return max_buffer_size_; }
 
     void Reset() TF_LOCKS_EXCLUDED(mu_) {
       {
@@ -443,8 +639,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
               context->env(), output_types_, output_shapes_, devices_,
               std::move(flib_def), std::move(pflr), flr,
               std::move(function_handle_cache));
-          // NOTE: `mgr->Create()` transfers the one reference on `resource` to
-          // `mgr`.
+          // NOTE: `mgr->Create()` transfers the one reference on `resource`
+          // to `mgr`.
           OP_REQUIRES_OK(context, mgr->Create<MultiDeviceIterator>(
                                       container_name, unique_name, resource));
         } else {
@@ -481,8 +677,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
  private:
   // During the first Compute(), resource is either created or looked up using
   // shared_name. In the latter case, the resource found should be verified if
-  // it is compatible with this op's configuration. The verification may fail in
-  // cases such as two graphs asking queues of the same shared name to have
+  // it is compatible with this op's configuration. The verification may fail
+  // in cases such as two graphs asking queues of the same shared name to have
   // inconsistent capacities.
   Status VerifyResource(MultiDeviceIterator* resource) {
     TF_RETURN_IF_ERROR(
@@ -741,6 +937,173 @@ REGISTER_KERNEL_BUILDER(
     Name("MultiDeviceIteratorFromStringHandle").Device(DEVICE_CPU),
     MultiDeviceIteratorFromStringHandleOp);
 
+namespace {
+
+// A helper class that uses a list of IteratorStateVariant objects to
+// represent the state for an iterator resource. It exposes methods that help
+// with saving and restoring of this state. Sample usage Saving:
+//   IteratorVariantSerializer serializer;
+//   serializer.InitializeFromIterator(iterator_resource);
+//   Tensor serialized_t;
+//   serializer.Serialize(&serialized_t);
+//
+// Restoring:
+//   IteratorVariantSerializer serializer;
+//   serializer.InitFromTensor(ctx->input(0));
+//   IteratorStateReader* reader = serializer.GetReader();
+//   iterator_resource->Restore(ctx, reader);
+class IteratorVariantSerializer {
+ public:
+  IteratorVariantSerializer() {}
+
+  // Calls `Save` on the iterator_resource to build up the list of
+  // IteratorStateVariant objects.
+  Status InitializeFromIterator(SerializationContext* serialization_ctx,
+                                MultiDeviceIterator* iterator_resource) {
+    VariantTensorDataWriter writer;
+    TF_RETURN_IF_ERROR(iterator_resource->Save(serialization_ctx, &writer));
+    std::vector<std::unique_ptr<VariantTensorData>> data;
+    writer.ReleaseData(&data);
+    variants_.clear();
+    variants_.reserve(data.size());
+    for (auto& it : data) {
+      IteratorStateVariant v;
+      TF_RETURN_IF_ERROR(v.InitializeFromVariantData(std::move(it)));
+      variants_.push_back(v);
+    }
+    num_tensors_ = variants_.size();
+    can_serialize_ = true;
+    return Status::OK();
+  }
+
+  // Initializes `this` from `serialized_t` while restoring the iterator
+  // state.
+  Status InitFromTensor(const Tensor* serialized_t) {
+    int64 num_tensors = serialized_t->dim_size(0);
+    auto serialized_vec = serialized_t->vec<Variant>();
+    std::vector<const VariantTensorData*> data;
+    data.reserve(num_tensors);
+    for (int i = 0; i < num_tensors; ++i) {
+      auto* w = serialized_vec(i).get<IteratorStateVariant>();
+      if (!w) {
+        return errors::Internal(
+            "Cannot initialize an iterator from tensor ",
+            serialized_vec(i).DebugString(),
+            ". Expected a variant tensor of type IteratorStateVariant");
+      }
+      data.push_back(w->GetData());
+    }
+    reader_ = absl::make_unique<VariantTensorDataReader>(data);
+    num_tensors_ = data.size();
+    return Status::OK();
+  }
+
+  int64 NumTensors() { return num_tensors_; }
+
+  // Stores the IteratorStateVariant list into a pre-allocated tensor. Expects
+  // that InitializeFromIterator was called before.
+  Status Serialize(Tensor* serialized) {
+    if (!can_serialize_) {
+      return errors::InvalidArgument(
+          "Please call InitializeFromIterator before calling Serialize.");
+    }
+    int64 size = variants_.size();
+    for (int64 i = 0; i < size; ++i) {
+      if (variants_[i].GetData() == nullptr) {
+        return errors::Internal(
+            "Cannot serialize an empty IteratorStateVariant");
+      }
+      serialized->vec<Variant>()(i) = variants_[i];
+    }
+    return Status::OK();
+  }
+
+  // Returns an IteratorStateReader to restore iterator state. Expects that
+  // InitFromTensor was called before.
+  IteratorStateReader* GetReader() { return reader_.get(); }
+
+ private:
+  bool can_serialize_ = false;
+  int64 num_tensors_;
+  std::vector<IteratorStateVariant> variants_;
+  std::unique_ptr<IteratorStateReader> reader_;
+};
+
+}  // namespace
+
+class SerializeMultiDeviceIteratorOp : public OpKernel {
+ public:
+  static constexpr const char* const kExternalStatePolicy =
+      "external_state_policy";
+
+  SerializeMultiDeviceIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    if (ctx->HasAttr(kExternalStatePolicy)) {
+      int64 state_change_option;
+      OP_REQUIRES_OK(ctx,
+                     ctx->GetAttr(kExternalStatePolicy, &state_change_option));
+      external_state_policy_ =
+          SerializationContext::ExternalStatePolicy(state_change_option);
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) {
+    tensorflow::ResourceTagger tag(kTFDataResourceTag,
+                                   ctx->op_kernel().type_string());
+    const Tensor& resource_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
+                errors::InvalidArgument("resource_handle must be a scalar"));
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    MultiDeviceIterator* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    core::ScopedUnref unref_iterator(iterator_resource);
+    IteratorVariantSerializer serializer;
+    SerializationContext::Params params;
+    params.external_state_policy = external_state_policy_;
+    SerializationContext serialization_ctx(params);
+    OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(&serialization_ctx,
+                                                          iterator_resource));
+    Tensor* serialized_t;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, TensorShape({serializer.NumTensors()}),
+                                  &serialized_t));
+    OP_REQUIRES_OK(ctx, serializer.Serialize(serialized_t));
+  }
+
+ private:
+  SerializationContext::ExternalStatePolicy external_state_policy_ =
+      SerializationContext::ExternalStatePolicy::kWarn;
+};
+
+REGISTER_KERNEL_BUILDER(Name("SerializeMultiDeviceIterator").Device(DEVICE_CPU),
+                        SerializeMultiDeviceIteratorOp);
+
+class DeserializeMultiDeviceIteratorOp : public OpKernel {
+ public:
+  explicit DeserializeMultiDeviceIteratorOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) {
+    tensorflow::ResourceTagger tag(kTFDataResourceTag,
+                                   ctx->op_kernel().type_string());
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    MultiDeviceIterator* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    core::ScopedUnref unref_iterator(iterator_resource);
+    const Tensor* serialized_t;
+    OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));
+    IteratorVariantSerializer serializer;
+    OP_REQUIRES_OK(ctx, serializer.InitFromTensor(serialized_t));
+    OP_REQUIRES_OK(ctx,
+                   iterator_resource->Restore(ctx, serializer.GetReader()));
+  }
+};
+REGISTER_KERNEL_BUILDER(
+    Name("DeserializeMultiDeviceIterator").Device(DEVICE_CPU),
+    DeserializeMultiDeviceIteratorOp);
 class DeleteMultiDeviceIteratorOp : public OpKernel {
  public:
   explicit DeleteMultiDeviceIteratorOp(OpKernelConstruction* ctx)

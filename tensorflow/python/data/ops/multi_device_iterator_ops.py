@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import structure
@@ -33,11 +34,33 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training.saver import BaseSaverBuilder
+
+
+def _convert_external_state_policy_to_enum(external_state_policy):
+  if external_state_policy == "warn":
+    return distribute_options.ExternalStatePolicy.WARN
+  if external_state_policy == "ignore":
+    return distribute_options.ExternalStatePolicy.IGNORE
+  if external_state_policy == "fail":
+    return distribute_options.ExternalStatePolicy.FAIL
+  raise ValueError(
+      "Failed to convert {} to an instance of ExternalStatePolicy."
+      "Supported values include: 'warn', 'ignore' and 'fail'".format(
+          external_state_policy))
+
+
+def make_saveable_from_iterator(iterator, external_state_policy="fail"):
+
+  policy_enum = _convert_external_state_policy_to_enum(external_state_policy)
+  return _MultiDeviceIteratorSavable(  # pylint: disable=protected-access
+      iterator._iterator_resource,  # pylint: disable=protected-access
+      iterator._iterator_resource.name,  # pylint: disable=protected-access
+      external_state_policy=policy_enum)
 
 
 class _PerDeviceGenerator(dataset_ops.DatasetV2):
   """A `dummy` generator dataset."""
-
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
                source_device, element_spec):
     self._element_spec = element_spec
@@ -120,11 +143,11 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _remote_finalize_func(string_handle):
-      return functional_ops.remote_call(
-          target=source_device,
-          args=[string_handle] + finalize_func_concrete.captured_inputs,
-          Tout=[dtypes.int64],
-          f=finalize_func_concrete)
+      return functional_ops.remote_call(target=source_device,
+                                        args=[string_handle] +
+                                        finalize_func_concrete.captured_inputs,
+                                        Tout=[dtypes.int64],
+                                        f=finalize_func_concrete)
 
     self._finalize_func = _remote_finalize_func.get_concrete_function()
     self._finalize_captured_args = self._finalize_func.captured_inputs
@@ -154,7 +177,6 @@ class _ReincarnatedPerDeviceGenerator(dataset_ops.DatasetV2):
   Re-uses the functions from the provided per_device_dataset and just switches
   out the function argument corresponding to the incarnation_id.
   """
-
   def __init__(self, per_device_dataset, incarnation_id):
     # pylint: disable=protected-access
     self._element_spec = per_device_dataset.element_spec
@@ -196,7 +218,9 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
   ds = _ReincarnatedPerDeviceGenerator(prototype_ds, incarnation_id)
   if prefetch_buffer_size > 0:
     if experimental_slack:
-      ds = dataset_ops.PrefetchDataset(ds, prefetch_buffer_size, slack_period=1)
+      ds = dataset_ops.PrefetchDataset(ds,
+                                       prefetch_buffer_size,
+                                       slack_period=1)
     else:
       ds = ds.prefetch(prefetch_buffer_size)
   # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
@@ -210,7 +234,6 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
 
 class MultiDeviceIterator(object):
   """An iterator over multiple devices."""
-
   def __init__(self,
                dataset,
                devices,
@@ -307,8 +330,9 @@ class MultiDeviceIterator(object):
     ds = _ReincarnatedPerDeviceGenerator(ds, self._incarnation_id)
     if self._prefetch_buffer_size > 0:
       if self._experimental_slack:
-        ds = dataset_ops.PrefetchDataset(
-            ds, self._prefetch_buffer_size, slack_period=1)
+        ds = dataset_ops.PrefetchDataset(ds,
+                                         self._prefetch_buffer_size,
+                                         slack_period=1)
       else:
         ds = ds.prefetch(self._prefetch_buffer_size)
     # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
@@ -367,6 +391,34 @@ class MultiDeviceIterator(object):
   @property
   def element_spec(self):
     return self._dataset.element_spec
+
+  @property
+  def _iterator_resource(self):
+    return self._multi_device_iterator_resource
+
+
+class _MultiDeviceIteratorSavable(BaseSaverBuilder.SaveableObject):
+  """SaveableObject for saving/restoring multi device iterator state."""
+  def __init__(
+      self,
+      iterator_resource,
+      name,
+      external_state_policy=distribute_options.ExternalStatePolicy.FAIL):
+    serialized_iterator = gen_dataset_ops.serialize_multi_device_iterator(
+        iterator_resource, external_state_policy=external_state_policy.value)
+    specs = [
+        BaseSaverBuilder.SaveSpec(serialized_iterator,
+                                  "",
+                                  name + "_STATE",
+                                  device=iterator_resource.device)
+    ]
+    super(_MultiDeviceIteratorSavable, self).__init__(iterator_resource, specs,
+                                                      name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    with ops.colocate_with(self.op):
+      return gen_dataset_ops.deserialize_multi_device_iterator(
+          self.op, restored_tensors[0])
 
 
 class MultiDeviceIteratorResourceDeleter(object):
@@ -441,20 +493,17 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
     return c
 
   def _from_components(self, components):
-    return OwnedMultiDeviceIterator(
-        dataset=None,
-        devices=self._devices,
-        source_device=self._source_device,
-        components=components,
-        element_spec=self._element_spec)
+    return OwnedMultiDeviceIterator(dataset=None,
+                                    devices=self._devices,
+                                    source_device=self._source_device,
+                                    components=components,
+                                    element_spec=self._element_spec)
 
   @staticmethod
   def from_value(value):
     # pylint: disable=protected-access
-    return MultiDeviceIteratorSpec(
-        value._devices,
-        value._source_device,
-        value.element_spec)
+    return MultiDeviceIteratorSpec(value._devices, value._source_device,
+                                   value.element_spec)
 
 
 class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
@@ -466,7 +515,6 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
   `OwnedMultiDeviceIterator` appropriate for use in eager mode and inside of
   tf.functions.
   """
-
   def __init__(self,
                dataset=None,
                devices=None,
@@ -495,8 +543,9 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       mode.
     """
     if not context.executing_eagerly() and not ops.inside_function():
-      raise RuntimeError("OwnedMultiDeviceIterator is only supported inside of "
-                         "tf.function or when eager execution is enabled.")
+      raise RuntimeError(
+          "OwnedMultiDeviceIterator is only supported inside of "
+          "tf.function or when eager execution is enabled.")
     if devices is None:
       raise ValueError("`devices` must be provided")
     error_message = "Either `dataset` or both `components` and "

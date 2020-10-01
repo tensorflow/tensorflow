@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
-import numpy as np
+import os
 
+import numpy as np
+from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -36,13 +38,15 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import saver as saver_lib
 
 
 # TODO(b/121264236): Support v2 behavior for these tests.
 class MultiDeviceIteratorTest(test_base.DatasetTestBase,
                               parameterized.TestCase):
-
   @combinations.generate(
       combinations.times(test_base.v1_only_combinations(),
                          combinations.combine(num_inits=[0, 1, 42])))
@@ -216,8 +220,8 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     with session.Session(config=config) as sess:
       for i in range(1000):
         sess.run(init_op, feed_dict={epoch: i})
-        self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,
-                                                          elem_on_2]))
+        self.assertEqual([(i, 0), (i, 1)],
+                         self.evaluate([elem_on_1, elem_on_2]))
 
   @combinations.generate(test_base.v1_only_combinations())
   def testMultipleInitializationsEager(self):
@@ -337,6 +341,64 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
         self.assertEqual(i, self.evaluate(elem_on_1))
         self.assertEqual(i + 1, self.evaluate(elem_on_2))
+      with self.assertRaises(errors.OutOfRangeError):
+        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+        self.evaluate(elem_on_1)
+        self.evaluate(elem_on_2)
+
+  def _ckpt_path(self):
+    return os.path.join(self.get_temp_dir(), "iterator")
+
+  def _latest_ckpt(self):
+    return checkpoint_management.latest_checkpoint(self.get_temp_dir())
+
+  def _save(self, sess, saver):
+    saver.save(sess, self._ckpt_path())
+
+  def _restore(self, saver, sess):
+    sess.run(lookup_ops.tables_initializer())
+    saver.restore(sess, self._latest_ckpt())
+
+  @combinations.generate(combinations.combine(mode=["graph"]))
+  def testSaveIterator(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
+    dataset = dataset.skip(0)  # this should be optimized away
+    dataset = dataset.cache()
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.noop_elimination = True
+    dataset = dataset.with_options(options)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.test_session(config=config) as sess:
+      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          dataset, ["/cpu:1", "/cpu:2"], prefetch_buffer_size=0)
+      self.evaluate(multi_device_iterator.initializer)
+      for i in range(0, 5, 2):
+        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+        elem_on_1, elem_on_2 = (self.evaluate(elem_on_1),
+                                self.evaluate(elem_on_2))
+        print(elem_on_1, elem_on_2, flush=True)
+        self.assertEqual(i, elem_on_1)
+        self.assertEqual(i + 1, elem_on_2)
+      #Save
+      ops.add_to_collection(
+          ops.GraphKeys.SAVEABLE_OBJECTS,
+          multi_device_iterator_ops.make_saveable_from_iterator(
+              multi_device_iterator))
+      saver = saver_lib.Saver(allow_empty=True)
+      self._save(sess, saver)
+
+    with self.test_session(config=config) as sess:
+      self._restore(saver, sess)
+      for i in range(6, 10, 2):
+        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+        elem_on_1, elem_on_2 = (self.evaluate(elem_on_1),
+                                self.evaluate(elem_on_2))
+        print(elem_on_1, elem_on_2, flush=True)
+        self.assertEqual(i, elem_on_1)
+        self.assertEqual(i + 1, elem_on_2)
+
       with self.assertRaises(errors.OutOfRangeError):
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
         self.evaluate(elem_on_1)
@@ -465,6 +527,8 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={"CPU": 3, "GPU": 1}))
+  ops.enable_eager_execution(config=config_pb2.ConfigProto(device_count={
+      "CPU": 3,
+      "GPU": 1
+  }))
   test.main()

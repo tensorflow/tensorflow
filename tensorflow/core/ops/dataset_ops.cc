@@ -1001,4 +1001,18 @@ REGISTER_OP("MultiDeviceIteratorFromStringHandle")
     .Attr("output_shapes: list(shape) >= 0 = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("SerializeMultiDeviceIterator")
+    .Input("resource_handle: resource")
+    .Attr("external_state_policy: int = 0")
+    .Output("serialized: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    });
+
+REGISTER_OP("DeserializeMultiDeviceIterator")
+    .Input("resource_handle: resource")
+    .Input("serialized: variant")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 }  // namespace tensorflow
