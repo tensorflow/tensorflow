@@ -25,6 +25,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import googletest
+from tensorflow.python.framework import errors
 
 # This will be resolved to a tmp directory by `start_dispatch_server`.
 TMP_WORK_DIR = "tmp_work_dir_placeholder"
@@ -115,7 +116,16 @@ class TestCluster(object):
 
   # pylint: disable=protected-access
   def restart_dispatcher(self):
-    """Stops `dispatcher` and creates a new dispatcher with the same port."""
+    """Stops `dispatcher` and creates a new dispatcher with the same port.
+
+    When the dispatcher is restarted with `fault-tolerant_mode=False`,
+    the new dispatcher is unable to find the `dataset_id` of the already
+    created dataset and thus perpetually throws a warn message until it
+    times out. Thus, the test bed prevents this scenario.
+    """
+    if not self.dispatcher._config.fault_tolerant_mode:
+      raise ValueError(
+          "Trying to restart the dispatcher without fault-tolerance.")
     port = int(self.dispatcher_address().split(":")[1])
     self.dispatcher._stop()
     self.dispatcher = server_lib.DispatchServer(
