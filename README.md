@@ -47,6 +47,8 @@ Windows)*:
 
 ```
 $ pip install tensorflow
+Any type is install tensorflow:
+$pip i tensorflow
 ```
 
 A smaller CPU-only package is also available:
