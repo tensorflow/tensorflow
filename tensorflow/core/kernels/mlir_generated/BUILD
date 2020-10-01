@@ -178,8 +178,8 @@ gen_kernel_library(
     same_shape = "0,1",
     tile_size = "256",
     types = [
-        "f32",
-        "f64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )
