@@ -36,7 +36,6 @@ tf_py_test(
     srcs = ["scikit_learn_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
-    tfrt_enabled = True,
     deps = [
         ":wrappers",
         "//tensorflow/python:client_testlib",

@@ -551,7 +551,6 @@ tf_py_test(
         "no_oss",  # TODO(b/135021748) reenable
         "notsan",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

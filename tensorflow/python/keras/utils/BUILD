@@ -248,7 +248,6 @@ tf_py_test(
     size = "small",
     srcs = ["generic_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":generic_utils",
         "//tensorflow/python:client_testlib",

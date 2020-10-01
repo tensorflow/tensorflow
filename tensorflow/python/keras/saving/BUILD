@@ -137,7 +137,6 @@ tf_py_test(
         "no_oss",  # TODO(b/119349471): Re-enable
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

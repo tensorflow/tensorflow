@@ -92,7 +92,6 @@ tf_py_test(
     srcs = ["convert_to_constants_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -177,7 +176,6 @@ tf_py_test(
     srcs = ["model_architectures_test.py"],
     python_version = "PY3",
     shard_count = 16,
-    tfrt_enabled = True,
     deps = [
         ":model_architectures",
         "//tensorflow/python/keras",
