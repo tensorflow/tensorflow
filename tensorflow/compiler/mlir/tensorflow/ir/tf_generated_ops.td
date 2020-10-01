@@ -3565,6 +3565,24 @@ Quantization is called fake since the output is still in floating point.
   }];
 }
 
+def TF_FakeQuantWithMinMaxArgsGradientOp : TF_Op<"FakeQuantWithMinMaxArgsGradient", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Compute gradients for a FakeQuantWithMinMaxArgs operation.";
+
+  let arguments = (ins
+    F32Tensor:$gradients,
+    F32Tensor:$inputs,
+
+    DefaultValuedAttr<F32Attr, "-6.0f">:$min,
+    DefaultValuedAttr<F32Attr, "6.0f">:$max,
+    DefaultValuedAttr<I64Attr, "8">:$num_bits,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+  );
+
+  let results = (outs
+    F32Tensor:$backprops
+  );
+}
+
 def TF_FakeQuantWithMinMaxVarsOp : TF_Op<"FakeQuantWithMinMaxVars", [NoSideEffect]> {
   let summary = [{
 Fake-quantize the 'inputs' tensor of type float via global float scalars
@@ -3613,6 +3631,26 @@ values.
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_FakeQuantWithMinMaxVarsGradientOp : TF_Op<"FakeQuantWithMinMaxVarsGradient", [NoSideEffect]> {
+  let summary = "Compute gradients for a FakeQuantWithMinMaxVars operation.";
+
+  let arguments = (ins
+    F32Tensor:$gradients,
+    F32Tensor:$inputs,
+    F32Tensor:$min,
+    F32Tensor:$max,
+
+    DefaultValuedAttr<I64Attr, "8">:$num_bits,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+  );
+
+  let results = (outs
+    F32Tensor:$backprops_wrt_input,
+    F32Tensor:$backprop_wrt_min,
+    F32Tensor:$backprop_wrt_max
+  );
 }
 
 def TF_FakeQuantWithMinMaxVarsPerChannelOp : TF_Op<"FakeQuantWithMinMaxVarsPerChannel", [NoSideEffect]> {
@@ -4640,6 +4678,39 @@ tf.imag(input) ==> [4.75, 5.75]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_InTopKV2Op : TF_Op<"InTopKV2", [NoSideEffect]> {
+  let summary = "Says whether the targets are in the top `K` predictions.";
+
+  let description = [{
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
+
+More formally, let
+
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
+
+$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+  }];
+
+  let arguments = (ins
+    F32Tensor:$predictions,
+    TF_I32OrI64Tensor:$targets,
+    TF_I32OrI64Tensor:$k
+  );
+
+  let results = (outs
+    I1Tensor:$precision
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_InfeedDequeueOp : TF_Op<"InfeedDequeue", []> {
@@ -6967,6 +7038,34 @@ I.e., \\(y = -x\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_NextAfterOp : TF_Op<"NextAfter", [NoSideEffect, ResultsBroadcastableShape]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = [{
+Returns the next representable value of `x1` in the direction of `x2`, element-wise.
+  }];
+
+  let description = [{
+This operation returns the same result as the C++ std::nextafter function.
+
+It can also return a subnormal number.
+
+@compatibility(cpp)
+Equivalent to C++ std::nextafter function.
+@end_compatibility
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$x1,
+    TF_F32OrF64Tensor:$x2
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_NoOp : TF_Op<"NoOp", [NoSideEffect]> {
