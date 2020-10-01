@@ -24,8 +24,6 @@ cd "${ROOT_DIR}"
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-
 TARGET=cortex_m_gcc_generic
 
 # TODO(b/143715361): downloading first to allow for parallel builds.
