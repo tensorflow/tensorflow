@@ -174,6 +174,17 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "conj",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "cos",
     same_shape = "0,1",
     tile_size = "256",
