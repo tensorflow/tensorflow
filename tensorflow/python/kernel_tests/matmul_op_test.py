@@ -70,13 +70,13 @@ def _GetTransposedMatrices(x, x_name, kwargs):
     return x
 
 class MatMulTest(test_lib.TestCase):
-  pass # Filled in below
+  pass  # Filled in below
 
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
   @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
-    if a_np_.dtype==dtypes.bfloat16.as_numpy_dtype:
+    if a_np_.dtype == dtypes.bfloat16.as_numpy_dtype:
       # converting it back to float32 to avoid precision error
       a_np_fp32 = a_np_.astype(np.float32)
       b_np_fp32 = b_np_.astype(np.float32)
@@ -128,7 +128,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
   return Test
 
 class MatMulGradientTest(test_lib.TestCase):
-  pass # Filled in below
+  pass  # Filled in below
 
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
