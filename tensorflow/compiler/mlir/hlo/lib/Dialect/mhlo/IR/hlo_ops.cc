@@ -185,8 +185,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
       return failure();
 
     const auto& dnums = gather.dimension_numbers();
-    if (dnums.collapsed_slice_dims().getNumElements() != 0 ||
-        dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
+    if (dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
       return failure();
 
     // TODO(tberghammer): Remove when the verifier catches this case what is
@@ -206,11 +205,35 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     }
 
     llvm::SmallVector<int64_t, 8> slice_stride(slice_end.size(), 1);
-    rewriter.replaceOpWithNewOp<SliceOp>(
-        gather, gather.getType(), gather.getOperand(0),
+    llvm::SmallVector<int64_t, 8> slice_shape(slice_end.size());
+    for (int64_t i = 0; i < slice_end.size(); ++i) {
+      slice_shape[i] = slice_end[i] - slice_start[i];
+    }
+    Type element_type = gather.getType().cast<TensorType>().getElementType();
+    auto slice_type = RankedTensorType::get(slice_shape, element_type);
+    Value result = rewriter.create<SliceOp>(
+        gather.getLoc(), slice_type, gather.getOperand(0),
         GetI64ElementsAttr(slice_start, &rewriter),
         GetI64ElementsAttr(slice_end, &rewriter),
         GetI64ElementsAttr(slice_stride, &rewriter));
+
+    if (dnums.collapsed_slice_dims().getNumElements() > 0) {
+      auto collapsed_slice_dims = llvm::to_vector<8>(llvm::map_range(
+          dnums.collapsed_slice_dims().getIntValues(),
+          [](const llvm::APInt& i) { return i.getSExtValue(); }));
+      llvm::SmallVector<int64_t, 8> reshape_shape;
+      for (int64_t i = 0; i < slice_shape.size(); ++i) {
+        if (llvm::count(collapsed_slice_dims, i) == 0) {
+          reshape_shape.push_back(slice_shape[i]);
+        }
+      }
+      auto reshape_type = RankedTensorType::get(reshape_shape, element_type);
+      result =
+          rewriter.create<ReshapeOp>(gather.getLoc(), reshape_type, result);
+    }
+
+    result.setType(gather.getType());
+    rewriter.replaceOp(gather, result);
     return success();
   }
 };
