@@ -1121,17 +1121,8 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
 }
 
 Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
-  string data_format_str;
-  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
-  TensorFormat data_format;
-  if (!FormatFromString(data_format_str, &data_format)) {
-    return errors::InvalidArgument("Invalid data format string: ",
-                                   data_format_str);
-  }
-  const int rank =
-      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
   ShapeHandle x;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &x));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
 
   bool is_training;
   TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
@@ -1140,8 +1131,14 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
     exponential_avg_factor = 1.0f;  // default value
   }
   int number_inputs = (is_training && exponential_avg_factor == 1.0f) ? 3 : 5;
-
-  int channel_dim_index = GetTensorFeatureDimIndex(rank, data_format);
+  string data_format_str;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return errors::InvalidArgument("Invalid data format string: ",
+                                   data_format_str);
+  }
+  int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
   DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
 
   // covers scale, offset, and if is_training is false, mean, variance
@@ -1194,6 +1191,13 @@ Status FusedBatchNormExShape(shape_inference::InferenceContext* c) {
 }
 
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
+  ShapeHandle y_backprop;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
+
+  bool is_training;
+  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
   string data_format_str;
   TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
   TensorFormat data_format;
@@ -1201,17 +1205,7 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
     return errors::InvalidArgument("Invalid data format string: ",
                                    data_format_str);
   }
-  const int rank =
-      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
-  ShapeHandle y_backprop;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &y_backprop));
-  ShapeHandle x;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), rank, &x));
-
-  bool is_training;
-  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-
-  int channel_dim_index = GetTensorFeatureDimIndex(rank, data_format);
+  int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
   DimensionHandle channel_dim = c->Dim(y_backprop, channel_dim_index);
   TF_RETURN_IF_ERROR(
       c->Merge(channel_dim, c->Dim(x, channel_dim_index), &channel_dim));

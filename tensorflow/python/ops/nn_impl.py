@@ -1585,7 +1585,7 @@ def fused_batch_norm(
   (http://arxiv.org/abs/1502.03167).
 
   Args:
-    x: Input `Tensor` of 4 or 5 dimensions.
+    x: Input `Tensor` of 4 dimensions.
     scale: A `Tensor` of 1 dimension for scaling.
     offset: A `Tensor` of 1 dimension for bias.
     mean: A `Tensor` of 1 dimension for population mean. The shape and meaning
@@ -1611,8 +1611,7 @@ def fused_batch_norm(
             Variance must be a `Tensor` of the same shape as scale containing
             the exponential running variance.
     epsilon: A small float number added to the variance of x.
-    data_format: The data format for x. Support "NHWC" (default) or "NCHW" for
-                 4D tenors and "NDHWC" or "NCDHW" for 5D tensors.
+    data_format: The data format for x. Either "NHWC" (default) or "NCHW".
     is_training: A bool value to specify if the operation is used for
                  training or inference.
     name: A name for this operation (optional).
@@ -1623,7 +1622,7 @@ def fused_batch_norm(
                             returned.
 
   Returns:
-    y: A 4D or 5D Tensor for the normalized, scaled, offsetted x.
+    y: A 4D Tensor for the normalized, scaled, offsetted x.
     running_mean: A 1D Tensor for the exponential running mean of x.
                   The output value is (1 - exponential_avg_factor) * mean +
                   exponential_avg_factor * batch_mean), where batch_mean
