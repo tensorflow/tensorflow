@@ -59,10 +59,10 @@ void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {
   // 3. Sort each plane of the XSpace
   SortXSpace(space);
   // 4. Grouping (i.e. marking step number) events in the XSpace.
-  GroupMetadataMap group_metadata_map;
-  GroupTfEvents(space, &group_metadata_map);
+  EventForest event_forest;
+  GroupTfEvents(space, &event_forest);
   // 5. Generated miscellaneous derived time lines for device planes.
-  GenerateDerivedTimeLines(group_metadata_map, space);
+  GenerateDerivedTimeLines(event_forest.GetGroupMetadataMap(), space);
 }
 
 }  // namespace profiler

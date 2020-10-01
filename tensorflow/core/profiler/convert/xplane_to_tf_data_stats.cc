@@ -247,8 +247,10 @@ void ProcessInputPipelines(
 
 TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane) {
   TfDataStats tf_data_stats;
-  EventForest event_forest(CreateTfXPlaneVisitor, host_plane);
-  event_forest.ProcessTfDataEvents();
+  EventForest event_forest;
+  event_forest.AddPlanes(CreateTfXPlaneVisitor, {host_plane});
+  event_forest.ConnectEvents();
+  event_forest.ConnectTfDataEvents();
   absl::flat_hash_set<int64> device_input_pipeline_ids;
   absl::flat_hash_map<int64, std::vector<EventNode*>> root_iterator_event_map;
   ProcessEventForest(event_forest, &device_input_pipeline_ids,
