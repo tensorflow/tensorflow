@@ -544,7 +544,6 @@ cuda_py_test(
         "no_cuda11",
         "no_windows_gpu",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

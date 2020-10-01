@@ -433,7 +433,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_argument_naming_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":backprop",
         ":def_function",
@@ -874,7 +874,7 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",

@@ -134,7 +134,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adamax_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -156,7 +156,7 @@ cuda_py_test(
     srcs = ["adadelta_test.py"],
     shard_count = 4,
     tags = ["no_rocm"],
-    tfrt_enabled = True,
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -298,7 +298,7 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     shard_count = 2,
     tags = ["no_rocm"],
-    tfrt_enabled = True,
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:array_ops",
