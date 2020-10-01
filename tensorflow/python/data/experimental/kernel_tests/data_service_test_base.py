@@ -25,7 +25,6 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import googletest
-from tensorflow.python.framework import errors
 
 # This will be resolved to a tmp directory by `start_dispatch_server`.
 TMP_WORK_DIR = "tmp_work_dir_placeholder"
