@@ -2407,15 +2407,12 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
   // This speed up computations in some cases.
   bool few_waves = false;
   auto few_waves_allow_instr = [](const HloInstruction* instr) {
-    if (instr->IsElementwise() ||
+    return instr->IsElementwise() ||
         instr->opcode() == HloOpcode::kParameter ||
         // We need to make the codegen broadcast aware before enabling
         // more broadcast pattern.
         (instr->opcode() == HloOpcode::kBroadcast &&
-         instr->dimensions().empty())) {
-      return true;
-    }
-    return false;
+         instr->dimensions().empty());
   };
   if (hlo.opcode() == HloOpcode::kFusion) {
     few_waves = absl::c_all_of(
