@@ -289,9 +289,14 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
     evaluate_fusion_computation(producer);
   }
 
-  // Check that the code duplication has at most a factor of 15 (where 15 is an
-  // arbitrary constant that seems to work).
-  return index_usage_count[producer] > 15;
+  for (const auto& entry : index_usage_count) {
+    // Check that the code duplication has at most a factor of 15 (where 15 is
+    // an arbitrary constant that seems to work).
+    if (entry.second > 15) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace xla
