@@ -60,34 +60,6 @@ class TPUEmbeddingOptimizerTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(1., opt.clip_gradient_max)
 
 
-class ConfigTest(test.TestCase):
-
-  def test_table_config_repr(self):
-    table = tpu_embedding_v2_utils.TableConfig(
-        vocabulary_size=2, dim=4, initializer=None,
-        combiner='sum', name='table')
-
-    self.assertEqual(
-        repr(table),
-        'TableConfig(vocabulary_size=2, dim=4, initializer=None, '
-        'optimizer=None, combiner=\'sum\', name=\'table\')')
-
-  def test_feature_config_repr(self):
-    table = tpu_embedding_v2_utils.TableConfig(
-        vocabulary_size=2, dim=4, initializer=None,
-        combiner='sum', name='table')
-
-    feature_config = tpu_embedding_v2_utils.FeatureConfig(
-        table=table, name='feature')
-
-    self.assertEqual(
-        repr(feature_config),
-        'FeatureConfig(table=TableConfig(vocabulary_size=2, dim=4, '
-        'initializer=None, optimizer=None, combiner=\'sum\', name=\'table\'), '
-        'max_sequence_length=0, name=\'feature\')'
-    )
-
-
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
   test.main()
