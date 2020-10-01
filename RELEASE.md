@@ -293,6 +293,10 @@
 
     *   `tf.debugging.assert_shapes()` now works on `SparseTensor`s (#36268).
 
+*    `TensorRT`
+    *    Add parameter allow_mixed_precision_on_unconverted_ops to
+         TrtConversionParams.
+
 *   Other:
 
     *   We have replaced uses of "whitelist" and "blacklist" with "allowlist"
