@@ -643,6 +643,19 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('tuple',
                     f.experimental_get_compiler_ir(l)())
 
+  def testConstantOnWrongDevice(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      s = math_ops.cast(random_ops.random_normal([2]), dtypes.int32)
+      l = random_ops.random_normal([s[0] * s[1]])
+
+      @def_function.function(experimental_compile=True)
+      def f(l):
+        return array_ops.reshape(l, s)
+
+      self.assertIn('tuple',
+                    f.experimental_get_compiler_ir(l)())
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
