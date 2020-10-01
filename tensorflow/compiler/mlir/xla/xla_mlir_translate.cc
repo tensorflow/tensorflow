@@ -124,8 +124,8 @@ static StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
-static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
-    mlir::ModuleOp module, llvm::raw_ostream& output) {
+static mlir::LogicalResult MlirHloToHloTextTranslateFunctionImpl(
+    mlir::ModuleOp module, llvm::raw_ostream& output, bool with_layouts) {
   if (!module) return mlir::failure();
 
   HloProto hloProto;
@@ -146,9 +146,8 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 
   HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
 
-  // We don't interpret or use layouts
   output << hlo_module->ToString(
-      HloPrintOptions().set_include_layout_in_shapes(false));
+      HloPrintOptions().set_include_layout_in_shapes(with_layouts));
 
   // Output alias information as comments in the HLO text.
   hlo_module->input_output_alias_config().ForEachAlias(
@@ -160,6 +159,18 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
       });
 
   return mlir::success();
+}
+
+static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
+    mlir::ModuleOp module, llvm::raw_ostream& output) {
+  return MlirHloToHloTextTranslateFunctionImpl(module, output,
+                                               /*with_layouts=*/false);
+}
+
+static mlir::LogicalResult MlirHloToHloTextWithLayoutsTranslateFunction(
+    mlir::ModuleOp module, llvm::raw_ostream& output) {
+  return MlirHloToHloTextTranslateFunctionImpl(module, output,
+                                               /*with_layouts=*/true);
 }
 
 }  // namespace xla
@@ -175,6 +186,10 @@ static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTextTranslate(
     "mlir-hlo-to-hlo-text", xla::MlirHloToHloTextTranslateFunction,
     RegisterInputDialects);
+
+static mlir::TranslateFromMLIRRegistration MlirHloToHloTextWithLayoutsTranslate(
+    "mlir-hlo-to-hlo-text-with-layouts",
+    xla::MlirHloToHloTextWithLayoutsTranslateFunction, RegisterInputDialects);
 
 static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
     "hlo-to-mlir-hlo", xla::HloToMlirHloTranslateFunction);

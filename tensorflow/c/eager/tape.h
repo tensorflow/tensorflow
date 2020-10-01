@@ -100,7 +100,8 @@ class VSpace {
       std::vector<Gradient*>* result) const = 0;
 
   // Builds a tensor filled with ones with the same shape and dtype as `t`.
-  virtual Status BuildOnesLike(TapeTensor t, Gradient** result) const = 0;
+  virtual Status BuildOnesLike(const TapeTensor& t,
+                               Gradient** result) const = 0;
 
   // Looks up the ID of a Gradient.
   virtual int64 TensorId(Gradient* tensor) const = 0;

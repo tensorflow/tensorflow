@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <climits>
 
-#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_time.h"
 
 namespace micro_benchmark {

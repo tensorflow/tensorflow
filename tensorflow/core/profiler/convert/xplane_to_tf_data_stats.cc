@@ -57,7 +57,7 @@ void SetIteratorMetadata(int64 id, const XEventVisitor& event,
     metadata->set_parent_id(parent_id_stat->IntValue());
   }
   metadata->set_name(IteratorName(event.Name()));
-  metadata->set_long_name(event.Name());
+  metadata->set_long_name(event.Name().data(), event.Name().size());
   metadata->set_is_async(IsAsyncIterator(metadata->name()));
   // TODO(b/161831651): Set params.
 }
@@ -92,8 +92,7 @@ void ProcessEventForest(const EventForest& event_forest,
     if (!iterator_id_stat.has_value()) continue;
     int64 iterator_id = iterator_id_stat->IntValue();
     auto [it, inserted] = tf_data_stats->mutable_iterator_metadata()->insert(
-        protobuf::MapPair<int64, IteratorMetadata>(iterator_id,
-                                                   IteratorMetadata()));
+        {iterator_id, IteratorMetadata()});
     IteratorMetadata& metadata = it->second;
     if (inserted) {
       // First time processing this iterator.
@@ -115,8 +114,7 @@ void ProcessEventForest(const EventForest& event_forest,
     if (!iterator_id_stat.has_value()) continue;
     int64 iterator_id = iterator_id_stat->IntValue();
     auto [it, inserted] = tf_data_stats->mutable_iterator_metadata()->insert(
-        protobuf::MapPair<int64, IteratorMetadata>(iterator_id,
-                                                   IteratorMetadata()));
+        {iterator_id, IteratorMetadata()});
     IteratorMetadata& metadata = it->second;
     if (inserted) {
       // First time processing this iterator.
@@ -154,7 +152,7 @@ void ProcessIteratorEvent(const EventNode& iterator_event,
   if (!iterator_id_stat.has_value()) return;
   int64 iterator_id = iterator_id_stat->IntValue();
   auto [it, inserted] = input_pipeline_stat->mutable_iterator_stats()->insert(
-      protobuf::MapPair<int64, IteratorStat>(iterator_id, IteratorStat()));
+      {iterator_id, IteratorStat()});
   IteratorStat& iterator_stat = it->second;
   if (inserted) {
     iterator_stat.set_id(iterator_id);
@@ -183,8 +181,9 @@ void ProcessIteratorEvent(const EventNode& iterator_event,
 void SetBottleneckIteratorId(InputPipelineStat* input_pipeline_stat) {
   int64 bottleneck_iterator_id = 0;
   int64 max_self_time = 0;
-  for (const auto& [id, iterator_stat] :
-       input_pipeline_stat->iterator_stats()) {
+  for (const auto& pair : input_pipeline_stat->iterator_stats()) {
+    const auto& id = pair.first;
+    const auto& iterator_stat = pair.second;
     if (iterator_stat.is_blocking() &&
         iterator_stat.self_time_ps() > max_self_time) {
       bottleneck_iterator_id = id;
@@ -199,8 +198,7 @@ void ProcessInputPipelines(
     absl::flat_hash_map<int64, std::vector<EventNode*>>*
         root_iterator_event_map,
     TfDataStats* tf_data_stats) {
-  protobuf::Map<int64, InputPipelineStats>* input_pipelines =
-      tf_data_stats->mutable_input_pipelines();
+  auto* input_pipelines = tf_data_stats->mutable_input_pipelines();
   uint64 num_host_input_pipelines = 0;
   uint64 num_device_input_pipelines = 0;
   for (auto& [root_iterator_id, root_iterator_events] :
@@ -247,8 +245,10 @@ void ProcessInputPipelines(
 
 TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane) {
   TfDataStats tf_data_stats;
-  EventForest event_forest(CreateTfXPlaneVisitor, host_plane);
-  event_forest.ProcessTfDataEvents();
+  EventForest event_forest;
+  event_forest.AddPlanes(CreateTfXPlaneVisitor, {host_plane});
+  event_forest.ConnectEvents();
+  event_forest.ConnectTfDataEvents();
   absl::flat_hash_set<int64> device_input_pipeline_ids;
   absl::flat_hash_map<int64, std::vector<EventNode*>> root_iterator_event_map;
   ProcessEventForest(event_forest, &device_input_pipeline_ids,

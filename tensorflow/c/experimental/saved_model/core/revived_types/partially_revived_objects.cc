@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/revived_types/partially_revived_objects.h"
 
+#include <algorithm>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/types/span.h"
@@ -30,13 +32,25 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function_revival_state.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_signature_def_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_signature_def_function_revival_state.h"
+#include "tensorflow/c/experimental/saved_model/core/signature_def_function_metadata.h"
+#include "tensorflow/c/experimental/saved_model/core/tensor_spec.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 
 namespace {
+
+using StructuredValueDictEntry =
+    protobuf::MapPair<std::string, StructuredValue>;
+
+using NamedParamMap =
+    gtl::FlatMap<StringPiece, const TensorSpecProto*, StringPieceHasher>;
 
 Status AssertAllCreateResourceFunctionsHaveNoCaptures(
     const PartiallyRevivedObjects& objects) {
@@ -124,6 +138,142 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
   }
 }
 
+std::vector<SignatureDefParam> SignatureDefParamsFromNamedParamMap(
+    const NamedParamMap& params) {
+  // The underlying functiondef associated with the SignatureDef has
+  // nest.flattened inputs and outputs, which are sorted by string key.
+  std::vector<SignatureDefParam> result;
+  result.reserve(params.size());
+  for (const auto& named_param : params) {
+    result.push_back(SignatureDefParam(std::string(named_param.first),
+                                       TensorSpec(*named_param.second)));
+  }
+  std::sort(result.begin(), result.end(),
+            [](const SignatureDefParam& x, const SignatureDefParam& y) {
+              return x.name() < y.name();
+            });
+
+  return result;
+}
+
+// SignatureDefArgsFromInputs takes the "canonicalized_input_signature"
+// field of a SavedConcreteFunction, ensures it conforms to the structure of
+// tuple(tuple(), dict<string,TensorSpec>()), and "returns" a list of
+// SignatureDefParams of the SignatureDefFunction's arguments.
+Status SignatureDefArgsFromInputs(
+    const StructuredValue& canonicalized_input_signature,
+    std::vector<SignatureDefParam>* out) {
+  // Note(bmzhao): canonicalized_input_signature should be a tuple of
+  // (args, kwargs), where args is an empty tuple, and kwargs is a dictionary of
+  // string keys to TensorSpecs.
+  if (!canonicalized_input_signature.has_tuple_value()) {
+    return errors::FailedPrecondition(
+        "SignatureDefFunction's canonicalized_input_signature should be "
+        "of form tuple(tuple(), dict()), but was instead: \n",
+        canonicalized_input_signature.DebugString());
+  }
+
+  const TupleValue& args_kwargs_tuple =
+      canonicalized_input_signature.tuple_value();
+  if (args_kwargs_tuple.values_size() != 2) {
+    return errors::FailedPrecondition(
+        "SignatureDefFunction's canonicalized_input_signature should be "
+        "a tuple of two elements (args, kwargs), but was instead: \n",
+        args_kwargs_tuple.DebugString());
+  }
+
+  const StructuredValue& args = args_kwargs_tuple.values(0);
+  if (!args.has_tuple_value() || !args.tuple_value().values().empty()) {
+    return errors::FailedPrecondition(
+        "SignatureDefFunction's canonicalized_input_signature's args"
+        "should be an empty tuple, but instead got: \n",
+        args.DebugString());
+  }
+
+  const StructuredValue& kwargs = args_kwargs_tuple.values(1);
+  if (!kwargs.has_dict_value()) {
+    return errors::FailedPrecondition(
+        "SignatureDefFunction's canonicalized_input_signature's kwargs"
+        "should be a dictionary, but instead got: \n",
+        kwargs.DebugString());
+  }
+
+  const DictValue& kwargs_dict = kwargs.dict_value();
+  NamedParamMap result;
+  result.reserve(kwargs_dict.fields_size());
+
+  for (const auto& key_value : kwargs_dict.fields()) {
+    const std::string& key = key_value.first;
+    const StructuredValue& value = key_value.second;
+    if (!value.has_tensor_spec_value()) {
+      return errors::FailedPrecondition(
+          "SignatureDefFunction's canonicalized_input_signature's kwargs"
+          "dictionary contained a non-tensorspec value for key-value pair: \n",
+          "Key: ", key, "Value: \n", value.DebugString());
+    }
+    result[key] = &value.tensor_spec_value();
+  }
+
+  *out = SignatureDefParamsFromNamedParamMap(result);
+
+  return Status();
+}
+
+// SignatureDefReturnsFromOutputs takes the "output_signature" field of a
+// SavedConcreteFunction, ensures it conforms to the structure of
+// dict<string,TensorSpec>(), and "returns" a list of SignatureDefParams of the
+// SignatureDefFunction's returns.
+Status SignatureDefReturnsFromOutputs(const StructuredValue& output_signature,
+                                      std::vector<SignatureDefParam>* out) {
+  if (!output_signature.has_dict_value()) {
+    return errors::FailedPrecondition(
+        "SignatureDefFunction's output_signature must be a dictionary, but "
+        "instead got: ",
+        output_signature.DebugString());
+  }
+
+  const DictValue& output_dict = output_signature.dict_value();
+  NamedParamMap result;
+  result.reserve(output_dict.fields_size());
+
+  for (const auto& key_value : output_dict.fields()) {
+    const std::string& key = key_value.first;
+    const StructuredValue& value = key_value.second;
+    if (!value.has_tensor_spec_value()) {
+      return errors::FailedPrecondition(
+          "SignatureDefFunction's output_signature dictionary contained a "
+          "non-tensorspec value for key-value pair: \n",
+          "Key: ", key, "Value: \n", value.DebugString());
+    }
+    result[key] = &value.tensor_spec_value();
+  }
+  *out = SignatureDefParamsFromNamedParamMap(result);
+
+  return Status();
+}
+
+// The implementation takes advantage of the fact that SignatureDefFunction's
+// "traced" Signature wrapper function always has inputs/outputs of dictionaries
+// https://github.com/tensorflow/tensorflow/blob/53cdd5e87c423b195f33775753273286fd5a1a65/tensorflow/python/saved_model/signature_serialization.py#L119-L126
+// https://github.com/tensorflow/tensorflow/blob/53cdd5e87c423b195f33775753273286fd5a1a65/tensorflow/python/saved_model/signature_serialization.py#L153-L178
+// Additionally, we take advantage of the fact that the SignatureDefFunction's
+// associated functiondef has lexicographically ordered inputs/outputs due to
+// nest.flatten.
+Status LoadSignatureDefFunctionMetadata(
+    const SavedConcreteFunction& saved_concrete_function,
+    SignatureDefFunctionMetadata* out) {
+  std::vector<SignatureDefParam> args;
+  TF_RETURN_IF_ERROR(SignatureDefArgsFromInputs(
+      saved_concrete_function.canonicalized_input_signature(), &args));
+
+  std::vector<SignatureDefParam> rets;
+  TF_RETURN_IF_ERROR(SignatureDefReturnsFromOutputs(
+      saved_concrete_function.output_signature(), &rets));
+
+  *out = SignatureDefFunctionMetadata(std::move(args), std::move(rets));
+  return Status();
+}
+
 // This function finds the necessary captures, then forwards to the builder
 // method
 Status CreateConcreteFunction(ImmediateExecutionContext* ctx,
@@ -162,10 +312,14 @@ Status CreateSignatureDefFunction(
                                             &capture_handle));
     captures.push_back(capture_handle);
   }
-  // TODO(bmzhao): Create Metadata here
+
+  SignatureDefFunctionMetadata metadata;
+  TF_RETURN_IF_ERROR(LoadSignatureDefFunctionMetadata(
+      *builder.saved_concrete_func, &metadata));
+
   return TFSignatureDefFunction::Create(/*function_def=*/builder.fdef,
                                         /*captures=*/std::move(captures),
-                                        /*metadata=*/{},
+                                        /*metadata=*/std::move(metadata),
                                         /*ctx=*/ctx,
                                         /*out=*/out);
 }
@@ -378,6 +532,7 @@ Status PartiallyRevivedObjects::Build(ImmediateExecutionContext* ctx,
   revived->variables = std::move(variables);
   revived->assets = std::move(assets);
   revived->constants = std::move(constants);
+  revived->signatures_map = std::move(signatures_map);
 
   // 3b. Move over resources.
   TF_RETURN_IF_ERROR(BuildResources(ctx, obj_graph, this, revived));

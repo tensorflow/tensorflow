@@ -303,7 +303,9 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     try:
       config.set_device_policy('silent')
       config.set_soft_device_placement(True)
-      cpu_tensor = constant_op.constant(1.0)
+      # Avoid the TensorHandle cache hit.
+      # TODO(b/169790439): include Context to the TensorHandle cache.
+      cpu_tensor = constant_op.constant(1.1)
       result = cpu_tensor + cpu_tensor
       self.assertEqual(result.device,
                        '/job:localhost/replica:0/task:0/device:GPU:0')

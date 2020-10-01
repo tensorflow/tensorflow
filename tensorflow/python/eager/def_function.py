@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
@@ -985,7 +986,7 @@ class Function(object):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    canon_args, _, _, _ = \
+    _, _, _, filtered_flat_args = \
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
@@ -996,10 +997,14 @@ class Function(object):
         stage: Stage at which to return the IR. Allowed values are 'hlo' and
         'optimized_hlo'.
       """
+      # TODO(cheshire): This is a hack to get the current "preferred" device,
+      # there is no current API to get it otherwise.
+      device = random_ops.random_normal([]).device
       return context.context().get_compiler_ir(
+          device_name=device,
           stage=stage,
           function_name=fn_name,
-          args=list(canon_args) + concrete_fn.captured_inputs)
+          args=list(filtered_flat_args) + concrete_fn.captured_inputs)
 
     return compiler_ir_generator
 

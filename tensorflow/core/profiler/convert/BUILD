@@ -627,6 +627,9 @@ tf_cc_test(
     name = "xplane_to_tf_data_stats_test",
     size = "small",
     srcs = ["xplane_to_tf_data_stats_test.cc"],
+    tags = [
+        "no_oss",  # b/169705709
+    ],
     deps = [
         ":xplane_to_tf_data_stats",
         "//tensorflow/core:test",

@@ -47,13 +47,18 @@ namespace xla {
 
 class XlaBuilder;
 class XlaOp;
+class HloInstruction;
 
 namespace internal {
 
-XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
-                            absl::Span<const XlaOp> operands,
-                            absl::string_view fusion_kind,
-                            const XlaComputation& fused_computation);
+struct XlaBuilderFriend {
+  static XlaOp BuildFusion(XlaBuilder* builder,
+                           absl::Span<const XlaOp> operands,
+                           absl::string_view fusion_kind,
+                           const XlaComputation& fused_computation);
+
+  static HloInstructionProto* GetInstruction(XlaOp op);
+};
 
 }  // namespace internal
 
@@ -107,6 +112,7 @@ class XlaOp {
 
   friend class XlaBuilder;
   friend class MlirHloBuilder;
+  friend struct internal::XlaBuilderFriend;
 
   // < 0 means "invalid handle".
   int64 handle_;
@@ -1306,9 +1312,7 @@ class XlaBuilder {
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
 
-  friend XlaOp internal::XlaBuilderBuildFusion(
-      XlaBuilder* builder, absl::Span<const XlaOp> operands,
-      absl::string_view fusion_kind, const XlaComputation& fused_computation);
+  friend struct internal::XlaBuilderFriend;
 };
 
 // RAII-style object: sets the current sharding assignment in builder on

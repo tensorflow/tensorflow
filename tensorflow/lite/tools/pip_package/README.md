@@ -98,6 +98,12 @@ tensorflow/tools/ci_build/ci_build.sh PI-PYTHON38 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```
 
+### Native build for Windows
+
+```sh
+bash tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh windows
+```
+
 ## Enable TF OP support (Flex delegate)
 
 If you want to use TF ops with Python API, you need to enable flex support.

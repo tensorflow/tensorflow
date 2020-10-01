@@ -2791,6 +2791,29 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
   }
 
   {
+    HloInstruction *a, *s1, *s2;
+    // Mul(Mul(a, brodcast(scalar1)), broadcast(scalar2)) =>
+    // Mul(a, broadcast(scalar1*scalar2))
+    if (Match(multiply,
+              m::MultiplyAnyOrder(m::MultiplyAnyOrder(m::NonConstant(&a),
+                                                      m::Broadcast(m::Op(&s1))),
+                                  m::Broadcast(m::Op(&s2))))) {
+      if (ShapeUtil::IsScalar(s1->shape()) &&
+          ShapeUtil::IsScalar(s2->shape())) {
+        TF_ASSIGN_OR_RETURN(auto* product_of_constants,
+                            MakeBinaryHlo(HloOpcode::kMultiply, s1, s2));
+        product_of_constants =
+            computation_->AddInstruction(HloInstruction::CreateBroadcast(
+                multiply->shape(), product_of_constants, {}));
+        return ReplaceWithNewInstruction(
+            multiply, HloInstruction::CreateBinary(multiply->shape(),
+                                                   HloOpcode::kMultiply, a,
+                                                   product_of_constants));
+      }
+    }
+  }
+
+  {
     HloInstruction *a, *b, *constant, *op;
     // Mul(Mul(a, constant1), Broadcast(b)) =>
     // Mul(Broadcast(Mul(b, constant1), a))

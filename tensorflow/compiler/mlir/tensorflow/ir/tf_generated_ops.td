@@ -3242,8 +3242,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
-              "Value  y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -3389,8 +3388,7 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, "
-              "Value  dim">
+    OpBuilder<"Value condition, Value dim">
   ];
 }
 
@@ -3567,6 +3565,24 @@ Quantization is called fake since the output is still in floating point.
   }];
 }
 
+def TF_FakeQuantWithMinMaxArgsGradientOp : TF_Op<"FakeQuantWithMinMaxArgsGradient", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Compute gradients for a FakeQuantWithMinMaxArgs operation.";
+
+  let arguments = (ins
+    F32Tensor:$gradients,
+    F32Tensor:$inputs,
+
+    DefaultValuedAttr<F32Attr, "-6.0f">:$min,
+    DefaultValuedAttr<F32Attr, "6.0f">:$max,
+    DefaultValuedAttr<I64Attr, "8">:$num_bits,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+  );
+
+  let results = (outs
+    F32Tensor:$backprops
+  );
+}
+
 def TF_FakeQuantWithMinMaxVarsOp : TF_Op<"FakeQuantWithMinMaxVars", [NoSideEffect]> {
   let summary = [{
 Fake-quantize the 'inputs' tensor of type float via global float scalars
@@ -3615,6 +3631,26 @@ values.
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_FakeQuantWithMinMaxVarsGradientOp : TF_Op<"FakeQuantWithMinMaxVarsGradient", [NoSideEffect]> {
+  let summary = "Compute gradients for a FakeQuantWithMinMaxVars operation.";
+
+  let arguments = (ins
+    F32Tensor:$gradients,
+    F32Tensor:$inputs,
+    F32Tensor:$min,
+    F32Tensor:$max,
+
+    DefaultValuedAttr<I64Attr, "8">:$num_bits,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+  );
+
+  let results = (outs
+    F32Tensor:$backprops_wrt_input,
+    F32Tensor:$backprop_wrt_min,
+    F32Tensor:$backprop_wrt_max
+  );
 }
 
 def TF_FakeQuantWithMinMaxVarsPerChannelOp : TF_Op<"FakeQuantWithMinMaxVarsPerChannel", [NoSideEffect]> {
@@ -3711,9 +3747,9 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
   let hasFolder = 1;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value dims, Value value"
-  >];
+  let builders = [
+    OpBuilder<"Value dims, Value value">
+  ];
 }
 
 def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3893,7 +3929,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     TF_Float32Tensor:$reserve_space_3,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NDHWC", "NCDHW"]>, "NHWC">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -3978,7 +4014,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
     DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NDHWC", "NCDHW"]>, "NHWC">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -4642,6 +4678,39 @@ tf.imag(input) ==> [4.75, 5.75]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_InTopKV2Op : TF_Op<"InTopKV2", [NoSideEffect]> {
+  let summary = "Says whether the targets are in the top `K` predictions.";
+
+  let description = [{
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
+
+More formally, let
+
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
+
+$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+  }];
+
+  let arguments = (ins
+    F32Tensor:$predictions,
+    TF_I32OrI64Tensor:$targets,
+    TF_I32OrI64Tensor:$k
+  );
+
+  let results = (outs
+    I1Tensor:$precision
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_InfeedDequeueOp : TF_Op<"InfeedDequeue", []> {
@@ -6426,10 +6495,9 @@ retained with length 1.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value input, "
-    "Value reduction_indices, BoolAttr keep_dims"
-  >];
+  let builders = [
+    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+  ];
 }
 
 def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
@@ -6972,6 +7040,34 @@ I.e., \\(y = -x\\).
   let hasCanonicalizer = 1;
 }
 
+def TF_NextAfterOp : TF_Op<"NextAfter", [NoSideEffect, ResultsBroadcastableShape]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = [{
+Returns the next representable value of `x1` in the direction of `x2`, element-wise.
+  }];
+
+  let description = [{
+This operation returns the same result as the C++ std::nextafter function.
+
+It can also return a subnormal number.
+
+@compatibility(cpp)
+Equivalent to C++ std::nextafter function.
+@end_compatibility
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$x1,
+    TF_F32OrF64Tensor:$x2
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_NoOp : TF_Op<"NoOp", [NoSideEffect]> {
   let summary = "Does nothing. Only useful as a placeholder for control edges.";
 
@@ -7139,8 +7235,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
-              "Value  y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -7258,8 +7353,7 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  indices, "
-              "Value  depth, Value  on_value, Value  off_value, "
+    OpBuilder<"Value indices, Value depth, Value on_value, Value off_value, "
               "IntegerAttr axis">
   ];
 
@@ -8067,8 +8161,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  start, "
-              "Value  limit, Value  delta">
+    OpBuilder<"Value start, Value limit, Value delta">
   ];
 }
 
@@ -8121,7 +8214,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input">
+    OpBuilder<"Value input">
   ];
 
   let hasFolder = 1;
@@ -8392,8 +8485,7 @@ reshape(t, []) ==> 7
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<
-      "OpBuilder& builder, OperationState& result, Value  tensor, Value  shape">
+    OpBuilder<"Value tensor, Value shape">
   ];
 
   let verifier = [{
@@ -10180,7 +10272,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, Value  e, Value  t">
+    OpBuilder<"Value condition, Value e, Value t">
   ];
 }
 
@@ -10290,7 +10382,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input, BoolAttr use32Bit">
+    OpBuilder<"Value input, BoolAttr use32Bit">
   ];
 
   let hasFolder = 1;
@@ -11754,10 +11846,9 @@ retained with length 1.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value input, "
-    "Value reduction_indices, BoolAttr keep_dims"
-  >];
+  let builders = [
+    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+  ];
 }
 
 def TF_SymbolicGradientOp : TF_Op<"SymbolicGradient", [NoSideEffect]> {
@@ -12733,10 +12824,8 @@ On GPU, if an out of bound index is found, the index is ignored.
   let verifier = [{ return Verify(*this); }];
 
   let builders = [
-    OpBuilder<
-      "OpBuilder& builder, OperationState& result, "
-      "Value tensor, Value indices, Value updates",
-      [{build(builder, result, tensor.getType(), tensor, indices, updates);}]
+    OpBuilder<"Value tensor, Value indices, Value updates",
+      [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]
     >
   ];
 }
@@ -12880,8 +12969,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<
-      "OpBuilder& builder, OperationState& result, Value  x, Value  perm">
+    OpBuilder<"Value x, Value perm">
   ];
 
   let verifier = [{
