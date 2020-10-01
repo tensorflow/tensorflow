@@ -13,7 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
+// TODO: remove this once this PR is merged and part of tensorflow downloads:
+// https://github.com/google/flatbuffers/pull/6132
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdouble-promotion"
 #include "flatbuffers/flexbuffers.h"
+#pragma clang diagnostic pop
+#else
+#include "flatbuffers/flexbuffers.h"
+#endif
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"

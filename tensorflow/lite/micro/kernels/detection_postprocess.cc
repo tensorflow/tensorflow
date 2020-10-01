@@ -15,7 +15,16 @@ limitations under the License.
 #include <numeric>
 
 #define FLATBUFFERS_LOCALE_INDEPENDENT 0
+#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
+// TODO: remove this once this PR is merged and part of tensorflow downloads:
+// https://github.com/google/flatbuffers/pull/6132
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdouble-promotion"
 #include "flatbuffers/flexbuffers.h"
+#pragma clang diagnostic pop
+#else
+#include "flatbuffers/flexbuffers.h"
+#endif
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -222,7 +231,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Additional buffers
   context->RequestScratchBufferInArena(context, num_boxes * sizeof(float),
-                                       &op_data->scores_idx);
+                                       &op_data->score_buffer_idx);
   context->RequestScratchBufferInArena(context, num_boxes * sizeof(float),
                                        &op_data->keep_scores_idx);
   context->RequestScratchBufferInArena(
@@ -819,12 +828,13 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
       return kTfLiteError;
   }
 
-  if (op_data->use_regular_non_max_suppression)
+  if (op_data->use_regular_non_max_suppression) {
     TF_LITE_ENSURE_STATUS(NonMaxSuppressionMultiClassRegularHelper(
         context, node, op_data, scores));
-  else
+  } else {
     TF_LITE_ENSURE_STATUS(
         NonMaxSuppressionMultiClassFastHelper(context, node, op_data, scores));
+  }
 
   return kTfLiteOk;
 }

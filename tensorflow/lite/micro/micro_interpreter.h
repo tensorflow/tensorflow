@@ -32,7 +32,7 @@ namespace tflite {
 
 namespace internal {
 
-constexpr size_t kMaxScratchBuffersPerOp = 8;
+constexpr size_t kMaxScratchBuffersPerOp = 12;
 
 // A helper class to encapsulate the implementation of APIs in Context.
 // context->impl_ points to an instance of this class.
