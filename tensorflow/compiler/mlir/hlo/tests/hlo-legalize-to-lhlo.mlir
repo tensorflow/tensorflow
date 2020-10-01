@@ -586,3 +586,18 @@ func @transpose(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
+
+// -----
+
+// BOTH-LABEL: func @custom_call
+// BOTH-SAME:([[ARG0:%.*]]: memref<2x2xf32>, [[ARG1:%.*]]: memref<2x3xf32>, [[RESULT:%.*]]: memref<4x4xf16>)
+func @custom_call(%arg0: memref<2x2xf32>, %arg1: memref<2x3xf32>, %result: memref<4x4xf16>) {
+  %arg0_tensor = tensor_load %arg0 : memref<2x2xf32>
+  %arg1_tensor = tensor_load %arg1 : memref<2x3xf32>
+  // BOTH: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false}
+ %result_tensor = "mhlo.custom_call"(%arg0_tensor, %arg1_tensor)
+                   {backend_config = "", call_target_name = "foo", has_side_effect = false}
+                   : (tensor<2x2xf32>, tensor<2x3xf32>) -> tensor<4x4xf16>
+  tensor_store %result_tensor, %result: memref<4x4xf16>
+  return
+}
