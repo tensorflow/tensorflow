@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_tpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_openmp_copts")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -298,7 +298,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor:platform",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:cpu_plugin",
             "//tensorflow/compiler/xla/service/cpu:buffer_info_util",
@@ -369,7 +369,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/mlir:array_container_utils",
             "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
@@ -877,13 +877,13 @@ cc_library(
 
 cc_library(
     name = "mlir_bridge_pass_registration",
-    srcs = if_tpu(
+    srcs = if_libtpu(
         if_false = [
             "mlir_bridge_pass_registration.cc",
         ],
         if_true = [],
     ),
-    deps = if_tpu(
+    deps = if_libtpu(
         if_false = [
             ":mlir_bridge_pass",
             "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
