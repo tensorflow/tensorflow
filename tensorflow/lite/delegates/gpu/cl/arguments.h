@@ -55,6 +55,7 @@ class Arguments {
   absl::Status Merge(Arguments&& args, const std::string& postfix);
 
   absl::Status AllocateObjects(CLContext* context);
+  void ReleaseCPURepresentation();
   absl::Status TransformToCLCode(
       const DeviceInfo& device_info,
       const std::map<std::string, std::string>& linkables, std::string* code);

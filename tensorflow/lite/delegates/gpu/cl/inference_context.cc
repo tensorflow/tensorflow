@@ -182,6 +182,10 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(Compile(creation_context));
   RETURN_IF_ERROR(UpdateParams());
 
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
+
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
   tuning_parameters.info = &env->device().info_;
