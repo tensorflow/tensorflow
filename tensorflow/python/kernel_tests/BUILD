@@ -1822,6 +1822,7 @@ cuda_py_test(
     name = "check_ops_test",
     size = "small",
     srcs = ["check_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",

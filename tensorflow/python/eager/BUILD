@@ -794,6 +794,7 @@ tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":context",
