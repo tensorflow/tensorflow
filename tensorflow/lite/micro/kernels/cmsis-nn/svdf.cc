@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <math.h>
+#include <cmath>
+#include <cstdint>
 
 #include "cmsis/CMSIS/NN/Include/arm_nn_types.h"
 #include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
