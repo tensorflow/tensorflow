@@ -1001,6 +1001,7 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
 class QuantizeConstInputTest : public QuantizeModelTest {
  protected:
   QuantizeConstInputTest() {
+    tensor_type_ = GetParam();
     input_model_ = ReadModel(internal::kConstInputAddModel);
     readonly_model_ = input_model_->GetModel();
     readonly_model_->UnPackTo(&model_);
