@@ -12,6 +12,8 @@
 :: License for the specific language governing permissions and limitations under
 :: the License.
 
+#!/usr/bin/env bash
+
 @echo off
 
 set configure_dir=%~dp0
