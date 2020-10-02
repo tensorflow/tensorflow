@@ -39,7 +39,7 @@ void FftCompute(struct FftState* state, const int16_t* input,
 
   // Apply the FFT.
   kiss_fftr(
-      reinterpret_cast<const kiss_fftr_cfg>(state->scratch),
+      reinterpret_cast<kiss_fftr_cfg>(state->scratch),
       state->input,
       reinterpret_cast<kiss_fft_cpx*>(state->output));
 }

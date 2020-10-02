@@ -23,28 +23,25 @@ ifeq ($(TARGET), xtensa_hifimini)
     $(error XTENSA_CORE is undefined)
   endif
 
-  PLATFORM_ARGS = \
+  PLATFORM_FLAGS = \
     -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
     -mcoproc \
-    -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR \
-    -fdata-sections \
-    -ffunction-sections \
-    -fno-exceptions \
-    -fno-unwind-tables \
-    -fno-use-cxa-atexit \
-    -fmessage-length=0 \
-    -fno-threadsafe-statics
+    -DXTENSA \
+    -DMAX_RFFT_PWR=9 \
+    -DMIN_RFFT_PWR=MAX_RFFT_PWR
+
 
   export PATH := $(XTENSA_BASE)/tools/$(XTENSA_TOOLS_VERSION)/XtensaTools/bin:$(PATH)
   TARGET_TOOLCHAIN_PREFIX := xt-
   CXX_TOOL := clang++
   CC_TOOL := clang
 
-  CXXFLAGS += $(PLATFORM_ARGS)
-  CCFLAGS += $(PLATFORM_ARGS)
+  CXXFLAGS += $(PLATFORM_FLAGS)
+  CCFLAGS += $(PLATFORM_FLAGS)
 
-  LDFLAGS += -Wl,-gc-sections
+  # TODO(b/150240249): Do not remove -fno-rtti once that works for the Xtensa toolchain.
+	CXXFLAGS := $(filter-out -fno-rtti, $(CXXFLAGS))
 
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_hifimini_binary.sh
 

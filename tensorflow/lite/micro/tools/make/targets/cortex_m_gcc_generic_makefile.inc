@@ -7,13 +7,7 @@ ifeq ($(TARGET), cortex_m_gcc_generic)
   $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
 
   PLATFORM_FLAGS = \
-    -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_MCU_DEBUG_LOG \
-    -fmessage-length=0 \
-    -fno-exceptions \
-    -fno-unwind-tables \
-    -ffunction-sections \
-    -fdata-sections \
     -funsigned-char \
     -mcpu=cortex-m4 \
     -mfpu=fpv4-sp-d16 \
@@ -32,5 +26,5 @@ endif
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
-  
+
 endif
