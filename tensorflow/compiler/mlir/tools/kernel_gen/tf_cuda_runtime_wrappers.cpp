@@ -26,7 +26,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 #define CUDA_REPORT_IF_ERROR(expr)                                             \
   [](CUresult result) {                                                        \
@@ -105,3 +104,5 @@ mgpuMemHostRegisterMemRef(int64_t rank, StridedMemRefType<char, 1> *descriptor,
   auto ptr = descriptor->data + descriptor->offset * elementSizeBytes;
   mgpuMemHostRegister(ptr, sizeBytes);
 }
+
+#endif
