@@ -38,10 +38,10 @@ def _parse_args(argv):
 
 
 def _expand_variables(input_str, cmake_vars):
-  """Expands ${VARIABLE}s in 'input_str', using dictionary 'cmake_vars'.
+  """Expands ${VARIABLE} and @VARIABLE@s in 'input_str', using dictionary 'cmake_vars'.
 
   Args:
-    input_str: the string containing ${VARIABLE} expressions to expand.
+    input_str: the string containing ${VARIABLE} and @VARIABLE@ expressions to expand.
     cmake_vars: a dictionary mapping variable names to their values.
 
   Returns:
