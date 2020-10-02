@@ -7791,6 +7791,13 @@ op {
       s: "auto"
     }
   }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -17468,6 +17475,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "NDHWC"
+        s: "NCDHW"
       }
     }
   }
@@ -17666,6 +17675,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "NDHWC"
+        s: "NCDHW"
       }
     }
   }

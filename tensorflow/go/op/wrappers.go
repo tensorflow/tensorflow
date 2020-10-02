@@ -14757,6 +14757,10 @@ func QrFullMatrices(value bool) QrAttr {
 // Computes the QR decomposition of each inner matrix in `tensor` such that
 // `tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
 //
+// Currently, the gradient for the QR decomposition is well-defined only when
+// the first `P` columns of the inner matrix are linearly independent, where
+// `P` is the minimum of `M` and `N`, the 2 inner-most dimmensions of `tensor`.
+//
 // ```python
 // # a is a tensor.
 // # q is a tensor of orthonormal matrices.
@@ -18804,6 +18808,14 @@ type CollectiveReduceV2Attr func(optionalAttr)
 func CollectiveReduceV2CommunicationHint(value string) CollectiveReduceV2Attr {
 	return func(m optionalAttr) {
 		m["communication_hint"] = value
+	}
+}
+
+// CollectiveReduceV2TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
 	}
 }
 

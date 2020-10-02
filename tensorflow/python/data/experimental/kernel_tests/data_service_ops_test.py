@@ -49,14 +49,6 @@ TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
 NO_WORK_DIR = data_service_test_base.NO_WORK_DIR
 
 
-def _all_cluster_configurations():
-  with_work_dir = combinations.combine(
-      work_dir=TMP_WORK_DIR, fault_tolerant_mode=[True, False])
-  without_work_dir = combinations.combine(
-      work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
-  return with_work_dir + without_work_dir
-
-
 class DataServiceOpsTest(data_service_test_base.TestBase,
                          parameterized.TestCase):
 
@@ -242,28 +234,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertCountEqual(list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testSharedJobNameDifferentDatasets(self):
-    cluster = self.create_cluster(num_workers=1)
-
-    def make_ds(num_elements):
-      return dataset_ops.Dataset.range(num_elements)
-
-    ds1 = self.make_distributed_dataset(
-        make_ds(num_elements=10), cluster, job_name="job_name")
-    ds2 = self.make_distributed_dataset(
-        make_ds(num_elements=11), cluster, job_name="job_name")
-    iter(ds1)
-    with self.assertRaisesRegex(errors.FailedPreconditionError,
-                                "AttrValues are different"):
-      iter(ds2)
-
-  @combinations.generate(test_base.eager_only_combinations())
   def testDifferentJobNames(self):
     cluster = self.create_cluster(num_workers=1)
     num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = self.make_distributed_dataset(ds, cluster, job_name="job_name1")
-    ds2 = self.make_distributed_dataset(ds, cluster, job_name="job_name2")
+    ds1 = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="job_name1")
+    ds2 = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="job_name2")
     self.assertDatasetProduces(ds1, list(range(num_elements)))
     self.assertDatasetProduces(ds2, list(range(num_elements)))
 
@@ -271,9 +248,10 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testSharedJobNameMultiIteration(self):
     cluster = self.create_cluster(num_workers=1)
     num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = self.make_distributed_dataset(ds, cluster, job_name="job_name")
-    ds2 = self.make_distributed_dataset(ds, cluster, job_name="job_name")
+    ds1 = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="job_name")
+    ds2 = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="job_name")
     # iteration 1
     self.assertDatasetProduces(ds1, list(range(num_elements)))
     self.assertDatasetProduces(ds2, [])
@@ -286,10 +264,11 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = self.create_cluster(num_workers=1)
     num_elements = 100
     num_repetitions = 3
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = self.make_distributed_dataset(ds, cluster, job_name="job_name")
+    ds1 = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="job_name")
     ds1 = ds1.repeat(num_repetitions)
-    ds2 = self.make_distributed_dataset(ds, cluster, job_name="job_name")
+    ds2 = self.make_distributed_range_dataset(
+        num_elements, cluster, job_name="job_name")
     ds2 = ds2.repeat(num_repetitions)
     results = []
     iter1 = iter(ds1)
@@ -380,7 +359,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     options.experimental_external_state_policy = external_state_policy
     ds = ds.with_options(options)
 
-    cluster = self.create_cluster(3)
+    cluster = self.create_cluster(num_workers=3)
     ds = self.make_distributed_dataset(ds, cluster)
     next(iter(ds))
 
@@ -401,7 +380,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochTensorSlices(self):
-    cluster = self.create_cluster(2)
+    cluster = self.create_cluster(num_workers=2)
     vals = [5, 1, 2, 4]
     ds = dataset_ops.Dataset.from_tensor_slices(vals)
     ds = ds.apply(
@@ -411,7 +390,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochRepeat(self):
-    cluster = self.create_cluster(2)
+    cluster = self.create_cluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
@@ -608,7 +587,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       combinations.times(test_base.eager_only_combinations()))
   def testDistributeLargeGraph(self):
     cluster = self.create_cluster(
-        1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
+        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
     # Larger than default OSS grpc message size limit of 4MB.
     tensor = array_ops.ones((2, 1000, 1000), dtype=dtypes.float32)
     ds = dataset_ops.Dataset.from_tensors(tensor)

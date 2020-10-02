@@ -53,11 +53,13 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model/model_utils",
@@ -137,7 +139,6 @@ tf_py_test(
         "no_oss",  # TODO(b/119349471): Re-enable
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

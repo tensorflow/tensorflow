@@ -578,10 +578,8 @@ package_group(
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
-package_group(
-    name = "types_whitelist",
-    packages = ["//learning/deepmind/tensorflow/replicator/..."],
-)
+# If this is modified, then copy.bara.sky must also be modified.
+package_group(name = "types_whitelist")
 
 # Packages that use StructuredTensors.
 # TODO(b/159007891) Remove this package once StructuredTensor is exported.

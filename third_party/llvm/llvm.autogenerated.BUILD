@@ -420,7 +420,7 @@ cc_binary(
 )
 
 cc_library(
-    name = "filecheck-lib",
+    name = "FileCheckLib",
     srcs = glob([
         "lib/FileCheck/*.cpp",
         "lib/FileCheck/*.h",
@@ -443,8 +443,8 @@ cc_binary(
     linkopts = llvm_linkopts,
     stamp = 0,
     deps = [
+        ":FileCheckLib",
         ":Support",
-        ":filecheck-lib",
     ],
 )
 

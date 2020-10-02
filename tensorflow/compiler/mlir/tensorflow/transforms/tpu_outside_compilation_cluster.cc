@@ -41,6 +41,20 @@ struct TPUOutsideCompilationCluster
                      const TF::SideEffectAnalysis::Info& side_effect_analysis);
 };
 
+bool IsVariant(Value value) {
+  return getElementTypeOrSelf(value.getType()).isa<TF::VariantType>();
+}
+
+bool HasOutsideCompiledAncestor(Operation* op) {
+  Operation* parent = op->getParentOp();
+  while (parent) {
+    if (parent->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+      return true;
+    parent = parent->getParentOp();
+  }
+  return false;
+}
+
 // Represents an outside compiled cluster. All ops that are added to the same
 // cluster will be extracted together in a later pass.
 class OutsideCompiledCluster {
@@ -60,6 +74,53 @@ class OutsideCompiledCluster {
       return true;
     }
     return false;
+  }
+
+  // If any tf.variants are inputs/outputs to the cluster, add them to the
+  // cluster unless they are already marks with outside compilation attribute.
+  bool AddVariantInputsOutputs() {
+    bool added_op = false;
+    llvm::SmallPtrSet<Operation*, 8> expanded_cluster_ops(host_cluster_ops_);
+    for (Operation* cluster_op : host_cluster_ops_) {
+      // Walk the clustered operations to handle nested ops.
+      cluster_op->walk([&](Operation* op) {
+        // Add any operations that provide variant inputs to the cluster.
+        for (auto value : op->getOperands()) {
+          auto input_defining_op = value.getDefiningOp();
+          if (IsVariant(value) && input_defining_op &&
+              !HasOutsideCompiledAncestor(input_defining_op) &&
+              !input_defining_op->getAttrOfType<StringAttr>(
+                  kXlaOutsideCompilationAttr)) {
+            expanded_cluster_ops.insert(input_defining_op);
+            input_defining_op->setAttr(
+                kXlaOutsideCompilationAttr,
+                StringAttr::get(cluster_name_,
+                                input_defining_op->getContext()));
+            added_op = true;
+          }
+        }
+        // Add any operations that consume variant outputs to the cluster.
+        for (auto value : op->getResults()) {
+          if (IsVariant(value)) {
+            for (auto user : value.getUsers()) {
+              if (!host_cluster_ops_.contains(user) &&
+                  !HasOutsideCompiledAncestor(user) &&
+                  !user->getAttrOfType<StringAttr>(
+                      kXlaOutsideCompilationAttr)) {
+                expanded_cluster_ops.insert(user);
+                user->setAttr(
+                    kXlaOutsideCompilationAttr,
+                    StringAttr::get(cluster_name_, user->getContext()));
+                added_op = true;
+              }
+            }
+          }
+        }
+      });
+    }
+    host_cluster_ops_.swap(expanded_cluster_ops);
+
+    return added_op;
   }
 
  private:
@@ -132,6 +193,10 @@ void TPUOutsideCompilationCluster::runOnFunction(
       }
     }
   });
+  for (auto& cluster : clusters) {
+    bool variants_to_add = true;
+    while (variants_to_add) variants_to_add = cluster.AddVariantInputsOutputs();
+  }
 }
 
 }  // anonymous namespace

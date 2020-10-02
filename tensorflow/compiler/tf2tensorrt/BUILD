@@ -36,8 +36,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "tensorrt_stub",
     srcs = if_tensorrt([

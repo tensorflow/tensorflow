@@ -21,10 +21,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files([
-    "LICENSE",
-    "loader.h",
-])
+exports_files(["loader.h"])
 
 cc_library(
     name = "constants",

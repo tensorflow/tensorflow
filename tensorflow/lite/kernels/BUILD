@@ -98,6 +98,7 @@ config_setting(
 )
 
 ###### End of config_setting's to match aarch64 ######
+
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
     "//tensorflow:ios": [
@@ -331,7 +332,13 @@ cc_library(
         "cpu_backend_context.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
+    # TF Lite builds in other build systems should "opt in" to cpufinfo.
+    copts = tflite_copts() + select({
+        "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
+    }),
     deps = [
         ":tflite_with_ruy",
         ":op_macros",
@@ -342,7 +349,14 @@ cc_library(
         "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:external_cpu_backend_context",
-    ],
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ] + select({
+        # This select must match the similar select in `copts`
+        "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["@cpuinfo//:cpuinfo_with_unstripped_include_path"],
+    }),
 )
 
 cc_library(
@@ -384,6 +398,7 @@ cc_library(
         "cpu_backend_gemm_eigen.cc",
         "cpu_backend_gemm_eigen.h",
         "cpu_backend_gemm_gemmlowp.h",
+        "cpu_backend_gemm_x86.h",
     ],
     hdrs = [
         "cpu_backend_gemm.h",
@@ -701,6 +716,7 @@ cc_library(
         "complex_support.cc",
         "cumsum.cc",
         "multinomial.cc",
+        "random_standard_normal.cc",
         "rfft2d.cc",
     ],
     hdrs = ["custom_ops_register.h"],
@@ -1367,6 +1383,20 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "random_standard_normal_test",
+    size = "small",
+    srcs = ["random_standard_normal_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

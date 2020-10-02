@@ -121,6 +121,7 @@ cuda_py_test(
         "noasan",  # TODO(b/155406705): flaky
     ],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -290,6 +291,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops_gen",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/compat:v2_compat",
     ],
@@ -777,7 +779,6 @@ tf_py_test(
     srcs = ["matrix_exponential_op_test.py"],
     shard_count = 16,
     tags = ["no_windows_gpu"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -898,7 +899,6 @@ tf_py_test(
     name = "parse_single_example_op_test",
     size = "small",
     srcs = ["parse_single_example_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -1190,7 +1190,6 @@ tf_py_test(
     name = "string_split_op_test",
     size = "small",
     srcs = ["string_split_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1396,7 +1395,6 @@ cuda_py_test(
     tags = [
         "no_oss",  # TODO(b/142818120): Re-enable.
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -1737,7 +1735,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
     shard_count = 20,
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1813,7 +1810,6 @@ cuda_py_test(
     name = "bitcast_op_test",
     size = "small",
     srcs = ["bitcast_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1826,6 +1822,7 @@ cuda_py_test(
     name = "check_ops_test",
     size = "small",
     srcs = ["check_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -1844,7 +1841,6 @@ cuda_py_test(
     name = "constant_op_test",
     size = "small",
     srcs = ["constant_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2100,7 +2096,6 @@ cuda_py_test(
     name = "dynamic_stitch_op_test",
     size = "small",
     srcs = ["dynamic_stitch_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_grad",
@@ -2309,7 +2304,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["matmul_op_test.py"],
     shard_count = 20,
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2485,7 +2479,6 @@ cuda_py_test(
     tags = [
         "no_windows_gpu",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2612,7 +2605,6 @@ cuda_py_test(
     name = "shape_ops_test",
     size = "medium",
     srcs = ["shape_ops_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -2630,7 +2622,6 @@ cuda_py_test(
     name = "softmax_op_test",
     size = "medium",
     srcs = ["softmax_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2645,7 +2636,6 @@ cuda_py_test(
     name = "softplus_op_test",
     size = "small",
     srcs = ["softplus_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -2693,7 +2683,6 @@ cuda_py_test(
         "no_windows",
         "no_windows_gpu",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3151,7 +3140,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["pooling_ops_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,  # Flaky in XLA b/149568654
     deps = [
         "//tensorflow/python:array_ops",
@@ -3202,7 +3190,6 @@ cuda_py_test(
     srcs = ["rnn_cell_test.py"],
     shard_count = 15,
     tags = ["no_windows"],  # b/139739217
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3436,7 +3423,6 @@ cuda_py_test(
     srcs = ["cwise_ops_test.py"],
     shard_count = 50,
     tags = ["no_windows"],  # b/163222163
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3457,7 +3443,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["cwise_ops_binary_test.py"],
     shard_count = 50,
-    tfrt_enabled = True,
     # b/140155647: Error just outside of tolerance
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -3563,7 +3548,6 @@ tf_py_test(
     tags = [
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3584,7 +3568,6 @@ cuda_py_test(
     tags = [
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3878,7 +3861,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["cond_v2_test.py"],
     grpc_enabled = True,
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

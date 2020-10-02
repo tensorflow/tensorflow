@@ -117,10 +117,6 @@ class ParameterServerStrategy(distribute_lib.Strategy):
     extended = ParameterServerStrategyExtended(
         self, cluster_resolver=cluster_resolver)
     super(ParameterServerStrategy, self).__init__(extended)
-    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
-        "ParameterServerStrategy")
-    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
-        len(self.extended.parameter_devices))
 
   def experimental_distribute_dataset(self, dataset, options=None):
     self._raise_pss_error_if_eager()
@@ -160,8 +156,6 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
             self, cluster_resolver=cluster_resolver))
     distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
         "ParameterServerStrategy")
-    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
-        len(self.extended.parameter_devices))
 
   __init__.__doc__ = ParameterServerStrategy.__init__.__doc__
 
@@ -351,14 +345,14 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,

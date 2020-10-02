@@ -13,9 +13,6 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
@@ -45,6 +42,7 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_models/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
+        "//third_party/py/keras/...",
     ],
 )
 
@@ -78,19 +76,6 @@ tf_proto_library(
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
     protodeps = [
-        "//tensorflow/core:protos_all",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-# A proto library that is minimal in size and dependencies for platforms like Android.
-tf_portable_proto_library(
-    name = "portable_tf2xla_proto",
-    config_string = "allow_all:true",
-    header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
-    portable_deps = ["//tensorflow/core:portable_proto_lib"],
-    proto_deps = [
-        ":tf2xla_proto",
         "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],

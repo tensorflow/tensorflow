@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/passes.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -48,7 +49,7 @@ namespace mlir_gpu {
 
 Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   mlir::PassManager pm(module.getContext());
-  applyPassManagerCLOptions(pm);
+  tensorflow::applyTensorflowAndCLOptions(pm);
 
   // We have to anticipate later unrolling in tiling to make sure that we get
   // the requested tiling after unrolling. Compute the new tiling here if
@@ -181,7 +182,7 @@ class LowerToNVVMPass
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
-  applyPassManagerCLOptions(pm);
+  tensorflow::applyTensorflowAndCLOptions(pm);
 
   // Rewrite kernel functions to LLVM IR.
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
@@ -250,7 +251,7 @@ class LowerToROCDLPass
 Status LowerKernelBodiesToROCDL(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
-  applyPassManagerCLOptions(pm);
+  tensorflow::applyTensorflowAndCLOptions(pm);
 
   auto enable_if_vlog_is_on = [](mlir::Pass*, mlir::Operation*) {
     return VLOG_IS_ON(1);

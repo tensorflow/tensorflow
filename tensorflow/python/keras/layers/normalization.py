@@ -961,7 +961,8 @@ def enclosing_xla_context():
   return None
 
 
-@keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
+# pylint: disable=missing-docstring
+@keras_export(v1=['keras.layers.BatchNormalization'])
 class BatchNormalization(BatchNormalizationBase):
 
   __doc__ = replace_in_base_docstring([("""

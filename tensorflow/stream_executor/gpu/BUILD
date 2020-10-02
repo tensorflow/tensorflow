@@ -250,7 +250,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
     ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_driver",
-        "//tensorflow/stream_executor/cuda:ptxas_wrapper",
+        "//tensorflow/stream_executor/cuda:cuda_root_wrapper",
     ]),
 )
 

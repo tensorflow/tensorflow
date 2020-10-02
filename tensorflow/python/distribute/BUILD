@@ -1021,6 +1021,7 @@ cuda_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":collective_util",
         ":combinations",
         ":cross_device_ops",
         ":multi_process_runner",
@@ -1028,6 +1029,10 @@ cuda_py_test(
         ":reduce_util",
         ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
         "//tensorflow/python:util",
@@ -1753,14 +1758,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
-        ":cross_device_utils",
-        ":distribute_utils",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/types",
     ],
 )
 

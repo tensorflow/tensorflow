@@ -35,11 +35,13 @@ ConvolutionThunk::ConvolutionThunk(
     BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice,
     BufferAllocation::Slice tuple_result_slice)
     : Thunk(Kind::kConvolution, thunk_info),
-      cudnn_call_(Cast<HloCustomCallInstruction>(thunk_info.hlo_instruction)),
       operand_buffers_(std::move(operand_slices)),
       result_buffer_(result_slice),
       scratch_buffer_(scratch_slice),
-      tuple_result_buffer_(tuple_result_slice) {}
+      tuple_result_buffer_(tuple_result_slice),
+      config_(GetGpuConvConfig(
+                  Cast<HloCustomCallInstruction>(thunk_info.hlo_instruction))
+                  .ValueOrDie()) {}
 
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
@@ -57,7 +59,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
-  TF_RETURN_IF_ERROR(RunGpuConv(cudnn_call_, absl::MakeSpan(operand_se_buffers),
+  TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
                                 result_buffer, scratch, params.stream));
 
   // Write the output tuple.

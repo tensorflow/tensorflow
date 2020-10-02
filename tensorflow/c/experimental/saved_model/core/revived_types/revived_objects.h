@@ -44,6 +44,7 @@ struct RevivedObjects {
   gtl::FlatMap<int, std::unique_ptr<TFSignatureDefFunction>>
       signature_def_functions;
   gtl::FlatMap<int, RestoredResource> restored_resources;
+  gtl::FlatMap<std::string, int> signatures_map;
 };
 
 }  // namespace tensorflow

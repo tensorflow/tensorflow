@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -513,6 +514,22 @@ class StreamExecutor {
   // allocation.
   StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
 
+  // Block host until all streams associated with this stream executor have
+  // finished all of enqueued work.
+  port::Status BlockHostUntilAllStreamsAreDone() {
+    std::vector<Stream *> streams;
+    {
+      absl::MutexLock lock(&mu_);
+      absl::c_copy(streams_, std::back_inserter(streams));
+    }
+
+    for (Stream *stream : streams) {
+      TF_RETURN_IF_ERROR(BlockHostUntilDone(stream));
+    }
+
+    return port::Status::OK();
+  }
+
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
             typename... BeginArgsT>
@@ -642,6 +659,16 @@ class StreamExecutor {
   template <typename TraceCallT, typename... ArgsT>
   void SubmitTrace(TraceCallT trace_call, ArgsT &&...args);
 
+  void RegisterStream(Stream *stream) {
+    absl::MutexLock lock(&mu_);
+    streams_.insert(stream);
+  }
+
+  void UnregisterStream(Stream *stream) {
+    absl::MutexLock lock(&mu_);
+    streams_.erase(stream);
+  }
+
   // Reader/writer lock for class-static StreamExecutor members.
   static absl::Mutex static_mu_;
 
@@ -731,6 +758,9 @@ class StreamExecutor {
   int64 memory_limit_bytes_;
 
   StreamExecutorMemoryAllocator allocator_;
+
+  // Set of streams associated with this stream executor.
+  absl::flat_hash_set<Stream *> streams_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };

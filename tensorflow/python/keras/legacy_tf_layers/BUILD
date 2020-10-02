@@ -5,7 +5,10 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -144,7 +147,6 @@ tf_py_test(
     srcs = ["convolutional_test.py"],
     main = "convolutional_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":convolutional",
         "//tensorflow/python:array_ops",

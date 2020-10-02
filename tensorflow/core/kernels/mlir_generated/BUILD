@@ -174,6 +174,17 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "conj",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "cos",
     same_shape = "0,1",
     tile_size = "256",
@@ -199,6 +210,41 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "floor",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "imag",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "invert",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "isfinite",
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -242,6 +288,16 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "real",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "rsqrt",
     same_shape = "0,1",
     tile_size = "256",
@@ -258,9 +314,12 @@ gen_kernel_library(
     same_shape = "0,1",
     tile_size = "256",
     types = [
-        # TODO(b/162577610): Add bf16, f16, i32, i64, c64 and c128.
+        # TODO(b/162577610): Add bf16, c64 and c128.
+        "f16",
         "f32",
         "f64",
+        "i32",
+        "i64",
     ],
     unroll_factors = "4",
 )

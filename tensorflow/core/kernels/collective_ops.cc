@@ -456,6 +456,9 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
                       &col_params_->instance.impl_details.communication_hint));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("timeout_seconds",
+                      &col_params_->instance.impl_details.timeout_seconds));
     // Prepare OpKernels for reduction and final operations.
     // The merge_op takes two inputs
     NodeDef sub_node;
@@ -510,7 +513,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
     col_params->instance.data_type = col_params_->instance.data_type;
     col_params->instance.impl_details.communication_hint =
         col_params_->instance.impl_details.communication_hint;
-    col_params->instance.impl_details.timeout_seconds = 0;
+    col_params->instance.impl_details.timeout_seconds =
+        col_params_->instance.impl_details.timeout_seconds;
     col_params->instance.impl_details.subdiv_offsets =
         col_params_->instance.impl_details.subdiv_offsets;
     col_params->merge_op = std::move(col_params_->merge_op);
