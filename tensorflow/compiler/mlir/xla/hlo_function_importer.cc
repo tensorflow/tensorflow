@@ -681,6 +681,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
+      NoAttributeCase(kCbrt, CbrtOp);
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kCeil, CeilOp);
       NoAttributeCase(kClamp, ClampOp);
@@ -737,6 +738,20 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ImportAsRegion(*instruction->fused_instructions_computation(),
                          &fusion.fused_computation()));
       return fusion.getOperation();
+    }
+    case HloOpcode::kBitcast:
+      return func_builder
+          ->create<mlir::mhlo::BitcastOp>(loc, result_type, operands,
+                                          attributes)
+          .getOperation();
+    case HloOpcode::kReducePrecision: {
+      auto op = func_builder->create<mlir::mhlo::ReducePrecisionOp>(
+          loc, result_type, operands[0], attributes);
+      op.exponent_bitsAttr(func_builder->getIntegerAttr(
+          func_builder->getI32Type(), instruction->exponent_bits()));
+      op.mantissa_bitsAttr(func_builder->getIntegerAttr(
+          func_builder->getI32Type(), instruction->mantissa_bits()));
+      return op.getOperation();
     }
     case HloOpcode::kAddDependency:
       // Arbitrary op code that I suspect we will not implement for quite a

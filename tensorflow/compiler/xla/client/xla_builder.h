@@ -57,6 +57,9 @@ struct XlaBuilderFriend {
                            absl::string_view fusion_kind,
                            const XlaComputation& fused_computation);
 
+  static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
+                            const Shape& shape);
+
   static HloInstructionProto* GetInstruction(XlaOp op);
 };
 

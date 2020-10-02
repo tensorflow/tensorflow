@@ -1082,6 +1082,15 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  value_map[op] = xla::internal::XlaBuilderFriend::BuildBitcast(
+      ctx.builder, operand, xla::TypeToShape(op.getType()));
+  return success();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir
