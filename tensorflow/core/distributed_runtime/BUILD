@@ -24,8 +24,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 exports_files(
     ["server_lib.h"],
     visibility = ["//tensorflow:internal"],

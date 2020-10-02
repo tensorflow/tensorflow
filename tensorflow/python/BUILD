@@ -70,8 +70,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 # Description:
 
 py_library(
@@ -2500,7 +2498,6 @@ tf_py_test(
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -2822,7 +2819,6 @@ tf_py_test(
     main = "framework/test_util_test.py",
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -3506,7 +3502,6 @@ tf_py_test(
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -4457,7 +4452,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/stateful_random_ops_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
     deps = [
@@ -5316,7 +5310,6 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 24,
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5334,7 +5327,6 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5368,7 +5360,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_xent_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -6340,7 +6331,6 @@ tf_py_test(
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6517,7 +6507,6 @@ tf_py_test(
     srcs = ["framework/convert_to_constants_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":control_flow_v2_toggles",
@@ -6706,7 +6695,6 @@ tf_py_test(
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6721,7 +6709,6 @@ tf_py_test(
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6736,7 +6723,6 @@ tf_py_test(
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",

@@ -209,14 +209,15 @@ hdfsFS Connect(tf_hadoop_filesystem::HadoopFile* hadoop_file,
   }
   if (hadoop_file->connection_cache.find(cacheKey) ==
       hadoop_file->connection_cache.end()) {
-    hadoop_file->connection_cache[cacheKey] =
-        libhdfs->hdfsBuilderConnect(builder);
+    auto cacheFs = libhdfs->hdfsBuilderConnect(builder);
+    if (cacheFs == nullptr) {
+      TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
+      return cacheFs;
+    }
+    hadoop_file->connection_cache[cacheKey] = cacheFs;
   }
   auto fs = hadoop_file->connection_cache[cacheKey];
-  if (fs == nullptr)
-    TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
-  else
-    TF_SetStatus(status, TF_OK, "");
+  TF_SetStatus(status, TF_OK, "");
   return fs;
 }
 

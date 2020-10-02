@@ -540,6 +540,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StringLower",
           "StringSplit",
           "StringSplitV2",
+          "StringStrip",
           "StringToHashBucket",
           "StringToHashBucketFast",
           "StringToHashBucketStrong",

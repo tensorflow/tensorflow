@@ -89,7 +89,7 @@ bool CpuBackendContext::CpuInfo::Avx2Fma() { return false; }
 bool CpuBackendContext::CpuInfo::Avx() { return false; }
 
 bool CpuBackendContext::CpuInfo::Avx512() { return false; }
-#endif
+#endif  // TFLITE_HAVE_CPUINFO
 
 CpuBackendContext* CpuBackendContext::GetFromContext(TfLiteContext* context) {
   auto* external_context = static_cast<ExternalCpuBackendContext*>(

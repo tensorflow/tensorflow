@@ -193,12 +193,10 @@ def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
-def HLO_ImagOp: HLO_Op<
-    "imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value val">];
-
-  let arguments = (ins HLO_ComplexTensor);
+def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
+    [NoSideEffect, SameOperandsAndResultShape,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    HLO_ComplexTensor>, BASE_HLO_ImagOp {
   let results = (outs HLO_FpTensor);
   let hasFolder = 1;
 }
@@ -237,12 +235,10 @@ def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
     BASE_HLO_PopulationCountOp;
 
-def HLO_RealOp: HLO_Op<
-    "real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value val">];
-
-  let arguments = (ins HLO_ComplexTensor);
+def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
+    [NoSideEffect, SameOperandsAndResultShape,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    HLO_ComplexTensor>, BASE_HLO_RealOp {
   let results = (outs HLO_FpTensor);
   let hasFolder = 1;
 }
@@ -321,12 +317,10 @@ def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_Atan2Op;
 
-def HLO_ComplexOp: HLO_Op<"complex",
-    [NoSideEffect, SameOperandsAndResultShape]>,
+def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
+    [NoSideEffect, SameOperandsAndResultShape,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
     BASE_HLO_ComplexOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value lhs, Value rhs">];
-
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
   let results = (outs HLO_ComplexTensor);
   let hasFolder = 1;

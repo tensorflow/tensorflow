@@ -498,6 +498,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::ConvertOp>,
       HloToLhloOpConverter<mhlo::CopyOp>,
       HloToLhloOpConverter<mhlo::CosOp>,
+      HloToLhloOpConverter<mhlo::CustomCallOp>,
       HloToLhloOpConverter<mhlo::DivOp>,
       HloToLhloOpConverter<mhlo::DotOp>,
       HloToLhloOpConverter<mhlo::ExpOp>,

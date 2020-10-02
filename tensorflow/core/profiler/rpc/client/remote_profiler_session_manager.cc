@@ -168,7 +168,7 @@ RemoteProfilerSessionManager::WaitForCompletion() {
     Status& status = remote_responses.back().status;
     std::string* service_addr = &remote_responses.back().service_addr;
     *profile_response = client->WaitForCompletion(status);
-    *service_addr = client->GetServiceAddress();
+    *service_addr = std::string(client->GetServiceAddress());
   }
   return remote_responses;
 }

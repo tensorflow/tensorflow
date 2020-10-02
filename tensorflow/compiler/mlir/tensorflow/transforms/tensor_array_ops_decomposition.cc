@@ -579,6 +579,7 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }
@@ -645,6 +646,7 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }

@@ -597,6 +597,19 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           x, 10, 15, open_lower_bound=True, open_upper_bound=True)
 
   @test_util.run_in_graph_and_eager_modes
+  def testAssertAllInRangeScalar(self):
+    x = constant_op.constant(10.0, name="x")
+    nan = constant_op.constant(np.nan, name="nan")
+    self.assertAllInRange(x, 5, 15)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(nan, 5, 15)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 10, 15, open_lower_bound=True)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 1, 2)
+
+  @test_util.run_in_graph_and_eager_modes
   def testAssertAllInRangeErrorMessageEllipses(self):
     x_init = np.array([[10.0, 15.0]] * 12)
     x = constant_op.constant(x_init, name="x")

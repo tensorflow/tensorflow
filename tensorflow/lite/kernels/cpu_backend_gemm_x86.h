@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_X86_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_X86_H_
 
+// If TFLITE_WITH_RUY is set, Ruy is the only GEMM option. In this header
+// we select either Ruy or an alternative based on the SIMD extentions
+// available on the given x86 platform.
 #ifndef TFLITE_WITH_RUY
 
 #include "tensorflow/lite/kernels/cpu_backend_context.h"

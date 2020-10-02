@@ -95,7 +95,6 @@ cuda_py_test(
     name = "categorical_test",
     size = "small",
     srcs = ["categorical_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -193,7 +192,6 @@ cuda_py_test(
 cuda_py_test(
     name = "multinomial_test",
     srcs = ["multinomial_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

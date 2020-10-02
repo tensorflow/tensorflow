@@ -2904,6 +2904,8 @@ class TensorFlowTestCase(googletest.TestCase):
     lines = []
     subscripts = np.transpose(subscripts)
     prefix = " " * indent
+    if np.ndim(value) == 0:
+      return [prefix + "[0] : " + str(value)]
     for subscript in itertools.islice(subscripts, limit):
       lines.append(prefix + str(subscript) + " : " +
                    str(value[tuple(subscript)]))
