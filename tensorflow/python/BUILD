@@ -2825,6 +2825,7 @@ tf_py_test(
         ":framework_combinations",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":lookup_ops",
         ":platform_test",
         ":random_ops",
         ":resource_variable_ops",
