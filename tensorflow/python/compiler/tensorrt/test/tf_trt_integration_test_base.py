@@ -418,7 +418,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                 run_params,
                 saved_model_dir,
                 inputs_data,
-                config,
                 graph_state,
                 num_runs=2):
     params = self._GetParamsCached()
@@ -430,6 +429,12 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                  num_runs)
       gc.collect()  # Force GC to destroy the TRT engine cache.
       return results
+
+    # The default config for tf.session is None. Create a config with
+    # TensorRTOptimizer enabled to support convert_online for inference.
+    config = None
+    if graph_state == GraphState.INFERENCE and run_params.convert_online:
+      config = self._GetConfigProto(run_params, GraphState.INFERENCE)
     return self._RunGraphV1(saved_model_dir, inputs_data, config, num_runs)
 
   def _CreateConverter(self, run_params, saved_model_dir, session_config,
@@ -843,16 +848,18 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         current_input_data.append(data)
       inputs_data.append(current_input_data)
 
-    # Verify original graph.
+    # Verify the original graph.
     self._VerifyGraphDef(run_params, saved_model_dir, saved_model_dir,
                          GraphState.ORIGINAL)
 
-    # Run original graph without trt to get reference result.
-    config_no_trt = self._GetConfigProto(run_params, GraphState.ORIGINAL)
-    logging.info("Running original graph w/o trt, config:\n%s",
-                 str(config_no_trt))
-    ref_result = self._RunGraph(run_params, saved_model_dir, inputs_data,
-                                config_no_trt, GraphState.ORIGINAL)
+    # Run the original graph without TensorRT to get the reference result.
+    logging.info("Running original graph w/o TensorRT\n")
+    ref_result = self._RunGraph(
+        run_params,
+        saved_model_dir,
+        inputs_data,
+        GraphState.ORIGINAL,
+        num_runs=1)
 
     # Run calibration if necessary.
     if IsQuantizationWithCalibration(run_params):
@@ -867,12 +874,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     else:
       infer_saved_model_dir = saved_model_dir
 
-    # Run inference.
-    infer_config = self._GetConfigProto(run_params, GraphState.INFERENCE)
-    logging.info("Running final inference graph, config:\n%s",
-                 str(infer_config))
+    # Run the inference graph, either using the converted graph or the original
+    # graph with convert_online == True.
+    logging.info("Running final inference graph\n")
     result = self._RunGraph(run_params, infer_saved_model_dir, inputs_data,
-                            infer_config, GraphState.INFERENCE)
+                            GraphState.INFERENCE)
     self.assertAllClose(
         ref_result,
         result,
