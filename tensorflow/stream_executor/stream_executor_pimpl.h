@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -520,7 +519,9 @@ class StreamExecutor {
     std::vector<Stream *> streams;
     {
       absl::MutexLock lock(&mu_);
-      absl::c_copy(streams_, std::back_inserter(streams));
+      for (Stream *stream : streams_) {
+        streams.push_back(stream);
+      }
     }
 
     for (Stream *stream : streams) {
@@ -760,7 +761,7 @@ class StreamExecutor {
   StreamExecutorMemoryAllocator allocator_;
 
   // Set of streams associated with this stream executor.
-  absl::flat_hash_set<Stream *> streams_ TF_GUARDED_BY(mu_);
+  std::set<Stream *> streams_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
