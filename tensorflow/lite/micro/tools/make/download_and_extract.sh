@@ -185,6 +185,14 @@ patch_cmsis() {
     -iname '*.*' -exec \
     sed -i -E $'s@#include "dsp/matrix_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/matrix_functions.h"@g' {} \;
 
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.*' -exec \
+    sed -i -E $'s@#include "cmsis_compiler.h"@#include "cmsis/CMSIS/Core/Include/cmsis_compiler.h"@g' {} \;
+
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.*' -exec \
+    sed -i -E $'s@#include "arm_helium_utils.h"@#include "cmsis/CMSIS/DSP/Include/arm_helium_utils.h"@g' {} \;
+
   # Until the fix for https://github.com/ARMmbed/mbed-os/issues/12568 is
   # rolled into Mbed version used on the Arduino IDE, we have to replace
   # one intrinsic with a patched equivalent.
