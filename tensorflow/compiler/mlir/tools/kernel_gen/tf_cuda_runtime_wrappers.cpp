@@ -20,10 +20,13 @@ limitations under the License.
 #include <cassert>
 #include <numeric>
 
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/ArrayRef.h"
 #include "third_party/llvm/llvm-project/llvm/include/llvm/Support/raw_ostream.h"
 #include "third_party/llvm/llvm-project/mlir/include/mlir/ExecutionEngine/CRunnerUtils.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 #define CUDA_REPORT_IF_ERROR(expr)                                             \
   [](CUresult result) {                                                        \
