@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <math.h>
 
+#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"
+#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -25,9 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/activation_utils.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
-
-#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"
-#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 
 namespace tflite {
 namespace ops {
