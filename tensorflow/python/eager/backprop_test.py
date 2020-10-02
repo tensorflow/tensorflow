@@ -42,6 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -1721,6 +1722,32 @@ class JacobianTest(test.TestCase):
     self.assertAllClose(
         g.jacobian(output, inp, experimental_use_pfor=True),
         g.jacobian(output, inp, experimental_use_pfor=False))
+
+  def test_foldl_partial_function(self):
+    x = array_ops.zeros([3])
+    # TODO(allenl): Track down missing handle data when persistent=True and
+    # compare to experimental_use_pfor=False.
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      result = def_function.function(
+          functools.partial(functional_ops.foldl_v2, lambda a, b: a + b))(
+              x)
+    self.assertAllClose([1., 1., 1.],
+                        tape.jacobian(result, x, experimental_use_pfor=True))
+
+  def test_foldl_pure_function(self):
+
+    @def_function.function
+    def compute_jacobian(use_pfor):
+      x = array_ops.zeros([3])
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        result = functools.partial(functional_ops.foldl_v2, lambda a, b: a + b)(
+            x)
+      return tape.jacobian(result, x, experimental_use_pfor=use_pfor)
+
+    self.assertAllClose(compute_jacobian(use_pfor=True),
+                        compute_jacobian(use_pfor=False))
 
 
 @test_util.run_all_in_graph_and_eager_modes
