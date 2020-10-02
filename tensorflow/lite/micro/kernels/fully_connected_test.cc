@@ -241,8 +241,7 @@ TfLiteStatus ValidateFullyConnectedGoldens(
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration =
-      ops::micro::Register_FULLY_CONNECTED();
+  const TfLiteRegistration registration = Register_FULLY_CONNECTED();
   micro::KernelRunner runner(
       registration, tensors, tensors_size, inputs_array, outputs_array,
       reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
