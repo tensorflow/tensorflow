@@ -104,7 +104,7 @@ cc_library(
 
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
-cc_library(name = "ptxas_wrapper")
+cc_library(name = "cuda_root_wrapper")
 
 cc_library(
     name = "cuda_driver",
