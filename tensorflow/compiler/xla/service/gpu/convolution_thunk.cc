@@ -31,7 +31,8 @@ namespace xla {
 namespace gpu {
 
 ConvolutionThunk::ConvolutionThunk(
-    ThunkInfo thunk_info, std::vector<BufferAllocation::Slice> operand_slices,
+    ThunkInfo thunk_info, GpuConvConfig&& config,
+    std::vector<BufferAllocation::Slice> operand_slices,
     BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice,
     BufferAllocation::Slice tuple_result_slice)
     : Thunk(Kind::kConvolution, thunk_info),
@@ -39,9 +40,7 @@ ConvolutionThunk::ConvolutionThunk(
       result_buffer_(result_slice),
       scratch_buffer_(scratch_slice),
       tuple_result_buffer_(tuple_result_slice),
-      config_(GetGpuConvConfig(
-                  Cast<HloCustomCallInstruction>(thunk_info.hlo_instruction))
-                  .ValueOrDie()) {}
+      config_(std::move(config)) {}
 
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
