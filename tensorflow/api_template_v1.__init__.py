@@ -52,7 +52,7 @@ if "dev" in __version__:   # pylint: disable=undefined-variable
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
-# We're using bitwise, but there's nothing special about that.
+
 _API_MODULE = _sys.modules[__name__].bitwise  # pylint: disable=undefined-variable
 _current_module = _sys.modules[__name__]
 _tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
