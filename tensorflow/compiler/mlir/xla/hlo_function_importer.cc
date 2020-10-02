@@ -762,17 +762,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                       ImportInstructionImpl(instruction, func_builder));
   if (op == nullptr) return op;
 
-  // Best-effort propagation of the layouts. These layouts serve as performance
-  // hints to the backend.
+  // See MlirToHloConversionOptions for more about layouts.
   //
   // Minor-to-major is a permutation of [0, rank), presenting tensor dimensions
   // in physical minor-to-major order.
-  //
-  // Note that non-array shapes are not carrying layouts, and users have to
-  // figure out the proper layouts of them through context. This is one of the
-  // reasons why the attribute-based solution is temporary.
-  //
-  // TODO(timshen): Investigate the necessity of having layouts in MHLO.
   if (instruction->shape().IsArray() &&
       instruction->shape().layout() !=
           LayoutUtil::MakeDescendingLayout(

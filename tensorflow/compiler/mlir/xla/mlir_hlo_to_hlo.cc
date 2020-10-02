@@ -499,12 +499,14 @@ class ConvertToHloModule {
   // single value.
   explicit ConvertToHloModule(
       mlir::ModuleOp module, bool use_tuple_args, bool return_tuple,
-      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+      MlirToHloConversionOptions options)
       : module_(module),
         module_builder_("main"),
         use_tuple_args_(use_tuple_args),
         return_tuple_(return_tuple),
-        shape_representation_fn_(shape_representation_fn) {
+        shape_representation_fn_(shape_representation_fn),
+        options_(options) {
     if (!shape_representation_fn_)
       shape_representation_fn_ = tensorflow::IdentityShapeRepresentationFn();
   }
@@ -585,6 +587,8 @@ class ConvertToHloModule {
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
+
+  MlirToHloConversionOptions options_;
 };
 
 }  // namespace
@@ -1087,18 +1091,19 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
 namespace mlir {
 namespace {
 
-StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
+StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
+                                                  xla::Layout layout) {
   if (attr.isa<OpaqueElementsAttr>())
     return tensorflow::errors::Unimplemented(
         "Opaque elements attr not supported");
 
   xla::Shape shape = xla::TypeToShape(attr.getType());
 
-#define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)       \
-  case xla_type: {                                         \
-    xla::Array<cpp_type> source_data(shape.dimensions());  \
-    source_data.SetValues(attr.getValues<cpp_type>());     \
-    return xla::LiteralUtil::CreateFromArray(source_data); \
+#define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)                         \
+  case xla_type: {                                                           \
+    xla::Array<cpp_type> source_data(shape.dimensions());                    \
+    source_data.SetValues(attr.getValues<cpp_type>());                       \
+    return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout); \
   }
 
   switch (shape.element_type()) {
@@ -1128,7 +1133,7 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
       }
       xla::Array<xla::half> source_data(shape.dimensions());
       source_data.SetValues(values);
-      return xla::LiteralUtil::CreateFromArray(source_data);
+      return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout);
     }
     case xla::PrimitiveType::BF16: {
       xla::Array<double> source_data(shape.dimensions());
@@ -1145,7 +1150,7 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
       }
       source_data.SetValues(values_double);
       return xla::LiteralUtil::ConvertF64ToBF16(
-          xla::LiteralUtil::CreateFromArray(source_data));
+          xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout));
     }
     default:
       return tensorflow::errors::Internal(absl::StrCat(
@@ -1154,25 +1159,33 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
 #undef ELEMENTS_ATTR_TO_LITERAL
 }
 
+xla::Layout ExtractLayout(mlir::Operation* op, int rank) {
+  if (auto attr =
+          op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major")) {
+    llvm::SmallVector<int64, 4> minor_to_major;
+    minor_to_major.reserve(attr.size());
+    for (const llvm::APInt& i : attr) {
+      minor_to_major.push_back(i.getZExtValue());
+    }
+    return xla::LayoutUtil::MakeLayout(minor_to_major);
+  }
+  return xla::LayoutUtil::MakeDescendingLayout(rank);
+}
+
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, bool is_entry_function,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaComputation* result) {
-  // See hlo_function_importer.cc for documentation about layouts in MHLO.
-  auto propagate_layouts = [](mlir::Operation* inst, xla::XlaOp xla_op) {
-    auto attr =
-        inst->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major");
-    if (!attr) return;
-
-    auto* v = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
-                  ->mutable_shape()
-                  ->mutable_layout()
-                  ->mutable_minor_to_major();
-    v->Clear();
-    for (const llvm::APInt& i : attr) {
-      *v->Add() = i.getZExtValue();
+  // See MlirToHloConversionOptions for more about layouts.
+  auto propagate_layouts = [this](mlir::Operation* inst, xla::XlaOp xla_op) {
+    if (options_.propagate_layouts) {
+      auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
+                        ->mutable_shape();
+      if (shape->tuple_shapes().empty())
+        *shape->mutable_layout() =
+            ExtractLayout(inst, shape->dimensions().size()).ToProto();
     }
   };
 
@@ -1216,12 +1229,14 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (matchPattern(inst, m_Constant(&const_attr))) {
-    auto literal_or = CreateLiteralFromAttr(const_attr);
+    xla::Layout layout;
+    layout = ExtractLayout(inst, const_attr.getType().getRank());
+    auto literal_or = CreateArrayLiteralFromAttr(const_attr, layout);
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
     auto constant = xla::ConstantLiteral(builder, literal_or.ValueOrDie());
     value_map[inst->getResult(0)] = constant;
-    propagate_layouts(inst, constant);
+
     return success();
   }
 
@@ -1674,22 +1689,24 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 }  // namespace
 
 Status ConvertRegionToComputation(mlir::Region* region,
-                                  xla::XlaComputation* func) {
+                                  xla::XlaComputation* func,
+                                  MlirToHloConversionOptions options) {
   mlir::ModuleOp module;
-  ConvertToHloModule converter(module, true, true, {});
+  ConvertToHloModule converter(module, true, true, {}, options);
   if (failed(converter.LowerRegionAsComputation(region, func)))
     return tensorflow::errors::Internal(
         "failed to convert region to computation");
   return Status::OK();
 }
 
-Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool return_tuple,
-                           const tensorflow::XlaHelpers::ShapeRepresentationFn
-                               shape_representation_fn) {
+Status ConvertMlirHloToHlo(
+    mlir::ModuleOp module, xla::HloProto* hlo_proto, bool use_tuple_args,
+    bool return_tuple,
+    const tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    MlirToHloConversionOptions options) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   ConvertToHloModule converter(module, use_tuple_args, return_tuple,
-                               shape_representation_fn);
+                               shape_representation_fn, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
