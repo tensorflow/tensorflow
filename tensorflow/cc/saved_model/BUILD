@@ -42,13 +42,15 @@ cc_library(
     name = "reader",
     srcs = ["reader.cc"],
     hdrs = ["reader.h"],
-    deps = [":constants"] + if_not_mobile([
+    deps = [
+        ":constants",
+        "//tensorflow/core:protos_all_cc",
+    ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
     ]),
 )
 
