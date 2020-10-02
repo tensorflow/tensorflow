@@ -117,10 +117,8 @@ class TestCluster(object):
   def restart_dispatcher(self):
     """Stops `dispatcher` and creates a new dispatcher with the same port.
 
-    When the dispatcher is restarted with `fault-tolerant_mode=False`,
-    the new dispatcher is unable to find the `dataset_id` of the already
-    created dataset and thus perpetually throws a warn message until it
-    times out. Thus, the test bed prevents this scenario.
+    Restarting is supported only when the dispatcher is configured with
+    `fault_tolerant_mode=True`.
     """
     if not self.dispatcher._config.fault_tolerant_mode:
       raise ValueError(
