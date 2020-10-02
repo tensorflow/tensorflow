@@ -55,11 +55,13 @@ class ConvolutionThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const HloCustomCallInstruction* cudnn_call_;
   std::vector<BufferAllocation::Slice> operand_buffers_;
   BufferAllocation::Slice result_buffer_;
   BufferAllocation::Slice scratch_buffer_;
   BufferAllocation::Slice tuple_result_buffer_;
+
+  // Convolution config
+  GpuConvConfig config_;
 };
 
 }  // namespace gpu
