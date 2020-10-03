@@ -1342,12 +1342,6 @@ class TensorTracer(object):
       else:
         return tensor
 
-    # No need to print core numbers if the cache is merged already.
-    if self._parameters.collect_summary_per_core:
-      core_message = ['core:', replica_id, ',']
-    else:
-      core_message = []
-
     # Check if the cache includes any nan or inf
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
       # Cache has 1s or 0s if the mode is NaN_INF
@@ -1364,20 +1358,58 @@ class TensorTracer(object):
         lambda: 'NaNs or Infs in the step!',
         lambda: 'No numerical issues have been found for the step.')
 
-    print_op = logging_ops.print_v2(
-        '\n', *core_message, 'step:', step_num, '-->', step_error_message,
-        'Printing tensors for mode:%s...' % self._parameters.trace_mode,
-        summarize=-1,
-        output_stream=output_stream)
+    # No need to print core numbers if the cache is merged already.
+    if self._parameters.collect_summary_per_core:
+      print_op = logging_ops.print_v2(
+          '\n',
+          'core:',
+          replica_id,
+          ',',
+          'step:',
+          step_num,
+          '-->',
+          step_error_message,
+          'Printing tensors for mode:%s...' % self._parameters.trace_mode,
+          summarize=-1,
+          output_stream=output_stream)
+    else:
+      print_op = logging_ops.print_v2(
+          '\n',
+          'step:',
+          step_num,
+          '-->',
+          step_error_message,
+          'Printing tensors for mode:%s...' % self._parameters.trace_mode,
+          summarize=-1,
+          output_stream=output_stream)
 
     for tensor_name, cache_idx in sorted(
         tensor_trace_order.tensorname_to_cache_idx.items(),
         key=lambda item: item[1]):
       with ops.control_dependencies([print_op]):
-        print_op = logging_ops.print_v2(
-            *core_message, 'step:', step_num, ',',
-            tensor_name, '-->', _inspect_tensor(cache[cache_idx, 0]),
-            summarize=-1, output_stream=output_stream)
+        if self._parameters.collect_summary_per_core:
+          print_op = logging_ops.print_v2(
+              '\n',
+              'core:',
+              replica_id,
+              ',',
+              'step:',
+              step_num,
+              ',',
+              tensor_name,
+              '-->',
+              _inspect_tensor(cache[cache_idx, 0]),
+              summarize=-1, output_stream=output_stream)
+        else:
+          print_op = logging_ops.print_v2(
+              '\n',
+              'step:',
+              step_num,
+              ',',
+              tensor_name,
+              '-->',
+              _inspect_tensor(cache[cache_idx, 0]),
+              summarize=-1, output_stream=output_stream)
     return print_op
 
   def _generate_flush_cache_op(self, num_replicas, on_tpu, tensor_trace_order):
