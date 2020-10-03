@@ -206,6 +206,9 @@
         `fit()`. Running multiple batches inside a single `tf.function` call can
         greatly improve performance on TPUs or small models with a large Python
         overhead.
+    *   Improvements to Keras preprocessing layers:
+        *   TextVectorization can now accept a vocabulary list or file as an
+            init arg.
 *   `tf.function` / AutoGraph:
 
     *   Added `experimental_follow_type_hints` argument for `tf.function`. When
