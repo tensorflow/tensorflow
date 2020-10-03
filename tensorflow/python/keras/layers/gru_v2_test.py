@@ -641,8 +641,9 @@ class GRUV2Test(keras_parameterized.TestCase):
     model.predict(inputs)
 
   # TODO (b/169895267): test with xla_gpu is disabled.
-  @testing_utils.run_v2_only
   def test_deepcopy(self):
+    if not context.executing_eagerly():
+      self.skipTest('v2-only test')
     original_layer = rnn.GRU(5)
     copied_layer = copy.deepcopy(original_layer)
     self.assertEqual(copied_layer.units, 5)

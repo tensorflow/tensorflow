@@ -217,6 +217,7 @@ cc_library(
         ":backend_configs_cc",
         ":buffer_allocations",
         ":gpu_constants",
+        ":gpu_conv_runner",
         ":gpu_executable",
         ":ir_emission_utils",
         ":nccl_all_reduce_thunk",

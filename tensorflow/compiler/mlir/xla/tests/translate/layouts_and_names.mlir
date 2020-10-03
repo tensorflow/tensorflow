@@ -26,5 +26,9 @@ func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -> ten
     rhs_dilations = dense<1> : tensor<2xi64>,
     window_strides = dense<2> : tensor<2xi64>
   } : (tensor<128x224x224x4xf16>, tensor<64x7x7x4xf16>)-> tensor<128x64x112x112xf16> loc("root.42")
+
+  // CHECK: s32[1,1]{0,1} constant({ {42} })
+  %cst_1 = "std.constant"() {value = dense<[[42]]> : tensor<1x1xi32>, minor_to_major = dense<[0, 1]> : tensor<2xindex>} : () -> tensor<1x1xi32>
+
   return %0 : tensor<128x64x112x112xf16>
 }

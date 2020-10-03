@@ -117,7 +117,9 @@ def InvokeNvcc(argv, log=False):
   nvcc_compiler_options, argv = GetNvccOptions(argv)
 
   opt_option, argv = GetOptionValue(argv, '/O')
-  opt = ['-g']
+  # Originally '-g' was provided as an initial switch. Howerver nvcc expands it for MSVC
+  # to /Zi which generates vcXXX.pdb file not known to bazel.
+  opt = []
   if (len(opt_option) > 0 and opt_option[0] != 'd'):
     opt = ['-O2']
 
