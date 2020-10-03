@@ -1524,6 +1524,12 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status);
 TF_CAPI_EXPORT extern TF_Buffer* TF_GetRegisteredKernelsForOp(
     const char* name, TF_Status* status);
 
+// Update edge, switch input/ output in a node
+TF_CAPI_EXPORT extern void TF_UpdateEdge(TF_Graph* graph, 
+                                         TF_Output new_src, 
+                                         TF_Input dst, 
+                                         TF_Status* status);
+
 // --------------------------------------------------------------------------
 // In-process TensorFlow server functionality, for use in distributed training.
 // A Server instance encapsulates a set of devices and a Session target that
@@ -1572,12 +1578,6 @@ TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
 // logs.
 TF_CAPI_EXPORT extern void TF_RegisterLogListener(
     void (*listener)(const char*));
-
-// Update edge, switch input/ output in a node
-TF_CAPI_EXPORT extern void TF_UpdateEdge(TF_Graph* graph, 
-                                         TF_Output new_src, 
-                                         TF_Input dst, 
-                                         TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */
