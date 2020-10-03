@@ -991,6 +991,7 @@ class ComparisonOpTest(test.TestCase):
           [[True, True, True, True, True], [False, False, False, False, False]],
           values)
 
+  @test_util.disable_tfrt("b/169901260")
   def testEqualQuantizeDType(self):
     dtypes = [
         dtypes_lib.qint8,
