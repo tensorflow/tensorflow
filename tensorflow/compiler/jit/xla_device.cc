@@ -18,8 +18,11 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <unordered_set>
+#include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -42,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,6 +60,21 @@ limitations under the License.
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
+
+// Default PaddedShapeFn implementation that simply returns the unpadded
+// on-device shape. This is accurate for CPU and GPU devices that neither
+// transpose nor pad tensors.
+Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
+  const tensorflow::XlaTensor* xla_tensor =
+      tensorflow::XlaTensor::FromTensor(&tensor);
+  if (xla_tensor == nullptr) {
+    return TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), shape);
+  }
+
+  const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
+  *shape = shaped_buffer.on_device_shape();
+  return Status::OK();
+}
 
 // Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A
 // XlaDeviceAllocator is created on demand and is associated with a
@@ -80,7 +98,7 @@ class XlaDeviceAllocatorState {
   std::unordered_map<std::pair<const xla::Backend*, int>,
                      std::unique_ptr<XlaDeviceAllocator>,
                      hash<std::pair<const xla::Backend*, int>>>
-      allocators_ GUARDED_BY(allocator_mutex_);
+      allocators_ TF_GUARDED_BY(allocator_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceAllocatorState);
 };
@@ -113,20 +131,6 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
 
 namespace {
 
-// Default PaddedShapeFn implementation that simply returns the unpadded
-// on-device shape. This is accurate for CPU and GPU devices that neither
-// transpose nor pad tensors.
-Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
-  const tensorflow::XlaTensor* xla_tensor =
-      tensorflow::XlaTensor::FromTensor(&tensor);
-  if (xla_tensor == nullptr) {
-    return TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), shape);
-  }
-
-  const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
-  *shape = shaped_buffer.on_device_shape();
-  return Status::OK();
-}
 
 static DeviceAttributes BuildXlaDeviceAttributes(const string& name_prefix,
                                                  const string& device_name,
@@ -227,9 +231,12 @@ XlaDevice::~XlaDevice() {
   if (device_context_) {
     device_context_->Unref();
   }
+  if (fast_mem_device_context_) {
+    fast_mem_device_context_->Unref();
+  }
 }
 
-xla::LocalClient* XlaDevice::client() const {
+xla::StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
   // We lazily create the client because the platform commits to the
   // details of the host hardware when the client is created, so we
   // don't want to do it until we get a chance to hook the platform up
@@ -239,9 +246,7 @@ xla::LocalClient* XlaDevice::client() const {
   options.set_platform(platform_)
       .set_allowed_devices(allowed_devices_)
       .set_intra_op_parallelism_threads(intra_op_parallelism_threads_);
-  // TODO(b/78468222): This can fail, at least when the backend is GPU and
-  // there is no GPU on the host.
-  return xla::ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  return xla::ClientLibrary::GetOrCreateLocalClient(options);
 }
 
 Allocator* XlaDevice::GetAllocator(AllocatorAttributes attr) {
@@ -255,7 +260,9 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   }
 
   if (xla_allocator_ == nullptr) {
-    xla::Backend* backend = client()->mutable_backend();
+    // TODO(b/78468222): This can fail, at least when the backend is GPU and
+    // there is no GPU on the host.
+    xla::Backend* backend = GetOrCreateClient().ValueOrDie()->mutable_backend();
     xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
         backend, device_ordinal_);
   }
@@ -282,8 +289,10 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
   return Status::OK();
 }
 
-xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
-  xla::Backend* backend = client()->mutable_backend();
+xla::StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
+XlaDevice::GetDeviceContextLocked() {
+  TF_ASSIGN_OR_RETURN(xla::LocalClient * client, GetOrCreateClient());
+  xla::Backend* backend = client->mutable_backend();
 
   // Ensure all our streams are valid, borrowing new streams if necessary.
   bool need_new_device_context = !device_context_;
@@ -315,7 +324,7 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   }
 
   if (!need_new_device_context) {
-    return device_context_;
+    return std::make_pair(device_context_, fast_mem_device_context_);
   }
 
   // At this point we know we need a new device context.
@@ -324,16 +333,26 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   if (device_context_) {
     device_context_->Unref();
   }
+  if (fast_mem_device_context_) {
+    fast_mem_device_context_->Unref();
+  }
   // The XlaDeviceContext keeps a reference count to the streams, and the
   // XlaDeviceContext remains live for the duration of a Executor run. This
   // ensures that the streams remain live for the duration of a run, even if
   // an error is encountered and the streams are replaced with new ones.
   device_context_ = new XlaDeviceContext(
+      stream_, host_to_device_stream, device_to_host_stream,
+      device_to_device_streams, client, shape_representation_fn_,
+      thread_pool_.get(), false);
+  VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext(fast_mem=false) "
+          << device_context_;
+
+  fast_mem_device_context_ = new XlaDeviceContext(
       stream_, std::move(host_to_device_stream),
       std::move(device_to_host_stream), std::move(device_to_device_streams),
-      client(), shape_representation_fn_, thread_pool_.get());
-  VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext "
-          << device_context_;
+      client, shape_representation_fn_, thread_pool_.get(), true);
+  VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext(fast_mem=true) "
+          << fast_mem_device_context_;
 
   // Create and set a new GpuDeviceInfo, if necessary.
   //
@@ -352,7 +371,7 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
             << gpu_device_info_.get();
   }
 
-  return device_context_;
+  return std::make_pair(device_context_, fast_mem_device_context_);
 }
 
 Status XlaDevice::UseGpuDeviceInfo() {
@@ -361,30 +380,41 @@ Status XlaDevice::UseGpuDeviceInfo() {
   return GetDeviceContextLocked().status();
 }
 
-Status XlaDevice::FillContextMap(const Graph* graph,
-                                 DeviceContextMap* device_context_map) {
-  VLOG(1) << "XlaDevice::FillContextMap";
+Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   mutex_lock lock(mu_);
-  TF_ASSIGN_OR_RETURN(XlaDeviceContext * device_context,
-                      GetDeviceContextLocked());
 
-  device_context_map->resize(graph->num_node_ids());
-  for (Node* n : graph->nodes()) {
-    VLOG(2) << n->id() << " : " << n->type_string() << " : " << n->name();
-    device_context->Ref();
-    (*device_context_map)[n->id()] = device_context;
-  }
+  TF_ASSIGN_OR_RETURN(auto device_contexts, GetDeviceContextLocked());
+  device_contexts.first->Ref();
+  *out_context = device_contexts.first;
   return Status::OK();
+}
+
+// Warn about XLA_CPU/XLA_GPU exactly once.
+static void ShowXlaDeviceDeprecationWarning(
+    absl::string_view compilation_device_name) {
+  static absl::once_flag once;
+  if (absl::StrContains(compilation_device_name, "CPU") ||
+      absl::StrContains(compilation_device_name, "GPU")) {
+    absl::call_once(once, [] {
+      LOG(INFO) << "XLA_GPU and XLA_CPU devices are deprecated and will be "
+                   "removed in subsequent releases. Instead, use either "
+                   "@tf.function(experimental_compile=True) for must-compile "
+                   "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
+                   "for auto-clustering best-effort compilation.";
+    });
+  }
 }
 
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
+  ShowXlaDeviceDeprecationWarning(jit_device_name_.type_string());
   op_kernel->Compute(context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
+  ShowXlaDeviceDeprecationWarning(jit_device_name_.type_string());
   VLOG(2) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
   op_kernel->ComputeAsync(context, done);
@@ -441,11 +471,10 @@ void XlaDevice::Sync(const DoneCallback& done) {
   });
 }
 
-Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
+Status XlaDevice::MakeTensorFromProto(XlaDeviceContext* device_context,
+                                      const TensorProto& tensor_proto,
                                       const AllocatorAttributes alloc_attrs,
                                       Tensor* tensor) {
-  VLOG(1) << "XlaDevice::MakeTensorFromProto";
-
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
@@ -457,23 +486,40 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     *tensor = parsed;
   } else {
     mutex_lock lock(mu_);
-    TF_ASSIGN_OR_RETURN(XlaDeviceContext * device_context,
-                        GetDeviceContextLocked());
     Allocator* allocator = GetAllocatorLocked(alloc_attrs);
     Tensor copy(allocator, parsed.dtype(), parsed.shape());
-    Notification n;
-    device_context->CopyCPUTensorToDevice(
-        &parsed, this, &copy,
-        [&n, &status](const Status& s) {
-          status = s;
-          n.Notify();
-        },
-        true /*sync_dst_compute*/);
-    n.WaitForNotification();
+    TF_RETURN_IF_ERROR(
+        device_context->CopyCPUTensorToDeviceSync(&parsed, this, &copy));
     *tensor = copy;
   }
   VLOG(2) << "Allocated tensor at " << DMAHelper::base(tensor);
   return status;
+}
+
+Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
+                                      const AllocatorAttributes alloc_attrs,
+                                      Tensor* tensor) {
+  VLOG(1) << "XlaDevice::MakeTensorFromProto";
+  std::pair<XlaDeviceContext*, XlaDeviceContext*> device_contexts;
+  {
+    mutex_lock lock(mu_);
+    TF_ASSIGN_OR_RETURN(device_contexts, GetDeviceContextLocked());
+  }
+  return MakeTensorFromProto(device_contexts.first, tensor_proto, alloc_attrs,
+                             tensor);
+}
+
+Status XlaDevice::MakeFastMemTensorFromProto(
+    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+    Tensor* tensor) {
+  VLOG(1) << "XlaDevice::MakeFastMemTensorFromProto";
+  std::pair<XlaDeviceContext*, XlaDeviceContext*> device_contexts;
+  {
+    mutex_lock lock(mu_);
+    TF_ASSIGN_OR_RETURN(device_contexts, GetDeviceContextLocked());
+  }
+  return MakeTensorFromProto(device_contexts.second, tensor_proto, alloc_attrs,
+                             tensor);
 }
 
 void XlaDevice::SetAllowsSyncOnCompletion(bool sync_on_completion) {
@@ -527,8 +573,7 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
   // Any op assigned to the device that isn't rewritten by the graph rewriter
   // gets executed by an XlaCompileOnDemandOp, which compiles it and executes
   // it just-in-time.
-  OpKernel* (*factory)(OpKernelConstruction*) =
-      [](OpKernelConstruction* context) -> OpKernel* {
+  auto factory = [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaCompileOnDemandOp(context);
   };
   XlaOpRegistry::RegisterCompilationKernels();
@@ -537,6 +582,13 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
            jit_device,
            /*include_compilation_only_kernels=*/false)) {
     KernelDef* def = new KernelDef(*jit_def);
+    const std::unordered_set<std::string>* constant_inputs =
+        XlaOpRegistry::CompileTimeConstantInputArgNames(def->op());
+
+    for (const std::string& arg_name : *constant_inputs) {
+      def->add_host_memory_arg(arg_name);
+    }
+
     def->set_device_type(device);
     registrations->op_kernel_registrars.emplace_back(
         new kernel_factory::OpKernelRegistrar(def, "XlaCompileOnDemandOp",

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tstring.h"
 
 // --------------------------------------------------------------------------
 // C API for TensorFlow.
@@ -123,6 +124,14 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_NewBuffer(void);
 TF_CAPI_EXPORT extern void TF_DeleteBuffer(TF_Buffer*);
 
 TF_CAPI_EXPORT extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
+
+// --------------------------------------------------------------------------
+// Used to return strings across the C API. The caller does not take ownership
+// of the underlying data pointer and is not responsible for freeing it.
+typedef struct TF_StringView {
+  const char* data;
+  size_t len;
+} TF_StringView;
 
 // --------------------------------------------------------------------------
 // TF_SessionOptions holds options that can be passed during session creation.
@@ -434,6 +443,15 @@ TF_CAPI_EXPORT extern int TF_OperationInputListLength(TF_Operation* oper,
 // There is an edge from producer.oper's output (given by
 // producer.index) to consumer.oper's input (given by consumer.index).
 TF_CAPI_EXPORT extern TF_Output TF_OperationInput(TF_Input oper_in);
+
+// Get list of all inputs of a specific operation.  `inputs` must point to
+// an array of length at least `max_inputs` (ideally set to
+// TF_OperationNumInputs(oper)).  Beware that a concurrent
+// modification of the graph can increase the number of inputs of
+// an operation.
+TF_CAPI_EXPORT extern void TF_OperationAllInputs(TF_Operation* oper,
+                                                 TF_Output* inputs,
+                                                 int max_inputs);
 
 // Get the number of current consumers of a specific output of an
 // operation.  Note that this number can change when new operations

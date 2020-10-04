@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/framework/gradients.h"
+
 #include <deque>
 #include <vector>
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/while_gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
@@ -96,7 +97,7 @@ class SymbolicGradientBuilder {
   // Used to identify nodes at which to stop backprop.
   std::unordered_set<int> GetStopBackpropNodes(
       const std::vector<bool>& reachable_nodes,
-      const std::unordered_set<int>& output_nodes);
+      const std::unordered_set<int>& output_nodes) const;
 
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
@@ -190,7 +191,7 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
 
 std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
     const std::vector<bool>& reachable_nodes,
-    const std::unordered_set<int>& output_nodes) {
+    const std::unordered_set<int>& output_nodes) const {
   // Output nodes that get transitively consumed by other `outputs_` are stored
   // in `internal_outputs`.
   std::unordered_set<int> internal_outputs;
@@ -346,8 +347,8 @@ Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
         "Unable to find backprop list for node.id ", src.node()->name());
   }
   const auto& grads = iter->second;
-  // Filter any backproped 'NoGradient' Outputs from 'grads' (if needed).
-  // Return any valid backproped gradients that remain after filtering,
+  // Filter any backpropped 'NoGradient' Outputs from 'grads' (if needed).
+  // Return any valid backpropped gradients that remain after filtering,
   // or 'NoGradient' otherwise.
   std::vector<Output> grads_to_keep;
   for (const Output& o : grads) {
@@ -424,7 +425,7 @@ Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
   // Backprop along the in edges to the while loop (i.e. the inputs to the enter
   // nodes)
   DCHECK_EQ(dx.size(), while_ctx->enter_nodes().size());
-  for (int i = 0; i < dx.size(); ++i) {
+  for (int i = 0, end = dx.size(); i < end; ++i) {
     Node* enter_node = while_ctx->enter_nodes()[i];
     for (const Edge* e : enter_node->in_edges()) {
       if (e->IsControlEdge()) continue;
@@ -488,7 +489,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     // All loop-specific control flow ops should have been handled above
     DCHECK(!n->IsEnter() && !n->IsNextIteration()) << n->DebugString();
 
-    const size_t num_no_grad = no_grad_dy_indices.size();
+    const int num_no_grad = no_grad_dy_indices.size();
     if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
       // No grad defined for this op, or all outputs returned 'NoGradient':
       // Backprop 'NoGradient' along the in edges.
@@ -519,17 +520,17 @@ Status SymbolicGradientBuilder::AddGradients() {
     // Backprop along the in edges.
     // TODO(andydavis) Find cleaner way to map each grad output returned by
     // gradient function to the src node/output to which it should be
-    // backproped. Maybe grad functions can return a vector of Output pairs to
+    // backpropped. Maybe grad functions can return a vector of Output pairs to
     // make this association explicit.
-    size_t dx_index = 0;
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      if (dx_index == dx.size()) {
+      size_t dx_index = e->dst_input();
+      if (dx_index >= dx.size()) {
         return errors::Internal(
             "Invalid gradient output index: ", dx_index, " size: ", dx.size());
       }
       TF_RETURN_IF_ERROR(
-          BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
+          BackpropAlongEdge(dx[dx_index], {e->src(), e->src_output()}));
     }
   }
 

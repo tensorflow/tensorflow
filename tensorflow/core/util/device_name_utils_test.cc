@@ -105,6 +105,8 @@ TEST(DeviceNameUtilsTest, Basic) {
     DeviceNameUtils::ParsedName p;
     EXPECT_TRUE(DeviceNameUtils::ParseFullName(
         "/job:foo_bar/replica:1/task:2/device:GPU:3", &p));
+    EXPECT_TRUE(DeviceNameUtils::ParseFullOrLocalName(
+        "/job:foo_bar/replica:1/task:2/device:GPU:3", &p));
     EXPECT_TRUE(p.has_job);
     EXPECT_TRUE(p.has_replica);
     EXPECT_TRUE(p.has_task);
@@ -246,12 +248,14 @@ TEST(DeviceNameUtilsTest, Basic) {
   {
     DeviceNameUtils::ParsedName p;
     EXPECT_TRUE(DeviceNameUtils::ParseLocalName("CPU:10", &p));
+    EXPECT_TRUE(DeviceNameUtils::ParseFullOrLocalName("CPU:10", &p));
     EXPECT_EQ(p.type, "CPU");
     EXPECT_EQ(p.id, 10);
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("cpu:abc", &p));
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("abc:", &p));
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("abc", &p));
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("myspecialdevice", &p));
+    EXPECT_FALSE(DeviceNameUtils::ParseFullOrLocalName("myspecialdevice", &p));
   }
 
   // Test that all parts are round-tripped correctly.
@@ -276,6 +280,19 @@ TEST(DeviceNameUtilsTest, Basic) {
       EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "someDevice:3"},
                                        /*explicitDevice=*/true));
     }
+  }
+  {
+    DeviceNameUtils::ParsedName x, y;
+    DeviceNameUtils::ParseFullName("/job:work/replica:1/task:3/device:GPU:*",
+                                   &x);
+    DeviceNameUtils::ParseFullName("/device:CPU:*", &y);
+    EXPECT_FALSE(DeviceNameUtils::AreCompatibleDevNames(x, y));
+  }
+  {
+    DeviceNameUtils::ParsedName x, y;
+    DeviceNameUtils::ParseFullName("/job:work/replica:1/task:3", &x);
+    DeviceNameUtils::ParseFullName("/device:CPU:*", &y);
+    EXPECT_TRUE(DeviceNameUtils::AreCompatibleDevNames(x, y));
   }
 }
 
@@ -426,8 +443,6 @@ static void MergeOverrideHelper(const string& target, const string& name,
 }
 
 TEST(DeviceNameUtilsTest, MergeDevNames) {
-  DeviceNameUtils::ParsedName target;
-
   // Idempotence tests.
   MergeDevNamesHelper("", "", "");
   MergeDevNamesHelper("/job:foo/replica:1/task:2/cpu:1",

@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -51,8 +52,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         test_samples=10,
         input_shape=(DATA_DIM,),
         num_classes=NUM_CLASSES)
-    y_train = keras.utils.to_categorical(y_train, NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test, NUM_CLASSES)
+    y_train = np_utils.to_categorical(y_train, NUM_CLASSES)
+    y_test = np_utils.to_categorical(y_test, NUM_CLASSES)
     return (x_train, y_train), (x_test, y_test)
 
   def create_multi_input_model_from(self, layer1, layer2):
@@ -78,8 +79,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.losses), 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
@@ -96,8 +96,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.losses), 1 if context.executing_eagerly() else 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
@@ -112,8 +111,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, batch_size=5, epochs=1)
 
   def test_custom_regularizer_saving(self):
@@ -143,9 +141,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    self.assertEqual(len(model.losses), 5)
+        run_eagerly=testing_utils.should_run_eagerly())
+    self.assertLen(model.losses, 5)
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
@@ -166,9 +163,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    self.assertEqual(len(model.losses), 6)
+        run_eagerly=testing_utils.should_run_eagerly())
+    self.assertLen(model.losses, 6)
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
@@ -194,9 +190,30 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    self.assertEqual(len(model.losses), 14)
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    # We expect to see 9 losses on the model:
+    # - 2 from the 2 add_loss calls on the outer model.
+    # - 3 from the weight regularizers on the shared_dense layer, unshared_dense
+    # in inner model 1, unshared_dense in inner model 2.
+    # - 4 from activity regularizers on the shared_dense layer.
+    self.assertLen(model.losses, 9)
+
+  def test_deserialization_error(self):
+    with self.assertRaisesRegex(ValueError, 'Could not interpret regularizer'):
+      keras.regularizers.get(0)
+
+  @parameterized.named_parameters([
+      ('l1', regularizers.l1(l1=None), 0.01),
+      ('l2', regularizers.l2(l2=None), 0.01),
+      ('l1_l2', regularizers.l1_l2(l1=None, l2=None), 0.),
+  ])
+  def test_default_value_when_init_with_none(self, regularizer, expected_value):
+    expected_value = np.asarray(expected_value)
+    if hasattr(regularizer, 'l1'):
+      self.assertAllClose(regularizer.l1, expected_value)
+    if hasattr(regularizer, 'l2'):
+      self.assertAllClose(regularizer.l2, expected_value)
 
 
 if __name__ == '__main__':

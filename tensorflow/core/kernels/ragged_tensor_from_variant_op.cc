@@ -97,8 +97,8 @@ Status RaggedComponentsFromVariant(const Tensor& encoded_variant,
     }
     if (values_tensor->dtype() != value_dtype) {
       return errors::InvalidArgument(
-          "Expected values Tensor dtype: ", value_dtype,
-          ", found: ", values_tensor->dtype());
+          "Expected values Tensor dtype: ", DataTypeString(value_dtype),
+          ", found: ", DataTypeString(values_tensor->dtype()));
     }
     if (values_tensor->dims() < 1) {
       return errors::InvalidArgument(
@@ -175,8 +175,22 @@ Status NestedStackRaggedTensors(
     }
   }
 
+  // If the variant tensor input is empty, then we have no way to determine
+  // the correct shape for the dense_values.  (It must have rank>=1, and its
+  // outer dimension must be 0, but we don't know its shape beyond that.)
+  // For now, we just use a shape of `[0]` in this case.
+  // TODO(edloper): Update this op with an attribute containing information
+  // about dense_values shape.  If it's `None`, then we'll probably still have
+  // to use shape=[0] here, but if we have more info, then we can use it.
+  // E.g., in map_fn, we may have shape info from the RaggedTensorSpec.
+  TensorShape component_values_shape;
+  if (ragged_components.empty()) {
+    component_values_shape = TensorShape({0});
+  } else {
+    component_values_shape = ragged_components[0].values.shape();
+  }
+
   // Populate values.
-  TensorShape component_values_shape = ragged_components[0].values.shape();
   int values_size = component_values_shape.dim_size(0);
   for (int i = 1; i < ragged_components.size(); i++) {
     if (ragged_components[i].values.dims() != component_values_shape.dims()) {
@@ -217,8 +231,8 @@ class RaggedTensorFromVariantOp : public OpKernel {
  public:
   explicit RaggedTensorFromVariantOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("input_ragged_rank", &input_ragged_rank_));
+    OP_REQUIRES_OK(context, context->GetAttr("input_ragged_rank",
+                                             &input_ragged_rank_attr_));
     OP_REQUIRES_OK(
         context, context->GetAttr("output_ragged_rank", &output_ragged_rank_));
   }
@@ -226,6 +240,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Read input Tensor.
     const Tensor& encoded_variant = context->input(0);
+    auto input_ragged_rank_ = input_ragged_rank_attr_;
 
     if (input_ragged_rank_ == -1) {  // Infer input_ragged_rank_.
       input_ragged_rank_ = output_ragged_rank_ - encoded_variant.dims();
@@ -277,7 +292,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
   }
 
  private:
-  int input_ragged_rank_;
+  int input_ragged_rank_attr_;
   int output_ragged_rank_;
 
   void ReturnRaggedTensor(OpKernelContext* context,
@@ -307,8 +322,6 @@ TF_CALL_tstring(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_quint16(REGISTER_KERNELS);
 TF_CALL_qint16(REGISTER_KERNELS);
-TF_CALL_uint32(REGISTER_KERNELS);
-TF_CALL_uint64(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 #undef REGISTER_KERNELS_WITH_SPLIT_TYPE
 }  // namespace tensorflow

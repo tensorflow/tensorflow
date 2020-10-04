@@ -44,8 +44,8 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
   const SliceIndex indices_size = static_cast<SliceIndex>(indices.dimension(0));
   const SliceIndex batch_size = static_cast<SliceIndex>(params.dimension(0));
   const Index limit = static_cast<Index>(params.dimension(1));
-  T* out_base = &out(0, 0, 0);
-  const T* params_base = &params(0, 0, 0);
+  T* out_base = out.data();
+  const T* params_base = params.data();
   if (static_slice_elems >= 0) {
     // Give compiler static knowledge of the number of elements/bytes
     slice_elems = static_slice_elems;

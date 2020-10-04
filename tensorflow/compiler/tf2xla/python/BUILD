@@ -1,5 +1,5 @@
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_py_clif_cc",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -15,7 +15,7 @@ tf_py_clif_cc(
     name = "xla_op_registry",
     srcs = ["xla_op_registry.clif"],
     pyclif_deps = [
-        "//tensorflow/core:framework/kernel_def_pyclif",
+        "//tensorflow/core/framework:kernel_def_pyclif",
     ],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",

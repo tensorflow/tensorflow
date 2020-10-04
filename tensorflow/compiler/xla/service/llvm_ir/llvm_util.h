@@ -87,7 +87,7 @@ string DumpModuleToString(const llvm::Module& module);
 //   - joining all of the nonempty inputs by '.', and then
 //   - removing all '%'s.
 //
-string IrName(string a);
+string IrName(absl::string_view a);
 string IrName(absl::string_view a, absl::string_view b);
 string IrName(const HloInstruction* a, absl::string_view b = "");
 
@@ -108,12 +108,12 @@ llvm::CallInst* EmitCallToIntrinsic(
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b);
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
 
 // Emit float min. Emit minnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b);
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
@@ -140,14 +140,6 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
                                                          int32* shape_size,
                                                          llvm::IRBuilder<>* b);
-
-// Inverses the encoding of a Shape protobuf into an LLVM global variable.
-//
-// This is intended to be called from the runtime to decode the llvm::Constants
-// that are created via ConvertShapeToSelfDescribingConstant and subsequently
-// embedded into the program.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes);
 
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.

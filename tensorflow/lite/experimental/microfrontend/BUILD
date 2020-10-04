@@ -17,6 +17,7 @@ package(
 cc_library(
     name = "audio_microfrontend",
     srcs = ["audio_microfrontend.cc"],
+    hdrs = ["audio_microfrontend.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
@@ -24,6 +25,17 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference",
         "@flatbuffers",
     ],
+)
+
+cc_library(
+    name = "audio_microfrontend_op_lib",
+    srcs = ["ops/audio_microfrontend_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/lite/experimental/microfrontend/lib:frontend",
+    ],
+    alwayslink = 1,
 )
 
 cc_test(
@@ -77,7 +89,6 @@ tf_custom_op_py_library(
         ":audio_microfrontend_op",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:common_shapes",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -92,9 +103,9 @@ tf_py_test(
     name = "audio_microfrontend_op_test",
     size = "small",
     srcs = ["python/kernel_tests/audio_microfrontend_op_test.py"],
-    additional_deps = [
+    tags = ["no_pip"],
+    deps = [
         ":audio_microfrontend_py",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_pip"],
 )

@@ -39,6 +39,13 @@ class TransposeFolding : public HloModulePass {
                                            const OperandIndices&) {
     return {};
   }
+
+  // Helper function to always fold transposes.
+  static OperandIndices AlwaysFoldTranspose(const HloInstruction&,
+                                            const OperandIndices& ids) {
+    return ids;
+  }
+
   // transposable_gemm_operands returns the set of operands it wants to fold if
   // the instruction argument is implemented as a GEMM kernel that supports
   // transposing its arguments.
@@ -47,8 +54,10 @@ class TransposeFolding : public HloModulePass {
   // the instruction argument is implemented as a convolution that supports
   // transposing its arguments.
   explicit TransposeFolding(
-      TransposableGemmOperandsFn transposable_gemm_operands,
-      TransposableConvOperandsFn transposable_conv_operands);
+      TransposableGemmOperandsFn transposable_gemm_operands =
+          AlwaysFoldTranspose,
+      TransposableConvOperandsFn transposable_conv_operands =
+          AlwaysFoldTranspose);
   absl::string_view name() const override { return "transpose-folding"; }
 
   StatusOr<bool> Run(HloModule* module) override;

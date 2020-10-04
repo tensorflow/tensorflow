@@ -29,12 +29,6 @@ namespace metal {
 /// Returns system default device on iOS or Intel GPU on macOS.
 id<MTLDevice> GetBestSupportedMetalDevice();
 
-/// Returns version of the GPU that supports Metal.
-/// @param device Used as a parameter because mac can contain multiple devices.
-/// @discussion Refer to Apple docs for MTLFeatureSet_macOS_GPUFamily1_v1 for details.
-///     1 - Intel integrated GPU the only device that is supported
-int GetMacOsGpuVersion(id<MTLDevice> device);
-
 /// Metal compute shader compilation
 /// @param device The device on which that shader program will be stored.
 /// @param code Shader source.
@@ -45,10 +39,9 @@ int GetMacOsGpuVersion(id<MTLDevice> device);
 ///     both.
 /// @discussion The function autoselects the maximum shader language version supported by the target
 ///     OS. FastMath is enabled.
-::tflite::gpu::Status CreateComputeProgram(id<MTLDevice> device, NSString* code,
-                                           NSString* functionName,
-                                           NSDictionary<NSString*, NSString*>* macros,
-                                           id<MTLComputePipelineState>* program);
+absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
+                                  NSDictionary<NSString*, NSString*>* macros,
+                                  id<MTLComputePipelineState>* program);
 
 }  // namespace metal
 }  // namespace gpu

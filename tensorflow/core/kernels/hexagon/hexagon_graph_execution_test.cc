@@ -414,7 +414,7 @@ TEST(GraphTransferer,
 
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
   ClockCycleProfiler prof;
   prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
@@ -447,7 +447,7 @@ TEST(GraphTransferer,
 
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
   ClockCycleProfiler prof;
   prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
@@ -481,7 +481,7 @@ TEST(GraphTransferer,
 
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
   ClockCycleProfiler prof;
   prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
@@ -540,7 +540,7 @@ TEST(GraphTransferer, DISABLED_RunInceptionV3OnHexagonExampleWithFusedGraph) {
 
 TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   CheckHexagonControllerVersion();
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
 
   const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
@@ -548,7 +548,6 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info0;
   GraphTransferer gt0;
   gt0.EnableStrictCheckMode(false);
   ClockCycleProfiler prof0;
@@ -568,7 +567,6 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   LOG(INFO) << "(0) node count: " << gfi0.node_info_size() << ", "
             << gfi0.const_node_info_size();
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info1;
   GraphTransferer gt1;
   gt1.EnableStrictCheckMode(true);
   ClockCycleProfiler prof1;

@@ -20,14 +20,13 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
@@ -43,6 +42,7 @@ void RunPass(const GraphDef& original, GraphDef* rewritten,
              FunctionLibraryDefinition* flib_def = nullptr) {
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions opts;
+  opts.add_default_attributes = false;
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, original, graph.get()));
   GraphOptimizationPassOptions options;
   options.graph = &graph;

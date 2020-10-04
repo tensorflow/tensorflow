@@ -14,8 +14,7 @@ load(
 cc_library(
     name = "src_hdrs",
     hdrs = [
-        "src/collectives.h",
-        "src/collectives/collectives.h",
+        "src/include/collectives.h",
         "src/nccl.h",
     ],
     strip_include_prefix = "src",
@@ -47,6 +46,7 @@ gen_device_srcs(
         "src/collectives/device/broadcast.cu.cc",
         "src/collectives/device/reduce.cu.cc",
         "src/collectives/device/reduce_scatter.cu.cc",
+        "src/collectives/device/sendrecv.cu.cc",
     ],
 )
 
@@ -72,7 +72,11 @@ cuda_rdc_library(
 cc_library(
     name = "nccl",
     srcs = glob(
-        include = ["src/**/*.cc"],
+        include = [
+            "src/**/*.cc",
+            # Required for header inclusion checking, see below for details.
+            "src/graph/*.h",
+        ],
         # Exclude device-library code.
         exclude = ["src/collectives/device/**"],
     ) + [
@@ -80,18 +84,17 @@ cc_library(
         # http://docs.bazel.build/versions/master/be/c-cpp.html#hdrs).
         # Files in src/ which #include "nccl.h" load it from there rather than
         # from the virtual includes directory.
-        "src/collectives.h",
-        "src/collectives/collectives.h",
+        "src/include/collectives.h",
         "src/nccl.h",
     ],
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
+    linkopts = ["-lrt"],
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":device",
         ":include_hdrs",
         ":src_hdrs",
-        "@local_config_cuda//cuda:cudart_static",
     ],
 )

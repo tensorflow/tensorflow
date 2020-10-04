@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -44,8 +45,10 @@ class ConstantFolding : public GraphOptimizer {
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
-  explicit ConstantFolding(DeviceBase* cpu_device);
-  ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device);
+  explicit ConstantFolding(DeviceBase* cpu_device,
+                           bool disable_compressed_tensor_optimization = false);
+  ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device,
+                  bool disable_compressed_tensor_optimization = false);
 
   ~ConstantFolding() override {}
 
@@ -80,7 +83,11 @@ class ConstantFolding : public GraphOptimizer {
                                  const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
 
-  bool IsFoldable(const NodeDef& node, const GraphProperties* properties) const;
+  bool IsFoldable(const NodeDef& node, const GraphProperties* properties);
+  bool IsFoldableUncached(const NodeDef& node,
+                          const GraphProperties* properties) const;
+  bool MaybeFoldable(const NodeDef& node,
+                     const GraphProperties* properties) const;
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -95,12 +102,17 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
+  bool ReplaceOperationWithBroadcastTo(int input_to_broadcast,
+                                       const GraphProperties& properties,
+                                       NodeDef* node, GraphDef* graph);
   void ReplaceOperationWithIdentity(int input_to_forward,
                                     const GraphProperties& properties,
                                     NodeDef* node, GraphDef* graph);
   void ReplaceOperationWithSnapshot(int input_to_forward,
                                     const GraphProperties& properties,
                                     NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithNoOp(NodeDef* node, GraphProperties* properties,
+                                GraphDef* graph);
   void ReplaceBinaryOperationWithBroadcastTo(int input_to_broadcast,
                                              const GraphProperties& properties,
                                              NodeDef* node, GraphDef* graph);
@@ -126,8 +138,8 @@ class ConstantFolding : public GraphOptimizer {
   Status SimplifyNode(bool use_shape_info, NodeDef* node,
                       GraphDef* optimized_graph, GraphProperties* properties);
 
-  Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
-                             GraphDef* output);
+  Status RunOptimizationPass(Cluster* cluster, GrapplerItem* item,
+                             GraphDef* optimized_graph);
 
   // Applies partial constant folding for Concat which is not commutative.
   // Returns true if the transformation applied successfully.
@@ -143,10 +155,48 @@ class ConstantFolding : public GraphOptimizer {
   // Returns true if the transformation applied successfully.
   bool PartialConstPropThroughIdentityN(NodeDef* node);
 
-  // Pushes down constants on '+' and '*' operators if applicable. Returns true
-  // the transformation applied successfully.
-  bool ConstantPushDown(const GraphProperties& properties,
-                        GraphDef* optimized_graph, NodeDef* node);
+  struct ConstantPushDownContext {
+    NodeDef* op_child;
+    NodeDef* const_child;
+    bool left_child_is_const;
+    bool right_child_is_const;
+    NodeDef* left_leaf;
+    NodeDef* right_leaf;
+    bool left_leaf_is_const;
+    bool right_leaf_is_const;
+
+    // Shape & type information.
+    const std::vector<OpInfo::TensorProperties>* parent_input_props;
+    const std::vector<OpInfo::TensorProperties>* op_child_input_props;
+  };
+
+  // Populates ctx with pointers to the nodes in expression tree for which
+  // constant pushdown optimization is being considered, corresponding to one of
+  // the following configurations:
+  //
+  //               parent                            parent
+  //               /    \                            /    \
+  //        op_child   const_child            const_child op_child
+  //         /     \                                       /     \
+  //    left_leaf  right_leaf                        left_leaf  right_leaf
+  //
+  // Returns true if the expression is possible amenable for optimization.
+  // Returns false if must_have_properties is true and input properties for
+  // parent and op_child are not known.
+  bool PrepareConstantPushDown(const NodeDef& parent,
+                               const GraphProperties& properties,
+                               bool must_have_properties,
+                               ConstantPushDownContext* ctx) const;
+
+  // Pushes down constants on '+', '-', '*', and '/' operators if applicable.
+  // Returns true if the transformation applied successfully.
+  bool ConstantPushDown(GraphProperties* properties, GraphDef* optimized_graph,
+                        NodeDef* node);
+
+  // Pushes down constants on '+' and 'BiasAdd' operators if applicable.
+  // Returns true if the graph was modified.
+  bool ConstantPushDownBiasAdd(GraphProperties* properties,
+                               GraphDef* optimized_graph, NodeDef* node);
 
   // Aggregate constants present around a conv operator. Returns true if the
   // transformation was applied successfully.
@@ -186,6 +236,7 @@ class ConstantFolding : public GraphOptimizer {
       const gtl::InlinedVector<TensorValue, 4>& reduction_indices_vector) const;
   // Changes a reduction into an Identity op, returning true on success.
   bool ReplaceReductionWithIdentity(NodeDef* node) const;
+
   // Simplifies a Reduction operation to an Identity/Reshape operation if
   // applicable.
   bool SimplifyReduction(GraphDef* optimized_graph,
@@ -236,6 +287,17 @@ class ConstantFolding : public GraphOptimizer {
   Status SimplifySlice(const GraphProperties& properties, bool use_shape_info,
                        GraphDef* optimized_graph, NodeDef* node);
 
+  // Simplify a Case operation where the output_idx is known.
+  bool SimplifyCase(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplify a Select operation where the predicates are all true or all false.
+  bool SimplifySelect(const GraphProperties& properties,
+                      GraphDef* optimized_graph, NodeDef* node);
+
+  // Replaces variable updates that are effectively no-ops with NoOp nodes.
+  void RemoveRedundantVariableUpdates(GraphProperties* properties,
+                                      GraphDef* optimized_graph, NodeDef* node);
+
   // Removes Reverse op over dimensions with size 1.
   Status RemoveReverse(const GraphProperties& properties, bool use_shape_info,
                        GraphDef* optimized_graph, NodeDef* node);
@@ -255,8 +317,8 @@ class ConstantFolding : public GraphOptimizer {
                            GraphDef* optimized_graph, NodeDef* node);
 
   bool GetConcatAxis(const NodeDef& node, int* axis);
-  bool MergeConcat(bool use_shape_info, GraphDef* optimized_graph,
-                   NodeDef* node);
+  bool MergeConcat(bool use_shape_info, GraphProperties* properties,
+                   GraphDef* optimized_graph, NodeDef* node);
 
   Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
                                                GraphDef* optimized_graph);
@@ -270,11 +332,14 @@ class ConstantFolding : public GraphOptimizer {
   GraphDef* graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
-  std::unordered_set<string> nodes_whitelist_;
-  std::unordered_set<string> feed_nodes_;
+  // TODO(rmlarsen): Could these be keyed on absl::string_view?
+  absl::flat_hash_set<string> nodes_allowlist_;
+  absl::flat_hash_set<string> feed_nodes_;
+  absl::flat_hash_map<string, bool> maybe_foldable_nodes_;
   bool has_fetch_;
   bool graph_modified_;
   bool graph_contains_assign_or_inplace_op_;
+  bool disable_compressed_tensor_optimization_;
 };
 
 }  // end namespace grappler

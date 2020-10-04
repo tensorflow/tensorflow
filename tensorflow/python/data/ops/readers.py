@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -51,7 +52,11 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
   else:
-    filenames = ops.convert_to_tensor(filenames, dtype=dtypes.string)
+    filenames = ops.convert_to_tensor(filenames, dtype_hint=dtypes.string)
+    if filenames.dtype != dtypes.string:
+      raise TypeError(
+          "`filenames` must be a `tf.Tensor` of dtype `tf.string` dtype."
+          " Got {}".format(filenames.dtype))
     filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
     filenames = dataset_ops.DatasetV2.from_tensor_slices(filenames)
 
@@ -243,8 +248,6 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
         block_length, dtype=dtypes.int64, name="block_length")
-    self._sloppy = ops.convert_to_tensor(
-        sloppy, dtype=dtypes.bool, name="sloppy")
     self._buffer_output_elements = convert.optional_param_to_tensor(
         "buffer_output_elements",
         buffer_output_elements,
@@ -253,15 +256,21 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-    variant_tensor = ged_ops.parallel_interleave_dataset(
+    if sloppy is None:
+      self._deterministic = "default"
+    elif sloppy:
+      self._deterministic = "false"
+    else:
+      self._deterministic = "true"
+    variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
-        self._sloppy,
         self._buffer_output_elements,
         self._prefetch_input_elements,
         f=self._map_func.function,
+        deterministic=self._deterministic,
         **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
@@ -512,8 +521,11 @@ class FixedLengthRecordDatasetV1(dataset_ops.DatasetV1Adapter):
     self._dataset._filenames = value  # pylint: disable=protected-access
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-FixedLengthRecordDataset = FixedLengthRecordDatasetV1
-TFRecordDataset = TFRecordDatasetV1
-TextLineDataset = TextLineDatasetV1
+if tf2.enabled():
+  FixedLengthRecordDataset = FixedLengthRecordDatasetV2
+  TFRecordDataset = TFRecordDatasetV2
+  TextLineDataset = TextLineDatasetV2
+else:
+  FixedLengthRecordDataset = FixedLengthRecordDatasetV1
+  TFRecordDataset = TFRecordDatasetV1
+  TextLineDataset = TextLineDatasetV1

@@ -27,7 +27,7 @@ import hashlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
@@ -38,7 +38,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
-from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
@@ -195,6 +194,8 @@ class Defun(object):
 class _DefinedFunctionDeleter(object):
   """Unregister function from eager context."""
 
+  __slots__ = ["name"]
+
   def __init__(self, name):
     self.name = name
 
@@ -235,7 +236,7 @@ class _DefinedFunction(object):
                out_names=None,
                shape_func=None,
                capture_by_value=False,
-               whitelisted_stateful_ops=None,
+               allowlisted_stateful_ops=None,
                capture_resource_var_by_value=True,
                **kwargs):
     """Creates _DefinedFunction.
@@ -257,7 +258,7 @@ class _DefinedFunction(object):
         output shapes.
       capture_by_value: Boolean (defaults to False). If True, captured values
         will be copied into the function body.
-      whitelisted_stateful_ops: A set of ops that if stateful we ignore and
+      allowlisted_stateful_ops: A set of ops that if stateful we ignore and
         copy into the function body, when `capture_by_value` is True.
       capture_resource_var_by_value: Boolean (defaults to True). If False,
         captured resource variable returns the handle instead of value.
@@ -276,9 +277,9 @@ class _DefinedFunction(object):
     self._out_names = out_names
     self._shape_func = shape_func
     self._capture_by_value = capture_by_value
-    self._whitelisted_stateful_ops = whitelisted_stateful_ops
-    if self._whitelisted_stateful_ops is None:
-      self._whitelisted_stateful_ops = set()
+    self._allowlisted_stateful_ops = allowlisted_stateful_ops
+    if self._allowlisted_stateful_ops is None:
+      self._allowlisted_stateful_ops = set()
     self._capture_resource_var_by_value = capture_resource_var_by_value
     self._extra_kwargs = kwargs
     # Constructed only when C API is disabled, lazily
@@ -291,7 +292,7 @@ class _DefinedFunction(object):
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
 
-    # Get the innermost device if possbile.
+    # Get the innermost device if possible.
     self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is
@@ -404,7 +405,7 @@ class _DefinedFunction(object):
         self._capture_by_value,
         self._caller_device,
         collections_ref=collections_ref,
-        whitelisted_stateful_ops=self._whitelisted_stateful_ops,
+        allowlisted_stateful_ops=self._allowlisted_stateful_ops,
         capture_resource_var_by_value=self._capture_resource_var_by_value)
 
     self._extra_inputs = temp_graph.extra_inputs
@@ -691,11 +692,11 @@ class _FuncGraph(ops.Graph):
   function argument and the caller passes in the captured tensor.
   """
 
-  def __init__(self, name, capture_by_value, whitelisted_stateful_ops,
+  def __init__(self, name, capture_by_value, allowlisted_stateful_ops,
                capture_resource_var_by_value, *args, **kwargs):
     super(_FuncGraph, self).__init__(*args, **kwargs)
     self._capture_by_value = capture_by_value
-    self._whitelisted_stateful_ops = whitelisted_stateful_ops
+    self._allowlisted_stateful_ops = allowlisted_stateful_ops
     self._capture_resource_var_by_value = capture_resource_var_by_value
     self._building_function = True
     self._outer_graph = ops.get_default_graph()
@@ -711,7 +712,7 @@ class _FuncGraph(ops.Graph):
     # _FuncGraph.
     self.outputs = []
     # Maps external tensor -> internal tensor (e.g. input placeholder).
-    self._captured = object_identity.ObjectIdentityDictionary()
+    self._captured = {}
     # The external tensors that have been captured as inputs and must be passed
     # to this function (empty if capturing by value, otherwise these are the
     # keys of _captured).
@@ -805,22 +806,43 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def _create_op_internal(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
     return super(_FuncGraph, self)._create_op_internal(
-        op_type, inputs, dtypes=dtypes, **kwargs)
+        op_type,
+        inputs,
+        dtypes=dtypes,
+        input_types=input_types,
+        name=name,
+        attrs=attrs,
+        op_def=op_def,
+        compute_device=compute_device)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
-    if tensor in self._captured:
+    if tensor.ref() in self._captured:
       # Captured already.
-      return self._captured[tensor]
+      return self._captured[tensor.ref()]
     elif self._capture_by_value:
       return self._add_tensor_and_parents(tensor)
     else:
       return self._capture_tensor_as_extra_input(tensor, name)
+
+  @property
+  def captures(self):
+    """Pairs of tensors and captured tensor."""
+    return [(k.deref(), v) for k, v in self._captured.items()]
 
   def _capture_tensor_as_extra_input(self, tensor, name=None):
     # Substitute with a placeholder.
@@ -844,7 +866,7 @@ class _FuncGraph(ops.Graph):
                                   compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
-    self._captured[tensor] = ph
+    self._captured[tensor.ref()] = ph
     self.extra_args.append(ph)
     if _is_guaranteed_const(tensor):
       with ops.control_dependencies(None):
@@ -859,7 +881,7 @@ class _FuncGraph(ops.Graph):
   def _add_op_and_parents(self, op):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
-    if op._is_stateful and op not in self._whitelisted_stateful_ops:
+    if op._is_stateful and op not in self._allowlisted_stateful_ops:
       raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
     elif op.type in ("Placeholder", "PlaceholderV2"):
@@ -877,7 +899,7 @@ class _FuncGraph(ops.Graph):
         op_def=op_def)
 
     for t, captured_t in zip(op.outputs, captured_op.outputs):
-      self._captured[t] = captured_t
+      self._captured[t.ref()] = captured_t
 
     return captured_op
 
@@ -892,7 +914,7 @@ def func_graph_from_py_func(func,
                             container=None,
                             collections_ref=None,
                             arg_shapes=None,
-                            whitelisted_stateful_ops=None,
+                            allowlisted_stateful_ops=None,
                             capture_resource_var_by_value=True):
   """Returns a _FuncGraph generated from `func`.
 
@@ -911,7 +933,7 @@ def func_graph_from_py_func(func,
     collections_ref: A reference to a collections dict the _FuncGraph should
       use internally.
     arg_shapes: A sequence of the function's argument shapes.
-    whitelisted_stateful_ops: A set of ops that if stateful we ignore and
+    allowlisted_stateful_ops: A set of ops that if stateful we ignore and
       re-create.
     capture_resource_var_by_value: Boolean (defaults to True). If False,
       captured resource variable returns the handle instead of value.
@@ -924,7 +946,7 @@ def func_graph_from_py_func(func,
   """
   if not name:
     name = function_utils.get_func_name(func)
-  func_graph = _FuncGraph(name, capture_by_value, whitelisted_stateful_ops,
+  func_graph = _FuncGraph(name, capture_by_value, allowlisted_stateful_ops,
                           capture_resource_var_by_value)
 
   with func_graph.as_default(), ops.device(device):
@@ -1292,7 +1314,7 @@ def get_extra_args():
 def _type_list_to_str(types):
   if any(_ not in _DTYPE_TO_STR for _ in types):
     raise ValueError("Unsupported dtypes: %s" % types)
-  return "".join([_DTYPE_TO_STR[_] for _ in types])
+  return "".join(_DTYPE_TO_STR[_] for _ in types)
 
 
 # NOTE: The list needs to be extended when more data types are added.

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 // The following line is used by copybara to set or unset the USE_OSS_FARMHASH
@@ -87,6 +87,15 @@ inline uint64 Fingerprint64(const StringPiece s) {
   // LINT.IfChange
   return farmhash::Fingerprint64(s.data(), s.size());
   // LINT.ThenChange(//third_party/tensorflow/core/kernels/fingerprint_op.cc)
+#endif
+}
+
+// 32-bit variant of Fingerprint64 above (same properties and caveats apply).
+inline uint32 Fingerprint32(const StringPiece s) {
+#ifdef USE_OSS_FARMHASH
+  return ::util::Fingerprint32(s.data(), s.size());
+#else
+  return farmhash::Fingerprint32(s.data(), s.size());
 #endif
 }
 

@@ -22,7 +22,17 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-enum class GpuType { UNKNOWN, MALI, ADRENO, POWERVR, INTEL, NVIDIA };
+// The VendorID returned by the GPU driver.
+enum class GpuType {
+  UNKNOWN,
+  APPLE,
+  MALI,
+  ADRENO,
+  POWERVR,
+  INTEL,
+  AMD,
+  NVIDIA,
+};
 enum class GpuModel {
   UNKNOWN,
   // Adreno 6xx series
@@ -81,6 +91,11 @@ struct GpuInfo {
   int max_image_units = 0;
   int max_array_texture_layers = 0;
 };
+
+inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
+  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
+         gpu_info.major_version > 3;
+}
 
 // Analyzes `renderer` and returns matching `GpuType` and `GpuModel`.
 void GetGpuModelAndType(const std::string& renderer, GpuModel* gpu_model,

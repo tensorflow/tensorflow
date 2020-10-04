@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops import sleep
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 
 
@@ -78,7 +78,8 @@ class ChooseFastestBranchBenchmark(benchmark_base.DatasetBenchmarkBase):
   def benchmark_with_input_skew(self):
 
     def make_dataset(time_us, num_elements):
-      return dataset_ops.Dataset.range(num_elements).apply(sleep.sleep(time_us))
+      return dataset_ops.Dataset.range(num_elements).apply(
+          testing.sleep(time_us))
 
     # Dataset with 100 elements that emulates performance characteristics of a
     # file-based dataset stored in remote storage, where the first element
@@ -87,10 +88,10 @@ class ChooseFastestBranchBenchmark(benchmark_base.DatasetBenchmarkBase):
                                  0).concatenate(make_dataset(1, 100)).take(100)
 
     def slow_branch(dataset):
-      return dataset.apply(sleep.sleep(10000))
+      return dataset.apply(testing.sleep(10000))
 
     def fast_branch(dataset):
-      return dataset.apply(sleep.sleep(10))
+      return dataset.apply(testing.sleep(10))
 
     def benchmark(dataset, name):
       self.run_and_report_benchmark(

@@ -82,7 +82,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     self.eps = 0.01
     self.max_elements = 1 << 16
-    self.num_quantiles = constant_op.constant(3, dtype=dtypes.int64)
+    self.num_quantiles = constant_op.constant(4, dtype=dtypes.int64)
 
   def testBasicQuantileBucketsSingleResource(self):
     with self.cached_session() as sess:
@@ -102,11 +102,11 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
           [self._feature_0, self._feature_1], buckets)
       self.evaluate(summary_op)
       self.evaluate(flush_op)
-      self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
-      self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
+      self.assertAllClose(self._feature_0_boundaries, buckets[0])
+      self.assertAllClose(self._feature_1_boundaries, buckets[1])
 
-      self.assertAllClose(self._feature_0_quantiles, quantiles[0].eval())
-      self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
+      self.assertAllClose(self._feature_0_quantiles, quantiles[0])
+      self.assertAllClose(self._feature_1_quantiles, quantiles[1])
 
   def testBasicQuantileBucketsSingleResourcesAddFlushed(self):
     with self.cached_session():
@@ -137,11 +137,11 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.evaluate(summary_op_2)
       self.evaluate(flush_op)
 
-      self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
-      self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
+      self.assertAllClose(self._feature_0_boundaries, buckets[0])
+      self.assertAllClose(self._feature_1_boundaries, buckets[1])
 
-      self.assertAllClose(self._feature_0_quantiles, quantiles[0].eval())
-      self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
+      self.assertAllClose(self._feature_0_quantiles, quantiles[0])
+      self.assertAllClose(self._feature_1_quantiles, quantiles[1])
 
   def testBasicQuantileBucketsMultipleResources(self):
     with self.cached_session() as sess:
@@ -171,11 +171,11 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
           [self._feature_0, self._feature_1], bucket_0 + bucket_1)
       self.evaluate([summary_op_0, summary_op_1])
       self.evaluate([flush_op_0, flush_op_1])
-      self.assertAllClose(self._feature_0_boundaries, bucket_0[0].eval())
-      self.assertAllClose(self._feature_1_boundaries, bucket_1[0].eval())
+      self.assertAllClose(self._feature_0_boundaries, bucket_0[0])
+      self.assertAllClose(self._feature_1_boundaries, bucket_1[0])
 
-      self.assertAllClose(self._feature_0_quantiles, quantiles[0].eval())
-      self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
+      self.assertAllClose(self._feature_0_quantiles, quantiles[0])
+      self.assertAllClose(self._feature_1_quantiles, quantiles[1])
 
   def testSaveRestoreAfterFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
@@ -183,31 +183,37 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
+          num_streams=2,
+          num_quantiles=self.num_quantiles,
+          epsilon=self.eps,
+          name="q0")
 
       save = saver.Saver()
       resources.initialize_resources(resources.shared_resources()).run()
 
       buckets = accumulator.get_bucket_boundaries()
-      self.assertAllClose([], buckets[0].eval())
-      self.assertAllClose([], buckets[1].eval())
+      self.assertAllClose([], buckets[0])
+      self.assertAllClose([], buckets[1])
       summaries = accumulator.add_summaries([self._feature_0, self._feature_1],
                                             self._example_weights)
       with ops.control_dependencies([summaries]):
         flush = accumulator.flush()
       self.evaluate(flush)
-      self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
-      self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
+      self.assertAllClose(self._feature_0_boundaries, buckets[0])
+      self.assertAllClose(self._feature_1_boundaries, buckets[1])
       save.save(sess, save_path)
 
     with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
+          num_streams=2,
+          num_quantiles=self.num_quantiles,
+          epsilon=self.eps,
+          name="q0")
       save = saver.Saver()
       save.restore(sess, save_path)
       buckets = accumulator.get_bucket_boundaries()
-      self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
-      self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
+      self.assertAllClose(self._feature_0_boundaries, buckets[0])
+      self.assertAllClose(self._feature_1_boundaries, buckets[1])
 
   def testSaveRestoreBeforeFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
@@ -215,7 +221,10 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
+          num_streams=2,
+          num_quantiles=self.num_quantiles,
+          epsilon=self.eps,
+          name="q0")
 
       save = saver.Saver()
       resources.initialize_resources(resources.shared_resources()).run()
@@ -224,21 +233,24 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
                                             self._example_weights)
       self.evaluate(summaries)
       buckets = accumulator.get_bucket_boundaries()
-      self.assertAllClose([], buckets[0].eval())
-      self.assertAllClose([], buckets[1].eval())
+      self.assertAllClose([], buckets[0])
+      self.assertAllClose([], buckets[1])
       save.save(sess, save_path)
       self.evaluate(accumulator.flush())
-      self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
-      self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
+      self.assertAllClose(self._feature_0_boundaries, buckets[0])
+      self.assertAllClose(self._feature_1_boundaries, buckets[1])
 
     with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
+          num_streams=2,
+          num_quantiles=self.num_quantiles,
+          epsilon=self.eps,
+          name="q0")
       save = saver.Saver()
       save.restore(sess, save_path)
       buckets = accumulator.get_bucket_boundaries()
-      self.assertAllClose([], buckets[0].eval())
-      self.assertAllClose([], buckets[1].eval())
+      self.assertAllClose([], buckets[0])
+      self.assertAllClose([], buckets[1])
 
 
 if __name__ == "__main__":

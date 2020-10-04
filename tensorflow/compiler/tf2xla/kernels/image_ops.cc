@@ -423,7 +423,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         errors::InvalidArgument("scores size must equal number of boxes",
                                 scores_shape.DebugString()));
     OP_REQUIRES(context, pad_to_max_output_size_,
-                errors::InvalidArgument(
+                errors::Unimplemented(
                     "XLA compilation requires pad_to_max_output_size == True"));
     OP_REQUIRES(context, num_boxes <= kint32max,
                 errors::InvalidArgument("XLA compilation requires number of "

@@ -24,237 +24,311 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-
-std::string GetAveragePoolingKernelCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const CLDevice& device,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
-
-  const auto address_mode = GetFastestZeroMode(device);
-
-  std::string code = GetCommonDefines(precision);
-
-  code += "__kernel void main_function(\n";
-  code += src_tensor.GetDeclaration(AccessType::READ);
-  code += GetArgsDeclaration(linked_operations);
-  code += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  code += "    int4 src_size,             \n";
-  code += "    int4 dst_size,             \n";
-  code += "    int2 kernel_size,          \n";
-  code += "    int2 padding,              \n";
-  code += "    int2 stride                \n";
-  code += ") {\n";
-  code += "  int X = get_global_id(0);\n";
-  code += "  int Y = get_global_id(1);\n";
-  code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
-  code += "  float4 r = (float4)(0.0f);\n";
-  code += "  float window_size = 0.0;\n";
-  code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
-  code += "    int y_c = Y * stride.y - padding.y + ky;\n";
-  code += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
-  code += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  code += "      int x_c = X * stride.x - padding.x + kx;\n";
-  code += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
-    code += "     r += !outside ? " +
-            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z",
-                                     TextureAddressMode::DONT_CARE) +
-            " : (float4)(0.0f);\n";
-  } else {
-    code += "      r += " +
-            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z", address_mode) + ";\n";
+std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
+                                        bool stride_correction,
+                                        GPUOperation* op) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  if (op_def.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  code += "        window_size += !outside ? 1.0 : 0.0;\n";
-  code += "    }\n";
-  code += "  }\n";
+  op->AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op->AddDstTensor("dst_tensor", dst_desc);
+
+  std::map<Axis, std::string> axis_to_src_coord = {
+      {Axis::WIDTH, "x_c"},  {Axis::HEIGHT, "y_c"}, {Axis::DEPTH, "d_c"},
+      {Axis::CHANNELS, "Z"}, {Axis::BATCH, "B"},
+  };
+
+  std::map<Axis, std::string> axis_to_dst_coord = {
+      {Axis::WIDTH, "X"},    {Axis::HEIGHT, "Y"}, {Axis::DEPTH, "D"},
+      {Axis::CHANNELS, "Z"}, {Axis::BATCH, "B"},
+  };
+
+  std::vector<std::string> src_coords;
+  std::vector<std::string> dst_coords;
+  for (auto axis : {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH, Axis::CHANNELS}) {
+    if (op_def.dst_tensors[0].HasAxis(axis)) {
+      dst_coords.push_back(axis_to_dst_coord[axis]);
+    }
+    if (op_def.src_tensors[0].HasAxis(axis)) {
+      src_coords.push_back(axis_to_src_coord[axis]);
+    }
+  }
+  std::string src_coord = src_coords[0];
+  for (int i = 1; i < src_coords.size(); ++i) {
+    src_coord += ", " + src_coords[i];
+  }
+  std::string dst_coord = dst_coords[0];
+  for (int i = 1; i < dst_coords.size(); ++i) {
+    dst_coord += ", " + dst_coords[i];
+  }
+
+  const bool manual_clamp =
+      op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER ||
+      op_def.src_tensors[0].storage_type == TensorStorageType::IMAGE_BUFFER;
+
+  std::string c = GetCommonDefines(op_def.precision);
+  c += "__kernel void main_function(\n";
+  c += "$0) {\n";
+  c += "  int X = get_global_id(0);\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  int linear_id_1 = get_global_id(1);\n";
+    c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
+    c += "  int D = linear_id_1 % args.dst_tensor.Depth();\n";
+  } else {
+    c += "  int Y = get_global_id(1);\n";
+  }
+  c += "  int Z = get_global_id(2);\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
+       "Z >= args.dst_tensor.Slices()) { \n";
+  c += "    return; \n";
+  c += "  } \n";
+  c += "  float4 r = (float4)(0.0f);\n";
+  c += "  float window_size = 0.0;\n";
+  if (stride_correction) {
+    c += "  int xs = " +
+         GetXStrideCorrectedV2("X", "args.src_tensor.Batch()", "args.stride_x",
+                               "args.padding_x") +
+         ";\n";
+  } else {
+    if (op_def.IsBatchSupported()) {
+      c += "  int xs = X * args.stride_x + args.padding_x * "
+           "args.src_tensor.Batch();\n";
+    } else {
+      c += "  int xs = X * args.stride_x + args.padding_x;\n";
+    }
+  }
+  c += "  int ys = Y * args.stride_y + args.padding_y;\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  int ds = D * args.stride_z + args.padding_z;\n";
+    c += "  for (int kz = 0; kz < args.kernel_size_z; ++kz) {\n";
+    c += "    int d_c = ds + kz;\n";
+    c += "    if (d_c < 0 || d_c >= args.src_tensor.Depth()) continue;\n";
+  }
+  c += "  for (int ky = 0; ky < args.kernel_size_y; ++ky) {\n";
+  c += "    int y_c = ys + ky;\n";
+  c += "    bool outside_y = y_c < 0 || y_c >= args.src_tensor.Height();\n";
+  c += "    for (int kx = 0; kx < args.kernel_size_x; ++kx) {\n";
+  if (op_def.IsBatchSupported()) {
+    c += "      int x_c = xs + kx * args.src_tensor.Batch();\n";
+  } else {
+    c += "      int x_c = xs + kx;\n";
+  }
+  c += "      bool outside = outside_y || x_c < 0 || x_c >= "
+       "args.src_tensor.Width();\n";
+  if (manual_clamp) {
+    c += "     r += !outside ? args.src_tensor.Read<float>(" + src_coord +
+         ") : "
+         "(float4)(0.0f);\n";
+  } else {
+    c += "      r += args.src_tensor.Read<float>(" + src_coord + ");\n";
+  }
+  c += "        window_size += !outside ? 1.0 : 0.0;\n";
+  c += "    }\n";
+  c += "  }\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  }  // Depth\n";
+  }
   // If window_size==0, window covered nothing. This situation is a sign of
   // incorrectly constructed operation. NaNs are expected as output.
-  code += "  FLT4 result = TO_FLT4(r / window_size);\n";
-  const LinkingContext context{"result", "X", "Y", "Z"};
-  code += PostProcess(linked_operations, context);
-  code += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
-  code += "}\n";
+  c += "  FLT4 result = TO_FLT4(r / window_size);\n";
+  c += "  args.dst_tensor.Write(result, " + dst_coord + ");\n";
+  c += "}\n";
 
-  return code;
+  return c;
 }
 
-std::string GetMaxPoolingKernelCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const std::vector<ElementwiseOperation*>& linked_operations,
-    bool output_indices) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
-  TensorCodeGenerator indices_tensor("dst_indices", "dst_size", dst_descriptor);
+std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
+                                    bool stride_correction, bool output_indices,
+                                    GPUOperation* op) {
+  auto src_desc = op_def.src_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op->AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op->AddDstTensor("dst_tensor", dst_desc);
+  if (output_indices) {
+    auto dst_ind_desc = op_def.dst_tensors[1];
+    if (op_def.IsBatchSupported()) {
+      dst_ind_desc.SetStateVar("BatchedWidth", "true");
+    }
+    op->AddDstTensor("dst_indices", dst_ind_desc);
+  }
 
-  std::string code = GetCommonDefines(precision);
+  std::map<Axis, std::string> axis_to_src_coord = {
+      {Axis::WIDTH, "x_c"},  {Axis::HEIGHT, "y_c"}, {Axis::DEPTH, "d_c"},
+      {Axis::CHANNELS, "Z"}, {Axis::BATCH, "B"},
+  };
 
-  code += "__kernel void main_function(\n";
-  code += src_tensor.GetDeclaration(AccessType::READ);
-  code += GetArgsDeclaration(linked_operations);
-  code += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  if (output_indices) {
-    code += indices_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  }
-  code += "    int4 src_size,             \n";
-  code += "    int4 dst_size,             \n";
-  code += "    int2 kernel_size,          \n";
-  code += "    int2 padding,              \n";
-  code += "    int2 stride                \n";
-  code += ") {\n";
-  code += "  int X = get_global_id(0);\n";
-  code += "  int Y = get_global_id(1);\n";
-  code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
-  code += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
-  if (output_indices) {
-    code += "  FLT4 indexes = (FLT4)(0.0f);\n";
-    code += "  FLT index_counter = (FLT)(0.1f);\n";
-  }
-  code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
-  code += "    int y_c = Y * stride.y - padding.y + ky;\n";
-  code += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
-  code += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  code += "      int x_c = X * stride.x - padding.x + kx;\n";
-  code += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
-  code += "      if (!outside_x && !outside_y) {\n";
-  code += "        FLT4 src = " +
-          src_tensor.Read3D("x_c", "y_c", "Z", TextureAddressMode::DONT_CARE) +
-          ";\n";
-  if (output_indices) {
-    code += "        if (src.x > maximum.x) {\n";
-    code += "          indexes.x = index_counter;\n";
-    code += "          maximum.x = src.x;\n";
-    code += "        }\n";
-    code += "        if (src.y > maximum.y) {\n";
-    code += "          indexes.y = index_counter;\n";
-    code += "          maximum.y = src.y;\n";
-    code += "        }\n";
-    code += "        if (src.z > maximum.z) {\n";
-    code += "          indexes.z = index_counter;\n";
-    code += "          maximum.z = src.z;\n";
-    code += "        }\n";
-    code += "        if (src.w > maximum.w) {\n";
-    code += "          indexes.w = index_counter;\n";
-    code += "          maximum.w = src.w;\n";
-    code += "        }\n";
-    code += "        index_counter += (FLT)(1.0f);\n";
-  }
-  code += "        maximum = max(src, maximum);\n";
-  code += "      };\n";
-  code += "    }\n";
-  code += "  }\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  const LinkingContext context{"maximum", "X", "Y", "Z"};
-  code += PostProcess(linked_operations, context);
-  code += "  " + dst_tensor.Write3D("maximum", "address");
-  if (output_indices) {
-    code += "  " + indices_tensor.Write3D("indexes", "address");
-  }
-  code += "}\n";
+  std::map<Axis, std::string> axis_to_dst_coord = {
+      {Axis::WIDTH, "X"},    {Axis::HEIGHT, "Y"}, {Axis::DEPTH, "D"},
+      {Axis::CHANNELS, "Z"}, {Axis::BATCH, "B"},
+  };
 
-  return code;
+  std::vector<std::string> src_coords;
+  std::vector<std::string> dst_coords;
+  for (auto axis : {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH, Axis::CHANNELS}) {
+    if (op_def.dst_tensors[0].HasAxis(axis)) {
+      dst_coords.push_back(axis_to_dst_coord[axis]);
+    }
+    if (op_def.src_tensors[0].HasAxis(axis)) {
+      src_coords.push_back(axis_to_src_coord[axis]);
+    }
+  }
+  std::string src_coord = src_coords[0];
+  for (int i = 1; i < src_coords.size(); ++i) {
+    src_coord += ", " + src_coords[i];
+  }
+  std::string dst_coord = dst_coords[0];
+  for (int i = 1; i < dst_coords.size(); ++i) {
+    dst_coord += ", " + dst_coords[i];
+  }
+
+  std::string c = GetCommonDefines(op_def.precision);
+  c += "__kernel void main_function(\n";
+  c += "$0) {\n";
+  c += "  int X = get_global_id(0);\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  int linear_id_1 = get_global_id(1);\n";
+    c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
+    c += "  int D = linear_id_1 % args.dst_tensor.Depth();\n";
+  } else {
+    c += "  int Y = get_global_id(1);\n";
+  }
+  c += "  int Z = get_global_id(2);\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
+       "Z >= args.dst_tensor.Slices()) { \n";
+  c += "    return; \n";
+  c += "  } \n";
+  c += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
+  if (output_indices) {
+    c += "  FLT4 indexes = (FLT4)(0.0f);\n";
+  }
+  if (stride_correction) {
+    c += "  int xs = " +
+         GetXStrideCorrectedV2("X", "args.src_tensor.Batch()", "args.stride_x",
+                               "args.padding_x") +
+         ";\n";
+  } else {
+    if (op_def.IsBatchSupported()) {
+      c += "  int xs = X * args.stride_x + args.padding_x * "
+           "args.src_tensor.Batch();\n";
+    } else {
+      c += "  int xs = X * args.stride_x + args.padding_x;\n";
+    }
+  }
+  c += "  int ys = Y * args.stride_y + args.padding_y;\n";
+  c += "  for (int ky = 0; ky < args.kernel_size_y; ++ky) {\n";
+  c += "    int y_c = ys + ky;\n";
+  c += "    if (y_c < 0 || y_c >= args.src_tensor.Height()) continue;\n";
+  c += "    for (int kx = 0; kx < args.kernel_size_x; ++kx) {\n";
+  if (op_def.IsBatchSupported()) {
+    c += "      int x_c = xs + kx * args.src_tensor.Batch();\n";
+  } else {
+    c += "      int x_c = xs + kx;\n";
+  }
+  c += "      if (x_c < 0 || x_c >= args.src_tensor.Width()) continue;\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "    int ds = D * args.stride_z + args.padding_z;\n";
+    c += "    for (int kz = 0; kz < args.kernel_size_z; ++kz) {\n";
+    c += "    int d_c = ds + kz;\n";
+    c += "      if (d_c < 0 || d_c >= args.src_tensor.Depth()) continue;\n";
+  }
+  c += "      FLT4 src = args.src_tensor.Read(" + src_coord + ");\n";
+  if (output_indices) {
+    if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+      c += "      FLT index_counter = (FLT)((ky * args.kernel_size_x + kx) * "
+           "args.kernel_size_z + kz) + (FLT)(0.1f);\n";
+    } else {
+      c += "      FLT index_counter = (FLT)(ky * args.kernel_size_x + kx) + "
+           "(FLT)(0.1f);\n";
+    }
+    c += "      if (src.x > maximum.x) {\n";
+    c += "        indexes.x = index_counter;\n";
+    c += "        maximum.x = src.x;\n";
+    c += "      }\n";
+    c += "      if (src.y > maximum.y) {\n";
+    c += "        indexes.y = index_counter;\n";
+    c += "        maximum.y = src.y;\n";
+    c += "      }\n";
+    c += "      if (src.z > maximum.z) {\n";
+    c += "        indexes.z = index_counter;\n";
+    c += "        maximum.z = src.z;\n";
+    c += "      }\n";
+    c += "      if (src.w > maximum.w) {\n";
+    c += "        indexes.w = index_counter;\n";
+    c += "        maximum.w = src.w;\n";
+    c += "      }\n";
+  } else {
+    c += "      maximum = max(src, maximum);\n";
+  }
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "    }  // Depth\n";
+  }
+  c += "    }\n";
+  c += "  }\n";
+  c += "  args.dst_tensor.Write(maximum, " + dst_coord + ");\n";
+  if (output_indices) {
+    c += "  args.dst_indices.Write(indexes, " + dst_coord + ");\n";
+  }
+  c += "}\n";
+
+  return c;
 }
-
 }  // namespace
 
-Pooling::Pooling(const OperationDef& definition,
-                 const Pooling2DAttributes& attr)
-    : GPUOperation(definition),
-      stride_(attr.strides.w, attr.strides.h),
-      padding_(attr.padding.prepended.w, attr.padding.prepended.h),
-      kernel_size_(attr.kernel.w, attr.kernel.h),
-      type_(attr.type),
-      output_indices_(attr.output_indices) {}
-
-Pooling::Pooling(Pooling&& kernel)
-    : GPUOperation(std::move(kernel)),
-      stride_(kernel.stride_),
-      padding_(kernel.padding_),
-      kernel_size_(kernel.kernel_size_),
-      type_(kernel.type_),
-      output_indices_(kernel.output_indices_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
-
-Pooling& Pooling::operator=(Pooling&& kernel) {
-  if (this != &kernel) {
-    std::swap(stride_, kernel.stride_);
-    std::swap(padding_, kernel.padding_);
-    std::swap(kernel_size_, kernel.kernel_size_);
-    std::swap(type_, kernel.type_);
-    std::swap(output_indices_, kernel.output_indices_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
-    GPUOperation::operator=(std::move(kernel));
+GPUOperation CreatePooling(const OperationDef& definition,
+                           const Pooling2DAttributes& attr) {
+  GPUOperation op(definition);
+  op.args_.AddInt("kernel_size_x", attr.kernel.w);
+  op.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  op.args_.AddInt("stride_x", attr.strides.w);
+  op.args_.AddInt("kernel_size_y", attr.kernel.h);
+  op.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  op.args_.AddInt("stride_y", attr.strides.h);
+  const bool stride_correction =
+      definition.IsBatchSupported() && attr.strides.w != 1;
+  if (attr.type == PoolingType::AVERAGE) {
+    op.code_ = GetAveragePoolingKernelCode(definition, stride_correction, &op);
+  } else if (attr.type == PoolingType::MAX) {
+    op.code_ = GetMaxPoolingKernelCode(definition, stride_correction,
+                                       attr.output_indices, &op);
   }
-  return *this;
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
-Status Pooling::Compile(const CreationContext& creation_context) {
-  std::string code;
-  switch (type_) {
-    case PoolingType::AVERAGE:
-      code = GetAveragePoolingKernelCode(
-          definition_.src_tensors[0], definition_.dst_tensors[0],
-          definition_.precision, *creation_context.device, linked_operations_);
-      break;
-    case PoolingType::MAX:
-      code = GetMaxPoolingKernelCode(
-          definition_.src_tensors[0], definition_.dst_tensors[0],
-          definition_.precision, linked_operations_, output_indices_);
-      break;
-    default:
-      return InvalidArgumentError(
-          "You should create another kernel with this params");
-      break;
+GPUOperation CreatePooling(const OperationDef& definition,
+                           const Pooling3DAttributes& attr) {
+  GPUOperation op(definition);
+  op.args_.AddInt("kernel_size_x", attr.kernel.w);
+  op.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  op.args_.AddInt("stride_x", attr.strides.w);
+  op.args_.AddInt("kernel_size_y", attr.kernel.h);
+  op.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  op.args_.AddInt("stride_y", attr.strides.h);
+  op.args_.AddInt("kernel_size_z", attr.kernel.d);
+  op.args_.AddInt("padding_z", -attr.padding.prepended.d);
+  op.args_.AddInt("stride_z", attr.strides.d);
+  const bool stride_correction =
+      definition.IsBatchSupported() && attr.strides.w != 1;
+  if (attr.type == PoolingType::AVERAGE) {
+    op.code_ = GetAveragePoolingKernelCode(definition, stride_correction, &op);
+  } else if (attr.type == PoolingType::MAX) {
+    op.code_ = GetMaxPoolingKernelCode(definition, stride_correction,
+                                       attr.output_indices, &op);
   }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-Status Pooling::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
-  if (output_indices_) {
-    RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[1]->GetMemoryPtr()));
-  }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
-
-  return OkStatus();
-}
-
-int3 Pooling::GetGridSize() const {
-  const int grid_x = dst_[0]->Width();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
-  return int3(grid_x, grid_y, grid_z);
-}
-
-Status Pooling::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-Status Pooling::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling2DAttributes& attr) {
-  return Pooling(definition, attr);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <dlfcn.h>
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
 namespace internal {
 
-Status LoadLibrary(const char* library_filename, void** handle) {
+Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   *handle = dlopen(library_filename, RTLD_NOW | RTLD_LOCAL);
   if (!*handle) {
     return errors::NotFound(dlerror());
@@ -33,7 +33,12 @@ Status LoadLibrary(const char* library_filename, void** handle) {
 
 Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                             void** symbol) {
-  *symbol = dlsym(handle, symbol_name);
+  // Check that the handle is not NULL to avoid dlsym's RTLD_DEFAULT behavior.
+  if (!handle) {
+    *symbol = nullptr;
+  } else {
+    *symbol = dlsym(handle, symbol_name);
+  }
   if (!*symbol) {
     return errors::NotFound(dlerror());
   }

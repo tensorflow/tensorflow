@@ -51,7 +51,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _init_func():
       return multi_device_iterator_string_handle
 
-    init_func_concrete = _init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    init_func_concrete = _init_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun(autograph=False)  # Pure graph code.
@@ -62,7 +62,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=[dtypes.string],
           f=init_func_concrete)
 
-    self._init_func = _remote_init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._init_func = _remote_init_func.get_concrete_function()
     self._init_captured_args = self._init_func.captured_inputs
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
@@ -84,7 +84,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           output_types=structure.get_flat_tensor_types(self._element_spec),
           output_shapes=structure.get_flat_tensor_shapes(self._element_spec))
 
-    next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    next_func_concrete = _next_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun_with_attributes(
@@ -98,7 +98,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=structure.get_flat_tensor_types(self._element_spec),
           f=next_func_concrete)
 
-    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
 
     self._incarnation_id_index = -1
@@ -113,7 +113,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _finalize_func(unused_string_handle):
       return array_ops.constant(0, dtypes.int64)
 
-    finalize_func_concrete = _finalize_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    finalize_func_concrete = _finalize_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun(
@@ -126,8 +126,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
-    self._finalize_func = _remote_finalize_func._get_concrete_function_internal(  # pylint: disable=protected-access
-    )
+    self._finalize_func = _remote_finalize_func.get_concrete_function()
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
     variant_tensor = gen_dataset_ops.generator_dataset(
@@ -224,7 +223,7 @@ class MultiDeviceIterator(object):
       dataset: The input dataset to be iterated over.
       devices: The list of devices to fetch data to.
       max_buffer_size: Maximum size of the host side per device buffer to keep.
-      prefetch_buffer_size: if > 1, then we setup a buffer on each device to
+      prefetch_buffer_size: if > 0, then we setup a buffer on each device to
         prefetch into.
       source_device: The host device to place the `dataset` on.  In order to
         prevent deadlocks, if the prefetch_buffer_size is greater than the
@@ -336,8 +335,7 @@ class MultiDeviceIterator(object):
     result = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        result.append(
-            iterator_ops.get_next_as_optional(self._device_iterators[i]))
+        result.append(self._device_iterators[i].get_next_as_optional())
     return result
 
   @property
@@ -378,6 +376,11 @@ class MultiDeviceIteratorResourceDeleter(object):
   object is part of a reference cycle, the cycle will be collectible.
   """
 
+  __slots__ = [
+      "_deleter", "_multi_device_iterator", "_iterators", "_device",
+      "_eager_mode"
+  ]
+
   def __init__(self, multi_device_iterator, iterators, device, deleter):
     self._deleter = deleter
     self._multi_device_iterator = multi_device_iterator
@@ -405,7 +408,7 @@ class MultiDeviceIteratorResourceDeleter(object):
 
 
 class MultiDeviceIteratorSpec(type_spec.TypeSpec):
-  """Type specification for `MultiDeviceIteratorV2`."""
+  """Type specification for `OwnedMultiDeviceIterator`."""
 
   __slots__ = ["_devices", "_source_device", "_element_spec"]
 
@@ -416,7 +419,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
 
   @property
   def value_type(self):
-    return MultiDeviceIteratorV2
+    return OwnedMultiDeviceIterator
 
   def _serialize(self):
     return (tuple(self._devices), self._source_device, self._element_spec)
@@ -425,7 +428,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     specs = [
         tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.scalar)
+        tensor_spec.TensorSpec([], dtypes.variant)
     ]
     for _ in range(len(self._devices)):
       specs.append(iterator_ops.IteratorSpec(self._element_spec))
@@ -438,7 +441,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
     return c
 
   def _from_components(self, components):
-    return MultiDeviceIteratorV2(
+    return OwnedMultiDeviceIterator(
         dataset=None,
         devices=self._devices,
         source_device=self._source_device,
@@ -454,8 +457,15 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
         value.element_spec)
 
 
-class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
-  """An iterator over multiple devices."""
+class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
+  """An iterator over multiple devices.
+
+  The multi-device iterator resource created through `OwnedMultiDeviceIterator`
+  is owned by the Python object and the life time of the underlying resource is
+  tied to the life time of the `OwnedMultiDeviceIterator` object. This makes
+  `OwnedMultiDeviceIterator` appropriate for use in eager mode and inside of
+  tf.functions.
+  """
 
   def __init__(self,
                dataset=None,
@@ -465,13 +475,13 @@ class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
                source_device="/cpu:0",
                components=None,
                element_spec=None):
-    """Constructs a MultiDeviceIteratorV2 object.
+    """Constructs an owned MultiDeviceIterator object.
 
     Args:
       dataset: The input dataset to be iterated over.
       devices: The list of devices to fetch data to.
       max_buffer_size: Maximum size of the host side per device buffer to keep.
-      prefetch_buffer_size: if > 1, then we setup a buffer on each device to
+      prefetch_buffer_size: if > 0, then we setup a buffer on each device to
         prefetch into.
       source_device: The host device to place the `dataset` on.  In order to
         prevent deadlocks, if the prefetch_buffer_size is greater than the
@@ -484,9 +494,8 @@ class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
       RuntimeError: If executed in graph mode or outside of function building
       mode.
     """
-    if (not context.executing_eagerly() and
-        not ops.get_default_graph()._building_function):  # pylint: disable=protected-access
-      raise RuntimeError("MultiDeviceIteratorV2 is only supported inside of "
+    if not context.executing_eagerly() and not ops.inside_function():
+      raise RuntimeError("OwnedMultiDeviceIterator is only supported inside of "
                          "tf.function or when eager execution is enabled.")
     if devices is None:
       raise ValueError("`devices` must be provided")
@@ -558,11 +567,11 @@ class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
           self._device_iterators.append(iterator)
           iterator_handles.append(iterator._iterator_resource)  # pylint: disable=protected-access
 
-    self._resource_deleter = MultiDeviceIteratorResourceDeleter(
-        multi_device_iterator=self._multi_device_iterator_resource,
-        iterators=iterator_handles,
-        device=self._source_device,
-        deleter=self._deleter)
+      self._resource_deleter = MultiDeviceIteratorResourceDeleter(
+          multi_device_iterator=self._multi_device_iterator_resource,
+          iterators=iterator_handles,
+          device=self._source_device,
+          deleter=self._deleter)
 
   def get_next(self, device=None):
     """Returns the next element given a `device`, else returns all in a list."""
@@ -579,10 +588,10 @@ class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
   def __iter__(self):
     return self
 
-  def __next__(self):
-    return self.next()
-
   def next(self):
+    return self.__next__()
+
+  def __next__(self):
     try:
       return self.get_next()
     except errors.OutOfRangeError:
@@ -592,8 +601,7 @@ class MultiDeviceIteratorV2(composite_tensor.CompositeTensor):
     result = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        result.append(
-            iterator_ops.get_next_as_optional(self._device_iterators[i]))
+        result.append(self._device_iterators[i].get_next_as_optional())
     return result
 
   @property

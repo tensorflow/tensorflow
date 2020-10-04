@@ -40,27 +40,12 @@ py_library(
 tf_py_test(
     name = "api_test",
     srcs = ["api_test.py"],
-    additional_deps = [
-        ":impl",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/utils",
-    ],
-)
-
-py_test(
-    name = "api_py3_test",
-    srcs = ["api_py3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-        "no_pip",
-        "nopip",
-    ],
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/utils",
         "//third_party/py/numpy",
     ],
@@ -69,9 +54,11 @@ py_test(
 tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
-    additional_deps = [
+    tfrt_enabled = True,
+    deps = [
         ":impl",
-        "@gast_archive//:gast",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
+        "@gast_archive//:gast",
     ],
 )

@@ -1,11 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "VersionsProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/versions_go_proto";
 
 // Version information for a piece of serialized data
 //
@@ -29,4 +30,4 @@ message VersionDef {
 
   // Specific consumer versions which are disallowed (e.g. due to bugs).
   repeated int32 bad_consumers = 3;
-};
+}

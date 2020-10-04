@@ -43,7 +43,8 @@ namespace tensorflow {
 PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)
     : AsyncOpKernel(ctx),
       func_(new NameAttrList),
-      config_proto_(new ConfigProto) {
+      config_proto_(new ConfigProto),
+      shared_rendezvous_(false) {
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, func_.get()));
   string deprecated_config_serialized;
@@ -136,8 +137,13 @@ Status PartitionedCallOp::FillOutputDevices(
   const FunctionLibraryDefinition* flib = lib.GetFunctionLibraryDefinition();
   const FunctionDef* fdef = flib->Find(func_->name());
   if (fdef == nullptr) {
-    return errors::NotFound("Failed for find definition for function \"",
+    return errors::NotFound("Failed to find definition for function \"",
                             func_->name(), "\"");
+  }
+  auto func_attrs = fdef->attr();
+  auto attr = func_attrs.find(FunctionLibraryDefinition::kSharedRendezvousAttr);
+  if (attr != func_attrs.end() && attr->second.b()) {
+    shared_rendezvous_ = true;
   }
 
   bool is_type_list;
@@ -151,8 +157,6 @@ Status PartitionedCallOp::FillOutputDevices(
         // outputs empty, and rely on a Placer and colocation constraints to
         // infer correct placement for the function output.
         opts->output_devices.push_back("");
-      } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
-        opts->output_devices.push_back(cpu_device.name());
       } else {
         opts->output_devices.push_back(opts->target);
       }
@@ -166,6 +170,12 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
                                       std::vector<Tensor>* inputs,
                                       FunctionLibraryRuntime::Handle* handle) {
   FunctionLibraryRuntime::InstantiateOptions opts;
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    opts.config_proto = *config;
+  }
 
 #ifndef __ANDROID__
   // Android tf library does not include grappler.
@@ -207,8 +217,6 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
     if (dtype == DT_RESOURCE) {
       const ResourceHandle& handle = tensor.flat<ResourceHandle>()(0);
       opts.input_devices.push_back(handle.device());
-    } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
-      opts.input_devices.push_back(cpu_device->name());
     } else {
       opts.input_devices.push_back(opts.target);
     }
@@ -239,29 +247,19 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   // TODO(akshayka): Consider selecting a runner on a per-device basis,
   // i.e., using device-specific threadpools when available.
   run_opts.runner = ctx->runner();
+  run_opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
   run_opts.source_device =
       lib->device() == nullptr ? "" : lib->device()->name();
   run_opts.allow_dead_tensors = true;
-
-  Rendezvous* rendez;
-  OP_REQUIRES_OK_ASYNC(
-      ctx,
-      ctx->create_rendezvous(run_opts.step_id,
-                             ctx->function_library()->device_mgr(), &rendez),
-      done);
-  run_opts.rendezvous = rendez;
+  if (shared_rendezvous_) {
+    run_opts.rendezvous = ctx->rendezvous();
+  }
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
-  profiler::TraceMe trace_me(
-      [&] {
-        return absl::StrCat(
-            "PartitionedCallOp #parent_step_id=", ctx->step_id(),
-            ",function_step_id=", run_opts.step_id, "#");
-      },
-      /*level=*/2);
+  profiler::TraceMe trace_me("PartitionedCallOp");
   lib->Run(run_opts, handle, inputs, rets,
-           [rets, rendez, done, ctx, func_name,
+           [rets, done = std::move(done), ctx, func_name,
             step_container](const Status& status) {
              if (!status.ok()) {
                const string function_and_msg =
@@ -275,7 +273,6 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
              }
              delete rets;
              delete step_container;
-             rendez->Unref();
              done();
            });
 }
@@ -292,11 +289,5 @@ REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
 REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");
 REGISTER_INPUT_COLOCATION_EXEMPTION("StatefulPartitionedCall");
 
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_SYCL),
-                        PartitionedCallOp);
-REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_SYCL),
-                        PartitionedCallOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

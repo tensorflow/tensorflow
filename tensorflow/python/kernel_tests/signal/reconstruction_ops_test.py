@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -25,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import reconstruction_ops
@@ -32,7 +34,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class ReconstructionOpsTest(test.TestCase):
+class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
 
   def __init__(self, *args, **kwargs):
     super(ReconstructionOpsTest, self).__init__(*args, **kwargs)
@@ -87,8 +89,6 @@ class ReconstructionOpsTest(test.TestCase):
     self.assertAllClose(reconstruction, expected_output)
 
   def test_fast_path(self):
-    if context.executing_eagerly():
-      return
     # This test uses tensor names and does not work in eager mode.
     if context.executing_eagerly():
       return
@@ -99,35 +99,31 @@ class ReconstructionOpsTest(test.TestCase):
     expected_output = np.ones([15])
     self.assertAllClose(reconstruction, expected_output)
 
-  def test_simple(self):
+  @parameterized.parameters(
+      # All hop lengths on a frame length of 2.
+      (2, [1, 5, 9, 6], 1),
+      (2, [1, 2, 3, 4, 5, 6], 2),
+
+      # All hop lengths on a frame length of 3.
+      (3, [1, 6, 15, 14, 9], 1),
+      (3, [1, 2, 7, 5, 13, 8, 9], 2),
+      (3, [1, 2, 3, 4, 5, 6, 7, 8, 9], 3),
+
+      # All hop lengths on a frame length of 4.
+      (4, [1, 7, 18, 21, 19, 12], 1),
+      (4, [1, 2, 8, 10, 16, 18, 11, 12], 2),
+      (4, [1, 2, 3, 9, 6, 7, 17, 10, 11, 12], 3),
+      (4, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 4))
+  def test_simple(self, frame_length, expected, frame_hop):
     def make_input(frame_length, num_frames=3):
       """Generate a tensor of num_frames frames of frame_length."""
       return np.reshape(np.arange(1, num_frames * frame_length + 1),
                         (-1, frame_length))
-
-    # List of (signal, expected_result, frame_hop).
-    configurations = [
-        # All hop lengths on a frame length of 2.
-        (make_input(2), [1, 5, 9, 6], 1),
-        (make_input(2), [1, 2, 3, 4, 5, 6], 2),
-
-        # All hop lengths on a frame length of 3.
-        (make_input(3), [1, 6, 15, 14, 9], 1),
-        (make_input(3), [1, 2, 7, 5, 13, 8, 9], 2),
-        (make_input(3), [1, 2, 3, 4, 5, 6, 7, 8, 9], 3),
-
-        # All hop lengths on a frame length of 4.
-        (make_input(4), [1, 7, 18, 21, 19, 12], 1),
-        (make_input(4), [1, 2, 8, 10, 16, 18, 11, 12], 2),
-        (make_input(4), [1, 2, 3, 9, 6, 7, 17, 10, 11, 12], 3),
-        (make_input(4), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 4),
-    ]
-
-    for signal, expected, frame_hop in configurations:
-      reconstruction = reconstruction_ops.overlap_and_add(
-          np.array(signal), frame_hop)
-      expected_output = np.array(expected)
-      self.assertAllClose(reconstruction, expected_output)
+    signal = make_input(frame_length)
+    reconstruction = reconstruction_ops.overlap_and_add(
+        np.array(signal), frame_hop)
+    expected_output = np.array(expected)
+    self.assertAllClose(reconstruction, expected_output)
 
   def test_powers(self):
     signal = constant_op.constant(np.squeeze(self.powers[0, :, :]),
@@ -165,28 +161,25 @@ class ReconstructionOpsTest(test.TestCase):
     self.assertEqual(output.shape, (1, 9))
     self.assertEqual(string_output, self.expected_string)
 
-  def test_gradient(self):
+  @parameterized.parameters(
+      ((1, 128), 1),
+      ((5, 35), 17),
+      ((10, 128), 128),
+      ((2, 10, 128), 127),
+      ((2, 2, 10, 128), 126),
+      ((2, 2, 2, 10, 128), 125))
+  def test_gradient(self, shape, frame_hop):
     # TODO(rjryan): Eager gradient tests.
     if context.executing_eagerly():
       return
-    configurations = [
-        ((1, 128), 1),
-        ((5, 35), 17),
-        ((10, 128), 128),
-        ((2, 10, 128), 127),
-        ((2, 2, 10, 128), 126),
-        ((2, 2, 2, 10, 128), 125),
-    ]
-
-    for shape, frame_hop in configurations:
-      signal = array_ops.zeros(shape)
-      reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
-      loss = math_ops.reduce_sum(reconstruction)
-      # Increasing any sample in the input frames by one will increase the sum
-      # of all the samples in the reconstruction by 1, so the gradient should
-      # be all ones, no matter the shape or hop.
-      gradient = self.evaluate(gradients_impl.gradients([loss], [signal])[0])
-      self.assertTrue((gradient == 1.0).all())
+    signal = array_ops.zeros(shape)
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
+    loss = math_ops.reduce_sum(reconstruction)
+    # Increasing any sample in the input frames by one will increase the sum
+    # of all the samples in the reconstruction by 1, so the gradient should
+    # be all ones, no matter the shape or hop.
+    gradient = self.evaluate(gradients_impl.gradients([loss], [signal])[0])
+    self.assertTrue((gradient == 1.0).all())
 
   def test_gradient_batch(self):
     # TODO(rjryan): Eager gradient tests.
@@ -214,18 +207,14 @@ class ReconstructionOpsTest(test.TestCase):
     self.assertAllEqual(expected_gradient, gradient)
 
   def test_gradient_numerical(self):
-    # TODO(rjryan): Eager gradient tests.
-    if context.executing_eagerly():
-      return
-    with self.session(use_gpu=True):
-      shape = (2, 10, 10)
-      framed_signal = array_ops.zeros(shape)
-      frame_hop = 10
-      reconstruction = reconstruction_ops.overlap_and_add(
-          framed_signal, frame_hop)
-      error = test.compute_gradient_error(
-          framed_signal, shape, reconstruction, [2, 100])
-      self.assertLess(error, 2e-5)
+    shape = (2, 10, 10)
+    framed_signal = array_ops.zeros(shape)
+    frame_hop = 10
+    def f(signal):
+      return reconstruction_ops.overlap_and_add(signal, frame_hop)
+    ((jacob_t,), (jacob_n,)) = gradient_checker_v2.compute_gradient(
+        f, [framed_signal])
+    self.assertAllClose(jacob_t, jacob_n)
 
 
 if __name__ == "__main__":

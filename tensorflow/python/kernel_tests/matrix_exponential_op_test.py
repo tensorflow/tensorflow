@@ -63,7 +63,7 @@ class ExponentialOpTest(test.TestCase):
         else:
           np_ans = np_expm(inp)
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
+      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
 
   def _verifyExponentialReal(self, x):
     for np_type in [np.float32, np.float64]:
@@ -91,8 +91,6 @@ class ExponentialOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testNonsymmetricComplex(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
     matrix1 = matrix1.astype(np.complex64)
@@ -114,8 +112,6 @@ class ExponentialOpTest(test.TestCase):
     self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
 
   def testSymmetricPositiveDefiniteComplex(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[2., 1.], [1., 2.]])
     matrix2 = np.array([[3., -1.], [-1., 3.]])
     matrix1 = matrix1.astype(np.complex64)
@@ -140,6 +136,12 @@ class ExponentialOpTest(test.TestCase):
     tensor3 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       linalg_impl.matrix_exponential(tensor3)
+
+  def testInfinite(self):
+    # Check that the op does not loop forever on infinite inputs. (b/158433036)
+    in_tensor = [[np.inf, 1.], [1., 1.]]
+    result = self.evaluate(linalg_impl.matrix_exponential(in_tensor))
+    self.assertTrue(np.all(np.isnan(result)))
 
   def testEmpty(self):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
@@ -185,8 +187,8 @@ class MatrixExponentialBenchmark(test.Benchmark):
     shape = shape[-2:]
     assert shape[0] == shape[1]
     n = shape[0]
-    matrix = np.ones(shape).astype(np.float32) / (
-        2.0 * n) + np.diag(np.ones(n).astype(np.float32))
+    matrix = np.ones(shape).astype(np.float32) / (2.0 * n) + np.diag(
+        np.ones(n).astype(np.float32))
     return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
 
   def benchmarkMatrixExponentialOp(self):
@@ -196,13 +198,12 @@ class MatrixExponentialBenchmark(test.Benchmark):
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         expm = linalg_impl.matrix_exponential(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(expm),
             min_iters=25,
-            name="matrix_exponential_cpu_{shape}".format(
-                shape=shape))
+            name="matrix_exponential_cpu_{shape}".format(shape=shape))
 
       if test.is_gpu_available(True):
         with ops.Graph().as_default(), \
@@ -210,13 +211,12 @@ class MatrixExponentialBenchmark(test.Benchmark):
             ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           expm = linalg_impl.matrix_exponential(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(expm),
               min_iters=25,
-              name="matrix_exponential_gpu_{shape}".format(
-                  shape=shape))
+              name="matrix_exponential_gpu_{shape}".format(shape=shape))
 
 
 def _TestRandomSmall(dtype, batch_dims, size):
@@ -224,9 +224,7 @@ def _TestRandomSmall(dtype, batch_dims, size):
   def Test(self):
     np.random.seed(42)
     shape = batch_dims + (size, size)
-    matrix = np.random.uniform(
-        low=-1.0, high=1.0,
-        size=shape).astype(dtype)
+    matrix = np.random.uniform(low=-1.0, high=1.0, size=shape).astype(dtype)
     self._verifyExponentialReal(matrix)
 
   return Test
@@ -237,10 +235,9 @@ def _TestL1Norms(dtype, shape, scale):
   def Test(self):
     np.random.seed(42)
     matrix = np.random.uniform(
-        low=-1.0, high=1.0,
-        size=np.prod(shape)).reshape(shape).astype(dtype)
+        low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype)
     print(dtype, shape, scale, matrix)
-    l1_norm = np.max(np.sum(np.abs(matrix), axis=matrix.ndim-2))
+    l1_norm = np.max(np.sum(np.abs(matrix), axis=matrix.ndim - 2))
     matrix /= l1_norm
     self._verifyExponentialReal(scale * matrix)
 
@@ -258,12 +255,12 @@ if __name__ == "__main__":
   for shape_ in [(3, 3), (2, 3, 3)]:
     for dtype_ in [np.float32, np.complex64]:
       for scale_ in [0.1, 1.5, 5.0, 20.0]:
-        name = "%s_%d_%d" % (dtype_.__name__, len(shape_), int(scale_*10))
+        name = "%s_%d_%d" % (dtype_.__name__, len(shape_), int(scale_ * 10))
         setattr(ExponentialOpTest, "testL1Norms_" + name,
                 _TestL1Norms(dtype_, shape_, scale_))
     for dtype_ in [np.float64, np.complex128]:
       for scale_ in [0.01, 0.2, 0.5, 1.5, 6.0, 25.0]:
-        name = "%s_%d_%d" % (dtype_.__name__, len(shape_), int(scale_*100))
+        name = "%s_%d_%d" % (dtype_.__name__, len(shape_), int(scale_ * 100))
         setattr(ExponentialOpTest, "testL1Norms_" + name,
                 _TestL1Norms(dtype_, shape_, scale_))
   test.main()

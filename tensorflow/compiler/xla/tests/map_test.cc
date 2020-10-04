@@ -463,7 +463,7 @@ TEST_F(MapTest, NestedBinaryMap) {
   ComputeAndCompareR1<float>(&b, {0.1f, 0.5f, 0.25f, 1.0f, 4.0f}, {});
 }
 
-TEST_F(MapTest, MapOperantionWithBuildError) {
+TEST_F(MapTest, MapOperationWithBuildError) {
   // Maps (lambda (x y) (+ x y)) onto two R1F32 vectors but uses an unsupported
   // type combination (F32 + U16) to test that the error is reported to the
   // outermost XlaBuilder.

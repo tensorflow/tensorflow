@@ -34,8 +34,9 @@ class SparseReshapeOp : public OpKernel {
   explicit SparseReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    Reshape(context, context->input(0), context->input(1), context->input(2),
-            0 /* output indices index */, 1 /* output shape index */);
+    ReshapeSparseTensor(context, context->input(0), context->input(1),
+                        context->input(2), 0 /* output indices index */,
+                        1 /* output shape index */);
   }
 };
 

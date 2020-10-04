@@ -3,6 +3,8 @@ syntax = "proto3";
 
 package stream_executor.dnn;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/stream_executor";
+
 // Specifies the data type used by an operation.
 enum DataType {
   kFloat = 0;

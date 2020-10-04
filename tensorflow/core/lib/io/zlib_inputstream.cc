@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <zlib.h>
-
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include <zlib.h>
+
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace io {

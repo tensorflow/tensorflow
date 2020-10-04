@@ -37,7 +37,7 @@ namespace gpu {
 // Currently, there are two main use cases for a tiling scheme. First, we
 // implement kernels with 0-2-1 memory transpose using shared memory to improve
 // memory access pattern. Second, we implement reduction to contiguous
-// dimensions in layout, with or without memory tranpsose, to achieve better
+// dimensions in layout, with or without memory transpose, to achieve better
 // memory access pattern as well as to reduce the need numbers of executed
 // expensive instructions, such as thread synchronization related instructions
 // and atomic operations. For both use cases, we can apply a normalization to
@@ -76,89 +76,66 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-  KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
-                      int64 tile_size_x, int64 block_size_z,
-                      int64 num_threads_y, int64 num_threads_x,
-                      bool is_dilated_x)
+  enum IndexingOrder {
+    // Thread reads consecutive elements.
+    LinearIndexingX,
+    // Thread reads strided elements while keeping memory coalescing.
+    StridedIndexingX,
+    // Thread reads a few consecutive elements then take a strided
+    // step. This can trigger vectorized reads and keep memory
+    // coalescing.
+    StridedLinearIndexingX
+  };
+
+  KernelMappingScheme(absl::Span<const int64> dims_in_elems,
+                      absl::Span<const int64> tile_sizes, int64 num_threads_y,
+                      int64 num_threads_x, IndexingOrder indexing_order,
+                      int vector_size, bool is_row_contiguous = false)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
-        tile_sizes_{1, tile_size_y, tile_size_x},
-        dims_in_tiles_{dims_in_elems[0],
-                       CeilOfRatio<int64>(dims_in_elems[1], tile_size_y),
-                       CeilOfRatio<int64>(dims_in_elems[2], tile_size_x)},
-        dims_in_blocks_{dims_in_elems[0] / block_size_z, dims_in_tiles_[1],
-                        dims_in_tiles_[2]},
-        block_size_z_{block_size_z},
+        tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
-        dilated_x_(is_dilated_x) {
-    CHECK_EQ(tile_size_y % num_threads_y_, 0);
-    CHECK_EQ(tile_size_x % num_threads_x_, 0);
-    CHECK_EQ((dims_in_elems[0] % block_size_z), 0);
+        indexing_order_(indexing_order),
+        vector_size_(vector_size),
+        is_row_contiguous_(is_row_contiguous) {
+    CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
+    CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
-    VLOG(10) << "dims_in_tiles_ = " << absl::StrJoin(dims_in_tiles_, ",");
-    VLOG(10) << "dims_in_blocks_ = " << absl::StrJoin(dims_in_blocks_, ",");
-    if (!dilated_x_) {
-      // dilated_x_=false is for the purpose of vectorization, which requires
-      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
-      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
+    if (indexing_order != LinearIndexingX) {
+      // StridedIndexingX, and StridedLinearIndexingX
+      // is for the purpose of vectorization, which requires
+      // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
+      CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
     }
   }
 
   // Number of elements in each dimension (Z/Y/X respectively).
-  absl::Span<const int64> GetDimensionsInElements() const {
-    return dims_in_elems_;
-  }
-
-  // Ratio of elements in each dimension over tile sizes for Z/Y/X
-  // respectively.
-  absl::Span<const int64> GetDimensionsInTiles() const {
-    return dims_in_tiles_;
-  }
-
-  // Ratio of dimensions per tile over block sizes.
-  absl::Span<const int64> GetDimensionsInBlocks() const {
-    return dims_in_blocks_;
-  }
-
-  int64 GetNumberOfTilesInTotal() const {
-    return absl::c_accumulate(dims_in_tiles_, 1LL, std::multiplies<int64>());
-  }
-
-  int64 GetNumberOfTilesInOneBlock() const { return block_size_z_; }
-
-  int64 BlockSize(int d) const {
-    DCHECK(d >= DimZ && d <= DimX);
-    if (d == DimZ) {
-      return block_size_z_;
-    }
-    return 1;
-  }
+  absl::Span<const int64> GetDimsInElems() const { return dims_in_elems_; }
 
   int64 GetNumberOfBlocks() const {
-    return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
+    return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
+           CeilOfRatio(dims_in_elems_[1], GetTileSizeY()) *
+           CeilOfRatio(dims_in_elems_[2], GetTileSizeX());
   }
 
-  int64 GetTileSizeForDimension(int d) const { return tile_sizes_.at(d); }
-  int64 GetTileSizeForDimensionX() const {
-    return GetTileSizeForDimension(DimX);
-  }
-  int64 GetTileSizeForDimensionY() const {
-    return GetTileSizeForDimension(DimY);
-  }
+  // Tile size for a given dimensions. Tiles are assigned per thread block,
+  // and are processed by all threads in the block.
+  int64 GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
-  int64 GetTileBlockSizeForDimension(int d) const {
-    return dims_in_blocks_.at(d);
-  }
+  int64 GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
+  int64 GetTileSizeX() const { return GetTileSizeFor(DimX); }
+  int64 GetTileSizeY() const { return GetTileSizeFor(DimY); }
 
-  int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
-  int64 GetNumberOfThreadsForDimensionY() const { return num_threads_y_; }
+  int64 GetNumThreadsX() const { return num_threads_x_; }
+  int64 GetNumThreadsY() const { return num_threads_y_; }
 
   int64 GetThreadsPerBlock() const {
-    return GetNumberOfThreadsForDimensionX() *
-           GetNumberOfThreadsForDimensionY();
+    return GetNumThreadsX() * GetNumThreadsY();
   }
 
-  bool DilatedX() const { return dilated_x_; }
+  IndexingOrder GetIndexingOrder() const { return indexing_order_; }
+  int GetVectorSize() const { return vector_size_; }
+  bool GetRowContiguous() const { return is_row_contiguous_; }
 
  private:
   // The number of elements in each dimension.
@@ -166,27 +143,25 @@ class KernelMappingScheme {
 
   // The number of elements for each dimension of a tile.
   const std::array<int64, 3> tile_sizes_;
-  // The number of tiles in each dimension. It is computed from dims_in_elem_
-  // and tile_sizes_.
-  const std::array<int64, 3> dims_in_tiles_;
-
-  // The number of blocks in each dimension of a tile block. It is computed from
-  // dims_in_tile_ and block_sizes_.
-  const std::array<int64, 3> dims_in_blocks_;
-
-  const int64 block_size_z_;
 
   // Number of threads used to process elements in the X direction of a tile.
   const int64 num_threads_x_;
+
   // Number of threads used to process elements in the Y direction of a tile.
   const int64 num_threads_y_;
 
-  // When num_threads_x threads process a total of tile_size_x elements in the
-  // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
-  // elements. When dilated_x=false, the n elements processed by a thread are
-  // contiguous. On the other hand, when dilated_x=true the n elements are
-  // dilated by a factor of num_threads_x.
-  const bool dilated_x_;
+  // When num_threads_x threads process a total of tile_size_x
+  // elements in the X dimension of a tile, each threads process
+  // n=tile_size_x/num_threads_x elements.
+  // indexing_order defines which tile's elements each thread reads.
+  const IndexingOrder indexing_order_;
+
+  // vector_size_ only supported for row reduction and must be a divisor
+  // of tile_sizes_[2]/num_threads_x.  Interesting values are 2 and 4
+  // to trigger vectorized loads on GPUs while keeping memory
+  // coalescing.
+  const int vector_size_;
+  const bool is_row_contiguous_;
 };
 
 // Information to support the code generation for a tiled reduction kernel.
@@ -194,70 +169,70 @@ using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
 class ReductionCodegenInfo {
  public:
   explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
-                                bool is_row_reduction)
-      : mapping_scheme_(mapping_scheme), is_row_reduction_(is_row_reduction) {}
-
-  void SetCurrentOutputLinearIndexAddress(llvm::AllocaInst* a) {
-    current_output_linear_index_address_ = a;
+                                int num_partial_results, bool is_row_reduction)
+      : mapping_scheme_(mapping_scheme),
+        num_partial_results_(num_partial_results),
+        is_row_reduction_(is_row_reduction) {
+    if (num_partial_results > 1) {
+      CHECK_EQ(num_partial_results, (mapping_scheme.GetTileSizeX() /
+                                     mapping_scheme.GetNumThreadsX()));
+    }
   }
 
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return mapping_scheme_;
   }
 
-  // Returns the address of the memory that stores the linear index of the
-  // current output. Since we are processing reduction to contiguous physical
-  // dimensions, this linear index is the linear index of the 1D output array.
-  llvm::AllocaInst* GetCurrentOutputLinearIndexAddress() const {
-    return current_output_linear_index_address_;
-  }
-
-  void SetCurrentOutputInboundAddress(llvm::AllocaInst* a) {
-    current_output_inbound_address_ = a;
-  }
-
-  llvm::AllocaInst* GetCurrentOutputInboundAddress() const {
-    return current_output_inbound_address_;
-  }
-
+  // Gets writeable pointer to the address (or addresses) used to store
+  // reduction accumulators.
   AddressVector* GetMutablePartialResultAddresses() {
     return &partial_result_addresses_;
   }
+
+  // Returns the address (addresses) of the reduction accumulators.
   absl::Span<llvm::AllocaInst* const> GetPartialResultAddresses() const {
     return partial_result_addresses_;
   }
 
+  // Mutable pointer to the address of the input element to perform the
+  // reduction with.
   AddressVector* GetMutableReductionInputAddresses() {
     return &reduction_input_addresses_;
   }
+
+  std::vector<llvm::Value*>* GetMutableInitialValues() {
+    return &initial_values_;
+  }
+
+  absl::Span<llvm::Value* const> GetInitialValues() const {
+    return initial_values_;
+  }
+
+  // Returns the address of the input element to perform the reduction with.
   absl::Span<llvm::AllocaInst* const> GetReductionInputAddresses() const {
     return reduction_input_addresses_;
   }
 
+  int GetNumPartialResults() const { return num_partial_results_; }
   bool IsRowReduction() const { return is_row_reduction_; }
 
-  // Return the dimension that is being reduced between DimX and DimY.
-  int GetReducedDimensionEnum() const {
-    return IsRowReduction() ? KernelMappingScheme::DimX
-                            : KernelMappingScheme::DimY;
+  // Gets a pointer to a mutable shared cache used by reduction.
+  std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
+    return &shared_cache_;
   }
 
-  int GetPartialResultIndex(int64 x_iter_num) const {
-    if (IsRowReduction()) {
-      return 0;
-    }
-    return x_iter_num;
+  // Shared cache used for reduction.
+  absl::Span<llvm::GlobalVariable* const> GetSharedCache() const {
+    return shared_cache_;
   }
 
  private:
+  std::vector<llvm::GlobalVariable*> shared_cache_;
+  std::vector<llvm::Value*> initial_values_;
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  // The address of the memory that stores the linear index of the current
-  // output, assuming that the output doesn't change the layout of the kept
-  // elements in the reduction input.
-  llvm::AllocaInst* current_output_linear_index_address_ = nullptr;
-  llvm::AllocaInst* current_output_inbound_address_ = nullptr;
+  int num_partial_results_;
   bool is_row_reduction_;
 };
 

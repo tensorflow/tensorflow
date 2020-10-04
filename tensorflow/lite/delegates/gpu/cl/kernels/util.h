@@ -17,15 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_UTIL_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
-#include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -36,147 +34,169 @@ namespace cl {
 
 std::string GetCommonDefines(CalculationsPrecision precision);
 
-std::string GetGlobalAddress(TensorStorageType storage_type,
-                             const std::string& size_name,
-                             const std::string& var_name, const std::string& x,
-                             const std::string& y, const std::string& z);
-std::string ReadGlobalFLT4(TensorStorageType storage_type,
-                           const std::string& tensor_name,
-                           const std::string& size_name, const std::string& x,
-                           const std::string& y, const std::string& z);
-std::string ReadGlobalFLT4(TensorStorageType storage_type,
-                           const std::string& tensor_name,
-                           const std::string& global_address);
-std::string WriteGlobalFLT4(TensorStorageType storage_type,
-                            const std::string& tensor_name,
-                            const std::string& size_name,
-                            const std::string& var_name, const std::string& x,
-                            const std::string& y, const std::string& z);
-std::string WriteGlobalFLT4(TensorStorageType storage_type,
-                            const std::string& tensor_name,
-                            const std::string& var_name,
-                            const std::string& global_address);
+// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
+// with B after W (for example HWBC4) and WB stored in one axis of GPU
+// resources.
+std::string GetXStrideCorrected(const std::string& src_x,
+                                const std::string& batch_size,
+                                const std::string& stride_x,
+                                const std::string& padding_x);
 
-std::string GetDataType(DataType type);
-std::string GetDataType4(DataType type);
-
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 AccessType access, DataType data_type);
-
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 const std::string& tensor_name,
-                                 AccessType access, DataType data_type);
-
-std::string GenerateGlobal3DCoords(TensorStorageType storage_type);
-
-enum class TextureAddressMode {
-  DONT_CARE,  // translated to CLK_ADDRESS_NONE
-  ZERO,       // translated to CLK_ADDRESS_CLAMP
-};
-
-class TensorCodeGenerator {
- public:
-  TensorCodeGenerator(const std::string& name,
-                      const std::string& uniform_size_name,
-                      TensorStorageType storage_type, AccessType access);
-
-  TensorCodeGenerator(const std::string& name,
-                      const std::string& uniform_size_name,
-                      const TensorDescriptor& descriptor);
-
-  std::string GetDeclaration() const;
-
-  std::string GetDeclaration(AccessType access) const;
-
-  // This function (and functions below) accept TextureAddressMode, but this
-  // argument applicable only for texture types. Buffer types ignore this
-  // parameter.
-  std::string Read3D(
-      const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
-  // Optimization for textures, so as in opencl we can use read_imagef for any
-  // texture type.
-  std::string ReadAsFloat3D(
-      const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
-  std::string Read3D(
-      const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
-  // Optimization for textures, so as in opencl we can use read_imagef for any
-  // texture type.
-  std::string ReadAsFloat3D(
-      const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
-  std::string GetAddress(const std::string& var_name, const std::string& x,
-                         const std::string& y, const std::string& z) const;
-
-  std::string Write3D(const std::string& var_name, const std::string& x,
-                      const std::string& y, const std::string& z) const;
-
-  std::string Write3D(const std::string& var_name,
-                      const std::string& global_address) const;
-
- private:
-  std::string name_;
-  std::string uniform_size_name_;
-  TensorStorageType storage_type_;
-  AccessType access_;
-  DataType data_type_ = DataType::UNKNOWN;
-};
+// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
+// with B after W (for example HWBC4) and WB stored in one axis of GPU
+// resources.
+std::string GetXStrideCorrectedV2(const std::string& src_x,
+                                  const std::string& batch_size,
+                                  const std::string& stride_x,
+                                  const std::string& padding_x);
 
 template <DataType S, typename T>
-void RearrangeWeightsToOHWI4I4O(const ::tflite::gpu::Tensor<OHWI, S>& weights,
-                                absl::Span<T> dst) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
+void RearrangeWeightsToOHWIOGroupI4O4(
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
 
   int counter = 0;
-  for (int d = 0; d < dst_depth; ++d) {
-    for (int y = 0; y < kernel_y; ++y) {
-      for (int x = 0; x < kernel_x; ++x) {
-        for (int s = 0; s < src_depth; ++s) {
-          T filters[4];
-          for (int i = 0; i < 4; ++i) {
+  for (int d = 0; d < dst_groups; ++d) {
+    for (int y = 0; y < weights.shape.h; ++y) {
+      for (int x = 0; x < weights.shape.w; ++x) {
+        for (int s = 0; s < src_slices; ++s) {
+          for (int d_group = 0; d_group < out_group_size; ++d_group) {
             for (int j = 0; j < 4; ++j) {
-              const int s_ch = s * 4 + j;
-              const int d_ch = d * 4 + i;
-              if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                const int f_index =
-                    weights.shape.LinearIndex({d_ch, y, x, s_ch});
-                filters[j][i] = weights.data[f_index];
-              } else {
-                filters[j][i] = 0.0f;
+              T filter;
+              for (int i = 0; i < 4; ++i) {
+                const int s_ch = s * 4 + j;
+                const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                  const int f_index =
+                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
+                  filter[i] = weights.data[f_index];
+                } else {
+                  filter[i] = 0.0f;
+                }
               }
+              dst[counter++] = filter;
             }
           }
-          dst[counter++] = filters[0];
-          dst[counter++] = filters[1];
-          dst[counter++] = filters[2];
-          dst[counter++] = filters[3];
         }
       }
     }
   }
 }
 
-// Returns fastest TextureAddressMode that return ZERO for out-of-range image
-// coordinates.
-//
-// Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
-// we can observe huge register overhead when compared to other modes.
+template <DataType S, typename T>
+void RearrangeWeightsToODHWIOGroupI4O4(
+    const tflite::gpu::Tensor<OHWDI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
 
-// While using CLK_ADDRESS_NONE with out-of-range image coordinates is undefined
-// in the OpenCL specification, we have observed that CLK_ADDRESS_NONE works
-// like CLK_ADDRESS_CLAMP for out-of-range image coordinates for RGBA F16/F32
-// textures on Adreno3xx devices. Using CLK_ADDRESS_NONE is significantly faster
-// than CLK_ADDRESS_CLAMP on Adreno 3xx.
-TextureAddressMode GetFastestZeroMode(const CLDevice& device);
+  int counter = 0;
+  for (int d = 0; d < dst_groups; ++d) {
+    for (int z = 0; z < weights.shape.d; ++z) {
+      for (int y = 0; y < weights.shape.h; ++y) {
+        for (int x = 0; x < weights.shape.w; ++x) {
+          for (int s = 0; s < src_slices; ++s) {
+            for (int d_group = 0; d_group < out_group_size; ++d_group) {
+              for (int j = 0; j < 4; ++j) {
+                T filter;
+                for (int i = 0; i < 4; ++i) {
+                  const int s_ch = s * 4 + j;
+                  const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                  if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                    const int f_index =
+                        weights.shape.LinearIndex({d_ch, y, x, z, s_ch});
+                    filter[i] = weights.data[f_index];
+                  } else {
+                    filter[i] = 0.0f;
+                  }
+                }
+                dst[counter++] = filter;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <DataType S, typename T>
+void RearrangeWeightsToI4HWIOOGroupO4(
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
+
+  int counter = 0;
+  for (int j = 0; j < 4; ++j) {
+    for (int y = 0; y < weights.shape.h; ++y) {
+      for (int x = 0; x < weights.shape.w; ++x) {
+        for (int s = 0; s < src_slices; ++s) {
+          for (int d = 0; d < dst_groups; ++d) {
+            for (int d_group = 0; d_group < out_group_size; ++d_group) {
+              T filter;
+              for (int i = 0; i < 4; ++i) {
+                const int s_ch = s * 4 + j;
+                const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                  const int f_index =
+                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
+                  filter[i] = weights.data[f_index];
+                } else {
+                  filter[i] = 0.0f;
+                }
+              }
+              dst[counter++] = filter;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <DataType S, typename T>
+void RearrangeWeightsToI4DHWIOOGroupO4(
+    const tflite::gpu::Tensor<OHWDI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
+
+  int counter = 0;
+  for (int j = 0; j < 4; ++j) {
+    for (int z = 0; z < weights.shape.d; ++z) {
+      for (int y = 0; y < weights.shape.h; ++y) {
+        for (int x = 0; x < weights.shape.w; ++x) {
+          for (int s = 0; s < src_slices; ++s) {
+            for (int d = 0; d < dst_groups; ++d) {
+              for (int d_group = 0; d_group < out_group_size; ++d_group) {
+                T filter;
+                for (int i = 0; i < 4; ++i) {
+                  const int s_ch = s * 4 + j;
+                  const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                  if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                    const int f_index =
+                        weights.shape.LinearIndex({d_ch, y, x, z, s_ch});
+                    filter[i] = weights.data[f_index];
+                  } else {
+                    filter[i] = 0.0f;
+                  }
+                }
+                dst[counter++] = filter;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
 
 // Returns float4 mask for last plane(batch of 4 channels)
 // assumes that plane size is 4;
@@ -184,6 +204,15 @@ TextureAddressMode GetFastestZeroMode(const CLDevice& device);
 // but 8s-channel will be empty, then last plane (batch of 4 channels) will
 // have this mask (1, 1, 1, 0).
 float4 GetMaskForLastPlane(int channels);
+
+// returns first work group from wgs that has size not bigger than max_wg_size
+// if no suitable groups among wgs, returns {1, 1, 1}
+int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
+
+// task_size as amount of FLT4 processed elements.
+int GetRecommendedBlockSizeForConv(const DeviceInfo& device,
+                                   CalculationsPrecision precision,
+                                   int task_size);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

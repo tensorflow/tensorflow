@@ -1,0 +1,51 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x -tf-input-shapes=:1  -tf-output-arrays=p,x -o - | FileCheck %s --check-prefix=NONE
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x -tf-input-shapes=:1  -tf-input-data-types=DT_INT32,DT_BOOL -tf-output-arrays=p,x -o - | FileCheck %s
+
+# Test the handling of the input data types. In particular, if the data type
+# for an input graph node is specified via command line options, use it.
+# otherwise, use the data type of the node in the graph.
+
+node {
+  name: "p"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "x"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+versions {
+  producer: 216
+}
+
+# NONE: func @main(%arg0: tensor<i1>, %arg1: tensor<1xi32>) -> (tensor<i1>, tensor<1xi32>)
+
+# CHECK: func @main(%arg0: tensor<i32>, %arg1: tensor<1xi1>) -> (tensor<i32>, tensor<1xi1>)
+

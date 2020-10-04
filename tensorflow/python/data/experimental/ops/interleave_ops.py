@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -36,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 @deprecation.deprecated(
     None,
     "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
-    "num_parallel_calls=tf.data.experimental.AUTOTUNE)` instead. If sloppy "
+    "num_parallel_calls=tf.data.AUTOTUNE)` instead. If sloppy "
     "execution is desired, use `tf.data.Options.experimental_deterministic`.")
 @tf_export("data.experimental.parallel_interleave")
 def parallel_interleave(map_func,
@@ -75,9 +76,11 @@ def parallel_interleave(map_func,
     cycle_length: The number of input `Dataset`s to interleave from in parallel.
     block_length: The number of consecutive elements to pull from an input
       `Dataset` before advancing to the next input `Dataset`.
-    sloppy: If false, elements are produced in deterministic order. Otherwise,
-      the implementation is allowed, for the sake of expediency, to produce
-      elements in a non-deterministic order.
+    sloppy: A boolean controlling whether determinism should be traded for
+      performance by allowing elements to be produced out of order.  If
+      `sloppy` is `None`, the `tf.data.Options.experimental_deterministic`
+      dataset option (`True` by default) is used to decide whether to enforce a
+      deterministic order.
     buffer_output_elements: The number of elements each iterator being
       interleaved should buffer (similar to the `.prefetch()` transformation for
       each interleaved iterator).
@@ -88,10 +91,12 @@ def parallel_interleave(map_func,
     A `Dataset` transformation function, which can be passed to
     `tf.data.Dataset.apply`.
   """
+
   def _apply_fn(dataset):
-    return readers.ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy,
-        buffer_output_elements, prefetch_input_elements)
+    return readers.ParallelInterleaveDataset(dataset, map_func, cycle_length,
+                                             block_length, sloppy,
+                                             buffer_output_elements,
+                                             prefetch_input_elements)
 
   return _apply_fn
 
@@ -150,7 +155,7 @@ def sample_from_datasets_v2(datasets, weights=None, seed=None):
       `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
 
   Returns:
     A dataset that interleaves elements from `datasets` at random, according to
@@ -278,7 +283,9 @@ def choose_from_datasets_v1(datasets, choice_dataset):
 choose_from_datasets_v1.__doc__ = choose_from_datasets_v2.__doc__
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-choose_from_datasets = choose_from_datasets_v1
-sample_from_datasets = sample_from_datasets_v1
+if tf2.enabled():
+  choose_from_datasets = choose_from_datasets_v2
+  sample_from_datasets = sample_from_datasets_v2
+else:
+  choose_from_datasets = choose_from_datasets_v1
+  sample_from_datasets = sample_from_datasets_v1

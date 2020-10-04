@@ -1,0 +1,7 @@
+path: "tensorflow.saved_model.experimental"
+tf_module {
+  member {
+    name: "VariablePolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+}

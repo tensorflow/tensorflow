@@ -6,7 +6,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 
 // Backend configs for XLA:GPU.
 //
-// These are metadata that the GPU backend attaches to HloInstrucitons and later
+// These are metadata that the GPU backend attaches to HloInstructions and later
 // uses during e.g. codegen.
 //
 // Remember that proto3 doesn't give clients a way to tell the difference
@@ -31,7 +31,7 @@ message CudnnConvBackendConfig {
   double conv_result_scale = 4;
 
   // Below are the fields related to cuDNN's fused convolution. Refer to
-  // CudnnConvParams for their meanings.
+  // GpuConvParams for their meanings.
 
   // The requested activation (e.g. relu) after the convolution. It is with type
   // stream_executor::dnn::ActivationMode.

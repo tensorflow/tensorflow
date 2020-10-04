@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash +x
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,15 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+echo "========================================================================="
+echo "WARNING: This build script is deprecated and no longer maintained. Please"
+echo "         refer to the iOS build guide to learn how to build the latest   "
+echo "         version of TFLite static framework for iOS using bazel.         "
+echo "         https://www.tensorflow.org/lite/guide/build_ios                 "
+echo "========================================================================="
+sleep 5s
+
+set -ex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../.."
@@ -22,17 +30,17 @@ cd "$SCRIPT_DIR/../../../.."
 usage() {
   echo "Usage: $(basename "$0") [-a]"
   echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64 arm64)"
-  echo "  default is [x86_64 armv7 armv7s arm64]"
+  echo "  default is [i386 x86_64 armv7 armv7s arm64]"
   echo "-p enable profiling"
   exit 1
 }
 
 profiling_args=""
-BUILD_ARCHS="x86_64 armv7 armv7s arm64"
+BUILD_ARCHS="i386 x86_64 armv7 armv7s arm64"
 while getopts "a:p" opt_name; do
   case "$opt_name" in
     a) BUILD_ARCHS="${OPTARG}";;
-    p) profiling_args='-DGEMMLOWP_PROFILING';;
+    p) profiling_args='-DRUY_PROFILER';;
     *) usage;;
   esac
 done
@@ -44,13 +52,12 @@ make_library() {
     for arch in $BUILD_ARCHS
     do
         make -f tensorflow/lite/tools/make/Makefile TARGET=ios TARGET_ARCH=${arch} \
-            EXTRA_CXXFLAGS=$profiling_args -j 8
-        LIBS="${LIBS} tensorflow/lite/tools/make/gen/ios_${arch}/lib/${1}"
+            EXTRA_CXXFLAGS=$profiling_args -j 8 ${1}
+        LIBS="${LIBS} tensorflow/lite/tools/make/gen/ios_${arch}/lib/${2}"
     done
     mkdir -p tensorflow/lite/tools/make/gen/lib
     lipo $LIBS -create \
-    -output tensorflow/lite/tools/make/gen/lib/${1}
+    -output tensorflow/lite/tools/make/gen/lib/${2}
 }
 
-make_library libtensorflow-lite.a
-make_library benchmark-lib.a
+make_library lib libtensorflow-lite.a

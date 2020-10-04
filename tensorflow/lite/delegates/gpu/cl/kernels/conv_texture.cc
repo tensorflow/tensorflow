@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -28,157 +30,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-
-std::string GenerateConvCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    bool is1x1, bool adreno4xx_optimization, const CLDevice& device,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::string c = GetCommonDefines(precision);
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
-
-  switch (precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F16:
-      c += "#define CONV1(R, S)    \\\n";
-      c += "R += S.x * f0; \\\n";
-      c += "R += S.y * f1; \\\n";
-      c += "R += S.z * f2; \\\n";
-      c += "R += S.w * f3;   \n";
-      c += "#define CONV2(R, S)    \\\n";
-      c += "R += S.x * f4; \\\n";
-      c += "R += S.y * f5; \\\n";
-      c += "R += S.z * f6; \\\n";
-      c += "R += S.w * f7;   \n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      c += "#define CONV1(R, S) \\\n";
-      c += "R += convert_float4(S.x * f0 + S.y * f1 + S.z * f2 + S.w * f3);\n";
-      c += "#define CONV2(R, S) \\\n";
-      c += "R += convert_float4(S.x * f4 + S.y * f5 + S.z * f6 + S.w * f7);\n";
-      break;
-  }
-
-  c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    __read_only image2d_t filters0,   \n";
-  c += "    __read_only image2d_t filters1,   \n";
-  c += "    __read_only image2d_t filters2,   \n";
-  c += "    __read_only image2d_t filters3,   \n";
-  c += "    __read_only image2d_t biases";
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,                   \n";
-  c += "    int4 dst_size,                   \n";
-  if (!is1x1) {
-    c += "    int2 kernel_size,              \n";
-    c += "    int2 dilation,                 \n";
-  }
-  c += "    int2 stride,                     \n";
-  c += "    int2 padding                     \n";
-  c += ") {\n";
-  c += "  int X = get_global_id(0) * 2;\n";
-  c += "  int Y = get_global_id(1) * 2;\n";
-  c += "  int Z = get_global_id(2) * 2;\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
-  c += "  int xc0 = X * stride.x + padding.x;\n";
-  c += "  int xc1 = (X + 1) * stride.x + padding.x;\n";
-  c += "  int yc0 = Y * stride.y + padding.y;\n";
-  c += "  int yc1 = (Y + 1) * stride.y + padding.y;\n";
-  for (int i = 0; i < 8; ++i) {
-    c += "  ACCUM_FLT4 r" + std::to_string(i) +
-         " = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
-  }
-  std::string f_y = is1x1 ? "s" : "filter_offset";
-  std::string s_x0 = is1x1 ? "xc0" : "c0.x";
-  std::string s_x1 = is1x1 ? "xc1" : "c1.x";
-  std::string s_y0 = is1x1 ? "yc0" : "c0.y";
-  std::string s_y1 = is1x1 ? "yc1" : "c1.y";
-  if (!is1x1) {
-    c += "  int2 c0;\n";
-    c += "  int2 c1;\n";
-    c += "  int filter_offset = 0;\n";
-    c += "  for (int y = 0; y < kernel_size.y; ++y) {\n";
-    c += "  c0.y = y * dilation.y + yc0;\n";
-    c += "  c1.y = y * dilation.y + yc1;\n";
-    c += "  for (int x = 0; x < kernel_size.x; ++x) {\n";
-    c += "  c0.x = x * dilation.x + xc0;\n";
-    c += "  c1.x = x * dilation.x + xc1;\n";
-  }
-  c += "  for (int s = 0; s < src_size.w; ++s) {\n";
-  std::string fc0 = "(int2)(Z, " + f_y + ")";
-  std::string fc1 = "(int2)(Z + 1, " + f_y + ")";
-  c += "    FLT4 f0 = READ_IMAGE(filters0, smp_none, " + fc0 + ");\n";
-  c += "    FLT4 f1 = READ_IMAGE(filters1, smp_none, " + fc0 + ");\n";
-  c += "    FLT4 f2 = READ_IMAGE(filters2, smp_none, " + fc0 + ");\n";
-  c += "    FLT4 f3 = READ_IMAGE(filters3, smp_none, " + fc0 + ");\n";
-  c += "    FLT4 f4 = READ_IMAGE(filters0, smp_none, " + fc1 + ");\n";
-  c += "    FLT4 f5 = READ_IMAGE(filters1, smp_none, " + fc1 + ");\n";
-  c += "    FLT4 f6 = READ_IMAGE(filters2, smp_none, " + fc1 + ");\n";
-  c += "    FLT4 f7 = READ_IMAGE(filters3, smp_none, " + fc1 + ");\n";
-  const auto mode = GetFastestZeroMode(device);
-  c += "    FLT4 src0 =" + src_tensor.Read3D(s_x0, s_y0, "s", mode) + ";\n";
-  c += "    FLT4 src1 =" + src_tensor.Read3D(s_x1, s_y0, "s", mode) + ";\n";
-  c += "    FLT4 src2 =" + src_tensor.Read3D(s_x0, s_y1, "s", mode) + ";\n";
-  c += "    FLT4 src3 =" + src_tensor.Read3D(s_x1, s_y1, "s", mode) + ";\n";
-  for (int i = 0; i < 4; ++i) {
-    c += "    CONV1(r" + std::to_string(i) + ", src" + std::to_string(i) +
-         ");\n";
-  }
-  for (int i = 0; i < 4; ++i) {
-    c += "    CONV2(r" + std::to_string(i + 4) + ", src" + std::to_string(i) +
-         ");\n";
-  }
-  if (!is1x1) {
-    c += "    filter_offset++;\n";
-  }
-  c += "  }\n";  // src_size.w
-  if (!is1x1) {
-    c += "  }\n";  // kernel_size.x
-    c += "  }\n";  // kernel_size.y
-  }
-  // when is1x1 && adreno4xx_optimization is true, xc0 == X and yc0 == Y
-  std::string dst_x = is1x1 && adreno4xx_optimization ? "xc0" : "X";
-  std::string dst_y = is1x1 && adreno4xx_optimization ? "yc0" : "Y";
-  c += "  if (Z < dst_size.w) {\n";
-  c += "    FLT4 bias_val = READ_IMAGE(biases, smp_none, (int2)(Z, 0));\n";
-  for (int i = 0; i < 4; ++i) {
-    c += "  {\n";
-    c += "  int xc = " + dst_x + " + " + std::to_string(i % 2) + ";\n";
-    c += "  int yc = " + dst_y + " + " + std::to_string(i / 2) + ";\n";
-    c += "  if (xc < dst_size.x && yc < dst_size.y) {\n";
-    c += "    FLT4 res = TO_FLT4(r" + std::to_string(i) + ") + bias_val;\n";
-    const LinkingContext context{"res", "xc", "yc", "Z"};
-    c += PostProcess(linked_operations, context);
-    c += "  " + dst_tensor.Write3D("res", "xc", "yc", "Z") + "\n";
-    c += "  }\n";
-    c += "  }\n";
-  }
-  c += "  }\n";
-  c += "  Z++;\n";
-  c += "  if (Z < dst_size.w) {\n";
-  c += "    FLT4 bias_val = READ_IMAGE(biases, smp_none, (int2)(Z, 0));\n";
-  for (int i = 0; i < 4; ++i) {
-    c += "  {\n";
-    c += "  int xc = " + dst_x + " + " + std::to_string(i % 2) + ";\n";
-    c += "  int yc = " + dst_y + " + " + std::to_string(i / 2) + ";\n";
-    c += "  if (xc < dst_size.x && yc < dst_size.y) {\n";
-    c += "    FLT4 res = TO_FLT4(r" + std::to_string(i + 4) + ") + bias_val;\n";
-    const LinkingContext context{"res", "xc", "yc", "Z"};
-    c += PostProcess(linked_operations, context);
-    c += "  " + dst_tensor.Write3D("res", "xc", "yc", "Z") + "\n";
-    c += "  }\n";
-    c += "  }\n";
-  }
-  c += "  }\n";
-  c += "}\n";
-  return c;
-}
-
-bool UseFP16SIMD(const CLDevice& device, CalculationsPrecision precision,
+bool UseFP16SIMD(const DeviceInfo& device_info, CalculationsPrecision precision,
                  bool kernel1x1) {
-  if (!device.IsAdreno()) {
+  if (!device_info.IsAdreno()) {
     return false;
   }
   switch (precision) {
@@ -186,7 +40,7 @@ bool UseFP16SIMD(const CLDevice& device, CalculationsPrecision precision,
     case CalculationsPrecision::F32_F16:
       return false;
     case CalculationsPrecision::F16:
-      return device.IsAdreno3xx() && kernel1x1;
+      return device_info.IsAdreno3xx() && kernel1x1;
   }
 }
 }  // namespace
@@ -198,115 +52,408 @@ ConvTexture::ConvTexture(const OperationDef& definition,
       stride_(attr.strides.w, attr.strides.h),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
       dilation_(attr.dilations.w, attr.dilations.h),
-      work_group_size_(4, 4, 2) {}
+      different_weights_for_height_(false),
+      block_size_(2, 2, 2) {
+  work_group_size_ = int3(4, 4, 2);
+}
+
+ConvTexture::ConvTexture(const OperationDef& definition)
+    : GPUOperation(definition),
+      kernel_size_(1, 1),
+      stride_(1, 1),
+      padding_(0, 0),
+      dilation_(1, 1),
+      different_weights_for_height_(false),
+      block_size_(4, 1, 2) {
+  work_group_size_ = int3(16, 1, 2);
+}
 
 ConvTexture::ConvTexture(ConvTexture&& operation)
     : GPUOperation(std::move(operation)),
-      weights_0_(std::move(operation.weights_0_)),
-      weights_1_(std::move(operation.weights_1_)),
-      weights_2_(std::move(operation.weights_2_)),
-      weights_3_(std::move(operation.weights_3_)),
-      biases_(std::move(operation.biases_)),
       kernel_size_(operation.kernel_size_),
       stride_(operation.stride_),
       padding_(operation.padding_),
       dilation_(operation.dilation_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      different_weights_for_height_(operation.different_weights_for_height_),
+      block_size_(operation.block_size_) {}
 
 ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
   if (this != &operation) {
-    weights_0_ = std::move(operation.weights_0_);
-    weights_1_ = std::move(operation.weights_1_);
-    weights_2_ = std::move(operation.weights_2_);
-    weights_3_ = std::move(operation.weights_3_);
-    biases_ = std::move(operation.biases_);
     std::swap(kernel_size_, operation.kernel_size_);
     std::swap(stride_, operation.stride_);
     std::swap(padding_, operation.padding_);
     std::swap(dilation_, operation.dilation_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
+    std::swap(different_weights_for_height_,
+              operation.different_weights_for_height_);
+    std::swap(block_size_, operation.block_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
-Status ConvTexture::Compile(const CreationContext& creation_context) {
+std::string ConvTexture::GenerateConvCode(const OperationDef& op_def,
+                                          const int3& block_size, bool is1x1,
+                                          bool adreno4xx_optimization,
+                                          bool stride_correction,
+                                          bool different_weights_for_height) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  if (op_def.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
+
+  if (!is1x1) {
+    args_.AddInt("kernel_size_x");
+    args_.AddInt("kernel_size_y");
+    args_.AddInt("dilation_x");
+    args_.AddInt("dilation_y");
+  }
+  args_.AddInt("stride_x");
+  args_.AddInt("stride_y");
+  args_.AddInt("padding_x");
+  args_.AddInt("padding_y");
+
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+  const bool is_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER ||
+                         src_tensor_type == TensorStorageType::BUFFER;
+
+  std::vector<std::string> xs(block_size.x);
+  for (int x = 0; x < block_size.x; ++x) {
+    xs[x] = std::to_string(x);
+  }
+
+  std::vector<std::string> ys(block_size.y);
+  for (int y = 0; y < block_size.y; ++y) {
+    ys[y] = std::to_string(y);
+  }
+
+  std::vector<std::string> zs(block_size.z);
+  for (int z = 0; z < block_size.z; ++z) {
+    zs[z] = std::to_string(z);
+  }
+
+  std::string c = GetCommonDefines(op_def.precision);
+  for (int z = 0; z < block_size.z; ++z) {
+    const std::string f0 = std::to_string(z * 4 + 0);
+    const std::string f1 = std::to_string(z * 4 + 1);
+    const std::string f2 = std::to_string(z * 4 + 2);
+    const std::string f3 = std::to_string(z * 4 + 3);
+    switch (op_def.precision) {
+      case CalculationsPrecision::F32:
+      case CalculationsPrecision::F16:
+        c += "#define CONV" + zs[z] + "(R, S)    \\\n";
+        c += "R += S.x * f" + f0 + "; \\\n";
+        c += "R += S.y * f" + f1 + "; \\\n";
+        c += "R += S.z * f" + f2 + "; \\\n";
+        c += "R += S.w * f" + f3 + ";   \n";
+        break;
+      case CalculationsPrecision::F32_F16:
+        c += "#define CONV" + zs[z] + "(R, S) \\\n";
+        c += "R += convert_float4(S.x * f" + f0 + " + S.y * f" + f1 +
+             " + S.z * f" + f2 + " + S.w * f" + f3 + ");\n";
+        break;
+    }
+  }
+
+  c += "__kernel void main_function(\n";
+  c += "$0) {\n";
+  c += "  int X = get_global_id(0) * " + std::to_string(block_size.x) + ";\n";
+  c += "  int Y = get_global_id(1) * " + std::to_string(block_size.y) + ";\n";
+  c += "  int Z = get_global_id(2) * " + std::to_string(block_size.z) + ";\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() "
+       "|| Z >= args.dst_tensor.Slices()) return;\n";
+  std::vector<std::string> s_x(block_size.x);
+  std::vector<std::string> s_y(block_size.y);
+  for (int x = 0; x < block_size.x; ++x) {
+    if (stride_correction) {
+      c += "  int xc" + xs[x] + " = " +
+           GetXStrideCorrected("X + " + xs[x], "args.src_tensor.Batch()",
+                               "args.stride_x", "args.padding_x") +
+           ";\n";
+    } else {
+      c += "  int xc" + xs[x] + " = (X +" + xs[x] +
+           ") * args.stride_x + args.padding_x;\n";
+    }
+    s_x[x] = is1x1 ? "xc" + xs[x] : "cx" + xs[x];
+  }
+  for (int y = 0; y < block_size.y; ++y) {
+    c += "  int yc" + ys[y] + " = (Y +" + ys[y] +
+         ") * args.stride_y + args.padding_y;\n";
+    s_y[y] = is1x1 ? "yc" + ys[y] : "cy" + ys[y];
+  }
+  for (int i = 0; i < block_size.x * block_size.y * block_size.z; ++i) {
+    c += "  ACCUM_FLT4 r" + std::to_string(i) +
+         " = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
+  }
+  std::string f_y = is1x1 ? "s" : "filter_offset";
+  if (different_weights_for_height) {
+    f_y = "Y * args.src_tensor.Slices() + s";
+  }
+  if (!is1x1) {
+    for (int x = 0; x < block_size.x; ++x) {
+      c += "  int cx" + xs[x] + ";\n";
+    }
+    for (int y = 0; y < block_size.y; ++y) {
+      c += "  int cy" + ys[y] + ";\n";
+    }
+    c += "  int filter_offset = 0;\n";
+    c += "  for (int y = 0; y < args.kernel_size_y; ++y) {\n";
+    for (int y = 0; y < block_size.y; ++y) {
+      c += "  cy" + ys[y] + " = y * args.dilation_y + yc" + ys[y] + ";\n";
+    }
+    if (is_buffer) {
+      for (int y = 0; y < block_size.y; ++y) {
+        c += "  bool in_y" + ys[y] + " = cy" + ys[y] + " >= 0 && cy" + ys[y] +
+             " < args.src_tensor.Height();\n";
+        if (src_tensor_type == TensorStorageType::BUFFER) {
+          c += "    cy" + ys[y] + " = clamp(cy" + ys[y] +
+               ", 0, args.src_tensor.Height() - 1);\n";
+        }
+      }
+    }
+    c += "  for (int x = 0; x < args.kernel_size_x; ++x) {\n";
+    for (int x = 0; x < block_size.x; ++x) {
+      c += "  cx" + xs[x] + " = x * args.dilation_x + xc" + xs[x] + ";\n";
+    }
+    if (is_buffer) {
+      for (int x = 0; x < block_size.x; ++x) {
+        c += "  bool in_x" + xs[x] + " = cx" + xs[x] + " >= 0 && cx" + xs[x] +
+             " < args.src_tensor.Width();\n";
+        if (src_tensor_type == TensorStorageType::BUFFER) {
+          c += "    cx" + xs[x] + " = clamp(cx" + xs[x] +
+               ", 0, args.src_tensor.Width() - 1);\n";
+        }
+      }
+      for (int x = 0; x < block_size.x; ++x) {
+        for (int y = 0; y < block_size.y; ++y) {
+          const std::string id = std::to_string(y * block_size.x + x);
+          if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+            c += absl::Substitute(
+                "  int addr_$0 = select(-1, cy$2 * args.src_tensor.Width() + "
+                "cx$1, (in_x$1 "
+                "&& "
+                "in_y$2));\n",
+                y * block_size.x + x, x, y);
+            c += absl::Substitute(
+                "  int dz_$0 = select(0, args.src_tensor.Width() * "
+                "args.src_tensor.Height(), (in_x$1 && "
+                "in_y$2));\n",
+                y * block_size.x + x, x, y);
+          } else {
+            c += absl::Substitute(
+                "  int addr_$0 = cy$2 * args.src_tensor.Width() + cx$1;\n",
+                y * block_size.x + x, x, y);
+          }
+        }
+      }
+      if (src_tensor_type == TensorStorageType::BUFFER) {
+        c += "  int dz = args.src_tensor.Width() * args.src_tensor.Height();\n";
+      }
+    }
+  } else if (is_buffer) {
+    for (int y = 0; y < block_size.y; ++y) {
+      c += "  bool in_y" + ys[y] + " = yc" + ys[y] + " >= 0 && yc" + ys[y] +
+           " < args.src_tensor.Height();\n";
+    }
+    for (int x = 0; x < block_size.x; ++x) {
+      c += "  bool in_x" + xs[x] + " = xc" + xs[x] + " >= 0 && xc" + xs[x] +
+           " < args.src_tensor.Width();\n";
+    }
+    for (int x = 0; x < block_size.x; ++x) {
+      for (int y = 0; y < block_size.y; ++y) {
+        const std::string id = std::to_string(y * block_size.x + x);
+        if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+          c += absl::Substitute(
+              "  int addr_$0 = select(-1, yc$2 * args.src_tensor.Width() + "
+              "xc$1, (in_x$1 && "
+              "in_y$2));\n",
+              y * block_size.x + x, x, y);
+          c += absl::Substitute(
+              "  int dz_$0 = select(0, args.src_tensor.Width() * "
+              "args.src_tensor.Height(), (in_x$1 && "
+              "in_y$2));\n",
+              y * block_size.x + x, x, y);
+        } else {
+          c += absl::Substitute(
+              "  int addr_$0 = yc$2 * args.src_tensor.Width() + xc$1;\n",
+              y * block_size.x + x, x, y);
+        }
+      }
+    }
+    if (src_tensor_type == TensorStorageType::BUFFER) {
+      c += "  int dz = args.src_tensor.Width() * args.src_tensor.Height();\n";
+    }
+  }
+  c += "  for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";
+  if (is_buffer) {
+    if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+      for (int index = 0; index < block_size.x * block_size.y; ++index) {
+        const std::string id = std::to_string(index);
+        c +=
+            "    FLT4 src" + id + " = args.src_tensor.Read(addr_" + id + ");\n";
+      }
+    } else {
+      for (int x = 0; x < block_size.x; ++x) {
+        for (int y = 0; y < block_size.y; ++y) {
+          const std::string id = std::to_string(y * block_size.x + x);
+          c += "    FLT4 src" + id + " = args.src_tensor.Read(addr_" + id +
+               ") * (FLT)(in_x" + xs[x] + " && in_y" + ys[y] + "); addr_" + id +
+               " += dz;\n";
+        }
+      }
+    }
+  }
+  for (int z = 0; z < block_size.z; ++z) {
+    c += absl::Substitute(R"(    FLT4 f$2 = args.weights0.Read($0, $1);
+    FLT4 f$3 = args.weights1.Read($0, $1);
+    FLT4 f$4 = args.weights2.Read($0, $1);
+    FLT4 f$5 = args.weights3.Read($0, $1);
+)",
+                          "Z + " + zs[z], f_y, z * 4 + 0, z * 4 + 1, z * 4 + 2,
+                          z * 4 + 3);
+  }
+  if (!is_buffer) {
+    for (int x = 0; x < block_size.x; ++x) {
+      for (int y = 0; y < block_size.y; ++y) {
+        const std::string id = std::to_string(y * block_size.x + x);
+        c += "    FLT4 src" + id + " = args.src_tensor.Read(" + s_x[x] + ", " +
+             s_y[y] + ", s);\n";
+      }
+    }
+  }
+  for (int z = 0; z < block_size.z; ++z) {
+    for (int i = 0; i < block_size.x * block_size.y; ++i) {
+      c += "    CONV" + zs[z] + "(r" +
+           std::to_string(i + z * block_size.x * block_size.y) + ", src" +
+           std::to_string(i) + ");\n";
+    }
+  }
+  if (!is1x1) {
+    c += "    filter_offset++;\n";
+  }
+  if (is_buffer) {
+    if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+      for (int index = 0; index < block_size.x * block_size.y; ++index) {
+        const std::string id = std::to_string(index);
+        c += "     addr_" + id + " += dz_" + id + ";\n";
+      }
+    }
+  }
+  c += "  }\n";  // args.src_tensor.Slices()
+  if (!is1x1) {
+    c += "  }\n";  // kernel_size_x
+    c += "  }\n";  // kernel_size_y
+  }
+  // when is1x1 && adreno4xx_optimization is true, xc0 == X and yc0 == Y
+  std::string dst_x = is1x1 && adreno4xx_optimization ? "xc0" : "X";
+  std::string dst_y = is1x1 && adreno4xx_optimization ? "yc0" : "Y";
+  for (int z = 0; z < block_size.z; ++z) {
+    c += "  if (Z < args.dst_tensor.Slices()) {\n";
+    c += "    FLT4 bias_val = args.biases.Read(Z);\n";
+    for (int y = 0; y < block_size.y; ++y) {
+      for (int x = 0; x < block_size.x; ++x) {
+        const std::string id =
+            std::to_string((z * block_size.y + y) * block_size.x + x);
+        c += "    {\n";
+        c += "      int xc = " + dst_x + " + " + xs[x] + ";\n";
+        c += "      int yc = " + dst_y + " + " + ys[y] + ";\n";
+        c += "      if (xc < args.dst_tensor.Width() && yc < "
+             "args.dst_tensor.Height()) {\n";
+        c += "        FLT4 res = TO_FLT4(r" + id + ") + bias_val;\n";
+        c += "        args.dst_tensor.Write(res, xc, yc, Z);\n";
+        c += "      }\n";
+        c += "    }\n";
+      }
+    }
+    c += "  }\n";
+    c += "  Z++;\n";
+  }
+  c += "}\n";
+  return c;
+}
+
+void ConvTexture::GenerateCode(const DeviceInfo& device_info) {
   auto storage_type = definition_.GetPrimaryStorageType();
   bool is1x1 = kernel_size_.x == 1 && kernel_size_.y == 1;
   bool adreno4xx_optimization =
       stride_.x == 1 && stride_.y == 1 && padding_.x == 0 && padding_.y == 0 &&
-      creation_context.device->IsAdreno4xx() &&
+      device_info.IsAdreno4xx() &&
       storage_type == TensorStorageType::TEXTURE_ARRAY &&
       definition_.precision == CalculationsPrecision::F16;
-  std::string code =
-      GenerateConvCode(definition_.src_tensors[0], definition_.dst_tensors[0],
-                       definition_.precision, is1x1, adreno4xx_optimization,
-                       *creation_context.device, linked_operations_);
-  std::vector<CompilerOptions> options;
-  if (UseFP16SIMD(*creation_context.device, definition_.precision, is1x1)) {
-    options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ =
+      GenerateConvCode(definition_, block_size_, is1x1, adreno4xx_optimization,
+                       stride_correction, different_weights_for_height_);
+
+  if (UseFP16SIMD(device_info, definition_.precision, is1x1)) {
+    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
-Status ConvTexture::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_0_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_1_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_2_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_3_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+absl::Status ConvTexture::BindArguments() {
   if (!(kernel_size_.x == 1 && kernel_size_.y == 1)) {
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(dilation_));
+    RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
+    RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
+    RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
+    RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
-  return OkStatus();
+  RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
+  RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
+  RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
+  RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
+  return absl::OkStatus();
 }
 
 int3 ConvTexture::GetGridSize() const {
-  const int grid_x = IntegralDivideRoundUp(dst_[0]->Width(), 2);
-  const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), 2);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Depth(), 2);
+  const int grid_x =
+      DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), block_size_.x);
+  const int grid_y = DivideRoundUp(dst_[0]->Height(), block_size_.y);
+  const int grid_z = DivideRoundUp(dst_[0]->Slices(), block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvTexture::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &work_group_size_);
+void ConvTexture::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
-Status ConvTexture::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const Convolution2DAttributes& attr) {
+  ConvTexture result(definition, attr);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
-Status CreateConvTexture(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const Convolution2DAttributes& attr,
-                         ConvTexture* result) {
-  *result = ConvTexture(definition, attr);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition.GetDataType();
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const FullyConnectedAttributes& attr) {
+  ConvTexture result(definition);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
+}
 
-  return OkStatus();
+ConvTexture CreateConvTextureWino4x4To6x6(const DeviceInfo& device_info,
+                                          const OperationDef& definition,
+                                          const Convolution2DAttributes& attr) {
+  ConvTexture result(definition);
+  result.different_weights_for_height_ = true;
+  result.block_size_ = {4, 1, 2};
+  result.GenerateCode(device_info);
+  result.UploadDataForWinograd4x4To6x6(attr.weights);
+  return result;
 }
 
 }  // namespace cl

@@ -83,5 +83,38 @@ TEST(AttrTypeMap, CacheKey) {
   ASSERT_FALSE(cache_key == a.CacheKey("cpu:0"));
 }
 
+string ToString(const AttrValueMap& m) {
+  std::vector<string> strs;
+  for (const auto& e : m) {
+    strs.push_back(absl::StrCat(e.first, " -> ", e.second.DebugString()));
+  }
+  return absl::StrJoin(strs, "\n");
+}
+
+TEST(AttrBuilder, FillAttrValueMapWithoutDefaults_MatMul) {
+  AttrBuilder a("MatMul");
+  a.Set("transpose_a", true);
+  a.Set("transpose_b", false);
+
+  AttrValueMap m;
+  a.FillAttrValueMapWithoutDefaults(&m);
+  // Only non-default value must end up in the map
+  ASSERT_EQ(1, m.size()) << ToString(m);
+  ASSERT_EQ(true, m["transpose_a"].b()) << ToString(m);
+}
+
+TEST(AttrBuilder, FillAttrValueMapWithoutDefaults_UnknownOp) {
+  AttrBuilder a("SomeUnknownOp");
+  a.Set("transpose_a", true);
+  a.Set("transpose_b", false);
+
+  AttrValueMap m;
+  a.FillAttrValueMapWithoutDefaults(&m);
+  // Only non-default value must end up in the map
+  ASSERT_EQ(2, m.size()) << ToString(m);
+  ASSERT_EQ(true, m["transpose_a"].b()) << ToString(m);
+  ASSERT_EQ(false, m["transpose_b"].b()) << ToString(m);
+}
+
 }  // namespace
 }  // namespace tensorflow

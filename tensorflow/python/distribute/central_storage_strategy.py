@@ -24,7 +24,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distribute.experimental.CentralStorageStrategy", v1=[])
+@tf_export('distribute.experimental.CentralStorageStrategy', v1=[])
 class CentralStorageStrategy(distribute_lib.Strategy):
   """A one-machine strategy that puts all variables on a single device.
 
@@ -48,7 +48,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     # Iterate over the distributed dataset
     for x in dist_dataset:
       # process dataset elements
-      strategy.experimental_run_v2(train_step, args=(x,))
+      strategy.run(train_step, args=(x,))
   ```
   """
 
@@ -67,12 +67,14 @@ class CentralStorageStrategy(distribute_lib.Strategy):
       variables on. The default one is CPU or GPU if there is only one.
     """
     super(CentralStorageStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell('V2').set(
+        'CentralStorageStrategy')
 
   @classmethod
   def _from_num_gpus(cls, num_gpus):
     return cls(device_util.local_devices_from_num_gpus(num_gpus))
 
-  def experimental_distribute_dataset(self, dataset):  # pylint: disable=useless-super-delegation
+  def experimental_distribute_dataset(self, dataset, options=None):  # pylint: disable=useless-super-delegation
     """Distributes a tf.data.Dataset instance provided via dataset.
 
     The returned dataset is a wrapped strategy dataset which creates a
@@ -94,54 +96,14 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     ```
     Args:
       dataset: `tf.data.Dataset` to be prefetched to device.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
     Returns:
       A "distributed `Dataset`" that the caller can iterate over.
     """
     return super(CentralStorageStrategy, self).experimental_distribute_dataset(
-        dataset)
-
-  def experimental_distribute_datasets_from_function(self, dataset_fn):  # pylint: disable=useless-super-delegation
-    """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
-
-    `dataset_fn` will be called once for each worker in the strategy. In this
-    case, we only have one worker so `dataset_fn` is called once. Each replica
-    on this worker will then dequeue a batch of elements from this local
-    dataset.
-
-    The `dataset_fn` should take an `tf.distribute.InputContext` instance where
-    information about batching and input replication can be accessed.
-
-    For Example:
-    ```
-    def dataset_fn(input_context):
-      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
-      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
-      return d.shard(
-          input_context.num_input_pipelines, input_context.input_pipeline_id)
-
-    inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
-
-    for batch in inputs:
-      replica_results = strategy.experimental_run_v2(replica_fn, args=(batch,))
-    ```
-
-    IMPORTANT: The `tf.data.Dataset` returned by `dataset_fn` should have a
-    per-replica batch size, unlike `experimental_distribute_dataset`, which uses
-    the global batch size.  This may be computed using
-    `input_context.get_per_replica_batch_size`.
-
-    Args:
-      dataset_fn: A function taking a `tf.distribute.InputContext` instance and
-        returning a `tf.data.Dataset`.
-
-    Returns:
-      A "distributed `Dataset`", which the caller can iterate over like regular
-      datasets.
-    """
-    return super(
-        CentralStorageStrategy,
-        self).experimental_distribute_datasets_from_function(dataset_fn)
+        dataset, options)
 
   def experimental_local_results(self, value):  # pylint: disable=useless-super-delegation
     """Returns the list of all local per-replica values contained in `value`.
@@ -150,8 +112,8 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     will be all the values on that worker.
 
     Args:
-      value: A value returned by `experimental_run()`, `experimental_run_v2()`,
-        `extended.call_for_each_replica()`, or a variable created in `scope`.
+      value: A value returned by `run()`, `extended.call_for_each_replica()`,
+      or a variable created in `scope`.
 
     Returns:
       A tuple of values contained in `value`. If `value` represents a single
@@ -159,7 +121,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     """
     return super(CentralStorageStrategy, self).experimental_local_results(value)
 
-  def experimental_run_v2(self, fn, args=(), kwargs=None):  # pylint: disable=useless-super-delegation
+  def run(self, fn, args=(), kwargs=None, options=None):  # pylint: disable=useless-super-delegation
     """Run `fn` on each replica, with the given arguments.
 
     In `CentralStorageStrategy`, `fn` is  called on each of the compute
@@ -169,17 +131,18 @@ class CentralStorageStrategy(distribute_lib.Strategy):
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
       args: (Optional) Positional arguments to `fn`.
       kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
 
     Returns:
       Return value from running `fn`.
     """
-    return super(CentralStorageStrategy, self).experimental_run_v2(fn, args,
-                                                                   kwargs)
+    return super(CentralStorageStrategy, self).run(fn, args, kwargs, options)
 
   def reduce(self, reduce_op, value, axis):  # pylint: disable=useless-super-delegation
     """Reduce `value` across replicas.
 
-    Given a per-replica value returned by `experimental_run_v2`, say a
+    Given a per-replica value returned by `run`, say a
     per-example loss, the batch will be divided across all the replicas. This
     function allows you to aggregate across replicas and optionally also across
     batch elements.  For example, if you have a global batch size of 8 and 2
@@ -217,7 +180,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
 
       # Iterate over the distributed dataset
       for x in dist_dataset:
-        result = strategy.experimental_run_v2(train_step, args=(x,))
+        result = strategy.run(train_step, args=(x,))
 
     result = strategy.reduce(tf.distribute.ReduceOp.SUM, result,
                              axis=None).numpy()
@@ -230,7 +193,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
         be combined.
-      value: A "per replica" value, e.g. returned by `experimental_run_v2` to
+      value: A "per replica" value, e.g. returned by `run` to
         be combined into a single tensor.
       axis: Specifies the dimension to reduce along within each
         replica's tensor. Should typically be set to the batch dimension, or
@@ -243,7 +206,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     return super(CentralStorageStrategy, self).reduce(reduce_op, value, axis)
 
 
-@tf_export(v1=["distribute.experimental.CentralStorageStrategy"])  # pylint: disable=missing-docstring
+@tf_export(v1=['distribute.experimental.CentralStorageStrategy'])  # pylint: disable=missing-docstring
 class CentralStorageStrategyV1(distribute_lib.StrategyV1):
 
   __doc__ = CentralStorageStrategy.__doc__
@@ -254,8 +217,7 @@ class CentralStorageStrategyV1(distribute_lib.StrategyV1):
             self,
             compute_devices=compute_devices,
             parameter_device=parameter_device))
-  __init__.__doc__ = CentralStorageStrategy.__init__.__doc__
+    distribute_lib.distribution_strategy_gauge.get_cell('V1').set(
+        'CentralStorageStrategy')
 
-  def _in_multi_worker_mode(self):
-    """Whether this strategy indicates working in multi-worker settings."""
-    return False
+  __init__.__doc__ = CentralStorageStrategy.__init__.__doc__

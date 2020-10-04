@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -68,6 +69,7 @@ absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
   tf_stats.bytes_reserved = se_stats->bytes_reserved;
   tf_stats.peak_bytes_reserved = se_stats->peak_bytes_reserved;
   tf_stats.bytes_reservable_limit = se_stats->bytes_reservable_limit;
+  tf_stats.largest_free_block_bytes = se_stats->largest_free_block_bytes;
   return tf_stats;
 }
 
@@ -78,7 +80,7 @@ XlaDeviceContext::XlaDeviceContext(
     std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
     xla::LocalClient* client,
     XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    thread::ThreadPool* thread_pool)
+    thread::ThreadPool* thread_pool, bool use_fast_mem)
     : stream_(std::move(compute_stream)),
       host_to_device_stream_(std::move(host_to_device_stream)),
       device_to_host_stream_(std::move(device_to_host_stream)),
@@ -86,7 +88,8 @@ XlaDeviceContext::XlaDeviceContext(
       client_(client),
       transfer_manager_(client->backend().transfer_manager()),
       shape_representation_fn_(std::move(shape_representation_fn)),
-      thread_pool_(thread_pool) {
+      thread_pool_(thread_pool),
+      use_fast_mem_(use_fast_mem) {
   CHECK(host_to_device_stream_ != nullptr);
   CHECK(stream_ != nullptr);
   if (!shape_representation_fn_) {
@@ -118,14 +121,14 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     return;
   }
 
-  VLOG(2) << "CopyCPUTensorToDevice "
+  VLOG(2) << "CopyCPUTensorToDevice use_fast_mem " << use_fast_mem_ << " "
+          << this << " "
           << reinterpret_cast<const void*>(cpu_tensor->tensor_data().data())
           << " "
           << reinterpret_cast<const void*>(device_tensor->tensor_data().data())
           << " " << cpu_tensor->NumElements() << " "
           << cpu_tensor->shape().DebugString() << " "
           << device_tensor->shape().DebugString();
-
 
   XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
   CHECK(xla_tensor);
@@ -134,12 +137,11 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     TF_ASSIGN_OR_RETURN(
         xla::Shape shape,
         shape_representation_fn_(device_tensor->shape(), device_tensor->dtype(),
-                                 /*use_fast_memory=*/false));
+                                 use_fast_mem_));
 
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());
 
-    xla_tensor->set_host_tensor(*cpu_tensor);
     TF_RETURN_IF_ERROR(
         xla_tensor->AllocateShapedBuffer(device_tensor->dtype(), shape, client_,
                                          stream_->parent()->device_ordinal()));
@@ -254,20 +256,33 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   // before the transfer finishes.
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream.get(), xla_tensor->shaped_buffer(), literal,
-      [ref, xla_tensor, done, device_to_host_stream,
+      [this, ref, xla_tensor, done, device_to_host_stream,
        device_allows_sync_on_completion](xla::Status status) {
         Status done_status = status;
         VLOG(2) << "Transfer from device as literal: "
                 << xla_tensor->shaped_buffer().ToString();
         // For devices don't allow sync on completion, the device execution is
         // deferred. We check the execution stream status here to avoid wrong
-        // results from a failed stream being propogated to following
+        // results from a failed stream being propagated to following
         // host-side ops.
         if (!device_allows_sync_on_completion) {
           done_status.Update(xla_tensor->RefreshStatusOfStreams());
         }
         done(done_status);
         ref.Unref();
+        // If a stream is in a bad state, it gets deleted when it's returned to
+        // the stream pool, i.e. when it leaves this scope. However, a stream
+        // deleting itself in a host callback on itself can cause bad behaviors
+        // on some platforms. Releasing it in another stream to avoid that.
+        if (!device_allows_sync_on_completion &&
+            !device_to_host_stream->RefreshStatus().ok()) {
+          auto status_or_new_stream = client_->mutable_backend()->BorrowStream(
+              stream_->parent()->device_ordinal());
+          if (status_or_new_stream.ok()) {
+            status_or_new_stream.ValueOrDie()->ThenDoHostCallback(
+                [device_to_host_stream] {});
+          }
+        }
       });
 }
 
@@ -277,6 +292,14 @@ se::Stream* XlaDeviceContext::GetDeviceToDeviceStream() {
   int stream = next_stream_;
   next_stream_ = (next_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_stream(stream);
+}
+
+Status XlaDeviceContext::ThenExecute(Device* device,
+                                     stream_executor::Stream* stream,
+                                     std::function<void()> func) {
+  VLOG(2) << "XlaDeviceContext::ThenExecute";
+  stream->ThenDoHostCallback(std::move(func));
+  return Status::OK();
 }
 
 }  // namespace tensorflow

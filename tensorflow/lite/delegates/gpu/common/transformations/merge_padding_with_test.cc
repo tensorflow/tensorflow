@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 
-#include <gmock/gmock.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/types/any.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -35,12 +41,12 @@ TEST(MergePaddingWith, Smoke) {
   ASSERT_TRUE(graph.AddConsumer(pad_node->id, input->id).ok());
   pad_node->operation.type = ToString(OperationType::PAD);
   PadAttributes attr;
-  attr.prepended = HWC(1, 1, 0);
-  attr.appended = HWC(2, 2, 0);
+  attr.prepended = BHWC(0, 1, 1, 0);
+  attr.appended = BHWC(0, 2, 2, 0);
   pad_node->operation.attributes = attr;
 
   auto conv_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp = nullptr;
   ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node, conv_node, &temp).ok());
   ASSERT_TRUE(AddOutput(&graph, conv_node, &temp).ok());
   conv_node->operation.type = ToString(OperationType::CONVOLUTION_2D);
@@ -72,21 +78,22 @@ TEST(MergePaddingWith, MergeTwo) {
   ASSERT_TRUE(graph.AddConsumer(pad_node1->id, input->id).ok());
   pad_node1->operation.type = ToString(OperationType::PAD);
   PadAttributes attr;
-  attr.prepended = HWC(1, 1, 0);
-  attr.appended = HWC(0, 0, 0);
+  attr.prepended = BHWC(0, 1, 1, 0);
+  attr.appended = BHWC(0, 0, 0, 0);
   pad_node1->operation.attributes = attr;
 
   auto pad_node2 = graph.NewNode();
-  Value<TensorRef<BHWC>>* temp;
-  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node1, pad_node2, &temp).ok());
+  Value* temp1 = nullptr;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node1, pad_node2, &temp1).ok());
   pad_node2->operation.type = ToString(OperationType::PAD);
-  attr.prepended = HWC(0, 0, 0);
-  attr.appended = HWC(2, 2, 0);
+  attr.prepended = BHWC(0, 0, 0, 0);
+  attr.appended = BHWC(0, 2, 2, 0);
   pad_node2->operation.attributes = attr;
 
   auto conv_node = graph.NewNode();
-  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node2, conv_node, &temp).ok());
-  ASSERT_TRUE(AddOutput(&graph, conv_node, &temp).ok());
+  Value* temp2 = nullptr;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node2, conv_node, &temp2).ok());
+  ASSERT_TRUE(AddOutput(&graph, conv_node, &temp2).ok());
   conv_node->operation.type = ToString(OperationType::CONVOLUTION_2D);
   Convolution2DAttributes conv_attr;
   conv_attr.padding.appended = HW(0, 0);
@@ -108,7 +115,7 @@ TEST(MergePaddingWith, MergeTwo) {
   EXPECT_EQ(HW(2, 2), conv_attr.padding.appended);
 }
 
-TEST(MergePaddingWithAdd, MergeOne) {
+TEST(MergePaddingWithAdd, MergeAlignedPadding) {
   GraphFloat32 graph;
   auto input0 = graph.NewValue();
   input0->tensor.shape = BHWC(1, 4, 4, 8);
@@ -119,15 +126,15 @@ TEST(MergePaddingWithAdd, MergeOne) {
   auto pad_node = graph.NewNode();
   pad_node->operation.type = ToString(OperationType::PAD);
   PadAttributes pad_attr;
-  pad_attr.prepended = HWC(0, 0, 0);
-  pad_attr.appended = HWC(0, 0, 32);
+  pad_attr.prepended = BHWC(0, 0, 0, 0);
+  pad_attr.appended = BHWC(0, 0, 0, 32);
   pad_node->operation.attributes = pad_attr;
 
   ASSERT_TRUE(graph.AddConsumer(pad_node->id, input0->id).ok());
   ASSERT_TRUE(graph.SetProducer(pad_node->id, padded->id).ok());
 
   auto add_node = graph.NewNode();
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   ASSERT_TRUE(graph.AddConsumer(add_node->id, padded->id).ok());
   ASSERT_TRUE(graph.AddConsumer(add_node->id, input1->id).ok());
   ASSERT_TRUE(graph.SetProducer(add_node->id, output->id).ok());
@@ -144,6 +151,46 @@ TEST(MergePaddingWithAdd, MergeOne) {
   ASSERT_EQ(1, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
   EXPECT_EQ(add_node, graph.nodes()[0]);
+}
+
+TEST(MergePaddingWithAdd, DoNotTrigger_AddWithAttributes) {
+  GraphFloat32 graph;
+  auto input0 = graph.NewValue();
+  input0->tensor.shape = BHWC(1, 4, 4, 8);
+  auto input1 = graph.NewValue();
+  auto padded = graph.NewValue();
+  auto output = graph.NewValue();
+
+  auto pad_node = graph.NewNode();
+  pad_node->operation.type = ToString(OperationType::PAD);
+  PadAttributes pad_attr;
+  pad_attr.prepended = BHWC(0, 0, 0, 0);
+  pad_attr.appended = BHWC(0, 0, 0, 32);
+  pad_node->operation.attributes = pad_attr;
+
+  ASSERT_TRUE(graph.AddConsumer(pad_node->id, input0->id).ok());
+  ASSERT_TRUE(graph.SetProducer(pad_node->id, padded->id).ok());
+
+  auto add_node = graph.NewNode();
+  ElementwiseAttributes add_attr;
+  add_attr.param = Tensor<HWC, DataType::FLOAT32>();
+  ASSERT_TRUE(graph.AddConsumer(add_node->id, padded->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(add_node->id, input1->id).ok());
+  ASSERT_TRUE(graph.SetProducer(add_node->id, output->id).ok());
+  add_node->operation.type = ToString(OperationType::ADD);
+  add_node->operation.attributes = add_attr;
+
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(4, graph.values().size());
+
+  auto transformation = NewMergePaddingWithAdd();
+  ModelTransformer transformer(&graph, nullptr);
+  transformer.Apply("merge_padding", transformation.get());
+
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(4, graph.values().size());
+  EXPECT_EQ(pad_node, graph.nodes()[0]);
+  EXPECT_EQ(add_node, graph.nodes()[1]);
 }
 
 }  // namespace

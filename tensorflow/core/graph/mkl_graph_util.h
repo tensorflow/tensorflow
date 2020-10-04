@@ -17,9 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_MKL_GRAPH_UTIL_H_
 #ifdef INTEL_MKL
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 // Since our ops are going to produce and also consume N addition tensors
@@ -74,7 +78,7 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
   return DataIndexToMetaDataIndex(tidx, total_tensors);
 }
 
-// check if the control between src and dst nodes alreay exists
+// check if the control between src and dst nodes already exists
 bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
   for (const Edge* edge : src->out_edges()) {
     if (edge->IsControlEdge() && edge->dst() == dst) {
@@ -82,6 +86,20 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
     }
   }
   return false;
+}
+
+// Check if graph should run in layout-dependent mode or native format mode
+// based on environment variable setting. User can set
+// TF_ENABLE_MKL_NATIVE_FORMAT=1 to enable the native format mode.
+bool inline NativeFormatEnabled() {
+  static bool native_fmt_enabled = false;
+  static absl::once_flag once;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MKL_NATIVE_FORMAT",
+                                   /*default_value*/ false,
+                                   &native_fmt_enabled));
+  });
+  return native_fmt_enabled;
 }
 
 namespace mkl_op_registry {
@@ -110,16 +128,56 @@ static const char* const kMklOpPrefix = "_Mkl";
 // through template parameter.
 static const char* const kMklEagerOpPrefix = "_MklEager";
 
+// Prefix that we add to TF op name to construct MKL op that does not
+// depend on layout propagation. It will be used in both Eager and graph
+// modes unless there is a reason to have additional op name with
+// _MklEager prefix.
+static const char* const kMklNativeOpPrefix = "_MklNative";
+
+// Get the name of Mkl Native (does not depend on layout propagation) op
+// from original TensorFlow op.
+inline string GetMklNativeOpName(const string& name) {
+  // There are few operators that don't depend on layout propagation but are
+  // prefixed with _Mkl instead of _MklNative.
+  bool result =
+      (0 == name.compare("ConjugateTranspose") ||
+       0 == name.compare("BatchMatMul") || 0 == name.compare("BatchMatMulV2") ||
+       0 == name.compare("MatMul") || 0 == name.compare("Transpose"));
+  if (result) {
+    return string(kMklOpPrefix) + name;
+  } else {
+    return string(kMklNativeOpPrefix) + name;
+  }
+}
+
 // Get the name of Mkl op from original TensorFlow op
-// We prefix 'Mkl' to the original op to get Mkl op.
+// We prefix the original op with _Mkl or _MklNative to get Mkl op.
 inline string GetMklOpName(const string& name) {
-  return string(kMklOpPrefix) + name;
+  if (!NativeFormatEnabled()) {
+    return string(kMklOpPrefix) + name;
+  } else {
+    return GetMklNativeOpName(name);
+  }
 }
 
 // Get the name of Mkl Eager op from original TensorFlow op
 // We prefix 'MklEager' to the original op to get Mkl Eager op.
 inline string GetMklEagerOpName(const string& name) {
   return string(kMklEagerOpPrefix) + name;
+}
+
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+static inline bool IsBF16SupportedByOneDNNOnThisCPU() {
+  return port::TestCPUFeature(port::CPUFeature::AVX512F);
+}
+#endif
+
+static inline void BF16UnsupportedWarning() {
+  static absl::once_flag cpu_bfloat16_warn_once_flag;
+  absl::call_once(cpu_bfloat16_warn_once_flag, [] {
+    LOG(ERROR) << "oneDNN BFloat16 support are only on platforms with AVX512. "
+                  "Falling back to default implementation if present.";
+  });
 }
 
 // Check whether opname with type T is registered as MKL operator
@@ -136,10 +194,28 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
     return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
   }
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+  // Restrict regular ops to FLOAT and BFLOAT16
+  if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
+    if (T == DT_FLOAT) return true;
+    if (T == DT_BFLOAT16) {
+      if (IsBF16SupportedByOneDNNOnThisCPU()) {
+        return true;
+      } else {
+        // Restrict bfloat16 ops to platforms with at least AVX512 support, fall
+        // back to Eigen implementation otherwise.
+        BF16UnsupportedWarning();
+        return false;
+      }
+    }
+    return false;
+  }
+#else
   // Restrict regular ops to FLOAT
   if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
     return (T == DT_FLOAT);
   }
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
   return false;
 }
 
@@ -152,7 +228,7 @@ static inline bool IsMklLayoutDependentOp(const string& op_name,
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
-    return (Tinput == DT_QUINT8 && Tfilter == DT_QINT8);
+    return (Tfilter == DT_QINT8);
   }
   return false;
 }
@@ -179,7 +255,33 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   search_string += string(";") + string(" T in [");
   search_string += DataType_Name(T) + string("]");
 
-  return kernel.find(search_string) != string::npos;
+  // Temporarily replacing earlier check by adding a type-specific check so
+  // that we can selectively decide which type is supported by MKL operators.
+  // That way kernel registration does not decide which operators we support.
+  // We are using this change to temporarily disable BFLOAT16 support. Once
+  // we want to enable it, we will go back to earlier check.
+  bool isTypeAllowed = false;
+  if (kernel.find(search_string) != string::npos) {
+    isTypeAllowed = (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
+                     T == DT_DOUBLE || T == DT_FLOAT);
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+    if (!isTypeAllowed) {
+      if (T == DT_BFLOAT16) {
+        if (IsBF16SupportedByOneDNNOnThisCPU()) {
+          isTypeAllowed = true;
+        } else {
+          // Restrict bfloat16 ops to platforms with at least AVX512 support,
+          // fall back to Eigen implementation otherwise.
+          BF16UnsupportedWarning();
+          isTypeAllowed = false;
+        }
+      }
+    }
+#endif
+    return isTypeAllowed;
+  }
+
+  return false;
 }
 
 // Check if the operator with 'op_name' and type 'T' is an MKL operator that

@@ -41,6 +41,7 @@ constexpr char kAttrSrcFormat[] = "src_format";
 constexpr char kAttrDstFormat[] = "dst_format";
 constexpr char kAttrOutputShape[] = "_output_shapes";
 constexpr char kGPU[] = "GPU";
+constexpr char kCPU[] = "CPU";
 
 // TransposeContext owns all data members. Must initialize GraphProperties,
 // FrameView, GraphDef and MutableGraphView with the same graph. NodeDef
@@ -239,6 +240,30 @@ class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class Conv3DTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class Conv3DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DBackpropFilterTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class Conv3DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DBackpropInputTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class FusedBatchNormExTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit FusedBatchNormExTransposer() : LayoutSensitiveOpTransposer() {}
@@ -322,19 +347,21 @@ class BinaryOpTransposer : public LayoutAgnosticOpTransposer {
 
  private:
   bool IsNDOperateWithMD(const utils::MutableNodeView& node, int n, int m);
-  bool IsFaninShapeSupported(const utils::MutableNodeView& node);
-  std::vector<int> Get4DDataFaninPorts(const utils::MutableNodeView& node);
+  bool IsFaninShapeSupported(const utils::MutableNodeView& node, int rank);
+  std::vector<int> GetNDDataFaninPorts(const utils::MutableNodeView& node,
+                                       int rank);
   Status AddNodeShapeConst(utils::Mutation* mutation,
                            absl::string_view node_name,
                            absl::string_view node_device, bool node_in_frame,
-                           int num_channels, absl::string_view depended_node);
+                           int num_channels, absl::string_view depended_node,
+                           int rank);
   Status AddNodeReshape(utils::Mutation* mutation, absl::string_view node_name,
                         absl::string_view node_device,
                         absl::string_view input_name,
                         absl::string_view shape_const_node_name,
                         const DataType& data_type);
   Status MaybeReshapeVectorFanin(TransposeContext* context,
-                                 utils::MutableNodeView* node);
+                                 utils::MutableNodeView* node, int rank);
 };
 
 class ConcatOpTransposer : public LayoutAgnosticOpTransposer {
@@ -528,11 +555,12 @@ template <typename T>
 Status PermuteSingle(absl::string_view location,
                      absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
-  if (values->size() != permutation.size()) {
+  int permutation_size = permutation.size();
+  if (values->size() != permutation_size) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match size of permutation ",
-                               permutation.size(), " @ ", location));
+                               permutation_size, " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());
@@ -549,11 +577,12 @@ template <typename T>
 Status PermuteDouble(absl::string_view location,
                      absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
-  if (values->size() != permutation.size() * 2) {
+  int permutation_size = permutation.size();
+  if (values->size() != permutation_size * 2) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match twice the size of permutation ",
-                               permutation.size(), " @ ", location));
+                               permutation_size, " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());

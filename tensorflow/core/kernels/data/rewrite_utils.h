@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_
 
+#include "tensorflow/core/platform/platform.h"
+
+// On mobile we do not provide this functionality because not all of its
+// dependencies are available there.
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -27,34 +32,10 @@ namespace data {
 // Rewrites the input dataset using the given config.
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input);
-
-// Returns a stable hash of the portion of the graph `g` rooted at
-// `node`, by creating a Merkle tree-like structure.
-//
-// Specifically, this function recursively walks the graph from `node` by
-// following its inputs.
-//
-// The hash is computed by hashing its op name, device, attributes, and hashes
-// of its inputs (if applicable).
-//
-// There is currently no guarantee that the hash of a subgraph will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
-
-// Returns a stable hash of the function `f`.
-//
-// This function computes the hash by hashing the metadata of the
-// function (disregarding the auto-generated names and descriptions) and also
-// hashing the subgraph rooted at each of the output nodes.
-//
-// There is currently no guarantee that the hash of a function will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
-                            const FunctionDef* f);
+                      bool record_fingerprint, DatasetBase** rewritten_input);
 
 }  // namespace data
 }  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_

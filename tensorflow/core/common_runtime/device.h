@@ -60,7 +60,7 @@ class Device : public DeviceBase {
   ~Device() override;
 
   // Full name of this device (see top comment).
-  const string& name() const override { return device_attributes_.name(); }
+  const std::string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
   const DeviceNameUtils::ParsedName& parsed_name() const {
@@ -71,7 +71,9 @@ class Device : public DeviceBase {
   // human-readable and not computer-parsed, except that two devices
   // with the same device_type() are expected to perform similarly
   // (both from a computation and communication perspective).
-  const string& device_type() const { return device_attributes_.device_type(); }
+  const std::string& device_type() const {
+    return device_attributes_.device_type();
+  }
 
   // Returns an aggregation of device attributes.
   const DeviceAttributes& attributes() const override {
@@ -90,16 +92,6 @@ class Device : public DeviceBase {
   virtual void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                             AsyncOpKernel::DoneCallback done) {
     op_kernel->ComputeAsync(context, std::move(done));
-  }
-
-  // Takes ownership of the references in tensors. If necessary, a
-  // device may override this method to keep a reference to the
-  // accessed tensors until the async computation has completed.
-  virtual void ConsumeListOfAccessedTensors(
-      DeviceContext* context, const TensorReferenceVector& tensors) {
-    for (const auto& ref : tensors) {
-      ref.Unref();
-    }
   }
 
   // Blocks until all operations queued on the device at the time of
@@ -148,13 +140,14 @@ class Device : public DeviceBase {
     return Status::OK();
   }
 
-  // Fill in the context map for the graph. Default behavior is to do
-  // nothing.
+  // Sets `out_context` a new DeviceContext* for executing a graph, or nullptr
+  // if the device does not support contexts. Returns an error status if any
+  // error occurred while trying to create a context, otherwise OK.
   //
-  // The caller takes ownership over the DeviceContext objects given
-  // by the device.
-  virtual Status FillContextMap(const Graph* graph,
-                                DeviceContextMap* device_context_map) {
+  // The caller takes ownership of one reference on the output DeviceContext*,
+  // and should call Unref().
+  virtual Status TryGetDeviceContext(DeviceContext** out_context) {
+    *out_context = nullptr;
     return Status::OK();
   }
 
@@ -166,15 +159,15 @@ class Device : public DeviceBase {
   virtual ResourceMgr* resource_manager() { return rmgr_; }
 
   // Summarizes the status of this Device, for debugging.
-  string DebugString() const { return device_attributes_.DebugString(); }
+  std::string DebugString() const { return device_attributes_.DebugString(); }
 
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
-      const string& name, DeviceType device, Bytes memory_limit,
-      const DeviceLocality& locality, const string& physical_device_desc);
+      const std::string& name, DeviceType device, Bytes memory_limit,
+      const DeviceLocality& locality, const std::string& physical_device_desc);
 
   static DeviceAttributes BuildDeviceAttributes(
-      const string& name, DeviceType device, Bytes memory_limit,
+      const std::string& name, DeviceType device, Bytes memory_limit,
       const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");

@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-string PlatformKindString(PlatformKind kind) {
+std::string PlatformKindString(PlatformKind kind) {
   switch (kind) {
     case PlatformKind::kCuda:
       return "CUDA";
@@ -41,7 +41,7 @@ string PlatformKindString(PlatformKind kind) {
   }
 }
 
-PlatformKind PlatformKindFromString(string kind) {
+PlatformKind PlatformKindFromString(std::string kind) {
   for (int i = 0; i < static_cast<int>(PlatformKind::kSize); ++i) {
     if (kind == PlatformKindString(static_cast<PlatformKind>(i))) {
       return static_cast<PlatformKind>(i);
@@ -91,7 +91,7 @@ Platform::~Platform() {}
 bool Platform::Initialized() const { return true; }
 
 port::Status Platform::Initialize(
-    const std::map<string, string> &platform_options) {
+    const std::map<std::string, std::string> &platform_options) {
   if (!platform_options.empty()) {
     return port::Status(port::error::UNIMPLEMENTED,
                         "this platform does not support custom initialization");

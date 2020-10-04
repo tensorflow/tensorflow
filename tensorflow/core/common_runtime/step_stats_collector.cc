@@ -39,17 +39,26 @@ struct AllocStats {
   int64 total_bytes = 0;
   int64 total_nodes = 0;
 };
+
+bool IsRecv(const NodeDef* node) {
+  return node->op() == "_Recv" || node->op() == "_HostRecv";
+}
+
+bool IsSend(const NodeDef* node) {
+  return node->op() == "_Send" || node->op() == "_HostSend";
+}
+
 }  // namespace
 
 NodeExecStatsWrapper::NodeExecStatsWrapper(
-    const Node* node, StepStatsCollector* step_stats_collector)
+    const NodeDef* node, StepStatsCollector* step_stats_collector)
     : NodeExecStatsWrapper(MakeUnique<NodeExecStats>(), node,
                            step_stats_collector) {
   stats_->set_node_name(node->name());
 }
 
 NodeExecStatsWrapper::NodeExecStatsWrapper(
-    std::unique_ptr<NodeExecStats> stats, const Node* node,
+    std::unique_ptr<NodeExecStats> stats, const NodeDef* node,
     StepStatsCollector* step_stats_collector)
     : stats_(std::move(stats)),
       node_(node),
@@ -75,26 +84,25 @@ void NodeExecStatsWrapper::Done(const string& device) {
       }
     }
   }
-  const AttrSlice attrs = node_->attrs();
+  const AttrSlice attrs(*node_);
   string text;
   if (IsSend(node_)) {
     string tensor_name;
     TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
     string recv_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "recv_device", &recv_device));
-    text = strings::StrCat(memory, node_->name(), " = ", node_->type_string(),
-                           "(", tensor_name, " @", recv_device);
+    text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
+                           tensor_name, " @", recv_device, ")");
   } else if (IsRecv(node_)) {
     string tensor_name;
     TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
     string send_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "send_device", &send_device));
-    text = strings::StrCat(memory, node_->name(), " = ", node_->type_string(),
-                           "(", tensor_name, " @", send_device);
+    text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
+                           tensor_name, " @", send_device, ")");
   } else {
-    text =
-        strings::StrCat(memory, node_->name(), " = ", node_->type_string(), "(",
-                        absl::StrJoin(node_->requested_inputs(), ", "), ")");
+    text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
+                           absl::StrJoin(node_->input(), ", "), ")");
   }
   stats_->set_timeline_label(text);
   step_stats_collector_->Save(device, this);
@@ -155,16 +163,6 @@ void NodeExecStatsWrapper::SetOutput(int slot, const Tensor* tensor) {
   NodeOutput* node_output = stats_->add_output();
   node_output->set_slot(slot);
   tensor->FillDescription(node_output->mutable_tensor_description());
-}
-
-void NodeExecStatsWrapper::SetReferencedTensors(
-    const TensorReferenceVector& tensors) {
-  // be careful not to increment the reference count on any tensor
-  // while recording the information
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    AllocationDescription* description = stats_->add_referenced_tensor();
-    tensors.at(i).FillDescription(description);
-  }
 }
 
 void NodeExecStatsWrapper::AddAllocation(
@@ -307,7 +305,7 @@ void StepStatsCollector::BuildCostModel(
     }
   }
 
-  for (auto itr : device_map) {
+  for (const auto& itr : device_map) {
     const StringPiece device = itr.first;
     if (per_device_stats.find(device) == per_device_stats.end()) {
       continue;
@@ -426,7 +424,7 @@ void StepStatsCollector::SaveThreadName(const string& device,
 }
 
 NodeExecStatsInterface* StepStatsCollector::CreateNodeExecStats(
-    const Node* node) {
+    const NodeDef* node) {
   // Only collect statistics for non-transfer nodes.
   if (IsSend(node) || IsRecv(node)) {
     return nullptr;

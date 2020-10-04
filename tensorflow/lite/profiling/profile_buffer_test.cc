@@ -12,13 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/profiling/profile_buffer.h"
+
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/profiling/profile_buffer.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace profiling {
@@ -41,8 +42,9 @@ TEST(ProfileBufferTest, Empty) {
 TEST(ProfileBufferTest, AddEvent) {
   ProfileBuffer buffer(/*max_size*/ 10, /*enabled*/ true);
   EXPECT_EQ(0, buffer.Size());
-  auto event_handle = buffer.BeginEvent(
-      "hello", ProfileEvent::EventType::DEFAULT, /* event_metadata */ 42);
+  auto event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
 
   EXPECT_GE(event_handle, 0);
   EXPECT_EQ(1, buffer.Size());
@@ -58,13 +60,35 @@ TEST(ProfileBufferTest, AddEvent) {
   EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
 }
 
+TEST(ProfileBufferTest, EndEventWithMetadata) {
+  ProfileBuffer buffer(/*max_size*/ 10, /*enabled*/ true);
+  EXPECT_EQ(0, buffer.Size());
+  auto event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
+  const int64_t kEventMetadata1 = 18;
+  const int64_t kEventMetadata2 = 36;
+  buffer.EndEvent(event_handle, &kEventMetadata1, &kEventMetadata2);
+
+  EXPECT_GE(event_handle, 0);
+  EXPECT_EQ(1, buffer.Size());
+  auto event = GetProfileEvents(buffer)[0];
+  EXPECT_EQ(event->tag, "hello");
+  EXPECT_GT(event->begin_timestamp_us, 0);
+  EXPECT_EQ(event->event_type, ProfileEvent::EventType::DEFAULT);
+  EXPECT_EQ(event->event_metadata, kEventMetadata1);
+  EXPECT_EQ(event->extra_event_metadata, kEventMetadata2);
+  EXPECT_EQ(1, buffer.Size());
+  EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
+}
+
 TEST(ProfileBufferTest, OverFlow) {
   const int max_size = 4;
   ProfileBuffer buffer{max_size, true};
   std::vector<std::string> eventNames = {"first", "second", "third", "fourth"};
   for (int i = 0; i < 2 * max_size; i++) {
     buffer.BeginEvent(eventNames[i % 4].c_str(),
-                      ProfileEvent::EventType::DEFAULT, i);
+                      ProfileEvent::EventType::DEFAULT, i, 0);
     size_t expected_size = std::min(i + 1, max_size);
     EXPECT_EQ(expected_size, buffer.Size());
   }
@@ -73,20 +97,22 @@ TEST(ProfileBufferTest, OverFlow) {
     auto event = buffer.At(j);
     EXPECT_EQ(eventNames[j % 4], event->tag);
     EXPECT_EQ(ProfileEvent::EventType::DEFAULT, event->event_type);
-    EXPECT_EQ(4 + j, event->event_metadata);
+    EXPECT_EQ(j, event->event_metadata);
   }
 }
 
 TEST(ProfileBufferTest, Enable) {
   ProfileBuffer buffer(/*max_size*/ 10, /*enabled*/ false);
   EXPECT_EQ(0, buffer.Size());
-  auto event_handle = buffer.BeginEvent(
-      "hello", ProfileEvent::EventType::DEFAULT, /* event_metadata */ 42);
+  auto event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
   EXPECT_EQ(kInvalidEventHandle, event_handle);
   EXPECT_EQ(0, buffer.Size());
   buffer.SetEnabled(true);
-  event_handle = buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
-                                   /* event_metadata */ 42);
+  event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
   EXPECT_GE(event_handle, 0);
   EXPECT_EQ(1, buffer.Size());
 }
@@ -94,9 +120,3 @@ TEST(ProfileBufferTest, Enable) {
 }  // namespace
 }  // namespace profiling
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -132,7 +132,7 @@ def main(_):
   else:
     fingerprint_input = input_placeholder
 
-  logits, dropout_prob = models.create_model(
+  logits, dropout_rate = models.create_model(
       fingerprint_input,
       model_settings,
       FLAGS.model_architecture,
@@ -153,14 +153,31 @@ def main(_):
   with tf.compat.v1.name_scope('cross_entropy'):
     cross_entropy_mean = tf.compat.v1.losses.sparse_softmax_cross_entropy(
         labels=ground_truth_input, logits=logits)
+
   if FLAGS.quantize:
-    tf.contrib.quantize.create_training_graph(quant_delay=0)
+    try:
+      tf.contrib.quantize.create_training_graph(quant_delay=0)
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
+
   with tf.compat.v1.name_scope('train'), tf.control_dependencies(
       control_dependencies):
     learning_rate_input = tf.compat.v1.placeholder(
         tf.float32, [], name='learning_rate_input')
-    train_step = tf.compat.v1.train.GradientDescentOptimizer(
-        learning_rate_input).minimize(cross_entropy_mean)
+    if FLAGS.optimizer == 'gradient_descent':
+      train_step = tf.compat.v1.train.GradientDescentOptimizer(
+          learning_rate_input).minimize(cross_entropy_mean)
+    elif FLAGS.optimizer == 'momentum':
+      train_step = tf.compat.v1.train.MomentumOptimizer(
+          learning_rate_input, .9,
+          use_nesterov=True).minimize(cross_entropy_mean)
+    else:
+      raise Exception('Invalid Optimizer')
   predicted_indices = tf.argmax(input=logits, axis=1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
   confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,
@@ -231,15 +248,19 @@ def main(_):
             fingerprint_input: train_fingerprints,
             ground_truth_input: train_ground_truth,
             learning_rate_input: learning_rate_value,
-            dropout_prob: 0.5
+            dropout_rate: 0.5
         })
     train_writer.add_summary(train_summary, training_step)
-    tf.compat.v1.logging.info(
+    tf.compat.v1.logging.debug(
         'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
         (training_step, learning_rate_value, train_accuracy * 100,
          cross_entropy_value))
     is_last_step = (training_step == training_steps_max)
     if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
+      tf.compat.v1.logging.info(
+          'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
+          (training_step, learning_rate_value, train_accuracy * 100,
+           cross_entropy_value))
       set_size = audio_processor.set_size('validation')
       total_accuracy = 0
       total_conf_matrix = None
@@ -254,7 +275,7 @@ def main(_):
             feed_dict={
                 fingerprint_input: validation_fingerprints,
                 ground_truth_input: validation_ground_truth,
-                dropout_prob: 1.0
+                dropout_rate: 0.0
             })
         validation_writer.add_summary(validation_summary, training_step)
         batch_size = min(FLAGS.batch_size, set_size - i)
@@ -288,7 +309,7 @@ def main(_):
         feed_dict={
             fingerprint_input: test_fingerprints,
             ground_truth_input: test_ground_truth,
-            dropout_prob: 1.0
+            dropout_rate: 0.0
         })
     batch_size = min(FLAGS.batch_size, set_size - i)
     total_accuracy += (test_accuracy * batch_size) / set_size
@@ -381,7 +402,8 @@ if __name__ == '__main__':
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How far to move in time between spectogram timeslices.',)
+      help='How far to move in time between spectrogram timeslices.',
+  )
   parser.add_argument(
       '--feature_bin_count',
       type=int,
@@ -464,23 +486,28 @@ if __name__ == '__main__':
       ArgumentTypeError: Not an expected value.
     """
     value = value.upper()
-    if value == 'INFO':
-      return tf.compat.v1.logging.INFO
-    elif value == 'DEBUG':
+    if value == 'DEBUG':
       return tf.compat.v1.logging.DEBUG
+    elif value == 'INFO':
+      return tf.compat.v1.logging.INFO
+    elif value == 'WARN':
+      return tf.compat.v1.logging.WARN
     elif value == 'ERROR':
       return tf.compat.v1.logging.ERROR
     elif value == 'FATAL':
       return tf.compat.v1.logging.FATAL
-    elif value == 'WARN':
-      return tf.compat.v1.logging.WARN
     else:
       raise argparse.ArgumentTypeError('Not an expected value')
   parser.add_argument(
       '--verbosity',
       type=verbosity_arg,
       default=tf.compat.v1.logging.INFO,
-      help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
+      help='Log verbosity. Can be "DEBUG", "INFO", "WARN", "ERROR", or "FATAL"')
+  parser.add_argument(
+      '--optimizer',
+      type=str,
+      default='gradient_descent',
+      help='Optimizer (gradient_descent or momentum)')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -17,21 +17,57 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import stats_aggregator
+from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
+class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase,
+                          parameterized.TestCase):
 
-  def testLatencyStatsOptimization(self):
+  # TODO(jsimsa): Investigate why are graph-mode tests failing.
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLatencyStatsOptimizationAutotuneOff(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(
-        optimization.assert_next(
-            ["LatencyStats", "Map", "LatencyStats", "Prefetch",
-             "LatencyStats"])).map(lambda x: x * x).prefetch(1)
+        testing.assert_next([
+            "LatencyStats", "Map", "LatencyStats", "Prefetch", "LatencyStats",
+            "MaxIntraOpParallelism", "LatencyStats", "SetStatsAggregator"
+        ])).map(lambda x: x * x).prefetch(1)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
+    options.experimental_stats.latency_all_edges = True
+    options.experimental_stats.aggregator = aggregator
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[1],
+        requires_initialization=True,
+        num_test_iterations=1)
+    handle = self.getHandle(aggregator)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::TensorDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::MapDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::PrefetchDataset"), 1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLatencyStatsOptimizationAutotuneOn(self):
+    aggregator = stats_aggregator.StatsAggregator()
+    dataset = dataset_ops.Dataset.from_tensors(1).apply(
+        testing.assert_next([
+            "LatencyStats", "Map", "LatencyStats", "Prefetch", "LatencyStats",
+            "MaxIntraOpParallelism", "LatencyStats", "Model",
+            "SetStatsAggregator"
+        ])).map(lambda x: x * x).prefetch(1)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_stats.latency_all_edges = True

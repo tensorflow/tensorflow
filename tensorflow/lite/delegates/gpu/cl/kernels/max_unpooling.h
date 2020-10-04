@@ -25,35 +25,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class MaxUnpooling : public GPUOperation {
- public:
-  MaxUnpooling(const OperationDef& definition,
-               const MaxUnpooling2DAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-
-  Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  MaxUnpooling(MaxUnpooling&& kernel);
-  MaxUnpooling& operator=(MaxUnpooling&& kernel);
-  MaxUnpooling(const MaxUnpooling&) = delete;
-  MaxUnpooling& operator=(const MaxUnpooling&) = delete;
-
- private:
-  Status BindArguments();
-  int3 GetGridSize() const;
-
-  int2 stride_;
-  int2 padding_;
-  int2 kernel_size_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
-};
-
-MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
+GPUOperation CreateMaxUnpooling(const OperationDef& definition,
                                 const MaxUnpooling2DAttributes& attr);
+
+GPUOperation CreateMaxUnpooling(const OperationDef& definition,
+                                const MaxUnpooling3DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

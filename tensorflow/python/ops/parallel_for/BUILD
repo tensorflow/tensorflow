@@ -22,6 +22,7 @@ py_library(
         ":gradients",
         ":test_util",
         "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -41,6 +42,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
     ],
 )
@@ -84,10 +86,12 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops/signal",
     ],
 )
 
@@ -107,11 +111,13 @@ py_library(
 cuda_py_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
-    additional_deps = [
+    tags = ["no_rocm"],
+    deps = [
         ":control_flow_ops",
         ":test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:parsing_ops",
@@ -120,51 +126,51 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:util",
     ],
-    tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "xla_control_flow_ops_test",
     srcs = ["xla_control_flow_ops_test.py"],
-    additional_deps = [
-        ":control_flow_ops",
-        ":test_util",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/python/compiler/xla:xla",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-    ],
     tags = [
-        "no_rocm",
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",
+        "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
     ],
-    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
+    deps = [
+        ":control_flow_ops",
+        ":test_util",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/compiler/xla",
+    ],
 )
 
 cuda_py_test(
     name = "array_test",
     srcs = ["array_test.py"],
-    additional_deps = [
+    deps = [
         ":control_flow_ops",
         ":test_util",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "math_test",
     srcs = ["math_test.py"],
-    additional_deps = [
+    shard_count = 5,
+    tags = ["optonly"],  # Too slow in non-opt mode
+    deps = [
         ":control_flow_ops",
         ":test_util",
         "//tensorflow/python:client_testlib",
@@ -172,9 +178,6 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
-    shard_count = 5,
-    tags = ["optonly"],  # Too slow in non-opt mode
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -192,17 +195,16 @@ py_library(
 cuda_py_test(
     name = "gradients_test",
     srcs = ["gradients_test.py"],
-    additional_deps = [
+    tags = ["optonly"],  # Too slow in non-opt mode
+    deps = [
         ":control_flow_ops",
         ":gradients",
-        "//third_party/py/numpy",
-        "//tensorflow/python:layers",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:functional_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
     ],
-    tags = ["optonly"],  # Too slow in non-opt mode
-    xla_enable_strict_auto_jit = True,
 )

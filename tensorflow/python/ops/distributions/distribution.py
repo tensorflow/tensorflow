@@ -242,12 +242,12 @@ class ReparameterizationType(object):
     self._rep_type = rep_type
 
   def __repr__(self):
-    return "<Reparameteriation Type: %s>" % self._rep_type
+    return "<Reparameterization Type: %s>" % self._rep_type
 
   def __eq__(self, other):
     """Determine if this `ReparameterizationType` is equal to another.
 
-    Since RepaparameterizationType instances are constant static global
+    Since ReparameterizationType instances are constant static global
     instances, equality checks if two instances' id() values are equal.
 
     Args:

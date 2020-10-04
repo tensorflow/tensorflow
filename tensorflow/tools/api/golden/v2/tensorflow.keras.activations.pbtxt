@@ -13,6 +13,10 @@ tf_module {
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "gelu"
+    argspec: "args=[\'x\', \'approximate\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "get"
     argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
   }
@@ -50,6 +54,10 @@ tf_module {
   }
   member_method {
     name: "softsign"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "swish"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

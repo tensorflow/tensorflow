@@ -16,13 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RANDOM_POISSON_OP_H_
 #define TENSORFLOW_CORE_KERNELS_RANDOM_POISSON_OP_H_
 
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
+
 namespace tensorflow {
 
 namespace functor {
 
 // Generic helper functor for the Random Poisson Op.
 template <typename Device, typename T /* rate */, typename U /* output */>
-struct PoissonFunctor;
+struct PoissonFunctor {
+  void operator()(OpKernelContext* ctx, const Device& d, const T* rate_flat,
+                  int num_rate, int num_samples,
+                  const random::PhiloxRandom& rng, U* samples_flat);
+};
 
 }  // namespace functor
 

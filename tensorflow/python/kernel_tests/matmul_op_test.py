@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import operator
+
 import numpy as np
 
 from tensorflow.python import tf2
@@ -69,6 +70,7 @@ class MatMulTest(test_lib.TestCase):
 
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
+  @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
     np_val = np.matrix(a_np_) * np.matrix(b_np_)
 
@@ -194,14 +196,14 @@ except AttributeError:
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         Exception, "(Shape must be rank 2 but is rank 1|is not a matrix)"):
       infix_matmul(
           ops.convert_to_tensor([10.0, 20.0, 30.0]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testMismatchedDimensions(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         Exception, "(Dimensions must be equal|Matrix size-incompatible)"):
       infix_matmul(
           ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
@@ -225,10 +227,10 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
-  dtypes_to_test = [np.int32, np.int64, np.float16, np.float32, np.float64]
-  if not test_lib.is_built_with_rocm():
-    # ROCm does not support BLAS operations for complex types
-    dtypes_to_test += [np.complex64, np.complex128]
+  dtypes_to_test = [
+      np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
+      np.complex128
+  ]
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
     for dtype in dtypes_to_test:

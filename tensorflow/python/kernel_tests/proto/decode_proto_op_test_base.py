@@ -20,6 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -134,7 +136,10 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
           dtypes.uint64:
               'uint64_value',
       }
-      tf_field_name = tf_type_to_primitive_value_field.get(field.dtype)
+      if field.name in ['enum_value', 'enum_value_with_default']:
+        tf_field_name = 'enum_value'
+      else:
+        tf_field_name = tf_type_to_primitive_value_field.get(field.dtype)
       if tf_field_name is None:
         self.fail('Unhandled tensorflow type %d' % field.dtype)
 
@@ -306,3 +311,60 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
               field_names=field_names,
               output_types=field_types,
               sanitize=sanitize))
+
+  def testOutOfOrderRepeated(self):
+    fragments = [
+        test_example_pb2.TestValue(double_value=[1.0]).SerializeToString(),
+        test_example_pb2.TestValue(
+            message_value=[test_example_pb2.PrimitiveValue(
+                string_value='abc')]).SerializeToString(),
+        test_example_pb2.TestValue(
+            message_value=[test_example_pb2.PrimitiveValue(
+                string_value='def')]).SerializeToString()
+    ]
+    all_fields_to_parse = ['double_value', 'message_value']
+    field_types = {
+        'double_value': dtypes.double,
+        'message_value': dtypes.string,
+    }
+    # Test against all 3! permutations of fragments, and for each permutation
+    # test parsing all possible combination of 2 fields.
+    for indices in itertools.permutations(range(len(fragments))):
+      proto = b''.join(fragments[i] for i in indices)
+      for i in indices:
+        if i == 1:
+          expected_message_values = [
+              test_example_pb2.PrimitiveValue(
+                  string_value='abc').SerializeToString(),
+              test_example_pb2.PrimitiveValue(
+                  string_value='def').SerializeToString(),
+          ]
+          break
+        if i == 2:
+          expected_message_values = [
+              test_example_pb2.PrimitiveValue(
+                  string_value='def').SerializeToString(),
+              test_example_pb2.PrimitiveValue(
+                  string_value='abc').SerializeToString(),
+          ]
+          break
+
+      expected_field_values = {
+          'double_value': [[1.0]],
+          'message_value': [expected_message_values],
+      }
+
+      for num_fields_to_parse in range(len(all_fields_to_parse)):
+        for comb in itertools.combinations(
+            all_fields_to_parse, num_fields_to_parse):
+          parsed_values = self.evaluate(
+              self._decode_module.decode_proto(
+                  [proto],
+                  message_type='tensorflow.contrib.proto.TestValue',
+                  field_names=comb,
+                  output_types=[field_types[f] for f in comb],
+                  sanitize=False)).values
+          self.assertLen(parsed_values, len(comb))
+          for field_name, parsed in zip(comb, parsed_values):
+            self.assertAllEqual(parsed, expected_field_values[field_name],
+                                'perm: {}, comb: {}'.format(indices, comb))

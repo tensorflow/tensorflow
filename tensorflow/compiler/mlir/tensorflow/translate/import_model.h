@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.h"
@@ -34,24 +37,41 @@ namespace tensorflow {
 // tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const NodeSpecs& specs, mlir::MLIRContext* context,
+    const GraphImportConfig& specs, mlir::MLIRContext* context,
     bool add_default_attributes = true);
 
 // Given a Graph, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs,
+    const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
+    mlir::MLIRContext* context);
+
+// [Experimental]
+// Given a Function, returns a MLIR module containing the graph, expressed with
+// tf_executor dialect.
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
+    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
     mlir::MLIRContext* context);
 
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
 // with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
-    const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
-    mlir::MLIRContext* context, bool add_default_attributes = true);
+    SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
+    absl::Span<std::string> exported_names, bool add_default_attributes = true);
+
+// Given a V1 SavedModel, returns a MLIR module containing the functions,
+// expressed with tf_executor dialect.
+stream_executor::port::StatusOr<mlir::OwningModuleRef>
+ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
+                          absl::Span<std::string> exported_names,
+                          mlir::MLIRContext* context,
+                          bool upgrade_legacy = false);
 
 // Serialize a MLIR module to a string.
-std::string MlirModuleToString(mlir::ModuleOp m);
+std::string MlirModuleToString(mlir::ModuleOp module,
+                               mlir::OpPrintingFlags flags);
+std::string MlirModuleToString(mlir::ModuleOp m, bool show_debug_info = false);
 
 }  // namespace tensorflow
 

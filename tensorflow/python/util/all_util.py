@@ -46,8 +46,8 @@ def make_all(module_name, doc_string_modules=None):
   """
   if doc_string_modules is None:
     doc_string_modules = [_sys.modules[module_name]]
-  cur_members = set([name for name, _
-                     in _tf_inspect.getmembers(_sys.modules[module_name])])
+  cur_members = set(
+      name for name, _ in _tf_inspect.getmembers(_sys.modules[module_name]))
 
   results = set()
   for doc_module in doc_string_modules:
@@ -93,7 +93,7 @@ def remove_undocumented(module_name, allowed_exception_list=None,
     doc_string_modules: a list of modules from which to take the docstrings.
     If None, then a list containing only the module named `module_name` is used.
 
-    Furthermore, if a symbol previously added with `add_to_global_whitelist`,
+    Furthermore, if a symbol previously added with `add_to_global_allowlist`,
     then it will always be allowed. This is useful for internal tests.
 
   Returns:

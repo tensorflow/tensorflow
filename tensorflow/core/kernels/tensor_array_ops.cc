@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/split_lib.h"
@@ -79,8 +80,8 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) return errors::Internal("No resource manager.");
-    TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
-                                  container + ta_handle, tensor_array));
+    TF_RETURN_IF_ERROR(
+        ctx->step_container()->Lookup(rm, container + ta_handle, tensor_array));
     return Status::OK();
   } else {
     return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);
@@ -209,8 +210,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
         false /* multiple_writes_aggregate */, false /* is_grad */,
         -1 /* marked_size */, clear_after_read_);
 
-    TF_RETURN_IF_ERROR(
-        rm->Create(ctx->step_container()->name(), key, tensor_array));
+    TF_RETURN_IF_ERROR(ctx->step_container()->Create(rm, key, tensor_array));
 
     *output_tensor_array = tensor_array;
 
@@ -256,11 +256,10 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV3").Device(DEVICE_CPU),
                               .HostMemory("handle"),         \
                           TensorArrayOp);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
+TF_CALL_bfloat16(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -306,9 +305,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
-    TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
-                                  strings::StrCat(container, tensor_array_name),
-                                  &tensor_array));
+    TF_RETURN_IF_ERROR(ctx->step_container()->Lookup(
+        rm, strings::StrCat(container, tensor_array_name), &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
     // Once gradients are being calculated, the forward TensorArray
@@ -333,8 +331,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     TensorShape shape_to_prepend;
     auto element_shape = PartialTensorShape();
     if (ctx->num_inputs() > 2) {
-      TF_RETURN_IF_ERROR(
-          ctx->op_kernel().MakeShape(ctx->input(2), &shape_to_prepend));
+      TF_RETURN_IF_ERROR(tensor::MakeShape(ctx->input(2), &shape_to_prepend));
       auto ta_element_shape = tensor_array->ElemShape();
       if (!ta_element_shape.unknown_rank()) {
         std::vector<int64> dims;
@@ -364,8 +361,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       return (*ret)->CopyShapesFrom(tensor_array, &shape_to_prepend);
     };
 
-    Status s = rm->LookupOrCreate<TensorArray>(
-        ctx->step_container()->name(), key, output_tensor_array, creator);
+    Status s = ctx->step_container()->LookupOrCreate<TensorArray>(
+        rm, key, output_tensor_array, creator);
     (*output_tensor_array)->Unref();
 
     return s;
@@ -485,10 +482,9 @@ TF_CALL_ALL_TYPES(REGISTER_WRITE);
                               .HostMemory("index"),             \
                           TensorArrayWriteOp<GPUDevice, type>);
 
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -574,11 +570,10 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
                               .HostMemory("index"),            \
                           TensorArrayReadOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
+TF_CALL_bfloat16(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -776,10 +771,9 @@ REGISTER_GATHER_AND_PACK(qint32);
           .HostMemory("handle"),                                            \
       TensorArrayPackOrGatherOp<GPUDevice, type, false /* LEGACY_PACK */>);
 
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
@@ -997,10 +991,9 @@ REGISTER_CONCAT(qint32);
                               .HostMemory("handle"),             \
                           TensorArrayConcatOp<GPUDevice, type>)
 
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
@@ -1217,10 +1210,9 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
       TensorArrayUnpackOrScatterOp<GPUDevice, type,             \
                                    false /* LEGACY_UNPACK */>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1389,8 +1381,7 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT);
                           TensorArraySplitOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

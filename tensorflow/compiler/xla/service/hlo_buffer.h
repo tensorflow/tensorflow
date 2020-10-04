@@ -54,7 +54,7 @@ namespace xla {
 // HloValue{%cond_param}.
 //
 // HloBuffers may appear at different HloPositions in the module mirroring the
-// same propery of HloValues. For example:
+// same property of HloValues. For example:
 //
 //   %sub = Sub(...)
 //   %add = Add(...)

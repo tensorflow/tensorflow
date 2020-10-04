@@ -106,12 +106,8 @@ NSString* RunInferenceOnImage() {
   model->error_reporter();
   NSLog(@"Resolved reporter.");
 
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  tflite::MutableOpResolver resolver;
-  RegisterSelectedOps(&resolver);
-#else
   tflite::ops::builtin::BuiltinOpResolver resolver;
-#endif
+  RegisterSelectedOps(&resolver);
 
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);

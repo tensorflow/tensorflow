@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <type_traits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -50,7 +51,10 @@ class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
 Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
+Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
+                            int64 dst_offset, int64 num_slices, Tensor* dst);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -234,9 +238,15 @@ class Tensor {
   Tensor(const Tensor& other);
 
   /// \brief Move constructor. After this call, <other> is safely destructible
-  /// and can be assigned to, but other calls on it (e.g. shape manipulation)
-  /// are not valid.
+  /// can be assigned to, and IsInitialized() can be called and will return
+  /// false. Other calls on <other> (e.g. shape manipulation) are not valid.
   Tensor(Tensor&& other);
+
+  // Explicitly delete constructor that take a pointer (except char*)
+  // so that the pointer doesn't get implicitly cast to bool.
+  template <typename T, typename std::enable_if<!std::is_same<T, char>::value,
+                                                T>::type* = nullptr>
+  explicit Tensor(T* t) = delete;
 
   ~Tensor();
 
@@ -341,7 +351,7 @@ class Tensor {
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
   /// REQUIRES: `dims()` >= 1
-  /// REQUIRES: `0 <= dim0_start < dim_size(0)`
+  /// REQUIRES: `0 <= index < dim_size(0)`
   Tensor SubSlice(int64 index) const;
 
   /// \brief Parse `other` and construct the tensor.
@@ -570,19 +580,19 @@ class Tensor {
       int64 begin) const;
 
   /// Render the first `max_entries` values in `*this` into a string.
-  string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
+  std::string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
 
   /// A human-readable summary of the tensor suitable for debugging.
   // `num_values` is the number of actual data values in the tensor
   // included in the message. If the tensor might be resident in
   // GPU/TPU memory use DeviceSafeDebugString instead.
-  string DebugString(int num_values) const;
-  string DebugString() const { return DebugString(3); }
+  std::string DebugString(int num_values) const;
+  std::string DebugString() const { return DebugString(3); }
 
   // Variant of DebugString() that should be used for possibly non-CPU tensors.
   // If the tensor is not resident on CPU, we can't read its values as
   // DebugString() does.
-  string DeviceSafeDebugString() const;
+  std::string DeviceSafeDebugString() const;
 
   /// Fill in the `TensorDescription` proto with metadata about the
   /// tensor that is useful for monitoring and debugging.
@@ -600,6 +610,7 @@ class Tensor {
   ///
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
+  void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
   /// buffer's datatype. If Status::OK() is returned, the two tensors now share
@@ -633,10 +644,11 @@ class Tensor {
     TF_CHECK_OK(BitcastFrom(other, dtype, shape));
   }
 
- private:
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
+
+ private:
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
@@ -653,29 +665,25 @@ class Tensor {
 
   friend class DMAHelper;             // For access to buf_.
   friend class TensorCApi;            // For access to buf_.
+  friend class TensorCord;            // For access to buf_.
   friend class TensorReference;       // For access to buf_.
   friend class VariableOp;            // For access to set_shape.
   friend class AutoReloadVariableOp;  // For access to set_shape.
   friend class TensorTestHelper;      // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
-  friend class OpKernelContext;       // For access to RefCountIsOne().
   friend class ScopedAllocator;       // For access to buf_.
-  friend class XlaTensor;             // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend class AssignVariableOp;  // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend Status PrepareToUpdateVariable(
-      OpKernelContext* ctx, Tensor* tensor,
-      bool copy_on_read_mode);  // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend Status EnsureSparseVariableAccess(
-      OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
-      int64 index);  // For access to RefCountIsOne().
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::CopySliceToElement(
+      const Tensor& parent, Tensor* element,
+      int64 index);  // For access to base<T>().
   friend Status batch_util::MaybeMoveSliceToElement(
       Tensor* parent, Tensor* element,
-      int64 index);  // For access to RefCountIsOne().
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::CopyContiguousSlices(
+      const Tensor& src, int64 src_offset, int64 dst_offset, int64 num_slices,
+      Tensor* dst);  // For access to base<T>().
 
   bool CanUseDMA() const;
 
@@ -867,32 +875,21 @@ typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
 
 template <typename T>
 typename TTypes<T>::Scalar Tensor::scalar() {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::Scalar(base<T>());
 }
 
-#ifdef USE_TSTRING
-template <>
-inline typename TTypes<std::string>::Scalar Tensor::scalar<std::string>() {
-  LOG(FATAL)
-      << "std::string is no longer a scalar type, use tensorflow::tstring";
-}
-#endif  // USE_TSTRING
-
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
 }
-
-#ifdef USE_TSTRING
-template <>
-inline typename TTypes<std::string>::ConstScalar Tensor::scalar<std::string>()
-    const {
-  LOG(FATAL)
-      << "std::string is no longer a scalar type, use tensorflow::tstring";
-}
-#endif  // USE_TSTRING
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_dims() {

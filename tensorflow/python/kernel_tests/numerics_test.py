@@ -64,7 +64,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
         self.evaluate(t_verified)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("add_check_numerics_op() is meant to be a v1-only API")
 class NumericsTest(test.TestCase):
 
   def testInf(self):
@@ -110,9 +110,8 @@ class NumericsTest(test.TestCase):
     _ = control_flow_ops.cond(predicate,
                               lambda: constant_op.constant([37.]),
                               lambda: constant_op.constant([42.]))
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+    with self.assertRaisesRegex(
+        ValueError, r"`tf\.add_check_numerics_ops\(\) is not compatible with "
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
@@ -122,9 +121,8 @@ class NumericsTest(test.TestCase):
     _ = control_flow_ops.while_loop(lambda _: predicate,
                                     lambda _: constant_op.constant([37.]),
                                     [constant_op.constant([42.])])
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+    with self.assertRaisesRegex(
+        ValueError, r"`tf\.add_check_numerics_ops\(\) is not compatible with "
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()

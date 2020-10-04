@@ -26,6 +26,7 @@ class SaveSpec(object):
 
     Args:
       tensor: the tensor to save or callable that produces a tensor to save.
+        If the value is `None`, the `SaveSpec` is ignored.
       slice_spec: the slice to be saved. See `Variable.SaveSliceInfo`.
       name: the name to save the tensor under.
       dtype: The data type of the Tensor. Required if `tensor` is callable.
@@ -45,7 +46,10 @@ class SaveSpec(object):
       self.device = device
     else:
       self.dtype = tensor.dtype
-      self.device = tensor.device
+      if device is not None:
+        self.device = device
+      else:
+        self.device = tensor.device
 
   @property
   def tensor(self):

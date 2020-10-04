@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import util_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -53,6 +56,7 @@ def _infer_frame_shape(signal, frame_length, frame_step, pad_end, axis):
 
 
 @tf_export("signal.frame")
+@dispatch.add_dispatch_support
 def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
           name=None):
   """Expands `signal`'s `axis` dimension into frames of `frame_length`.
@@ -68,11 +72,27 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
 
   For example:
 
+  >>> # A batch size 3 tensor of 9152 audio samples.
+  >>> audio = tf.random.normal([3, 9152])
+  >>> 
+  >>> # Compute overlapping frames of length 512 with a step of 180 (frames overlap
+  >>> # by 332 samples). By default, only 49 frames are generated since a frame
+  >>> # with start position j*180 for j > 48 would overhang the end.
+  >>> frames = tf.signal.frame(audio, 512, 180)
+  >>> frames.shape.assert_is_compatible_with([3, 49, 512])
+  >>> 
+  >>> # When pad_end is enabled, the final two frames are kept (padded with zeros).
+  >>> frames = tf.signal.frame(audio, 512, 180, pad_end=True)
+  >>> frames.shape.assert_is_compatible_with([3, 51, 512])
+  
+  If the dimension along `axis` is N, and `pad_end=False`, the number of frames
+  can be computed by:
+   ```python
+   num_frames = 1 + (N - frame_size) // frame_step
+   ```
+   If `pad_end=True`, the number of frames can be computed by:
   ```python
-  pcm = tf.compat.v1.placeholder(tf.float32, [None, 9152])
-  frames = tf.signal.frame(pcm, 512, 180)
-  magspec = tf.abs(tf.signal.rfft(frames, [512]))
-  image = tf.expand_dims(magspec, 3)
+  num_frames = -(-N // frame_step) # ceiling division
   ```
 
   Args:
@@ -88,7 +108,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     name: An optional name for the operation.
 
   Returns:
-    A `Tensor` of frames with shape `[..., frames, frame_length, ...]`.
+    A `Tensor` of frames with shape `[..., num_frames, frame_length, ...]`.
 
   Raises:
     ValueError: If `frame_length`, `frame_step`, `pad_value`, or `axis` are not
@@ -109,14 +129,27 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     result_shape = _infer_frame_shape(signal, frame_length, frame_step, pad_end,
                                       axis)
 
-    # Axis can be negative. Convert it to positive.
-    signal_rank = array_ops.rank(signal)
-    axis = math_ops.range(signal_rank)[axis]
+    def maybe_constant(val):
+      val_static = tensor_util.constant_value(val)
+      return (val_static, True) if val_static is not None else (val, False)
 
-    signal_shape = array_ops.shape(signal)
-    outer_dimensions, length_samples, inner_dimensions = array_ops.split(
-        signal_shape, [axis, 1, signal_rank - 1 - axis])
-    length_samples = array_ops.reshape(length_samples, [])
+    signal_shape, signal_shape_is_static = maybe_constant(
+        array_ops.shape(signal))
+    axis, axis_is_static = maybe_constant(axis)
+
+    if signal_shape_is_static and axis_is_static:
+      # Axis can be negative. Convert it to positive.
+      axis = range(len(signal_shape))[axis]
+      outer_dimensions, length_samples, inner_dimensions = np.split(
+          signal_shape, indices_or_sections=[axis, axis + 1])
+      length_samples = length_samples.item()
+    else:
+      signal_rank = array_ops.rank(signal)
+      # Axis can be negative. Convert it to positive.
+      axis = math_ops.range(signal_rank)[axis]
+      outer_dimensions, length_samples, inner_dimensions = array_ops.split(
+          signal_shape, [axis, 1, signal_rank - 1 - axis])
+      length_samples = array_ops.reshape(length_samples, [])
     num_outer_dimensions = array_ops.size(outer_dimensions)
     num_inner_dimensions = array_ops.size(inner_dimensions)
 
@@ -134,11 +167,11 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
           0, frame_length + frame_step * (num_frames - 1) - length_samples)
 
       # Pad the inner dimension of signal by pad_samples.
-      paddings = array_ops.concat(
-          [array_ops.zeros([num_outer_dimensions, 2], dtype=pad_samples.dtype),
-           [[0, pad_samples]],
-           array_ops.zeros([num_inner_dimensions, 2], dtype=pad_samples.dtype)],
-          0)
+      paddings = array_ops.concat([
+          array_ops.zeros([num_outer_dimensions, 2], dtype=pad_samples.dtype),
+          ops.convert_to_tensor([[0, pad_samples]]),
+          array_ops.zeros([num_inner_dimensions, 2], dtype=pad_samples.dtype)
+      ], 0)
       signal = array_ops.pad(signal, paddings, constant_values=pad_value)
 
       signal_shape = array_ops.shape(signal)
@@ -147,7 +180,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
       num_frames = math_ops.maximum(
           0, 1 + (length_samples - frame_length) // frame_step)
 
-    subframe_length = util_ops.gcd(frame_length, frame_step)
+    subframe_length, _ = maybe_constant(util_ops.gcd(frame_length, frame_step))
     subframes_per_frame = frame_length // subframe_length
     subframes_per_hop = frame_step // subframe_length
     num_subframes = length_samples // subframe_length

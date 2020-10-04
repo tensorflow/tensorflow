@@ -109,7 +109,7 @@ class DeviceMemoryBase {
  private:
   void *opaque_;  // Platform-dependent value representing allocated memory.
   uint64 size_;   // Size in bytes of this allocation.
-  uint64 payload_ = 0;  // Payload data associtated with this allocation.
+  uint64 payload_ = 0;  // Payload data associated with this allocation.
 };
 
 // Typed wrapper around "void *"-like DeviceMemoryBase.
@@ -129,7 +129,9 @@ class DeviceMemory final : public DeviceMemoryBase {
   // regions, this effectively amounts to a cast from a void*.
   explicit DeviceMemory(const DeviceMemoryBase &other)
       : DeviceMemoryBase(const_cast<DeviceMemoryBase &>(other).opaque(),
-                         other.size()) {}
+                         other.size()) {
+    SetPayload(other.payload());
+  }
 
   // Returns the number of elements of type ElemT that constitute this
   // allocation.

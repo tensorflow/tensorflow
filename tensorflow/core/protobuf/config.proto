@@ -2,18 +2,18 @@ syntax = "proto3";
 
 package tensorflow;
 
-option cc_enable_arenas = true;
-option java_outer_classname = "ConfigProtos";
-option java_multiple_files = true;
-option java_package = "org.tensorflow.framework";
-
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "ConfigProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 message GPUOptions {
   // Fraction of the available GPU memory to allocate for each process.
@@ -110,6 +110,18 @@ message GPUOptions {
       // For the concept of "visible" and "virtual" GPU, see the comments for
       // "visible_device_list" above for more information.
       repeated float memory_limit_mb = 1;
+
+      // Priority values to use with the virtual devices. Use the cuda function
+      // cudaDeviceGetStreamPriorityRange to query for valid range of values for
+      // priority.
+      //
+      // On a P4000 GPU with cuda 10.1, the priority range reported was 0 for
+      // least priority and -1 for greatest priority.
+      //
+      // If this field is not specified, then the virtual devices will be
+      // created with the default. If this field has values set, then the size
+      // of this must match with the above memory_limit_mb.
+      repeated int32 priority = 2;
     }
 
     // The multi virtual device settings. If empty (not set), it will create
@@ -367,6 +379,17 @@ message ConfigProto {
   // The execution of an individual op (for some op types) can be
   // parallelized on a pool of intra_op_parallelism_threads.
   // 0 means the system picks an appropriate number.
+  //
+  // If you create an ordinary session, e.g., from Python or C++,
+  // then there is exactly one intra op thread pool per process.
+  // The first session created determines the number of threads in this pool.
+  // All subsequent sessions reuse/share this one global pool.
+  //
+  // There are notable exceptions to the default behavior describe above:
+  // 1. There is an environment variable  for overriding this thread pool,
+  //    named TF_OVERRIDE_GLOBAL_THREADPOOL.
+  // 2. When connecting to a server, such as a remote `tf.train.Server`
+  //    instance, then this option will be ignored altogether.
   int32 intra_op_parallelism_threads = 2;
 
   // Nodes that perform blocking operations are enqueued on a pool of
@@ -456,6 +479,12 @@ message ConfigProto {
   // enabled, this field is ignored and sessions are always isolated.
   bool isolate_session_state = 15;
 
+  // When true, WorkerSessions are created with device attributes from the
+  // full cluster.
+  // This is helpful when a worker wants to partition a graph
+  // (for example during a PartitionedCallOp).
+  bool share_cluster_devices_in_session = 17;
+
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
@@ -519,10 +548,8 @@ message ConfigProto {
     // CPU usage.
     bool disable_thread_spinning = 9;
 
-    // When true, WorkerSessions are created with device attributes from the
-    // full cluster.
-    // This is helpful when a worker wants to partition a graph
-    // (for example during a PartitionedCallOp).
+    // This was promoted to a non-experimental API. Please use
+    // ConfigProto.share_cluster_devices_in_session instead.
     bool share_cluster_devices_in_session = 10;
 
     // Metadata about the session.
@@ -553,11 +580,32 @@ message ConfigProto {
     // to an "execute" operation. The kernel for these operations is responsible
     // to lower the encapsulated graph to a particular device.
     bool enable_mlir_bridge = 13;
-  };
+
+    // Whether to enable the MLIR-based Graph optimizations.
+    //
+    // This will become a part of standard Tensorflow graph optimization
+    // pipeline, currently this is only used for gradual migration and testing
+    // new passes that are replacing existing optimizations in Grappler.
+    bool enable_mlir_graph_optimization = 16;
+
+    // If true, the session will not store an additional copy of the graph for
+    // each subgraph.
+    //
+    // If this option is set to true when a session is created, the
+    // `RunOptions.output_partition_graphs` options must not be set.
+    bool disable_output_partition_graphs = 14;
+
+    // Minimum number of batches run through the XLA graph before XLA fusion
+    // autotuner is enabled. Default value of zero disables the autotuner.
+    //
+    // The XLA fusion autotuner can improve performance by executing a heuristic
+    // search on the compiler parameters.
+    int64 xla_fusion_autotuner_thresh = 15;
+  }
 
   Experimental experimental = 16;
 
-  // Next: 17
+  // Next: 18
 }
 
 // Options for a single Run() call.
@@ -611,7 +659,14 @@ message RunOptions {
     // and tail) latency.
     // Consider using this option for CPU-bound workloads like inference.
     bool use_run_handler_pool = 2;
-  };
+    // Options for run handler thread pool.
+    message RunHandlerPoolOptions {
+      // Priority of the request. The run handler thread pool will schedule ops
+      // based on the priority number. The larger number means higher priority.
+      int64 priority = 1;
+    }
+    RunHandlerPoolOptions run_handler_pool_options = 3;
+  }
 
   Experimental experimental = 8;
 

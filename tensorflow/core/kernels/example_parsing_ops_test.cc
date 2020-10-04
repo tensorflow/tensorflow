@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -82,11 +84,11 @@ template <typename T>
 struct ExampleStore {
  private:
   static ExampleTensorMap serialized_example;
-  static std::once_flag flags_init;
+  static absl::once_flag flags_init;
 
  public:
   static ExampleTensorMap& GetSerializedExample() {
-    std::call_once(flags_init, [] {
+    absl::call_once(flags_init, [] {
       AddExample(&serialized_example, 10, 1, 1);
       AddExample(&serialized_example, 100, 1, 1);
       AddExample(&serialized_example, 1000, 1, 1);
@@ -133,7 +135,7 @@ struct ExampleStore {
 template <typename T>
 ExampleTensorMap ExampleStore<T>::serialized_example;
 template <typename T>
-std::once_flag ExampleStore<T>::flags_init;
+absl::once_flag ExampleStore<T>::flags_init;
 
 template struct ExampleStore<BytesFiller>;
 template struct ExampleStore<Int64Filler>;
@@ -195,15 +197,28 @@ static Graph* ParseExample(int batch_size, int num_keys, int feature_size) {
                    .Attr("dense_shapes", dense_shapes)
                    .Finalize(g, &ret));
 
+  FixupSourceAndSinkEdges(g);
   return g;
 }
 
 template <typename Options>
 static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
+  bool scalar_input = (batch_size == 0);
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor& serialized = Options::Store::GetSerializedExample()[std::make_tuple(
-      batch_size, num_keys, feature_size)];
-  Tensor names(DT_STRING, TensorShape({batch_size}));
+  Tensor& serialized_batch =
+      Options::Store::GetSerializedExample()[std::make_tuple(
+          scalar_input ? 1 : batch_size, num_keys, feature_size)];
+  Tensor serialized_example(DT_STRING, TensorShape());
+  Tensor names(DT_STRING,
+               scalar_input ? TensorShape({}) : TensorShape({batch_size}));
+  Tensor* serialized;
+
+  if (scalar_input) {
+    serialized_example.scalar<tstring>()() = serialized_batch.vec<tstring>()(0);
+    serialized = &serialized_example;
+  } else {
+    serialized = &serialized_batch;
+  }
 
   std::vector<NodeBuilder::NodeOut> dense_defaults;
   std::vector<DataType> sparse_types;
@@ -211,7 +226,7 @@ static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
   std::vector<DataType> ragged_split_types;
   std::vector<PartialTensorShape> dense_shapes;
   Tensor keys_t(DT_STRING, {static_cast<int32>(num_keys)});
-  auto keys_flat = keys_t.flat<string>();
+  auto keys_flat = keys_t.flat<tstring>();
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
     keys_flat(i) = strings::Printf("feature_%d", i);
@@ -246,7 +261,7 @@ static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
 
   Node* ret;
   TF_EXPECT_OK(NodeBuilder(g->NewName("n"), "ParseExampleV2")
-                   .Input(test::graph::Constant(g, serialized))
+                   .Input(test::graph::Constant(g, *serialized))
                    .Input(test::graph::Constant(g, names))
                    .Input(test::graph::Constant(g, sparse_keys))
                    .Input(test::graph::Constant(g, dense_keys))
@@ -259,6 +274,7 @@ static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
                    .Attr("dense_shapes", dense_shapes)
                    .Finalize(g, &ret));
 
+  FixupSourceAndSinkEdges(g);
   return g;
 }
 
@@ -309,6 +325,7 @@ static Graph* ParseSingleExample(int num_keys, int feature_size) {
                    .Attr("dense_shapes", dense_shapes)
                    .Finalize(g, &ret));
 
+  FixupSourceAndSinkEdges(g);
   return g;
 }
 
@@ -331,13 +348,15 @@ typedef BenchmarkOptions<ExampleStore<FloatFiller>, kRagged> RaggedFloat;
 
 // B == batch_size, K == num_keys. F == feature_size.
 // K must be one of 10, 100, 1000
-#define BM_ParseExample(TYPE, B, K, F)                                   \
-  static void BM_ParseExample##_##TYPE##_##B##_##K##_##F(int iters) {    \
-    int64 items_per_iter = static_cast<int64>(B) * K * F;                \
-    testing::UseRealTime();                                              \
-    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter); \
-    test::Benchmark("cpu", ParseExample<TYPE>(B, K, F)).Run(iters);      \
-  }                                                                      \
+#define BM_ParseExample(TYPE, B, K, F)                                    \
+  static void BM_ParseExample##_##TYPE##_##B##_##K##_##F(int iters) {     \
+    int64 items_per_iter = static_cast<int64>(B) * K * F;                 \
+    testing::UseRealTime();                                               \
+    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter);  \
+    test::Benchmark("cpu", ParseExample<TYPE>(B, K, F), nullptr, nullptr, \
+                    nullptr, "SINGLE_THREADED_EXECUTOR")                  \
+        .Run(iters);                                                      \
+  }                                                                       \
   BENCHMARK(BM_ParseExample##_##TYPE##_##B##_##K##_##F);
 
 #define BM_AllParseExample(Type)       \
@@ -364,26 +383,43 @@ BM_AllParseExample(VarLenDenseFloat);
 
 // B == batch_size, K == num_keys. F == feature_size.
 // K must be one of 10, 100, 1000
-#define BM_ParseExampleV2(TYPE, B, K, F)                                 \
-  static void BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F(int iters) {  \
-    int64 items_per_iter = static_cast<int64>(B) * K * F;                \
-    testing::UseRealTime();                                              \
-    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter); \
-    test::Benchmark("cpu", ParseExampleV2<TYPE>(B, K, F)).Run(iters);    \
-  }                                                                      \
+// B=0 indicates that a scalar input should be used (instead of a vector).
+#define BM_ParseExampleV2(TYPE, B, K, F)                                    \
+  static void BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F(int iters) {     \
+    int64 items_per_iter = static_cast<int64>(std::max(B, 1)) * K * F;      \
+    testing::UseRealTime();                                                 \
+    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter);    \
+    test::Benchmark("cpu", ParseExampleV2<TYPE>(B, K, F), nullptr, nullptr, \
+                    nullptr, "SINGLE_THREADED_EXECUTOR")                    \
+        .Run(iters);                                                        \
+  }                                                                         \
   BENCHMARK(BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F);
 
-#define BM_AllParseExampleV2(Type)       \
-  BM_ParseExampleV2(Type, 1, 10, 1);     \
-  BM_ParseExampleV2(Type, 128, 10, 1);   \
-  BM_ParseExampleV2(Type, 512, 10, 1);   \
-  BM_ParseExampleV2(Type, 1, 100, 1);    \
-  BM_ParseExampleV2(Type, 128, 100, 1);  \
-  BM_ParseExampleV2(Type, 512, 100, 1);  \
-  BM_ParseExampleV2(Type, 1, 1000, 1);   \
-  BM_ParseExampleV2(Type, 128, 1000, 1); \
-  BM_ParseExampleV2(Type, 512, 1000, 1); \
-  BM_ParseExampleV2(Type, 1, 1, 1000000);
+#define BM_AllParseExampleV2(Type)        \
+  /* Vector Inputs */                     \
+  BM_ParseExampleV2(Type, 1, 10, 1);      \
+  BM_ParseExampleV2(Type, 128, 10, 1);    \
+  BM_ParseExampleV2(Type, 512, 10, 1);    \
+  BM_ParseExampleV2(Type, 1, 100, 1);     \
+  BM_ParseExampleV2(Type, 128, 100, 1);   \
+  BM_ParseExampleV2(Type, 512, 100, 1);   \
+  BM_ParseExampleV2(Type, 1, 1000, 1);    \
+  BM_ParseExampleV2(Type, 128, 1000, 1);  \
+  BM_ParseExampleV2(Type, 512, 1000, 1);  \
+  BM_ParseExampleV2(Type, 1, 1, 1000000); \
+  /* Scalar Inputs */                     \
+  BM_ParseExampleV2(Type, 0, 10, 1);      \
+  BM_ParseExampleV2(Type, 0, 100, 1);     \
+  BM_ParseExampleV2(Type, 0, 1000, 1);    \
+  BM_ParseExampleV2(Type, 0, 1, 10);      \
+  BM_ParseExampleV2(Type, 0, 1, 100);     \
+  BM_ParseExampleV2(Type, 0, 1, 1000);    \
+  BM_ParseExampleV2(Type, 0, 1, 10000);   \
+  BM_ParseExampleV2(Type, 0, 1, 100000);  \
+  BM_ParseExampleV2(Type, 0, 1, 1000000); \
+  BM_ParseExampleV2(Type, 0, 10, 100000); \
+  BM_ParseExampleV2(Type, 0, 100, 10000); \
+  BM_ParseExampleV2(Type, 0, 1000, 1000);
 
 BM_AllParseExampleV2(SparseString);
 BM_AllParseExampleV2(DenseString);
@@ -400,13 +436,15 @@ BM_AllParseExampleV2(RaggedFloat);
 
 // K == num_keys. F == feature_size.
 // K must be one of 10, 100, 1000
-#define BM_ParseSingleExample(TYPE, K, F)                                \
-  static void BM_ParseSingleExample##_##TYPE##_1_##K##_##F(int iters) {  \
-    int64 items_per_iter = K * F;                                        \
-    testing::UseRealTime();                                              \
-    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter); \
-    test::Benchmark("cpu", ParseSingleExample<TYPE>(K, F)).Run(iters);   \
-  }                                                                      \
+#define BM_ParseSingleExample(TYPE, K, F)                                    \
+  static void BM_ParseSingleExample##_##TYPE##_1_##K##_##F(int iters) {      \
+    int64 items_per_iter = K * F;                                            \
+    testing::UseRealTime();                                                  \
+    testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter);     \
+    test::Benchmark("cpu", ParseSingleExample<TYPE>(K, F), nullptr, nullptr, \
+                    nullptr, "SINGLE_THREADED_EXECUTOR")                     \
+        .Run(iters);                                                         \
+  }                                                                          \
   BENCHMARK(BM_ParseSingleExample##_##TYPE##_1_##K##_##F);
 
 #define BM_AllParseSingleExample(Type)     \

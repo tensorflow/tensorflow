@@ -28,18 +28,27 @@ import weakref
 import numpy as np
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+autograph = lazy_loader.LazyLoader(
+    "autograph", globals(),
+    "tensorflow.python.autograph.impl.api")
+
 
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
 # used for differentiation.
@@ -62,7 +71,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
 class EagerFunc(object):
   """A wrapper for a function owned by an EagerPyFunc."""
 
-  def __init__(self, func, Tout, is_grad_func):
+  def __init__(self, func, Tout, is_grad_func, use_tape_cache=True):
     """Constructs an EagerFunc.
 
     Args:
@@ -71,10 +80,14 @@ class EagerFunc(object):
         None.
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
+      use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
+        For additional information, see description of `_eager_py_func`.
+        This parameter should be removed once the #35084 issue is fixed.
     """
     self._func = func
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
+    self._use_tape_cache = use_tape_cache
 
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
@@ -85,7 +98,7 @@ class EagerFunc(object):
 
     Returns:
       A tensor of type `dtype`, or a zeros tensor if value is None and
-      this function is in fact a grdient function.
+      this function is in fact a gradient function.
 
     Raises:
       RuntimeError: if `value` is a variable.
@@ -100,7 +113,7 @@ class EagerFunc(object):
           "question: %s" % value)
     if value is None and self._is_grad_func:
       # Gradient functions may legitimately return a list that contains
-      # both Tensors and Python Nones. Unfortuantely this breaks the
+      # both Tensors and Python Nones. Unfortunately this breaks the
       # OpKernel, so for now we replace None objects with zeros, which is
       # mathematically correct but will prevent short-circuiting gradient
       # computations.
@@ -114,10 +127,10 @@ class EagerFunc(object):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
     with context.eager_mode(), backprop.GradientTape() as tape:
-      # Only watch tensors with a floating dtype.
+      # Only watch tensors with a floating or complex dtype.
       for tensor in args:
         for t in nest.flatten(tensor):
-          if t.dtype.is_floating:
+          if t.dtype.is_floating or t.dtype.is_complex:
             tape.watch(t)
       ret = self._func(*args)
       # copy the returned tensors to the PyFunc op's device if necessary.
@@ -138,7 +151,8 @@ class EagerFunc(object):
         else:
           outputs = _maybe_copy_to_context_device(
               self._convert(ret, dtype=self._out_dtypes[0]), device_name)
-    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    if self._use_tape_cache:
+      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
     return outputs
 
 
@@ -259,7 +273,7 @@ class FuncRegistry(object):
 # Global registry for py functions.
 _py_funcs = FuncRegistry()
 
-pywrap_tensorflow.InitializePyTrampoline(_py_funcs)
+_pywrap_py_func.initialize_py_trampoline(_py_funcs)
 
 
 def _internal_py_func(func,
@@ -268,11 +282,15 @@ def _internal_py_func(func,
                       stateful=None,
                       eager=False,
                       is_grad_func=False,
-                      name=None):
+                      name=None,
+                      use_tape_cache=True):
   """See documentation for py_func and eager_py_func."""
   if not callable(func):
     raise ValueError("Expected func to be callable, got func of type {}".format(
         type(func)))
+
+  original_func = func
+  func = autograph.do_not_convert(func)
 
   is_list_or_tuple = False
   if isinstance(Tout, (list, tuple)):
@@ -281,29 +299,45 @@ def _internal_py_func(func,
     Tout = [Tout]
 
   if eager:
-    func = EagerFunc(func, Tout, is_grad_func)
+    func = EagerFunc(func, Tout, is_grad_func, use_tape_cache=use_tape_cache)
+
+  # Tying the registered function's lifetime with the current default graph is
+  # not reliable. For example, Estimator-based binaries may switch graphs in
+  # between model training end evaluation, via saved_model. Those binaries work
+  # because the original function is global, and break once the registered
+  # function is an anonymous lambda, like the one produced by do_not_convert.
+  # To avoid breaking those cases, we attach the wrapper to the original
+  # function so that their lifetime is connected.
+  # TODO(b/144286616): Remove this.
+  if tf_inspect.isfunction(original_func):
+    # Note: this check is needed because original_func may be a descriptor
+    # (https://docs.python.org/3/howto/descriptor.html)
+    # and we can't attach attributes to those.
+    original_func.ag_dnc_wrapper__ = func
 
   token = _py_funcs.insert(func)
   # We tie the registered function's lifetime with the current default graph,
   # i.e., when the current graph is destroyed, we remove its py funcs.
   graph = ops.get_default_graph()
 
-  # pylint: disable=protected-access
-  while isinstance(graph, function._FuncGraph):
-    # If the py_func was declared inside a _FuncGraph, its lifetime should be
-    # bound to that of the outer graph instead.
-    graph = graph._outer_graph
+  while True:
+    current_graph = graph
+    if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
+      graph = graph._outer_graph  # pylint: disable=protected-access
+    elif isinstance(graph, func_graph.FuncGraph):
+      graph = graph.outer_graph
+    if graph is current_graph:
+      break
 
   # TODO(zhifengc): Consider adding a Graph method to collect
   # `cleanup` objects in one of its member.
   if not hasattr(graph, "_py_funcs_used_in_graph"):
-    graph._py_funcs_used_in_graph = []
+    graph._py_funcs_used_in_graph = []  # pylint: disable=protected-access
 
   # Store a reference to the function in the graph to ensure it stays alive
   # as long as the graph lives. When the graph is destroyed, the function
   # is left to the garbage collector for destruction as well.
-  graph._py_funcs_used_in_graph.append(func)
-  # pylint: enable=protected-access
+  graph._py_funcs_used_in_graph.append(func)  # pylint: disable=protected-access
 
   if eager:
     result = gen_script_ops.eager_py_func(
@@ -342,7 +376,60 @@ def _EagerPyFuncGrad(op, *dy):
         is_grad_func=True)
 
 
+def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
+  """Wraps a python function into a TensorFlow op that executes it eagerly.
+
+  This function is the internal implementation for `eager_py_func`, see the
+  `eager_py_func` docstring for the full description.
+
+  Note: this function as a layer of indirection was added with one
+  specific purpose: as a workaround for github issue #35084.
+  It does all the same as `eager_py_func` used to do with one difference:
+  it can be used to instruct underlying EagerFunc not to use `tape_cache`
+  to avoid memory leak. When the issue #35084 is fixed - this function should
+  be removed, its body should be moved back to become the body of
+  `eager_py_func` and all the call sites should be reverted to
+  using `eager_py_func` without `use_tape_cache` argument of any value.
+
+  Args:
+    func: A Python function which accepts a list of `Tensor` objects having
+      element types that match the corresponding `tf.Tensor` objects in `inp`
+      and returns a list of `Tensor` objects (or a single `Tensor`, or `None`)
+      having element types that match the corresponding values in `Tout`.
+    inp: A list of `Tensor` objects.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+      type if there is only one, indicating what `func` returns; an empty list
+      if no value is returned (i.e., if the return value is `None`).
+    name: A name for the operation (optional).
+    use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
+      For additional information, see description of `_eager_py_func`.
+      This parameter should be removed once the #35084 issue is fixed.
+
+  Returns:
+    A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
+    if `func` returns None.
+  """
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          eager=True,
+          name=name,
+          use_tape_cache=use_tape_cache)
+
+  return _internal_py_func(
+      func=func,
+      inp=inp,
+      Tout=Tout,
+      eager=True,
+      name=name,
+      use_tape_cache=use_tape_cache)
+
+
 @tf_export("py_function")
+@dispatch.add_dispatch_support
 def eager_py_func(func, inp, Tout, name=None):
   """Wraps a python function into a TensorFlow op that executes it eagerly.
 
@@ -422,7 +509,8 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
+  return _eager_py_func(
+      func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
@@ -482,7 +570,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   if context.executing_eagerly():
-    result = func(*[x.numpy() for x in inp])
+    result = func(*[np.array(x) for x in inp])
     result = nest.flatten(result)
 
     result = [x if x is None else ops.convert_to_tensor(x) for x in result]
@@ -490,6 +578,16 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
       # Mimic the automatic unwrapping in graph-mode py_func
       result, = result
     return result
+
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          stateful=stateful,
+          eager=False,
+          name=name)
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
@@ -509,6 +607,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     stateful argument making all functions stateful.
     """)
 @tf_export(v1=["py_func"])
+@dispatch.add_dispatch_support
 def py_func(func, inp, Tout, stateful=True, name=None):
   return py_func_common(func, inp, Tout, stateful, name=name)
 
@@ -517,12 +616,75 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 
 @tf_export("numpy_function")
+@dispatch.add_dispatch_support
 def numpy_function(func, inp, Tout, name=None):
+  """Wraps a python function and uses it as a TensorFlow op.
+
+  Given a python function `func` wrap this function as an operation in a
+  TensorFlow function. `func` must take numpy arrays as its arguments and
+  return numpy arrays as its outputs.
+
+  The following example creates a TensorFlow graph with `np.sinh()` as an
+  operation in the graph:
+
+  >>> def my_numpy_func(x):
+  ...   # x will be a numpy array with the contents of the input to the
+  ...   # tf.function
+  ...   return np.sinh(x)
+  >>> @tf.function(input_signature=[tf.TensorSpec(None, tf.float32)])
+  ... def tf_function(input):
+  ...   y = tf.numpy_function(my_numpy_func, [input], tf.float32)
+  ...   return y * y
+  >>> tf_function(tf.constant(1.))
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.3810978>
+
+  Comparison to `tf.py_function`:
+  `tf.py_function` and `tf.numpy_function` are very similar, except that
+  `tf.numpy_function` takes numpy arrays, and not `tf.Tensor`s. If you want the
+  function to contain `tf.Tensors`, and have any TensorFlow operations executed
+  in the function be differentiable, please use `tf.py_function`.
+
+  Note: The `tf.numpy_function` operation has the following known
+  limitations:
+
+  * The body of the function (i.e. `func`) will not be serialized in a
+    `tf.SavedModel`. Therefore, you should not use this function if you need to
+    serialize your model and restore it in a different environment.
+
+  * The operation must run in the same address space as the Python program
+    that calls `tf.numpy_function()`. If you are using distributed
+    TensorFlow, you must run a `tf.distribute.Server` in the same process as the
+    program that calls `tf.numpy_function`  you must pin the created
+    operation to a device in that server (e.g. using `with tf.device():`).
+
+  * Since the function takes numpy arrays, you cannot take gradients
+    through a numpy_function. If you require something that is differentiable,
+    please consider using tf.py_function.
+
+  * The resulting function is assumed stateful and will never be optimized.
+
+  Args:
+    func: A Python function, which accepts `numpy.ndarray` objects as arguments
+      and returns a list of `numpy.ndarray` objects (or a single
+      `numpy.ndarray`). This function must accept as many arguments as there are
+      tensors in `inp`, and these argument types will match the corresponding
+      `tf.Tensor` objects in `inp`. The returns `numpy.ndarray`s must match the
+      number and types defined `Tout`.
+      Important Note: Input and output `numpy.ndarray`s of `func` are not
+        guaranteed to be copies. In some cases their underlying memory will be
+        shared with the corresponding TensorFlow tensors. In-place modification
+        or storing `func` input or return values in python datastructures
+        without explicit (np.)copy can have non-deterministic consequences.
+    inp: A list of `tf.Tensor` objects.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+      type if there is only one, indicating what `func` returns.
+    name: (Optional) A name for the operation.
+
+  Returns:
+    Single or list of `tf.Tensor` which `func` computes.
+  """
   return py_func_common(func, inp, Tout, stateful=True, name=name)
 
-
-numpy_function.__doc__ = py_func_common.__doc__.replace("py_func",
-                                                        "numpy_function")
 
 ops.NotDifferentiable("PyFunc")
 ops.NotDifferentiable("PyFuncStateless")

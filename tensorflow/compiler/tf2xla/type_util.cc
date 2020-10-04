@@ -75,8 +75,8 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
       return Status::OK();
     default:
       return errors::InvalidArgument(
-          "Unsupported type in DataTypeToPrimitiveType ",
-          DataTypeString(data_type));
+          "Unsupported type in DataTypeToPrimitiveType: '",
+          DataTypeString(data_type), "'");
   }
 }
 
@@ -97,6 +97,7 @@ xla::StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type) {
           {xla::U16, DT_UINT16},
           {xla::U32, DT_UINT32},
           {xla::U64, DT_UINT64},
+          {xla::C128, DT_COMPLEX128},
       });
 
   auto it = data_type_map.find(type);

@@ -1,0 +1,16 @@
+path: "tensorflow.distribute.DistributedDataset"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.input_lib.DistributedDatasetInterface\'>"
+  is_instance: "<class \'collections.abc.Iterable\'>"
+  member {
+    name: "element_spec"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "reduce"
+    argspec: "args=[\'self\', \'initial_state\', \'reduce_func\'], varargs=None, keywords=None, defaults=None"
+  }
+}

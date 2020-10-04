@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <stdint.h>
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -21,16 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "unicode/appendable.h"  // TF:icu
-#include "unicode/schriter.h"  // TF:icu
-#include "unicode/uchar.h"  // TF:icu
-#include "unicode/ucnv.h"  // TF:icu
-#include "unicode/ucnv_err.h"  // TF:icu
-#include "unicode/umachine.h"  // TF:icu
-#include "unicode/uniset.h"  // TF:icu
-#include "unicode/unistr.h"  // TF:icu
-#include "unicode/uset.h"  // TF:icu
-#include "unicode/utypes.h"  // TF:icu
+#include "unicode/appendable.h"  // from @icu
+#include "unicode/schriter.h"  // from @icu
+#include "unicode/uchar.h"  // from @icu
+#include "unicode/ucnv.h"  // from @icu
+#include "unicode/ucnv_err.h"  // from @icu
+#include "unicode/umachine.h"  // from @icu
+#include "unicode/uniset.h"  // from @icu
+#include "unicode/unistr.h"  // from @icu
+#include "unicode/uset.h"  // from @icu
+#include "unicode/utf.h"  // from @icu
+#include "unicode/utypes.h"  // from @icu
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -549,10 +551,10 @@ class UnicodeEncodeOp : public OpKernel {
       for (; idx < input_splits_flat(i); ++idx) {
         int32 code_point = input_tensor_flat(idx);
         // Check for invalid code point
-        if (code_point > UCHAR_MAX_VALUE || code_point < UCHAR_MIN_VALUE) {
+        if (!U_IS_UNICODE_CHAR(code_point)) {
           if (error_options_.error_on_malformatting) {
             context->CtxFailure(errors::InvalidArgument(
-                "Code point value out of valid Unicode range."));
+                "Code point is out of range for Unicode, or a noncharacter."));
             return;
           } else if (!error_options_.elide_replacement) {
             code_point = error_options_.subst;

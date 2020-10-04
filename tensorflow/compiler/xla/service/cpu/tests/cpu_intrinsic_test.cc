@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "llvm-c/Target.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -69,6 +70,13 @@ class CpuUnaryIntrinsicTest
     return absl::StrCat(opcode, "_On_", triple,
                         (features.empty() ? "" : "_With"), features);
   }
+
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    HloTestBase::SetAotFastMathDebugOptions(&debug_options);
+    return debug_options;
+  }
 };
 
 // Creates a module with a call to the unary op, and tests if the
@@ -76,6 +84,13 @@ class CpuUnaryIntrinsicTest
 TEST_P(CpuUnaryIntrinsicTest, DoIt) {
   HloComputation::Builder builder(TestName());
   IntrinsicTestSpec spec = GetParam();
+
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
 
   auto param_shape = ShapeUtil::MakeShape(F32, {1024});
   HloInstruction* param = builder.AddInstruction(

@@ -22,10 +22,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -36,10 +36,14 @@ namespace {
 const char* kOpName = "SimpleOpEval";
 
 TfLiteStatus SimpleOpEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input1 = tflite::GetInput(context, node, /*index=*/0);
-  const TfLiteTensor* input2 = tflite::GetInput(context, node, /*index=*/1);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, /*index=*/0, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, /*index=*/1, &input2));
 
-  TfLiteTensor* output = GetOutput(context, node, /*index=*/0);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, /*index=*/0, &output));
 
   int32_t* output_data = output->data.i32;
   *output_data = *(input1->data.i32) + *(input2->data.i32);
@@ -140,16 +144,86 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
-  ASSERT_TRUE(output.find("SimpleOpEval:Profile") != std::string::npos)
+  ASSERT_TRUE(output.find("SimpleOpEval/Profile") != std::string::npos)
       << output;
+}
+
+// A simple test that performs `ADD` if condition is true, and `MUL` otherwise.
+// The computation is: `cond ? a + b : a * b`.
+class ProfileSummarizerIfOpTest : public subgraph_test_util::ControlFlowOpTest {
+ protected:
+  void SetUp() override {
+    interpreter_->AddSubgraphs(2);
+    builder_->BuildAddSubgraph(interpreter_->subgraph(1));
+    builder_->BuildMulSubgraph(interpreter_->subgraph(2));
+    builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());
+
+    interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
+    interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2});
+    interpreter_->ResizeInputTensor(interpreter_->inputs()[2], {1, 2});
+    ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+    subgraph_test_util::FillIntTensor(
+        interpreter_->tensor(interpreter_->inputs()[1]), {5, 7});
+    subgraph_test_util::FillIntTensor(
+        interpreter_->tensor(interpreter_->inputs()[2]), {1, 2});
+  }
+};
+
+TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
+  BufferedProfiler profiler(1024);
+  interpreter_->SetProfiler(&profiler);
+
+  interpreter_->typed_input_tensor<bool>(0)[0] = true;
+  profiler.StartProfiling();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  profiler.StopProfiling();
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  subgraph_test_util::CheckIntTensor(output, {1, 2}, {6, 9});
+
+  auto events = profiler.GetProfileEvents();
+  EXPECT_EQ(2, events.size());
+  int event_count_of_subgraph_zero = std::count_if(
+      events.begin(), events.end(),
+      [](auto event) { return event->extra_event_metadata == 0; });
+  int event_count_of_subgraph_one = std::count_if(
+      events.begin(), events.end(),
+      [](auto event) { return event->extra_event_metadata == 1; });
+  int event_count_of_subgraph_two = std::count_if(
+      events.begin(), events.end(),
+      [](auto event) { return event->extra_event_metadata == 2; });
+  EXPECT_EQ(1, event_count_of_subgraph_zero);
+  EXPECT_EQ(1, event_count_of_subgraph_one);
+  EXPECT_EQ(0, event_count_of_subgraph_two);
+}
+
+TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
+  BufferedProfiler profiler(1024);
+  interpreter_->SetProfiler(&profiler);
+
+  interpreter_->typed_input_tensor<bool>(0)[0] = false;
+  profiler.StartProfiling();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  profiler.StopProfiling();
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  subgraph_test_util::CheckIntTensor(output, {1, 2}, {5, 14});
+
+  auto events = profiler.GetProfileEvents();
+  EXPECT_EQ(2, events.size());
+  int event_count_of_subgraph_zero = std::count_if(
+      events.begin(), events.end(),
+      [](auto event) { return event->extra_event_metadata == 0; });
+  int event_count_of_subgraph_one = std::count_if(
+      events.begin(), events.end(),
+      [](auto event) { return event->extra_event_metadata == 1; });
+  int event_count_of_subgraph_two = std::count_if(
+      events.begin(), events.end(),
+      [](auto event) { return event->extra_event_metadata == 2; });
+  EXPECT_EQ(1, event_count_of_subgraph_zero);
+  EXPECT_EQ(0, event_count_of_subgraph_one);
+  EXPECT_EQ(1, event_count_of_subgraph_two);
 }
 
 }  // namespace
 }  // namespace profiling
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

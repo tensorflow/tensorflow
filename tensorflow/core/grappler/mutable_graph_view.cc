@@ -353,8 +353,7 @@ void MutableGraphView::AddAndDedupFanouts(NodeDef* node) {
         CanDedupControlWithRegularInput(*this, input_node_name);
     bool can_dedup_control =
         is_control_input && (can_dedup_control_with_regular_input ||
-                             (!can_dedup_control_with_regular_input &&
-                              controlling_fanins.contains(input_node_name)));
+                             controlling_fanins.contains(input_node_name));
     if (!gtl::InsertIfNotPresent(&fanins, input_node_name) &&
         can_dedup_control) {
       node->mutable_input()->SwapElements(pos, last_pos);
@@ -679,7 +678,10 @@ Status MutableGraphView::SwapNodeNames(absl::string_view from_node_name,
       [this](NodeDef* node, const FanoutsMap::iterator& control_fanouts) {
         if (CanDedupControlWithRegularInput(*this, *node) &&
             control_fanouts != fanouts().end()) {
-          for (const auto& control_fanout : control_fanouts->second) {
+          for (auto it = control_fanouts->second.begin();
+               it != control_fanouts->second.end();) {
+            // Advance `it` before invalidation from removal.
+            const auto& control_fanout = *it++;
             if (HasRegularFaninNode(*this, *control_fanout.node,
                                     node->name())) {
               RemoveControllingFaninInternal(control_fanout.node, node);

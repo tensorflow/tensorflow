@@ -134,7 +134,7 @@ std::string GetMaxPoolingIndicesCode(const HW& kernel_size) {
       }
       const int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * params.dst_size.x +
         int(gid.x);
-      FLT4 value = static_cast<FLT4>(indexes) + FLT4(0.1);
+      FLT4 value = static_cast<FLT4>(indexes);
       $$2
       output_buffer[linear_index] = value;
     }
@@ -224,29 +224,29 @@ ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
          std::vector<int> uniform_params = {
              dimension.w,
              dimension.h,
-             IntegralDivideRoundUp(dimension.c, 4),
+             DivideRoundUp(dimension.c, 4),
              dimension.w * dimension.h,
              output_dimension.w,
              output_dimension.h,
-             IntegralDivideRoundUp(dimension.c, 4),
+             DivideRoundUp(dimension.c, 4),
              output_dimension.w * output_dimension.h,
              params.strides.w,
              params.strides.h,
              params.padding.prepended.w,
              params.padding.prepended.h,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     BHWC dst_shape = buffers.find(output_id)->second;
     const uint3 grid =
-        uint3(dst_shape.w, dst_shape.h, IntegralDivideRoundUp(dst_shape.c, 4));
+        uint3(dst_shape.w, dst_shape.h, DivideRoundUp(dst_shape.c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
-    int groups_x = IntegralDivideRoundUp(grid.x, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(grid.y, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(grid.z, groups_size.z);
+    int groups_x = DivideRoundUp(grid.x, groups_size.x);
+    int groups_y = DivideRoundUp(grid.y, groups_size.y);
+    int groups_z = DivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

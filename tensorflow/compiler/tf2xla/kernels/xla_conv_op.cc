@@ -37,7 +37,7 @@ class XlaConvOp : public XlaOpKernel {
         context, context->GetAttr("precision_config", &precision_config_attr));
     OP_REQUIRES(context,
                 precision_config_.ParsePartialFromString(precision_config_attr),
-                errors::InvalidArgument("Error parsing precison config."));
+                errors::InvalidArgument("Error parsing precision config."));
   }
 
   void Compile(XlaOpKernelContext* context) override {

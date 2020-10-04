@@ -22,6 +22,7 @@ import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
@@ -37,11 +38,17 @@ global_b = 17
 class ReachingDefinitionsAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
+    # TODO(mdan): Use a custom FunctionTransformer here.
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source, source_file=None, future_features=(), namespace={})
+        name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
     node = qual_names.resolve(node)
-    ctx = transformer.Context(entity_info)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
     node = reaching_definitions.resolve(node, ctx, graphs,
@@ -247,7 +254,11 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     self.assertHasDefs(fn_body[2].value, 2)
 
     inner_fn_body = fn_body[1].body[1].body
-    self.assertSameDef(inner_fn_body[0].value, def_of_a_in_if)
+    def_of_a_in_foo = inner_fn_body[0].value
+    # Even though `a` is visible in the inner functio above, the late binding
+    # makes it impossible to assume that the same value will be visible at
+    # call time.
+    self.assertHasDefs(def_of_a_in_foo, 0)
 
   def test_nested_functions_isolation(self):
 
@@ -358,16 +369,18 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
   def test_comprehension_leaking(self):
 
     def test_fn(a):
-      all(x for x in a)
-      return x  # pylint:disable=undefined-variable
+      _ = [x for x in a]
+      return x  # pylint:disable=undefined-loop-variable
 
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    listcomp_target = fn_body[0].value.args[0].generators[0].target
+    listcomp_target = fn_body[0].value.generators[0].target
     retval = fn_body[1].value
 
-    # Python2 leaks comprehension symbols. Python3 doesn't.
+    # Python2 leaks list comprehension symbols. Python3 doesn't.
+    # For details, see:
+    # https://stackoverflow.com/questions/4198906/list-comprehension-rebinds-names-even-after-scope-of-comprehension-is-this-righ
     if six.PY2:
       self.assertSameDef(retval, listcomp_target)
     else:
@@ -378,6 +391,46 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     def test_fn():
       def a():
         pass
+      if a:  # pylint:disable=using-constant-test
+        a = None
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[1].test, 1)
+    self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[2].value, 2)
+
+    self.assertHasDefinedIn(fn_body[1], ('a',))
+
+  def test_definitions_in_except_block(self):
+
+    def test_fn():
+      try:
+        pass
+      except ValueError:
+        a = None
+      if a:  # pylint:disable=using-constant-test
+        a = None
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[1].test, 1)
+    self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[2].value, 2)
+
+    self.assertHasDefinedIn(fn_body[1], ('a',))
+
+  def test_definitions_in_except_block_of_raising_try(self):
+
+    def test_fn():
+      try:
+        raise ValueError()
+      except ValueError:
+        a = None
       if a:  # pylint:disable=using-constant-test
         a = None
       return a

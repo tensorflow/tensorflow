@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -8,6 +10,7 @@ cc_library(
     srcs = ["convert.cc"],
     hdrs = ["convert.h"],
     deps = [
+        ":data_type",
         ":shape",
         ":status",
         ":tensor",
@@ -17,6 +20,14 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+exports_files(
+    [
+        "custom_parsers.h",
+        "custom_transformations.h",
+    ],
+    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
@@ -47,6 +58,7 @@ cc_library(
         "memory_management/greedy_by_size_assignment.cc",
         "memory_management/internal.cc",
         "memory_management/min_cost_flow_assignment.cc",
+        "memory_management/types.cc",
     ],
     hdrs = [
         "memory_management.h",
@@ -65,19 +77,23 @@ cc_library(
         ":types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
 cc_library(
     name = "model",
+    srcs = ["model.cc"],
     hdrs = ["model.h"],
     deps = [
-        ":data_type",
         ":shape",
         ":status",
         ":tensor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -86,7 +102,34 @@ cc_test(
     srcs = ["model_test.cc"],
     deps = [
         ":model",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "lstm_parser",
+    srcs = ["lstm_parser.cc"],
+    hdrs = ["lstm_parser.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":model_builder_helper",
+        ":object_reader",
+        ":operations",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:lstm_shared",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
     ],
 )
 
@@ -96,33 +139,64 @@ cc_library(
     hdrs = ["model_builder.h"],
     deps = [
         ":data_type",
+        ":lstm_parser",
         ":model",
+        ":model_builder_helper",
+        ":model_transformer",
+        ":object_reader",
         ":operations",
         ":shape",
         ":status",
         ":tensor",
-        "//tensorflow/lite:context",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@FP16",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-    ],
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+    ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
 cc_test(
     name = "model_builder_test",
     srcs = ["model_builder_test.cc"],
     deps = [
+        ":data_type",
         ":model_builder",
+        ":shape",
+        ":tensor",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "model_builder_helper",
+    srcs = ["model_builder_helper.cc"],
+    hdrs = ["model_builder_helper.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":operations",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
+        "@FP16",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -132,6 +206,7 @@ cc_library(
     hdrs = ["model_transformer.h"],
     deps = [
         ":model",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -139,15 +214,61 @@ cc_library(
 # TODO(impjdi): Add unit test for model_transformer.
 
 cc_library(
+    name = "object_reader",
+    srcs = ["object_reader.cc"],
+    hdrs = ["object_reader.h"],
+    deps = [
+        ":model",
+        ":model_builder_helper",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "operations",
     srcs = ["operations.cc"],
     hdrs = ["operations.h"],
     deps = [
         ":data_type",
-        ":model",
         ":shape",
         ":status",
+        ":tensor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "quantization_util",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    deps = [
+        ":status",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "quantization_util_test",
+    srcs = ["quantization_util_test.cc"],
+    deps = [
+        ":quantization_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -157,10 +278,7 @@ cc_library(
     name = "shape",
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
-    deps = [
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/strings",
-    ],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 cc_test(
@@ -175,6 +293,7 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
+    deps = ["@com_google_absl//absl/status"],
 )
 
 cc_library(
@@ -207,6 +326,9 @@ cc_test(
     srcs = ["memory_management_test.cc"],
     deps = [
         ":memory_management",
+        ":shape",
+        ":types",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -221,10 +343,37 @@ cc_test(
 )
 
 cc_test(
+    name = "memory_management_types_test",
+    srcs = ["memory_management/types_test.cc"],
+    deps = [
+        ":memory_management",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
     deps = [
         ":util",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "winograd_util",
+    srcs = ["winograd_util.cc"],
+    hdrs = ["winograd_util.h"],
+    deps = [
+        ":data_type",
+        ":shape",
+        ":tensor",
+    ],
+)
+
+cc_library(
+    name = "workgroup_selection",
+    srcs = ["workgroup_selection.cc"],
+    hdrs = ["workgroup_selection.h"],
+    deps = [":util"],
 )

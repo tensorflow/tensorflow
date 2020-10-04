@@ -87,7 +87,7 @@ class ParseSingleExampleVectorizer : public Vectorizer {
     TF_RETURN_IF_ERROR(node_builder.Finalize(outer_scope, &new_node));
 
     // Add output mappings
-    for (size_t i = 0; i < node.num_outputs(); ++i) {
+    for (int i = 0; i < node.num_outputs(); ++i) {
       outputs->emplace_back(new_node, i, true);
     }
     return Status::OK();

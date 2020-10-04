@@ -44,7 +44,7 @@ extension InterpreterError: LocalizedError {
     case .failedToCreateInterpreter:
       return "Failed to create the interpreter."
     case .failedToResizeInputTensor(let index):
-      return "Failed to resize input tesnor at index \(index)."
+      return "Failed to resize input tensor at index \(index)."
     case .failedToCopyDataToInputTensor:
       return "Failed to copy data to input tensor."
     case .failedToAllocateTensors:

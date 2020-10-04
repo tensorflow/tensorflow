@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -47,7 +48,7 @@ namespace xla {
 // The following types are used for ahead of time compilation.
 
 // Contains the object file data created as a result of ahead-of-time
-// compuation.
+// computation.
 using ObjectFileData = std::vector<char>;
 
 // Abstract superclass describing the result of an ahead-of-time compilation.
@@ -73,6 +74,11 @@ class AotCompilationOptions {
   // Returns the ID of the platform to which these options apply.
   virtual se::Platform::Id PlatformId() const = 0;
 
+  virtual int64 replica_count() const { return 0; }
+  virtual int64 num_cores() const { return 0; }
+  virtual bool use_spmd_partitioning() const { return false; }
+  virtual bool deduplicate_hlo() const { return false; }
+
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
   se::DeviceMemoryAllocator* device_allocator() const {
@@ -96,6 +102,21 @@ class AotCompilationOptions {
     static_device_assignment_ = device_assignment;
   }
 
+  FusionConfigCollection fusion_config_collection() const {
+    return fusion_config_collection_;
+  }
+  void set_fusion_config_collection(
+      FusionConfigCollection fusion_config_collection) {
+    fusion_config_collection_ = fusion_config_collection;
+  }
+
+  const std::vector<std::vector<bool>>& fusion_config() const {
+    return fusion_config_;
+  }
+  void set_fusion_config(const std::vector<std::vector<bool>>& fusion_config) {
+    fusion_config_ = fusion_config;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -103,6 +124,9 @@ class AotCompilationOptions {
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
   absl::optional<DeviceAssignment> static_device_assignment_;
+  std::vector<std::vector<bool>> fusion_config_;
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -150,6 +174,21 @@ class Compiler {
   virtual StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  // Runs HLO passes to optimize the given HloModule, perform scheduling and
+  // buffer assignment, returns the optimized module and the buffer assignments.
+  // This interface is intentionally narrow.
+  //
+  // If device_allocator is not null, the compiler may use it to allocate temp
+  // space on the device for use during compilation. For example, the compiler
+  // may allocate buffers on the device and then run variants of a given
+  // algorithm over those buffers, to see which variant is fastest. Any space
+  // allocated should be deallocated before this function returns.
+  virtual StatusOr<
+      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
+                                   se::StreamExecutor* executor,
+                                   se::DeviceMemoryAllocator* device_allocator);
 
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are

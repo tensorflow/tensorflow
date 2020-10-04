@@ -62,7 +62,7 @@ def _get_node_def(op):
 
 
 def _get_op_def(op):
-  return op.op_def or op_def_registry.get_registered_ops()[op.type]
+  return op.op_def or op_def_registry.get(op.type)
 
 
 def _create_input_dict(function_graph,
@@ -170,7 +170,7 @@ def graph_to_function_def(graph, operations, inputs, outputs, out_names=None):
   else:
     func.signature.output_arg.extend(
         [_tensor_to_argdef(o, name=n) for o, n in zip(outputs, out_names)])
-  func_arg_placeholders = set([i.name for i in inputs])
+  func_arg_placeholders = set(i.name for i in inputs)
   input_dict = _create_input_dict(graph, func_arg_placeholders,
                                   initial_value=initial_dict)
 

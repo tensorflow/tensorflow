@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,21 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import tempfile
+
 import numpy as np
-import tensorflow as tf
+from six.moves import range
+import tensorflow.compat.v1 as tf
 
-from tensorflow import flags
-
-from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.lite.experimental.examples.lstm import input_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
-FLAGS = flags.FLAGS
+FLAGS = tf.compat.v1.flags.FLAGS
 
 # Number of steps to train model.
-TRAIN_STEPS = 1
-
-CONFIG = tf.ConfigProto(device_count={"GPU": 0})
+# Dial to 0 means no training at all, all the weights will be just using their
+# initial values. This can help make the test smaller.
+TRAIN_STEPS = 0
 
 
 class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
@@ -55,12 +56,15 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     super(UnidirectionalSequenceRnnTest, self).setUp()
     # Import MNIST dataset
     data_dir = tempfile.mkdtemp(dir=FLAGS.test_tmpdir)
-    self.mnist = input_data.read_data_sets(data_dir, one_hot=True)
+    self.mnist = input_data.read_data_sets(
+        data_dir, fake_data=True, one_hot=True)
 
   def buildRnnLayer(self):
     return tf.keras.layers.StackedRNNCells([
-        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
-        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
+        tf.compat.v1.lite.experimental.nn.TfLiteRNNCell(
+            self.num_units, name="rnn1"),
+        tf.compat.v1.lite.experimental.nn.TfLiteRNNCell(
+            self.num_units, name="rnn2")
     ])
 
   def buildModel(self, rnn_layer, is_dynamic_rnn):
@@ -79,22 +83,23 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     """
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
-        tf.random_normal([self.num_units, self.n_classes]))
-    out_bias = tf.Variable(tf.random_normal([self.n_classes]))
+        tf.random.normal([self.num_units, self.n_classes]))
+    out_bias = tf.Variable(tf.random.normal([self.n_classes]))
 
     # input image placeholder
-    x = tf.placeholder(
+    x = tf.compat.v1.placeholder(
         "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
 
     # x is shaped [batch_size,time_steps,num_inputs]
     if is_dynamic_rnn:
       rnn_input = tf.transpose(x, perm=[1, 0, 2])
-      outputs, _ = tf.lite.experimental.nn.dynamic_rnn(
+      outputs, _ = tf.compat.v1.lite.experimental.nn.dynamic_rnn(
           rnn_layer, rnn_input, dtype="float32")
       outputs = tf.unstack(outputs, axis=0)
     else:
       rnn_input = tf.unstack(x, self.time_steps, 1)
-      outputs, _ = tf.nn.static_rnn(rnn_layer, rnn_input, dtype="float32")
+      outputs, _ = tf.compat.v1.nn.static_rnn(
+          rnn_layer, rnn_input, dtype="float32")
 
     # Compute logits by multiplying outputs[-1] of shape [batch_size,num_units]
     # by the softmax layer's out_weight of shape [num_units,n_classes]
@@ -114,20 +119,22 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       sess: The graph session.
     """
     # input label placeholder
-    y = tf.placeholder("float", [None, self.n_classes])
+    y = tf.compat.v1.placeholder("float", [None, self.n_classes])
     # Loss function
     loss = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     # Optimization
-    opt = tf.train.AdamOptimizer(
+    opt = tf.compat.v1.train.AdamOptimizer(
         learning_rate=self.learning_rate).minimize(loss)
 
     # Initialize variables
-    sess.run(tf.global_variables_initializer())
+    sess.run(tf.compat.v1.global_variables_initializer())
     for _ in range(TRAIN_STEPS):
       batch_x, batch_y = self.mnist.train.next_batch(
-          batch_size=self.batch_size, shuffle=False)
+          batch_size=self.batch_size, fake_data=True)
 
+      batch_x = np.array(batch_x)
+      batch_y = np.array(batch_y)
       batch_x = batch_x.reshape((self.batch_size, self.time_steps,
                                  self.n_input))
       sess.run(opt, feed_dict={x: batch_x, y: batch_y})
@@ -157,8 +164,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     tf.reset_default_graph()
     x, prediction, output_class = self.buildModel(rnn_layer, is_dynamic_rnn)
 
-    new_sess = tf.compat.v1.Session(config=CONFIG)
-    saver = tf.train.Saver()
+    new_sess = tf.compat.v1.Session()
+    saver = tf.compat.v1.train.Saver()
     saver.restore(new_sess, model_dir)
     return x, prediction, output_class, new_sess
 
@@ -177,13 +184,19 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       - Expected output.
 
     """
-    b1, _ = self.mnist.train.next_batch(batch_size=1)
+    b1, _ = self.mnist.train.next_batch(batch_size=1, fake_data=True)
+    b1 = np.array(b1, dtype=np.dtype("float32"))
     sample_input = np.reshape(b1, (1, self.time_steps, self.n_input))
 
     expected_output = sess.run(output_class, feed_dict={x: sample_input})
     return sample_input, expected_output
 
-  def tfliteInvoke(self, sess, test_inputs, input_tensor, output_tensor):
+  def tfliteInvoke(self,
+                   sess,
+                   test_inputs,
+                   input_tensor,
+                   output_tensor,
+                   use_mlir_converter=False):
     """Get tflite inference result.
 
     This method will convert tensorflow from session to tflite model then based
@@ -194,12 +207,15 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       test_inputs: The test inputs for tflite.
       input_tensor: The input tensor of tensorflow graph.
       output_tensor: The output tensor of tensorflow graph.
+      use_mlir_converter: Whether or not to use MLIRConverter to convert the
+        model.
 
     Returns:
       The tflite inference result.
     """
     converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
                                                      [output_tensor])
+    converter.experimental_new_converter = use_mlir_converter
     tflite = converter.convert()
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
@@ -215,7 +231,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return result
 
   def testStaticRnnMultiRnnCell(self):
-    sess = tf.compat.v1.Session(config=CONFIG)
+    sess = tf.compat.v1.Session()
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), is_dynamic_rnn=False)
@@ -228,18 +244,23 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    # Test Toco-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
+    # Test MLIR-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, True)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
-    sess = tf.compat.v1.Session(config=CONFIG)
+    sess = tf.compat.v1.Session()
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), is_dynamic_rnn=True)
     self.trainModel(x, prediction, output_class, sess)
 
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
 
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildRnnLayer(), sess, saver, is_dynamic_rnn=True)
@@ -247,9 +268,15 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    # Test Toco-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
+    # Test MLIR-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, True)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
 
 if __name__ == "__main__":
+  tf.disable_v2_behavior()
   test.main()

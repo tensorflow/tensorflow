@@ -33,17 +33,6 @@ limitations under the License.
 
 namespace xla {
 
-Status VerifyNotSparse(const Shape& shape) {
-  return ShapeUtil::ForEachSubshapeWithStatus(
-      shape, [](const Shape& subshape, const ShapeIndex&) -> Status {
-        if (LayoutUtil::IsSparseArray(subshape)) {
-          return InternalError("Sparse arrays are not yet fully supported: %s",
-                               ShapeUtil::HumanStringWithLayout(subshape));
-        }
-        return Status::OK();
-      });
-}
-
 bool IsCallerInstruction(HloInstruction* hlo) {
   switch (hlo->opcode()) {
     case HloOpcode::kCall:
@@ -57,6 +46,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
       return true;
     default:
       return false;
@@ -84,7 +74,6 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
   }
   return Status::OK();
 }
-
 }  // namespace
 
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
@@ -93,8 +82,6 @@ Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
         "Called computations specified for non-caller instruction  %s",
         hlo->ToString());
   }
-  TF_RETURN_IF_ERROR(VerifyNotSparse(hlo->shape()));
-
   absl::optional<int> arity = HloOpcodeArity(hlo->opcode());
   if (arity) {
     TF_RETURN_IF_ERROR(CheckOperandCount(hlo, *arity));
@@ -222,7 +209,64 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
           hlo->ToString());
     }
   }
+
+  // When the channel_id() or use_global_device_ids() is set, device ids in
+  // ReplicaGroup config no longer only mean replica ids. So we skip the check
+  // on the replica count.
+  if (auto channel_instr = DynCast<HloChannelInstruction>(hlo)) {
+    if (channel_instr->channel_id()) {
+      return Status::OK();
+    }
+  }
+  if (auto all_reduce = DynCast<HloAllReduceInstruction>(hlo)) {
+    if (all_reduce->use_global_device_ids()) {
+      return Status::OK();
+    }
+  }
+
+  int64 replica_count = hlo->GetModule()->config().replica_count();
+  if (!replicas_seen.empty() && replicas_seen.size() != replica_count) {
+    return InternalError(
+        "Replica count in HloModuleConfig is %d, but ReplicaGroup config "
+        "contains %d replicas: %s",
+        replica_count, replicas_seen.size(), hlo->ToString());
+  }
+
   return Status::OK();
+}
+
+Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
+  auto ag = Cast<HloAllGatherInstruction>(hlo);
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag));
+  TF_RET_CHECK(ag->all_gather_dimension() >= 0);
+  TF_RET_CHECK(ag->all_gather_dimension() < ag->shape().rank());
+  TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(0)->shape().rank());
+  if (ag->use_global_device_ids() && ag->replica_groups().empty()) {
+    return InternalError(
+        "Replica group must be specified when use_global_device_ids is true");
+  }
+
+  int64 shard_count = CeilOfRatio(
+      ag->shape().dimensions(ag->all_gather_dimension()),
+      ag->operand(0)->shape().dimensions(ag->all_gather_dimension()));
+  if (ag->channel_id().has_value()) {
+    if (ag->use_global_device_ids()) {
+      TF_RET_CHECK(shard_count == ag->replica_groups()[0].replica_ids_size());
+    } else {
+      if (ag->replica_groups().empty() ||
+          ag->replica_groups()[0].replica_ids_size() != 1) {
+        return InternalError(
+            "Replica group size must be 1 when use_global_device_ids is "
+            "false if the all-gather is also cross-partition");
+      }
+    }
+  } else if (!ag->replica_groups().empty()) {
+    // Cross-replica all-gather: shard count is subgroup size.
+    TF_RET_CHECK(shard_count == ag->replica_groups()[0].replica_ids_size());
+  }
+  return CheckShape(ag, ShapeInference::InferAllGatherShape(
+                            ag->operand(0)->shape(), ag->all_gather_dimension(),
+                            shard_count));
 }
 
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
@@ -238,23 +282,45 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo));
 
-  // The size of each replica group must match the number of operands to the
-  // all-to-all.
+  auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
+  TF_RET_CHECK(all_to_all != nullptr);
+  if (all_to_all->split_dimension()) {
+    if (hlo->replica_groups().empty()) {
+      return InternalError(
+          "An array all-to-all must have an explicit replica_groups config");
+    }
+  }
+
+  // The size of each replica group must be the same (the split count of the
+  // operaion). In case the default replica group is used (empty replica group,
+  // must not be an array all-to-all, as checked above), infer from the number
+  // of operands.
+  const int64 split_count = hlo->replica_groups().empty()
+                                ? hlo->operand_count()
+                                : hlo->replica_groups()[0].replica_ids_size();
   for (const ReplicaGroup& g : hlo->replica_groups()) {
-    if (g.replica_ids_size() != hlo->operand_count()) {
+    if (g.replica_ids_size() != split_count) {
       return InternalError(
           "Replica group has size %d, but all replica groups in an all-to-all "
-          "with N operands must have size N: %s",
+          "must have size N: %s",
           g.replica_ids_size(), hlo->ToString());
     }
   }
 
-  std::vector<const Shape*> operand_shapes;
-  for (const HloInstruction* operand : hlo->operands()) {
-    operand_shapes.push_back(&operand->shape());
+  if (all_to_all->split_dimension()) {
+    TF_RET_CHECK(hlo->operand_count() == 1);
+    return CheckShape(
+        hlo, ShapeInference::InferAllToAllShape(
+                 hlo->operand(0)->shape(), *all_to_all->split_dimension(),
+                 *all_to_all->split_dimension(), split_count));
+  } else {
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : hlo->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(hlo,
+                      ShapeInference::InferAllToAllTupleShape(operand_shapes));
   }
-  return CheckShape(hlo,
-                    ShapeInference::InferAllToAllTupleShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandlePartitionId(HloInstruction* hlo) {
@@ -265,7 +331,9 @@ Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
   return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }
 
-Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+namespace {
+
+Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo) {
   // A source or target cannot appear twice in the collective-permute's
   // source-target pairs.
   absl::flat_hash_set<int64> seen_sources;
@@ -284,8 +352,28 @@ Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
           p.second, hlo->ToString());
     }
   }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo));
   return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
                              hlo->operand(0)->shape()));
+}
+
+Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo));
+  return CheckShape(
+      hlo, ShapeUtil::MakeTupleShape(
+               {hlo->operand(0)->shape(), hlo->operand(0)->shape(),
+                ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})}));
+}
+
+Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
+  return CheckShape(
+      hlo, ShapeUtil::GetTupleElementShape(hlo->operand(0)->shape(), 0));
 }
 
 Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
@@ -403,6 +491,23 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
           RandomDistribution_Name(instruction->random_distribution()));
   }
 
+  return Status::OK();
+}
+
+Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
+  if (!hlo->shape().IsTuple() || hlo->shape().tuple_shapes_size() != 2) {
+    return InternalError(
+        "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
+        hlo->shape().ToString());
+  }
+  if (!ShapeUtil::Compatible(hlo->operand(0)->shape(),
+                             hlo->shape().tuple_shapes(0))) {
+    return InternalError(
+        "Expected state shape to match between input and output for "
+        "RngBitGenerator. Got %s vs. %s",
+        hlo->operand(0)->shape().ToString(),
+        hlo->shape().tuple_shapes(0).ToString());
+  }
   return Status::OK();
 }
 
@@ -565,13 +670,16 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
-  // Bitcasts are not allowed to change the element type.
-  if (bitcast->operand(0)->shape().element_type() !=
-      bitcast->shape().element_type()) {
+  if (layout_sensitive_ &&
+      shape_size_function_(bitcast->shape()) !=
+          shape_size_function_(bitcast->operand(0)->shape())) {
     return InternalError(
-        "Bitcast can not change the element type from %s to %s",
-        PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
-        PrimitiveType_Name(bitcast->shape().element_type()));
+        "Bitcast cannot have different shape sizes of output (%d) and operand "
+        "(%d) (%s) (%s)",
+        shape_size_function_(bitcast->shape()),
+        shape_size_function_(bitcast->operand(0)->shape()),
+        bitcast->shape().ToString(true),
+        bitcast->operand(0)->shape().ToString(true));
   }
   return Status::OK();
 }
@@ -591,6 +699,20 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
+  }
+  return Status::OK();
+}
+
+Status ShapeVerifier::HandleDynamicReshape(HloInstruction* dynamic_reshape) {
+  // Check for mixed precision.
+  const Shape& operand_shape = dynamic_reshape->operand(0)->shape();
+  TF_RET_CHECK(SameElementType(dynamic_reshape->shape(), operand_shape));
+  TF_RET_CHECK(ShapeUtil::ElementsIn(dynamic_reshape->shape()) ==
+               ShapeUtil::ElementsIn(operand_shape));
+  TF_RET_CHECK(dynamic_reshape->shape().rank() + 1 ==
+               dynamic_reshape->operand_count());
+  for (int64 i = 1; i < dynamic_reshape->operand_count(); ++i) {
+    TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
   }
   return Status::OK();
 }
@@ -677,6 +799,28 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
           << custom_call->operand(i)->shape().ToString() << " operand "
           << operand_shape_with_layout.ToString();
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
+    }
+  }
+  for (const auto& pair : custom_call->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < custom_call->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        custom_call->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(custom_call->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        custom_call->operand(pair.second.first)->shape(), pair.second.second);
+    if (layout_sensitive_) {
+      TF_RET_CHECK(operand_subshape == output_subshape)
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
+    } else {
+      TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
     }
   }
   return Status::OK();
@@ -826,11 +970,24 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
 Status ShapeVerifier::HandleCopyStart(HloInstruction* copy_start) {
   return CheckShape(copy_start,
                     ShapeUtil::MakeTupleShape({copy_start->operand(0)->shape(),
+                                               copy_start->operand(0)->shape(),
                                                ShapeUtil::MakeShape(U32, {})}),
                     /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
+  const Shape& operand_shape = copy_done->operand(0)->shape();
+  const Shape& dest_shape = ShapeUtil::GetTupleElementShape(operand_shape, 0);
+  const Shape& src_shape = ShapeUtil::GetTupleElementShape(operand_shape, 1);
+  if (!ShapesSame(dest_shape, src_shape,
+                  /*minor_to_major_only=*/false,
+                  /*ignore_memory_space=*/true)) {
+    return InternalError(
+        "Source and destination buffers in CopyDone arguments need to be the "
+        "same shape found %s and %s\n%s",
+        StringifyShape(dest_shape), StringifyShape(src_shape),
+        copy_done->ToString());
+  }
   return CheckShape(copy_done, ShapeUtil::GetTupleElementShape(
                                    copy_done->operand(0)->shape(), 0));
 }
@@ -902,7 +1059,7 @@ namespace {
 // inputs.
 Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
-    // White list the following opcodes for mixed-precision check, because
+    // Allow-list the following opcodes for mixed-precision check, because
     // they involve data pass through or grouping via tuples, where the
     // precisions of buffers can be different.
     case HloOpcode::kCall:
@@ -991,6 +1148,13 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
                         get_size->operand(0)->shape(), get_size->dimension()));
 }
 
+Status ShapeVerifier::HandleSetDimensionSize(HloInstruction* set_size) {
+  return CheckShape(set_size,
+                    ShapeInference::InferSetDimensionSizeShape(
+                        set_size->operand(0)->shape(),
+                        set_size->operand(1)->shape(), set_size->dimension()));
+}
+
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape,
                                  bool only_compare_minor_to_major_in_layout) {
@@ -1018,6 +1182,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCopyDone:
       case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
+      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
@@ -1099,8 +1264,6 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   TF_RETURN_IF_ERROR(
       ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
 
-  TF_RETURN_IF_ERROR(VerifyNotSparse(result_layout.shape()));
-
   if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
                              result_layout.shape())) {
     return InternalError(
@@ -1121,7 +1284,6 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     const HloInstruction* parameter = computation->parameter_instruction(i);
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
-    TF_RETURN_IF_ERROR(VerifyNotSparse(layout.parameter_shape(i)));
     if (!ShapeUtil::Compatible(parameter->shape(), layout.parameter_shape(i))) {
       return InternalError(
           "Shape of the entry computation parameter %d is %s should be "
@@ -1191,7 +1353,8 @@ Status VerifyHloStructure(HloModule* module) {
               "Operand %d (%s) of instruction %s is in a different "
               "computation: %s vs %s",
               i, operand->name(), instruction->name(),
-              operand->parent()->name(), instruction->parent()->name());
+              operand->parent() ? operand->parent()->name() : "(null)",
+              instruction->parent()->name());
         }
       }
     }
@@ -1264,32 +1427,60 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
   return Status::OK();
 }
 
-// Checks CopyStart and CopyDone nodes.
-Status VerifyAsynchronousCopies(const HloModule& module) {
+Status VerifySingleUser(const HloInstruction* instruction,
+                        HloOpcode expected_user) {
+  TF_RET_CHECK(instruction->users().size() == 1)
+      << "The " << HloOpcodeString(instruction->opcode())
+      << " instruction requires one consumer, found "
+      << instruction->users().size();
+
+  const HloInstruction* user = instruction->users().front();
+  TF_RET_CHECK(user->opcode() == expected_user)
+      << "The consumer of a " << HloOpcodeString(instruction->opcode())
+      << " instruction needs to be " << HloOpcodeString(expected_user)
+      << ", found " << HloOpcodeString(user->opcode());
+  return Status::OK();
+}
+
+Status VerifySingleOperand(const HloInstruction* instruction,
+                           HloOpcode expected_operand) {
+  TF_RET_CHECK(instruction->operands().size() == 1)
+      << "The " << HloOpcodeString(instruction->opcode())
+      << " instruction requires one consumer, found "
+      << instruction->users().size();
+
+  const HloInstruction* operand = instruction->operand(0);
+  TF_RET_CHECK(operand->opcode() == expected_operand)
+      << "The operand of a " << HloOpcodeString(instruction->opcode())
+      << " instruction needs to be " << HloOpcodeString(expected_operand)
+      << ", found " << HloOpcodeString(operand->opcode());
+  return Status::OK();
+}
+
+// Checks asynchronous instruction pairs.
+Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   // CopyStart must have a single CopyDone user.
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kCopyStart: {
-          TF_RET_CHECK(instruction->users().size() == 1)
-              << "CopyStart instruction requires one consumer, found "
-              << instruction->users().size();
-          const HloInstruction* copy_done = instruction->users().front();
-          TF_RET_CHECK(copy_done->opcode() == HloOpcode::kCopyDone)
-              << "The consumer of a CopyStart instruction needs to be "
-                 "CopyDone, found "
-              << HloOpcodeString(copy_done->opcode());
+          TF_RETURN_IF_ERROR(
+              VerifySingleUser(instruction, HloOpcode::kCopyDone));
           break;
         }
         case HloOpcode::kCopyDone: {
-          TF_RET_CHECK(instruction->operands().size() == 1)
-              << "CopyDone instruction requires one operand, found "
-              << instruction->operands().size();
-          const HloInstruction* copy_start = instruction->operand(0);
-          TF_RET_CHECK(copy_start->opcode() == HloOpcode::kCopyStart)
-              << "The operand of a CopyDone instruction needs to be CopyStart, "
-                 "found "
-              << HloOpcodeString(copy_start->opcode());
+          TF_RETURN_IF_ERROR(
+              VerifySingleOperand(instruction, HloOpcode::kCopyStart));
+          break;
+        }
+        case HloOpcode::kCollectivePermuteStart: {
+          TF_RETURN_IF_ERROR(
+              VerifySingleUser(instruction, HloOpcode::kCollectivePermuteDone));
+          break;
+        }
+        case HloOpcode::kCollectivePermuteDone: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, HloOpcode::kCollectivePermuteStart));
           break;
         }
         default:
@@ -1300,37 +1491,47 @@ Status VerifyAsynchronousCopies(const HloModule& module) {
   return Status::OK();
 }
 
-// Checks various invariants of send and recv instructions.
-Status VerifySendsAndRecvs(const HloModule& module) {
-  absl::flat_hash_map<int64, const HloInstruction*> host_channels;
-  // Host send/recv instructions must have their own unique channel.
-  auto check_unique_host_channel = [&](const HloInstruction* instruction) {
-    const HloSendRecvInstruction* sendrecv =
-        DynCast<const HloSendRecvInstruction>(instruction);
-    if (sendrecv->is_host_transfer()) {
-      auto it_inserted =
-          host_channels.insert({*sendrecv->channel_id(), sendrecv});
-      if (!it_inserted.second) {
+// Checks that AllReduce instructions in the module are either all layout
+// constrained or all unconstrained.
+Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
+  const HloAllReduceInstruction* reference = nullptr;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kAllReduce) {
+        continue;
+      }
+      auto all_reduce = DynCast<HloAllReduceInstruction>(instruction);
+      if (!reference) {
+        reference = all_reduce;
+      }
+      if (reference->constrain_layout() != all_reduce->constrain_layout()) {
         return FailedPrecondition(
-            "Channel %d is used for multiple host send/recv instructions: "
-            "%s "
-            "and "
-            "%s",
-            *sendrecv->channel_id(), sendrecv->ToString(),
-            it_inserted.first->second->ToString());
+            "HloModule has a mix of layout constrained and unconstrained "
+            "AllReduce instructions.");
       }
     }
+  }
+  return Status::OK();
+}
 
-    return Status::OK();
-  };
+// Checks various invariants of channel instructions (send/recv and
+// collectives).
+Status VerifyChannels(const HloModule& module) {
+  absl::flat_hash_map<int64, std::vector<const HloInstruction*>>
+      channel_instructions;
 
   // Send/Recv instruction must have a single user: the corresponding
   // SendDone/RecvDone. with matching channel.
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
+      auto channel_instr = DynCast<HloChannelInstruction>(instruction);
+      if (!channel_instr || !channel_instr->channel_id()) {
+        continue;
+      }
+      channel_instructions[*channel_instr->channel_id()].push_back(instruction);
+
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
-          TF_RETURN_IF_ERROR(check_unique_host_channel(instruction));
           TF_RET_CHECK(instruction->users().size() == 1);
           const HloInstruction* send_done = instruction->users().front();
           TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
@@ -1339,7 +1540,6 @@ Status VerifySendsAndRecvs(const HloModule& module) {
           break;
         }
         case HloOpcode::kRecv: {
-          TF_RETURN_IF_ERROR(check_unique_host_channel(instruction));
           TF_RET_CHECK(instruction->users().size() == 1);
           const HloInstruction* recv_done = instruction->users().front();
           TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
@@ -1360,6 +1560,39 @@ Status VerifySendsAndRecvs(const HloModule& module) {
       }
     }
   }
+
+  // Iterate over each channel to check invariants.
+  for (auto& pair : channel_instructions) {
+    auto& instructions = pair.second;
+    const HloInstruction* first = instructions[0];
+    auto sendrecv = DynCast<HloSendRecvInstruction>(first);
+    if (sendrecv) {
+      absl::flat_hash_set<HloOpcode> opcodes;
+      for (const HloInstruction* instr : instructions) {
+        opcodes.insert(instr->opcode());
+        auto cast = DynCast<HloSendRecvInstruction>(instr);
+        TF_RET_CHECK(cast != nullptr)
+            << "channel " << pair.first
+            << " is used for different types of channel instructions";
+      }
+      if (sendrecv->is_host_transfer()) {
+        TF_RET_CHECK(instructions.size() == 2)
+            << "channel " << pair.first
+            << " is used for multiple host send/recv instructions";
+      } else {
+        TF_RET_CHECK(instructions.size() == opcodes.size())
+            << "channel " << pair.first
+            << " is used for multiple send/recv instructions";
+      }
+    } else {
+      for (const HloInstruction* instr : instructions) {
+        TF_RET_CHECK(first->opcode() == instr->opcode())
+            << "channel " << pair.first
+            << " is used for different types of channel instructions";
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -1563,7 +1796,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     for (int b = 0; b < conditional->branch_count(); ++b) {
       if (conditional->branch_computation(b)->num_parameters() != 1) {
         return FailedPrecondition(
-            "Branch computation %s of %s must have 1 parameter insted of %d",
+            "Branch computation %s of %s must have 1 parameter instead of %d",
             conditional->branch_computation(b)->name(), conditional->ToString(),
             conditional->branch_computation(b)->num_parameters());
       }
@@ -1662,8 +1895,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
-  TF_RETURN_IF_ERROR(VerifyAsynchronousCopies(*module));
-  TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
+  TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
+  TF_RETURN_IF_ERROR(VerifyChannels(*module));
 
   std::unique_ptr<ShapeVerifier> shape_verifier =
       target_metadata_->GetVerifier();
@@ -1682,11 +1915,16 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-      *module, [this](const Shape& shape) {
-        return target_metadata_->ShapeSize(shape);
+      *module, [this](const Shape& shape) -> int64 {
+        if (target_metadata_->IsLayoutSensitive()) {
+          return target_metadata_->ShapeSize(shape);
+        } else {
+          return 0;
+        }
       }));
 
   TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
+  TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
 
   return false;
 }

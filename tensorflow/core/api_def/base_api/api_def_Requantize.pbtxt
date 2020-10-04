@@ -48,7 +48,7 @@ END
 The type of the output. Should be a lower bit depth than Tinput.
 END
   }
-  summary: 
+  summary:
 "Converts the quantized `input` tensor into a lower-precision `output`."
   description: <<END
 Converts the quantized `input` tensor into a lower-precision `output`, using the

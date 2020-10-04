@@ -21,14 +21,13 @@ limitations under the License.
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -324,26 +323,6 @@ TEST(LowerIfWhileTest, WhileInCond) {
     ASSERT_EQ(out_tensors.size(), 1);
     EXPECT_EQ(out_tensors[0].scalar<int>()(), 2);
   }
-}
-
-TEST(LowerIfWhileTest, RaisesWhenLoweringUnhandledOpType) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-
-  Scope root = Scope::NewRootScope().ExitOnError();
-  Node* const_node;
-  Tensor const_val(DT_INT32, TensorShape({}));
-  const_val.scalar<int32>()() = 1;
-  TF_ASSERT_OK(NodeBuilder("const", "Const")
-                   .Attr("value", const_val)
-                   .Attr("dtype", const_val.dtype())
-                   .Attr(kLowerUsingSwitchMergeAttr, true)
-                   .Finalize(root.graph(), &const_node));
-  TF_ASSERT_OK(root.DoShapeInference(const_node));
-  TF_ASSERT_OK(root.ToGraph(graph.get()));
-
-  Status s = Rewrite(&graph);
-  ASSERT_EQ(s.code(), error::INTERNAL);
-  AssertHasSubstr(s.error_message(), "does not support lowering");
 }
 
 }  // namespace

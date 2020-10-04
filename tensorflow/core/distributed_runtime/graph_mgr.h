@@ -43,7 +43,7 @@ class ExecutorOpts;
 class StepStatsCollector;
 class RendezvousMgrInterface;
 class DeviceMgr;
-struct WorkerSession;
+class WorkerSession;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -69,14 +69,15 @@ struct WorkerSession;
 //   EXPECT_EQ(out["c"], Tensor({4, 6}));
 class GraphMgr {
  public:
-  explicit GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr);
+  explicit GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr);
   ~GraphMgr();
 
   // Registers a graph. Fills in "handle". The registered graph retains a
   // reference to cluster_flr to do cross process function calls.
   Status Register(const string& handle, const GraphDef& gdef,
                   WorkerSession* session, const GraphOptions& graph_options,
-                  const DebugOptions& debug_options, int64 collective_graph_key,
+                  const DebugOptions& debug_options,
+                  const ConfigProto& config_proto, int64 collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr,
                   string* graph_handle);
 
@@ -108,7 +109,7 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
-    Graph* graph = nullptr;                 // not owned.
+    std::unique_ptr<Graph> graph = nullptr;
     Device* device = nullptr;               // not owned.
     Executor* root = nullptr;               // not owned.
     FunctionLibraryRuntime* lib = nullptr;  // not owned.
@@ -144,13 +145,13 @@ class GraphMgr {
   };
 
   const WorkerEnv* worker_env_;  // Not owned.
-  DeviceMgr* device_mgr_;
+  const DeviceMgr* device_mgr_;
 
   CostModelManager cost_model_manager_;
 
   // Owned.
   mutex mu_;
-  int64 next_id_ GUARDED_BY(mu_) = 0;
+  int64 next_id_ TF_GUARDED_BY(mu_) = 0;
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;
@@ -179,7 +180,8 @@ class GraphMgr {
 
   Status InitItem(const string& handle, const GraphDef& gdef,
                   WorkerSession* session, const GraphOptions& graph_options,
-                  const DebugOptions& debug_options, int64 collective_graph_key,
+                  const DebugOptions& debug_options,
+                  const ConfigProto& config_proto, int64 collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
 
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,

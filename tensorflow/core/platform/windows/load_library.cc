@@ -16,15 +16,15 @@ limitations under the License.
 #include "tensorflow/core/platform/load_library.h"
 
 #include <Shlwapi.h>
+#undef StrCat  // Don't let StrCat be renamed to lstrcatA
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <time.h>
 #include <windows.h>
-#undef LoadLibrary
 #undef ERROR
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 
 #pragma comment(lib, "Shlwapi.lib")
@@ -33,7 +33,7 @@ namespace tensorflow {
 
 namespace internal {
 
-Status LoadLibrary(const char* library_filename, void** handle) {
+Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   string file_name = library_filename;
   std::replace(file_name.begin(), file_name.end(), '/', '\\');
 

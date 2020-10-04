@@ -38,7 +38,7 @@ Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
 void Worker::GetStatusAsync(const GetStatusRequest* request,
                             GetStatusResponse* response, bool fail_fast,
                             StatusCallback done) {
-  DeviceMgr* dm = env_->device_mgr;
+  const DeviceMgr* dm = env_->device_mgr;
   std::vector<DeviceAttributes> devices;
   dm->ListDeviceAttributes(&devices);
   response->mutable_device_attributes()->Reserve(devices.size());
@@ -53,7 +53,8 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       StatusCallback done) {
   Status s = env_->session_mgr->CreateSession(
       request->session_handle(), request->server_def(),
-      request->cluster_device_attributes(), request->isolate_session_state());
+      request->cluster_device_attributes(), request->isolate_session_state(),
+      request->master_task(), request->master_incarnation());
   done(s);
 }
 
@@ -77,11 +78,11 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
     session = env_->session_mgr->LegacySession();
   }
   if (s.ok()) {
-    s = session->graph_mgr->Register(
+    s = session->graph_mgr()->Register(
         request->session_handle(), request->graph_def(), session.get(),
         request->graph_options(), request->debug_options(),
-        request->collective_graph_key(), session->cluster_flr.get(),
-        response->mutable_graph_handle());
+        request->config_proto(), request->collective_graph_key(),
+        session->cluster_flr(), response->mutable_graph_handle());
   }
   done(s);
 }
@@ -98,7 +99,7 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
     session = env_->session_mgr->LegacySession();
   }
   if (s.ok()) {
-    s = session->graph_mgr->Deregister(request->graph_handle());
+    s = session->graph_mgr()->Deregister(request->graph_handle());
   }
 
   done(s);
@@ -197,7 +198,9 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   ProfilerSession* profiler_session = nullptr;
   if (collector && request->exec_opts().record_timeline()) {
     // If timeline was requested, assume we want hardware level tracing.
-    profiler_session = ProfilerSession::Create().release();
+    ProfileOptions options = ProfilerSession::DefaultOptions();
+    options.set_host_tracer_level(0);
+    profiler_session = ProfilerSession::Create(options).release();
   }
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {
@@ -218,14 +221,14 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     done(errors::Aborted("Call was aborted"));
     return;
   }
-  session->graph_mgr->ExecuteAsync(
+  session->graph_mgr()->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
       collector, response, cm, in,
       [this, step_id, response, session, cm, out, token, collector,
        profiler_session, opts, done](const Status& status) {
         Status s = status;
         if (s.ok()) {
-          s = session->graph_mgr->RecvOutputs(step_id, out);
+          s = session->graph_mgr()->RecvOutputs(step_id, out);
         }
 
         opts->ClearCancelCallback();
@@ -311,7 +314,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     token = cancellation_manager_.get_cancellation_token();
     cancellation_manager_.RegisterCallback(token,
                                            [cm]() { cm->StartCancel(); });
-    session->graph_mgr->ExecuteAsync(
+    session->graph_mgr()->ExecuteAsync(
         graph_handle, step_id, session.get(), request->exec_opts(),
         nullptr /* collector */, nullptr /* response */, cm, in,
         [this, token, step_id, session](Status s) {
@@ -320,14 +323,14 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
         });
   } else {
     // Send the partial run's new inputs.
-    s = session->graph_mgr->SendInputs(step_id, in);
+    s = session->graph_mgr()->SendInputs(step_id, in);
     if (!s.ok()) {
       finish(s);
       return;
     }
   }
 
-  session->graph_mgr->RecvOutputsAsync(
+  session->graph_mgr()->RecvOutputsAsync(
       step_id, out, [this, out, request, response, step_id, finish](Status s) {
         if (s.ok()) {
           // Construct and return the resp.
@@ -442,7 +445,7 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
         "RecvTensor expects a different device incarnation: ",
         parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
         ". Your worker job (\"",
-        env_->session_mgr->LegacySession()->worker_name,
+        env_->session_mgr->LegacySession()->worker_name(),
         "\") was probably restarted. Check your "
         "worker job for the reason why it was restarted.");
   }

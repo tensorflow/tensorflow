@@ -160,5 +160,13 @@ quantization.
 If axis is specified, min_range and max_range
 
 if `axis`=None, per-tensor quantization is performed as normal.
+
+
+*ensure_minimum_range (float) attribute*
+
+Ensures the minimum quantization range is at least this value.
+The legacy default value for this is 0.01, but it is strongly suggested to
+set it to 0 for new uses.
+
 END
 }

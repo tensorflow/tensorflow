@@ -18,11 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -40,12 +40,11 @@ namespace xla {
 
 using llvm_ir::IrArray;
 
-Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
+Status FusedIrEmitter::DefaultAction(const HloInstruction* hlo) {
   indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    if (generated_value_cache_[hlo].contains(index.multidim())) {
-      llvm::Value* generated_value =
-          generated_value_cache_[hlo][index.multidim()];
+    if (llvm::Value* generated_value = FindOrDefault(
+            generated_value_cache_[hlo], index.multidim(), nullptr)) {
       llvm::BasicBlock* generated_value_bb = nullptr;
       if (auto* generated_instruction =
               llvm::dyn_cast<llvm::Instruction>(generated_value)) {
@@ -71,15 +70,16 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
               << b_->GetInsertBlock()->getName().str() << ").";
     }
 
-    TF_ASSIGN_OR_RETURN(generated_value_cache_[hlo][index.multidim()],
+    TF_ASSIGN_OR_RETURN(llvm::Value* const generated_value,
                         elemental_emitter_->MakeElementGenerator(
                             hlo, indexed_generators_)(index));
-    return generated_value_cache_[hlo][index.multidim()];
+    generated_value_cache_[hlo][index.multidim()] = generated_value;
+    return generated_value;
   };
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
+Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
   unsigned global_address_space =
       llvm_ir::GetGlobalMemoryAddressSpace(*module_);
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
@@ -109,7 +109,7 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status FusedIrEmitter::HandleGetTupleElement(
-    HloInstruction* get_tuple_element) {
+    const HloInstruction* get_tuple_element) {
   auto emit_tuple_element_ptr = [=]() -> StatusOr<llvm::Value*> {
     const HloInstruction* tuple_operand = get_tuple_element->operand(0);
     llvm::Value* tuple_ptr;
@@ -148,7 +148,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
+Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
   indexed_generators_[parameter] =
       [=](const IrArray::Index& index) -> llvm::Value* {
     int64 param_num = parameter->parameter_number();
@@ -161,7 +161,7 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
         // address-space-based AA in LLVM, it wouldn't help us much here.
         return b_->CreateLoad(
             b_->CreateGEP(param_tile_buffer, {index.GetConstantWithIndexType(0),
-                                              tile_param_x_, tile_param_y_}),
+                                              thread_id_x_, thread_id_y_}),
             "tiled_buffer");
       }
     }
@@ -171,7 +171,7 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
+Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
   absl::Span<HloInstruction* const> operands(tuple->operands());
   std::vector<llvm::Type*> operand_elemental_ir_types;
   for (HloInstruction* operand : operands) {
@@ -192,7 +192,7 @@ Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::FinishVisit(HloInstruction* root) {
+Status FusedIrEmitter::FinishVisit(const HloInstruction* root) {
   fused_root_ = root;
   return Status::OK();
 }
@@ -213,96 +213,15 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
   if (consumer->opcode() != HloOpcode::kFusion) {
     return false;
   }
-  // Collects for each instruction in the fusion node from which (indirect)
-  // users newly created index values are passed. Roughly speaking, we reuse
-  // index values if the shapes are equal when ignoring the element type (we may
-  // reuse also if the shape change is a bitcast, but we don't consider that
-  // here). By ignoring potential reuses our estimate whether the fusion emitter
-  // is inefficient is a bit more conservative than necessary.
-  absl::flat_hash_map<const HloInstruction*,
-                      absl::flat_hash_set<const HloInstruction*>>
-      indexing_users;
-  // Stores the number of different index accesses for each instruction in the
-  // fusion node. The fusion emitter caches access with the same index, so this
-  // value indicates how many times a specific instruction will be emitted.
-  absl::flat_hash_map<const HloInstruction*, int64> index_usage_count;
-  index_usage_count[consumer] = 1;
-
-  auto evaluate_fusion_computation = [&indexing_users, &index_usage_count](
-                                         const HloInstruction* fusion) {
-    auto postorder =
-        fusion->fused_instructions_computation()->MakeInstructionPostOrder();
-    std::reverse(postorder.begin(), postorder.end());
-    for (const auto* instruction : postorder) {
-      if (instruction->opcode() == HloOpcode::kParameter) {
-        continue;
-      }
-      int64& total = index_usage_count[instruction];
-      if (indexing_users[instruction].empty()) {
-        total = index_usage_count[fusion];
-      } else {
-        total = 0;
-        for (const auto* user : indexing_users[instruction]) {
-          int64 weight = 1;
-          // Concatenate is special: the index differs for each operand, so
-          // in the worst case we have to deal with as many index values as
-          // the number of operands of Concatenate. By considering the worst
-          // case, we are more conservative than necessary regarding
-          // refusing to fuse.
-          if (user->opcode() == HloOpcode::kConcatenate) {
-            weight = user->operand_count();
-          }
-          total += index_usage_count[user] * weight;
-        }
-      }
-      for (const auto* operand : instruction->operands()) {
-        // For simplicity we assume that all shape and layout changing
-        // operations invalidate index reuse.
-        if (Shape::Equal().IgnoreElementType()(operand->shape(),
-                                               instruction->shape())) {
-          // If the index is reused, it means the operand gets index values
-          // from the same set of (indirect) users as 'instruction' itself.
-          indexing_users[operand].insert(indexing_users[instruction].begin(),
-                                         indexing_users[instruction].end());
-        } else {
-          // If the index is not reused, it means 'instruction' computes a
-          // new index derived from the index it gets.
-          indexing_users[operand].insert(instruction);
-        }
-      }
-    }
-  };
-  evaluate_fusion_computation(consumer);
-
-  // Also account for the 'producer' if it would be fused. Find the operand it
-  // corresponds to.
-  for (int64 operand_num = 0; operand_num < consumer->operand_count();
-       ++operand_num) {
-    if (consumer->operand(operand_num) == producer) {
-      auto instruction = consumer->fused_parameter(operand_num);
-      int64& total = index_usage_count[producer];
-      total = 0;
-      for (const auto* user : indexing_users[instruction]) {
-        total += index_usage_count[user];
-      }
-      break;
-    }
+  FusionNodeIndexingEvaluation eval_consumer(consumer);
+  if (producer->opcode() != HloOpcode::kFusion) {
+    return eval_consumer.CodeDuplicationTooHigh(producer);
   }
-
-  // If 'producer' is a fusion node as well, also evaluate it.
-  if (producer->opcode() == HloOpcode::kFusion) {
-    evaluate_fusion_computation(producer);
-  }
-
-  // Sum up the total number of emitted ops.
-  int64 total = 0;
-  for (const auto& entry : index_usage_count) {
-    total += entry.second;
-  }
-
-  // Check that the code duplication has at most a factor of 15 (where 15 is an
-  // arbitrary constant that seems to work).
-  return total > 15 * index_usage_count.size();
+  // If 'producer' is a fusion node as well, also evaluate it. Pass the
+  // evaluated duplication of the fusion node if it is merged into consumer.
+  FusionNodeIndexingEvaluation eval_producer(
+      producer, eval_consumer.EvaluateEmittedInstructions(producer));
+  return eval_producer.MaxCodeDuplicationTooHigh();
 }
 
 }  // namespace xla

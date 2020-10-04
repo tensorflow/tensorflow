@@ -36,9 +36,11 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     TF_CHECK_OK(spec.AddHostPortsJob("localhost", cluster_->targets()));
     ChannelCreationFunction channel_func =
         ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+    grpc_worker_env_.reset(CreateGrpcWorkerEnv());
+    std::shared_ptr<GrpcChannelCache> channel_cache(
+        NewGrpcChannelCache(spec, channel_func));
     std::unique_ptr<WorkerCacheInterface> worker_cache(
-        NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache>(
-            NewGrpcChannelCache(spec, channel_func))));
+        NewGrpcWorkerCache(channel_cache, grpc_worker_env_.get()));
 
     worker_session_.reset(new WorkerSession(
         "cluster_test_session", "/job:localhost/replica:0/task:0",
@@ -58,13 +60,14 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
         sig, attrs, options, lib_def, g, send_keys, recv_keys);
   }
 
-  Status Instantiate(const string& function_name,
-                     const FunctionLibraryDefinition& lib_def,
-                     test::function::Attrs attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* local_handle) {
-    return cluster_flr_->Instantiate(function_name, lib_def, attrs, options,
-                                     local_handle);
+  void Instantiate(const string& function_name,
+                   const FunctionLibraryDefinition& lib_def,
+                   test::function::Attrs attrs,
+                   const FunctionLibraryRuntime::InstantiateOptions& options,
+                   FunctionLibraryRuntime::LocalHandle* local_handle,
+                   FunctionLibraryRuntime::DoneCallback done) {
+    cluster_flr_->Instantiate(function_name, lib_def, attrs, options,
+                              local_handle, done);
   }
 
   Status InstantiateAndRun(
@@ -73,13 +76,21 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::LocalHandle handle;
-    TF_RETURN_IF_ERROR(cluster_flr_->Instantiate(function_name, lib_def, attrs,
-                                                 options, &handle));
+    Status status;
+    Notification instantiate_done;
+    cluster_flr_->Instantiate(function_name, lib_def, attrs, options, &handle,
+                              [&status, &instantiate_done](const Status& s) {
+                                status = s;
+                                instantiate_done.Notify();
+                              });
+    instantiate_done.WaitForNotification();
+    if (!status.ok()) {
+      return status;
+    }
 
     Notification done;
     FunctionLibraryRuntime::Options opts;
     std::vector<Tensor> out;
-    Status status;
     cluster_flr_->Run(opts, handle, args, &out,
                       [&status, &done](const Status& s) {
                         status = s;
@@ -101,6 +112,7 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<test::TestCluster> cluster_;
   std::unique_ptr<WorkerSession> worker_session_;
   std::unique_ptr<ClusterFunctionLibraryRuntime> cluster_flr_;
+  std::unique_ptr<GrpcWorkerEnv> grpc_worker_env_;
 };
 
 TEST_F(ClusterFunctionLibraryRuntimeTest, ConstructFunctionGraph) {

@@ -1,0 +1,27 @@
+path: "tensorflow.keras.preprocessing"
+tf_module {
+  member {
+    name: "image"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "sequence"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "text"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "image_dataset_from_directory"
+    argspec: "args=[\'directory\', \'labels\', \'label_mode\', \'class_names\', \'color_mode\', \'batch_size\', \'image_size\', \'shuffle\', \'seed\', \'validation_split\', \'subset\', \'interpolation\', \'follow_links\'], varargs=None, keywords=None, defaults=[\'inferred\', \'int\', \'None\', \'rgb\', \'32\', \'(256, 256)\', \'True\', \'None\', \'None\', \'None\', \'bilinear\', \'False\'], "
+  }
+  member_method {
+    name: "text_dataset_from_directory"
+    argspec: "args=[\'directory\', \'labels\', \'label_mode\', \'class_names\', \'batch_size\', \'max_length\', \'shuffle\', \'seed\', \'validation_split\', \'subset\', \'follow_links\'], varargs=None, keywords=None, defaults=[\'inferred\', \'int\', \'None\', \'32\', \'None\', \'True\', \'None\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "timeseries_dataset_from_array"
+    argspec: "args=[\'data\', \'targets\', \'sequence_length\', \'sequence_stride\', \'sampling_rate\', \'batch_size\', \'shuffle\', \'seed\', \'start_index\', \'end_index\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'128\', \'False\', \'None\', \'None\', \'None\'], "
+  }
+}

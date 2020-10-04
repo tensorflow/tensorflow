@@ -17,11 +17,33 @@ limitations under the License.
 #include <complex>
 #include <cstring>
 
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
+namespace {
+
+TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
+  context->ReportError(context,
+                       "Encountered an unresolved custom op. Did you miss "
+                       "a custom op or delegate?");
+  return kTfLiteError;
+}
+
+}  // namespace
 
 bool IsFlexOp(const char* custom_name) {
   return custom_name && strncmp(custom_name, kFlexCustomCodePrefix,
                                 strlen(kFlexCustomCodePrefix)) == 0;
+}
+
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data) {
+  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
+      TfLiteIntArrayCreate(data.size()));
+  std::copy(data.begin(), data.end(), result->data);
+  return result;
 }
 
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
@@ -80,6 +102,9 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteComplex64:
       *bytes = sizeof(std::complex<float>);
       break;
+    case kTfLiteComplex128:
+      *bytes = sizeof(std::complex<double>);
+      break;
     case kTfLiteInt16:
       *bytes = sizeof(int16_t);
       break;
@@ -89,22 +114,47 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteFloat16:
       *bytes = sizeof(TfLiteFloat16);
       break;
+    case kTfLiteFloat64:
+      *bytes = sizeof(double);
+      break;
     default:
-      context->ReportError(
-          context,
-          "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
-          "uint8, bool, complex64 supported currently.",
-          type);
+      if (context) {
+        context->ReportError(
+            context,
+            "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
+            "uint8, bool, complex64 supported currently.",
+            type);
+      }
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
-TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(context,
-                       "Encountered an unresolved custom op. Did you miss "
-                       "a custom op or delegate?");
-  return kTfLiteError;
+TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name) {
+  return TfLiteRegistration{nullptr,
+                            nullptr,
+                            nullptr,
+                            /*invoke*/ &UnresolvedOpInvoke,
+                            nullptr,
+                            BuiltinOperator_CUSTOM,
+                            custom_op_name,
+                            1};
+}
+
+bool IsUnresolvedCustomOp(const TfLiteRegistration& registration) {
+  return registration.builtin_code == tflite::BuiltinOperator_CUSTOM &&
+         registration.invoke == &UnresolvedOpInvoke;
+}
+
+std::string GetOpNameByRegistration(const TfLiteRegistration& registration) {
+  auto op = registration.builtin_code;
+  std::string result =
+      EnumNameBuiltinOperator(static_cast<BuiltinOperator>(op));
+  if ((op == kTfLiteBuiltinCustom || op == kTfLiteBuiltinDelegate) &&
+      registration.custom_name) {
+    result += " " + std::string(registration.custom_name);
+  }
+  return result;
 }
 
 }  // namespace tflite

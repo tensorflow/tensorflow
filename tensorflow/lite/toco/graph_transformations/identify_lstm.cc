@@ -35,7 +35,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   return it;
 }
 
-bool ValidateSourceOp(const Model& model, const string& array_name,
+bool ValidateSourceOp(const Model& model, const std::string& array_name,
                       OperatorType op_type, Operator** source_op) {
   if (op_type == OperatorType::kNone) {
     CHECK(!source_op);
@@ -184,7 +184,7 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
                            &state_remember_mul)) {
     return ::tensorflow::Status::OK();
   }
-  const string prev_state = state_forget_mul->inputs[0];
+  const std::string prev_state = state_forget_mul->inputs[0];
 
   // State forget gate
   Operator* state_forget_sig;
@@ -271,16 +271,16 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
               LogName(*lstm_cell_op));
 
   // Create temp arrays used internally during runtime.
-  const string base_name(FindLongestCommonPrefix(
+  const std::string base_name(FindLongestCommonPrefix(
       lstm_cell_op->outputs[LstmCellOperator::STATE_OUTPUT],
       lstm_cell_op->outputs[LstmCellOperator::ACTIV_OUTPUT]));
-  const string& concat_temp_array_name =
+  const std::string& concat_temp_array_name =
       AvailableArrayName(*model, base_name + "concat_temp");
   auto& concat_temp_array = model->GetOrCreateArray(concat_temp_array_name);
   concat_temp_array.data_type =
       model->GetArray(concat_inputs->outputs[0]).data_type;
   lstm_cell_op->outputs[LstmCellOperator::CONCAT_TEMP] = concat_temp_array_name;
-  const string& activ_temp_array_name =
+  const std::string& activ_temp_array_name =
       AvailableArrayName(*model, base_name + "activ_temp");
   auto& activ_temp_array = model->GetOrCreateArray(activ_temp_array_name);
   activ_temp_array.data_type =

@@ -53,7 +53,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "he_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "he_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "identity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "lecun_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "lecun_uniform"
     mtype: "<type \'type\'>"
   }
   member {
@@ -95,22 +111,6 @@ tf_module {
   member_method {
     name: "get"
     argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "he_normal"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "he_uniform"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "lecun_normal"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "lecun_uniform"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "serialize"

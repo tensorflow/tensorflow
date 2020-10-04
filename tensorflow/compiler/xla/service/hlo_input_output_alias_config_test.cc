@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -80,15 +79,14 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
   TF_ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/1,
-      /*param_index=*/{},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{}));
 
   expect_aliased(/*output_index=*/{0}, /*param_number=*/1,
                  /*param_index=*/{}, config);
@@ -112,20 +110,18 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
   TF_ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0,
-      /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{0}));
 
   TF_ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/0,
-      /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{1}));
 
   expect_aliased(/*output_index=*/{0}, /*param_number=*/0,
                  /*param_index=*/{0}, config);
@@ -151,20 +147,18 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
   TF_ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0,
-      /*param_index=*/{},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{}));
 
   TF_ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/0,
-      /*param_index=*/{},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{}));
 
   ASSERT_IS_NOT_OK(config.Verify(*module, [](const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape);
@@ -182,15 +176,14 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
   TF_ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/0,
-      /*param_index=*/{},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{}));
 
   ASSERT_IS_NOT_OK(config.Verify(*module, [](const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape);
@@ -208,20 +201,18 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
   TF_ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0,
-      /*param_index=*/{},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{}));
 
   ASSERT_IS_NOT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/1,
-      /*param_index=*/{},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*param_index=*/{}));
 }
 }  // namespace
 }  // namespace xla

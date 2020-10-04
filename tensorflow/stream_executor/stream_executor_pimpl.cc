@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace {
@@ -47,7 +48,7 @@ bool FLAGS_check_device_leaks = false;
 namespace stream_executor {
 namespace {
 
-string StackTraceIfVLOG10() {
+std::string StackTraceIfVLOG10() {
   if (VLOG_IS_ON(10)) {
     return absl::StrCat(" ", port::CurrentStackTrace(), "\n");
   } else {
@@ -149,7 +150,7 @@ StreamExecutor::StreamExecutor(
       mem_alloc_bytes_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {
-  string name = absl::AsciiStrToLower(platform_->Name());
+  std::string name = absl::AsciiStrToLower(platform_->Name());
   if (name == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
   } else if (name == "rocm") {
@@ -173,7 +174,7 @@ StreamExecutor::~StreamExecutor() {
   }
 
   if (FLAGS_check_device_leaks) {
-    for (auto it : mem_allocs_) {
+    for (const auto &it : mem_allocs_) {
       LOG(INFO) << "Memory alloced at executor exit: addr: "
                 << absl::StrFormat("%p", it.first)
                 << ", bytes: " << it.second.bytes << ", trace: \n"
@@ -230,23 +231,6 @@ port::Status StreamExecutor::EnablePeerAccessTo(StreamExecutor *other) {
   return implementation_->EnablePeerAccessTo(other->implementation_.get());
 }
 
-SharedMemoryConfig StreamExecutor::GetDeviceSharedMemoryConfig() {
-  return implementation_->GetDeviceSharedMemoryConfig();
-}
-
-port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
-    SharedMemoryConfig config) {
-  if (config != SharedMemoryConfig::kDefault &&
-      config != SharedMemoryConfig::kFourByte &&
-      config != SharedMemoryConfig::kEightByte) {
-    string error_msg = absl::StrFormat(
-        "Invalid shared memory config specified: %d", static_cast<int>(config));
-    LOG(ERROR) << error_msg;
-    return port::Status(port::error::INVALID_ARGUMENT, error_msg);
-  }
-  return implementation_->SetDeviceSharedMemoryConfig(config);
-}
-
 const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
   absl::MutexLock lock(&mu_);
   if (device_description_ != nullptr) {
@@ -288,6 +272,25 @@ bool StreamExecutor::GetConvolveAlgorithms(
   GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
   return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused, cc_major,
                                             cc_minor, out_algorithms);
+}
+
+bool StreamExecutor::GetMIOpenConvolveAlgorithms(
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+    const dnn::BatchDescriptor &input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    ScratchAllocator *scratch_allocator,
+    std::vector<dnn::ProfileResult> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetMIOpenConvolveAlgorithms(
+      kind, element_type, stream, input_descriptor, input_data,
+      filter_descriptor, filter_data, output_descriptor, output_data,
+      convolution_descriptor, scratch_allocator, out_algorithms);
 }
 
 bool StreamExecutor::GetRnnAlgorithms(
@@ -457,25 +460,26 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
   return implementation_->GetStatus(stream);
 }
 
-void *StreamExecutor::Allocate(uint64 size) {
+DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
   if (memory_limit_bytes_ > 0 &&
-      mem_alloc_bytes_ + size > memory_limit_bytes_) {
+      static_cast<int64>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_
                  << ", limit=" << memory_limit_bytes_ << "]";
-    return nullptr;
+    return DeviceMemoryBase();
   }
-  void *buf = implementation_->Allocate(size);
-  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size << ") returns "
-          << buf << StackTraceIfVLOG10();
-  CreateAllocRecord(buf, size);
+  DeviceMemoryBase buf = implementation_->Allocate(size, memory_space);
+  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size
+          << ", memory_space=" << memory_space << ") returns " << buf.opaque()
+          << StackTraceIfVLOG10();
+  CreateAllocRecord(buf.opaque(), size);
 
   return buf;
 }
 
 port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
-    const string &symbol_name, ModuleHandle module_handle) {
+    const std::string &symbol_name, ModuleHandle module_handle) {
   // If failed to get the symbol, opaque/bytes are unchanged. Initialize them to
   // be nullptr/0 for consistency with DeviceMemory semantics.
   void *opaque = nullptr;
@@ -498,7 +502,7 @@ port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   }
 }
 
-bool StreamExecutor::GetSymbol(const string &symbol_name,
+bool StreamExecutor::GetSymbol(const std::string &symbol_name,
                                ModuleHandle module_handle, void **mem,
                                size_t *bytes) {
   return implementation_->GetSymbol(symbol_name, module_handle, mem, bytes);
@@ -560,16 +564,16 @@ bool StreamExecutor::SynchronizeAllActivity() {
   return ok;
 }
 
-bool StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
-                                        uint64 size) {
+port::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+                                                uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location=" << location
           << ", size=" << size << ")" << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemZero(location, size);
 }
 
-bool StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                       uint64 size) {
+port::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+                                               int value, uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location=" << location
           << ", value=" << value << ", size=" << size << ")"
           << StackTraceIfVLOG10();
@@ -688,13 +692,14 @@ bool StreamExecutor::MemcpyDeviceToDevice(Stream *stream,
                                                size);
 }
 
-bool StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                             uint64 size) {
+port::Status StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+                                     uint64 size) {
   return implementation_->MemZero(stream, location, size);
 }
 
-bool StreamExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                              uint32 pattern, uint64 size) {
+port::Status StreamExecutor::Memset32(Stream *stream,
+                                      DeviceMemoryBase *location,
+                                      uint32 pattern, uint64 size) {
   CHECK_EQ(0, size % 4)
       << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);
@@ -739,6 +744,7 @@ bool StreamExecutor::AllocateStream(Stream *stream) {
     return false;
   }
 
+  RegisterStream(stream);
   return true;
 }
 
@@ -746,6 +752,7 @@ void StreamExecutor::DeallocateStream(Stream *stream) {
   implementation_->DeallocateStream(stream);
   CHECK_GE(live_stream_count_.fetch_sub(1), 0)
       << "live stream count should not dip below zero";
+  UnregisterStream(stream);
 }
 
 bool StreamExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
@@ -837,7 +844,7 @@ absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 }
 
 template <typename TraceCallT, typename... ArgsT>
-void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&... args) {
+void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&...args) {
   if (tracing_enabled_) {
     {
       // instance tracers held in a block to limit the lock lifetime.
@@ -866,10 +873,11 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure) {
+    int device_ordinal, uint64 size, bool retry_on_failure,
+    int64 memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  DeviceMemoryBase result = executor->AllocateArray<uint8>(size);
+  DeviceMemoryBase result = executor->AllocateArray<uint8>(size, memory_space);
   if (size > 0 && result == nullptr) {
     return tensorflow::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",
@@ -896,7 +904,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
 }
 
 port::StatusOr<StreamExecutor *>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
+StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
   if (device_ordinal < 0) {
     return tensorflow::errors::InvalidArgument(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
@@ -913,6 +921,26 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
 
 bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
   return false;
+}
+
+port::StatusOr<Stream *> StreamExecutorMemoryAllocator::GetStream(
+    int device_ordinal) {
+  CHECK(!AllowsAsynchronousDeallocation())
+      << "The logic below only works for synchronous allocators";
+  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+                      GetStreamExecutor(device_ordinal));
+  Stream *out = [&] {
+    absl::MutexLock lock(&mutex_);
+    if (!streams_.count(device_ordinal)) {
+      auto p = streams_.emplace(std::piecewise_construct,
+                                std::forward_as_tuple(device_ordinal),
+                                std::forward_as_tuple(executor));
+      p.first->second.Init();
+      return &p.first->second;
+    }
+    return &streams_.at(device_ordinal);
+  }();
+  return out;
 }
 
 }  // namespace stream_executor

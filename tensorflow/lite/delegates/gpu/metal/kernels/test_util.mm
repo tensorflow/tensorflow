@@ -17,7 +17,9 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
+#include <functional>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
@@ -25,12 +27,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/api.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/metal/environment.h"
 
 namespace tflite {
 namespace gpu {
@@ -62,7 +66,7 @@ SingleOpModel::SingleOpModel(Operation&& operation, const std::vector<TensorRef<
   }
 }
 
-Status SingleOpModel::Invoke() {
+absl::Status SingleOpModel::Invoke() {
   std::vector<ValueId> input_ids;
   input_ids.reserve(inputs_.size());
   for (const auto& input : inputs_) {
@@ -74,15 +78,17 @@ Status SingleOpModel::Invoke() {
     output_ids.push_back(output.id);
   }
 
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  std::string device_name = std::string([[device name] UTF8String]);
+  DeviceInfo device_info(device_name);
   RuntimeOptions options;
   options.storage_precision = RuntimeOptions::Precision::FP32;
   options.accumulator_precision = RuntimeOptions::Precision::FP32;
   CompiledModel compiled_model;
-  RETURN_IF_ERROR(Compile(graph_, options, &compiled_model));
+  RETURN_IF_ERROR(Compile(graph_, device_info, options, &compiled_model));
   CompiledModel optimized_model;
   RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
   RETURN_IF_ERROR([graph compileModelWithDevice:device
                                 taskDescriptors:optimized_model
@@ -107,9 +113,9 @@ Status SingleOpModel::Invoke() {
   // Allocate internal buffers. Graph is ready to be executed.
   // Fills the output buffer IDs and dimensions.
   std::map<ValueId, BHWC> output_dimensions;
-  QCHECK_OK([graph setInputDimensions:input_dimensions
-                     outputDimensions:&output_dimensions
-                      taskDescriptors:optimized_model]);
+  [graph setInputDimensions:input_dimensions
+           outputDimensions:&output_dimensions
+            taskDescriptors:optimized_model];
 
   std::map<ValueId, id<MTLBuffer>> output_buffers;
   for (const auto& outputDimension : output_dimensions) {
@@ -140,16 +146,16 @@ Status SingleOpModel::Invoke() {
     RETURN_IF_ERROR(ConvertFromPHWC4(absl::MakeConstSpan(output_pointer, elements_count),
                                      output.shape, absl::MakeSpan(output.data)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CompareVectors(const std::vector<float>& reference, const std::vector<float>& output,
-                      float max_error) {
+absl::Status CompareVectors(const std::vector<float>& reference, const std::vector<float>& output,
+                            float max_error) {
   if (reference.size() != output.size()) {
     const std::string message = "CompareVectors: vectors size does not match for reference: " +
-                          std::to_string(reference.size()) +
-                          " vs. output: " + std::to_string(output.size());
-    return tflite::gpu::InternalError(message);
+                                std::to_string(reference.size()) +
+                                " vs. output: " + std::to_string(output.size());
+    return absl::InternalError(message);
   }
   for (int i = 0; i < reference.size(); i++) {
     float error = std::abs(reference[i] - output[i]);
@@ -157,10 +163,98 @@ Status CompareVectors(const std::vector<float>& reference, const std::vector<flo
       const std::string message =
           "Reference: " + std::to_string(reference[i]) + ", output: " + std::to_string(output[i]) +
           ", error: " + std::to_string(error) + ", max allowed error: " + std::to_string(max_error);
-      return tflite::gpu::InternalError(message);
+      return absl::InternalError(message);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTLDevice> device,
+                      const std::map<ValueId, TensorFloat32>& inputs,
+                      std::map<ValueId, TensorFloat32>* outputs) {
+  std::vector<ValueId> inputBufferIDs;
+  inputBufferIDs.reserve(inputs.size());
+  for (const auto& input : inputs) {
+    inputBufferIDs.push_back(input.first);
+  }
+  std::vector<ValueId> outputBufferIDs;
+  outputBufferIDs.reserve(outputs->size());
+  for (const auto& output : *outputs) {
+    outputBufferIDs.push_back(output.first);
+  }
+  std::vector<ComputeTaskDescriptorPtr> model;
+  RETURN_IF_ERROR(ValidateOptimizeModel(inputBufferIDs, outputBufferIDs, nodes, &model));
+
+  RuntimeOptions options;
+  options.storage_precision = RuntimeOptions::Precision::FP32;
+  options.accumulator_precision = RuntimeOptions::Precision::FP32;
+
+  TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
+  RETURN_IF_ERROR([graph compileModelWithDevice:device
+                                taskDescriptors:model
+                                outputBufferIDs:outputBufferIDs
+                                 runtimeOptions:options]);
+  std::map<ValueId, BHWC> inputDimensions;
+  std::map<ValueId, std::vector<float>> inputBuffersCPU;
+  std::map<ValueId, id<MTLBuffer>> inputBuffersGPU;
+  for (auto& input : inputs) {
+    const auto& src = input.second;
+    inputDimensions[input.first] = src.shape;
+    const int paddedDepth = AlignByN(src.shape.c, 4);
+    NSUInteger elementsCount = src.shape.w * src.shape.h * paddedDepth * src.shape.b;
+    std::vector<float> src_gpu(elementsCount);
+    id<MTLBuffer> inputBuffer;
+    RETURN_IF_ERROR(
+        ConvertToPHWC4(absl::MakeConstSpan(src.data), src.shape, absl::MakeSpan(src_gpu)));
+    inputBuffer = [device newBufferWithBytes:src_gpu.data()
+                                      length:(elementsCount * sizeof(float))
+                                     options:MTLResourceStorageModeShared];
+    inputBuffersGPU[input.first] = inputBuffer;
+  }
+
+  // Allocate internal buffers. Graph is ready to be executed.
+  // Fills the output buffer IDs and dimensions.
+  std::map<ValueId, BHWC> outputDimensions;
+  [graph setInputDimensions:inputDimensions
+           outputDimensions:&outputDimensions
+            taskDescriptors:model];
+
+  std::map<ValueId, id<MTLBuffer>> outputBuffers;
+  for (const auto& outputDimension : outputDimensions) {
+    // Uninitialized output buffer.
+    const ValueId key = outputDimension.first;
+    const BHWC& dims = outputDimension.second;
+    const NSUInteger outputDataSize =
+        dims.b * dims.w * dims.h * AlignByN(dims.c, 4) * sizeof(float);
+    outputBuffers[key] = [device newBufferWithLength:outputDataSize
+                                             options:MTLResourceStorageModeShared];
+  }
+
+  // Inference itself.
+  std::map<ValueId, id<MTLBuffer>> inputOutputBuffers(inputBuffersGPU.begin(),
+                                                      inputBuffersGPU.end());
+  inputOutputBuffers.insert(outputBuffers.begin(), outputBuffers.end());
+  id<MTLCommandQueue> commandQueue = [device newCommandQueue];
+  id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+  id<MTLComputeCommandEncoder> commandEncoder = [commandBuffer computeCommandEncoder];
+  [graph encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers encoderBlock:nil];
+  [commandEncoder endEncoding];
+  [commandBuffer commit];
+  [commandBuffer waitUntilCompleted];
+
+  for (auto& output : *outputs) {
+    const auto& dim = outputDimensions[output.first];
+    const int paddedDepth = AlignByN(dim.c, 4);
+    NSUInteger elementsCount = dim.w * dim.h * paddedDepth * dim.b;
+    auto& dst = output.second;
+    dst.shape = dim;
+    dst.data.resize(dst.shape.DimensionsProduct());
+    float* outputPointer = reinterpret_cast<float*>([outputBuffers[output.first] contents]);
+    RETURN_IF_ERROR(ConvertFromPHWC4(absl::MakeConstSpan(outputPointer, elementsCount), dst.shape,
+                                     absl::MakeSpan(dst.data)));
+  }
+
+  return absl::OkStatus();
 }
 
 }  // namespace metal

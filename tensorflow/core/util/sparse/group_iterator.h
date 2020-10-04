@@ -37,6 +37,7 @@ class Group {
       : iter_(iter), loc_(loc), next_loc_(next_loc) {}
 
   std::vector<int64> group() const;
+  int64 group_at(size_t index) const;
   TTypes<int64>::UnalignedConstMatrix indices() const;
   template <typename T>
   typename TTypes<T>::UnalignedVec values() const;
@@ -96,13 +97,12 @@ class GroupIterable {
 
   template <typename TIX>
   inline bool GroupMatches(const TIX& ix, int64 loc_a, int64 loc_b) const {
-    bool matches = true;
     for (int d : group_dims_) {
       if (ix(loc_a, d) != ix(loc_b, d)) {
-        matches = false;
+        return false;
       }
     }
-    return matches;
+    return true;
   }
 
   class IteratorStep {
@@ -134,6 +134,11 @@ class GroupIterable {
   const int dims_;
   const gtl::InlinedVector<int64, 8> group_dims_;
 };
+
+inline int64 Group::group_at(size_t index) const {
+  const auto& ix_t = iter_->ix_matrix_;
+  return ix_t(loc_, index);
+}
 
 // Implementation of Group::values<T>()
 template <typename T>

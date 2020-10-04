@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "load_model"
-    argspec: "args=[\'filepath\', \'custom_objects\', \'compile\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'filepath\', \'custom_objects\', \'compile\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "model_from_config"

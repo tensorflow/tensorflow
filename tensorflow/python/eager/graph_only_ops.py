@@ -21,21 +21,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-
-
-def graph_zeros_like(tensor):
-  """Graph-only version of tf.zeros_like(), for internal use only."""
-  g = ops._get_graph_from_inputs([tensor])  # pylint: disable=protected-access
-  with g.as_default(), ops.name_scope(None, "zeros_like", [tensor]) as name:
-    tensor = ops.convert_to_tensor(tensor, name="tensor")
-    dtype = tensor.dtype.base_dtype
-    dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
-    op = g.create_op("ZerosLike", [tensor], [dtype], input_types=[dtype],
-                     attrs={"T": dtype_value}, name=name)
-  result, = op.outputs
-  return result
 
 
 def graph_placeholder(dtype, shape, name=None):
@@ -46,8 +34,17 @@ def graph_placeholder(dtype, shape, name=None):
     shape = tensor_shape.TensorShape(shape)
   shape = attr_value_pb2.AttrValue(shape=shape.as_proto())
   g = ops.get_default_graph()
-  with ops.name_scope(name, "placeholder", []) as name:
-    op = g.create_op("Placeholder", [], [dtype], input_types=[],
-                     attrs={"dtype": dtype_value, "shape": shape}, name=name)
+  attrs = {"dtype": dtype_value, "shape": shape}
+  op = g._create_op_internal(  # pylint: disable=protected-access
+      "Placeholder", [], [dtype], input_types=[],
+      attrs=attrs, name=name)
   result, = op.outputs
+  if op_callbacks.should_invoke_op_callbacks():
+    # TODO(b/147670703): Once the special-op creation code paths
+    # are unified. Remove this `if` block.
+    callback_outputs = op_callbacks.invoke_op_callbacks(
+        "Placeholder", tuple(), attrs, tuple(op.outputs),
+        op_name=name, graph=g)
+    if callback_outputs is not None:
+      result, = callback_outputs
   return result

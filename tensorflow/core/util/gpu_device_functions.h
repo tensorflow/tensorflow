@@ -22,6 +22,8 @@ limitations under the License.
  * Wraps the warp-cooperative intrinsics introduced in CUDA 9 to provide
  * backwards compatibility, see go/volta-porting for details.
  * Provides atomic operations on types that aren't natively supported.
+ * Defines a number of macros and types providing a shared interface
+ * to either CUDA or ROCm APIs, depending on the build.
  */
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -33,12 +35,66 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#else
+#include "rocm/include/hip/hip_complex.h"
 #endif
+
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_cuda_alias.h"
 
-namespace tensorflow {
+#if GOOGLE_CUDA
+using gpuFloatComplex = cuFloatComplex;
+using gpuDoubleComplex = cuDoubleComplex;
+using gpuStream_t = cudaStream_t;
+using gpuEvent_t = cudaEvent_t;
+#define gpuEventRecord cudaEventRecord
+#define gpuEventSynchronize cudaEventSynchronize
+#define gpuEventDestroy cudaEventDestroy
+#define gpuEventCreate cudaEventCreate
+#define gpuEventCreateWithFlags cudaEventCreateWithFlags
+#define gpuEventDisableTiming cudaEventDisableTiming
+#define gpuDeviceSynchronize cudaDeviceSynchronize
+#define gpuFree cudaFree
+#elif TENSORFLOW_USE_ROCM
+using gpuFloatComplex = hipFloatComplex;
+using gpuDoubleComplex = hipDoubleComplex;
+using gpuStream_t = hipStream_t;
+using gpuEvent_t = hipEvent_t;
+using cudaError = int;
+using cudaError_t = int;
+#define cudaSuccess 0
+#define cudaGetLastError hipGetLastError
+#define gpuEventRecord hipEventRecord
+#define gpuEventDestroy hipEventDestroy
+#define gpuEventSynchronize hipEventSynchronize
+#define gpuEventCreate hipEventCreate
+#define gpuEventCreateWithFlags hipEventCreateWithFlags
+#define gpuEventDisableTiming hipEventDisableTiming
+#define gpuDeviceSynchronize hipDeviceSynchronize
+#define gpuFree hipFree
+static std::string cudaGetErrorString(int err) { return std::to_string(err); }
+#endif
 
+#define TF_RETURN_IF_CUDA_ERROR(result)                   \
+  do {                                                    \
+    cudaError_t error(result);                            \
+    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {         \
+      return errors::Internal("Cuda call failed with ",   \
+                              cudaGetErrorString(error)); \
+    }                                                     \
+  } while (0)
+
+#define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                   \
+  do {                                                                 \
+    cudaError_t error(result);                                         \
+    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                      \
+      context->SetStatus(errors::Internal("Cuda call failed with",     \
+                                          cudaGetErrorString(error))); \
+      return;                                                          \
+    }                                                                  \
+  } while (0)
+
+namespace tensorflow {
 // According to HIP developer guide at
 // https://github.com/ROCm-Developer-Tools/HIP/blob/master/docs/markdown/hip_kernel_language.md#assert
 // assert is not supported by HIP. While we are waiting for assert support in
@@ -550,7 +606,7 @@ __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
   // HIP has a bug in the implementation of __longlong_as_double
   // So workaround it by using reinterpret_cast<double*>.
   uint64_t result =
-      GpuAtomicCasHelper(reinterpret_cast<tensorflow::uint64*>(ptr),
+      GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
                          [accumulate](tensorflow::uint64 a) {
                            return __double_as_longlong(
                                accumulate(*(reinterpret_cast<double*>(&a))));
@@ -558,7 +614,7 @@ __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
   return *(reinterpret_cast<double*>(&result));
 #else
   return __longlong_as_double(GpuAtomicCasHelper(
-      reinterpret_cast<tensorflow::uint64*>(ptr),
+      reinterpret_cast<unsigned long long*>(ptr),
       [accumulate](tensorflow::uint64 a) {
         return __double_as_longlong(accumulate(__longlong_as_double(a)));
       }));
@@ -606,9 +662,51 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
   }
 }
 
+template <typename F>
+__device__ long long GpuAtomicCasHelper(long long* ptr, F accumulate) {
+  return static_cast<long long>(
+      GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
+                         [accumulate](unsigned long long a) {
+                           return static_cast<unsigned long long>(
+                               accumulate(static_cast<long long>(a)));
+                         }));
+}
+
 template <typename From, typename To>
 using ToTypeIfConvertible =
     typename std::enable_if<std::is_convertible<From, To>::value, To>::type;
+
+template <typename T>
+struct CudaSupportedTypeImpl {
+  using type = T;
+};
+
+template <>
+struct CudaSupportedTypeImpl<long long> {
+  using type = unsigned long long;
+};
+
+template <>
+struct CudaSupportedTypeImpl<unsigned long> {
+  using type =
+      typename std::conditional<sizeof(unsigned long) == sizeof(unsigned int),
+                                unsigned int, unsigned long long>::type;
+};
+
+template <>
+struct CudaSupportedTypeImpl<long> {
+  // This cast should be safe since module-2 addition should work fine. However,
+  // signed overflow is not handled correctly since it's undefined behavior.
+  using type = typename CudaSupportedTypeImpl<unsigned long>::type;
+};
+
+template <typename T>
+using CudaSupportedType = typename CudaSupportedTypeImpl<T>::type;
+
+template <typename T>
+__device__ CudaSupportedType<T>* ToCudaSupportedPtr(T* ptr) {
+  return reinterpret_cast<CudaSupportedType<T>*>(ptr);
+}
 
 }  // namespace detail
 
@@ -617,7 +715,7 @@ using ToTypeIfConvertible =
 
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
-  return atomicAdd(ptr, value);
+  return atomicAdd(detail::ToCudaSupportedPtr(ptr), value);
 }
 
 __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
@@ -673,9 +771,14 @@ __device__ inline double GpuAtomicSub(double* ptr, double value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
+__device__ inline tensorflow::int64 GpuAtomicSub(tensorflow::int64* ptr,
+                                                 tensorflow::int64 value) {
+  return GpuAtomicAdd(ptr, -value);
+}
+
 __device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
-  return GpuAtomicAdd(ptr, -value);
+  return GpuAtomicAdd(ptr, -static_cast<tensorflow::int64>(value));
 }
 
 __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
@@ -688,7 +791,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
 // GpuAtomicMax
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMax(T* ptr, U value) {
-  return atomicMax(ptr, value);
+  return atomicMax(detail::ToCudaSupportedPtr(ptr), value);
 }
 
 #if TENSORFLOW_USE_ROCM
@@ -736,11 +839,17 @@ __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
       ptr, [value](Eigen::half a) { return max(a, value); });
 }
 
-#if __CUDA_ARCH__ < 320
+#if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
 __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
-      ptr, [value](tensorflow::uint64 a) { return max(a, value); });
+      detail::ToCudaSupportedPtr(ptr),
+      [value](tensorflow::uint64 a) { return max(a, value); });
+}
+
+__device__ inline int64 GpuAtomicMax(int64* ptr, int64 value) {
+  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
+                                    [value](int64 a) { return max(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
@@ -748,7 +857,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
 // GpuAtomicMin
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMin(T* ptr, U value) {
-  return atomicMin(ptr, value);
+  return atomicMin(detail::ToCudaSupportedPtr(ptr), value);
 }
 
 #if TENSORFLOW_USE_ROCM
@@ -796,11 +905,17 @@ __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
       ptr, [value](Eigen::half a) { return min(a, value); });
 }
 
-#if __CUDA_ARCH__ < 320
+#if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
 __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
-      ptr, [value](tensorflow::uint64 a) { return min(a, value); });
+      detail::ToCudaSupportedPtr(ptr),
+      [value](tensorflow::uint64 a) { return min(a, value); });
+}
+
+__device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
+  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
+                                    [value](int64 a) { return min(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);
@@ -877,6 +992,28 @@ __device__ inline std::complex<double> operator/(
   return std::complex<double>(result.x, result.y);
 }
 #endif  // GOOGLE_CUDA
+
+namespace functor {
+// ROCm hcc(clang) has severe difficulties dealing with std::complex directly
+// due to a header issue. This template assists in casting std::complex into the
+// corresponding internal ROCm types.
+template <class T>
+struct MapComplexToHipComplex {
+  typedef T TM;
+};
+
+#if TENSORFLOW_USE_ROCM
+template <>
+struct MapComplexToHipComplex<std::complex<float> > {
+  typedef hipFloatComplex TM;
+};
+
+template <>
+struct MapComplexToHipComplex<std::complex<double> > {
+  typedef hipDoubleComplex TM;
+};
+#endif
+};  // namespace functor
 
 }  // namespace tensorflow
 

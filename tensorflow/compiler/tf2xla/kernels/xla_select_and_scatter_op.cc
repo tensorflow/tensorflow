@@ -60,7 +60,6 @@ class XlaSelectAndScatterOp : public XlaOpKernel {
 
     XlaCompiler::CompileOptions compile_options;
     compile_options.use_tuple_arg = false;
-    compile_options.resolve_compile_time_constants = false;
     compile_options.is_entry_computation = false;
     compile_options.always_return_tuple = false;
 

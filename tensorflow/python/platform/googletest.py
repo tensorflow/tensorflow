@@ -25,6 +25,7 @@ import tempfile
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,redefined-builtin
+
 from absl.testing.absltest import *
 # pylint: enable=wildcard-import,redefined-builtin
 

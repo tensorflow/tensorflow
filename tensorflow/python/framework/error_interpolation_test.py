@@ -155,9 +155,13 @@ class CreateGraphDebugInfoDefTest(test.TestCase):
     global_op = constant_op.constant(0, name="Global").op
     op1 = constant_op.constant(1, name="One").op
     op2 = constant_op.constant(2, name="Two").op
+    non_traceback_op = constant_op.constant(3, name="NonTraceback").op
+    # Ensure op without traceback does not fail
+    del non_traceback_op._traceback
     # pyformat: enable
 
-    export_ops = [("", global_op), ("func1", op1), ("func2", op2)]
+    export_ops = [("", global_op), ("func1", op1), ("func2", op2),
+                  ("func2", non_traceback_op)]
     graph_debug_info = error_interpolation.create_graph_debug_info_def(
         export_ops)
     this_file_index = -1
@@ -201,7 +205,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
         num_user_frames=3,
         user_filename=user_filename,
         num_inner_tf_frames=5)
-    idx = error_interpolation._find_index_of_defining_frame_for_op(local_op)
+    idx = error_interpolation._find_index_of_defining_frame(local_op._traceback)
     # Expected frame is 6th from the end because there are 5 inner frames witih
     # TF filenames.
     expected_frame = len(local_op._traceback) - 6
@@ -217,7 +221,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
         num_user_frames=0,
         user_filename="user_file.py",
         num_inner_tf_frames=7)
-    idx = error_interpolation._find_index_of_defining_frame_for_op(local_op)
+    idx = error_interpolation._find_index_of_defining_frame(local_op._traceback)
     self.assertEqual(0, idx)
 
   def testNothingToDo(self):
@@ -236,7 +240,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     two_tags_no_seps = "{{node One}}{{node Three}}"
     interpolated_string = error_interpolation.interpolate(
         two_tags_no_seps, self.graph)
-    self.assertRegexpMatches(
+    self.assertRegex(
         interpolated_string, r"error_interpolation_test\.py:[0-9]+."
         r"*error_interpolation_test\.py:[0-9]+")
 
@@ -246,13 +250,13 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
         two_tags_with_seps, self.graph)
     expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
                       r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
-    self.assertRegexpMatches(interpolated_string, expected_regex)
+    self.assertRegex(interpolated_string, expected_regex)
 
   def testNewLine(self):
     newline = "\n\n{{node One}}"
     interpolated_string = error_interpolation.interpolate(newline, self.graph)
-    self.assertRegexpMatches(interpolated_string,
-                             r"error_interpolation_test\.py:[0-9]+.*")
+    self.assertRegex(interpolated_string,
+                     r"error_interpolation_test\.py:[0-9]+.*")
 
 
 @test_util.run_deprecated_v1
@@ -264,6 +268,9 @@ class InputNodesTest(test.TestCase):
     one = constant_op.constant(1, name="One")
     two = constant_op.constant(2, name="Two")
     three = math_ops.add(one, two, name="Three")
+    non_traceback_op = constant_op.constant(3, name="NonTraceback")
+    # Ensure op without traceback does not fail
+    del non_traceback_op.op._traceback
     self.graph = three.graph
 
   def testNoInputs(self):
@@ -272,7 +279,7 @@ class InputNodesTest(test.TestCase):
         two_tags_with_seps, self.graph)
     expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
                       r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
-    self.assertRegexpMatches(interpolated_string, expected_regex)
+    self.assertRegex(interpolated_string, expected_regex)
 
   def testBasicInputs(self):
     tag = ";;;{{node Three}};;;"
@@ -280,7 +287,7 @@ class InputNodesTest(test.TestCase):
     expected_regex = re.compile(
         r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
         r";;;.*Input.*error_interpolation_test\.py:[0-9]+\)", re.DOTALL)
-    self.assertRegexpMatches(interpolated_string, expected_regex)
+    self.assertRegex(interpolated_string, expected_regex)
 
 
 @test_util.run_deprecated_v1
@@ -325,7 +332,7 @@ class InterpolateDeviceSummaryTest(test.TestCase):
     self.assertEqual(2, num_devices)
     name_re = r"_fancy_device_function<.*error_interpolation_test.py, [0-9]+>"
     expected_re = r"with tf.device\(.*%s\)" % name_re
-    self.assertRegexpMatches(result, expected_re)
+    self.assertRegex(result, expected_re)
 
 
 @test_util.run_deprecated_v1

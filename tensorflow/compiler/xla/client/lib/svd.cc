@@ -837,8 +837,11 @@ SVDResult SVD(XlaOp a, int64 max_iter, float epsilon,
 
   auto eps = ScalarLike(a, epsilon);
 
-  SVDResult svd_result =
-      HouseHolderBidiagonalization(a, eps, precision).ValueOrDie();
+  auto svd_result_or = HouseHolderBidiagonalization(a, eps, precision);
+  if (!svd_result_or.ok()) {
+    return return_error(svd_result_or.status());
+  }
+  SVDResult svd_result = svd_result_or.ValueOrDie();
 
   auto output_with_status = WhileLoopFn(
       {
@@ -861,7 +864,13 @@ SVDResult SVD(XlaOp a, int64 max_iter, float epsilon,
   svd_result.u = output[1];
   svd_result.v = output[2];
   svd_result.d = output[3];
-  svd_result = SortBySingularValuesAndPostProcessing(svd_result).ValueOrDie();
+
+  svd_result_or = SortBySingularValuesAndPostProcessing(svd_result);
+  if (!svd_result_or.ok()) {
+    return return_error(svd_result_or.status());
+  }
+  svd_result = svd_result_or.ValueOrDie();
+
   if (maybe_transpose) {
     std::swap(svd_result.u, svd_result.v);
   }

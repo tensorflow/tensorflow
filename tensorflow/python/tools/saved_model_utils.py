@@ -29,7 +29,7 @@ from tensorflow.python.util import compat
 
 
 def read_saved_model(saved_model_dir):
-  """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
+  """Reads the saved_model.pb or saved_model.pbtxt file containing `SavedModel`.
 
   Args:
     saved_model_dir: Directory containing the SavedModel file.
@@ -83,7 +83,8 @@ def get_saved_model_tag_sets(saved_model_dir):
     saved_model_dir: Directory containing the SavedModel.
 
   Returns:
-    String representation of all tag-sets in the SavedModel.
+    List of all tag-sets in the SavedModel, where a tag-set is represented as a
+    list of strings.
   """
   saved_model = read_saved_model(saved_model_dir)
   all_tags = []
@@ -98,10 +99,11 @@ def get_meta_graph_def(saved_model_dir, tag_set):
   Returns the MetaGraphDef for the given tag-set and SavedModel directory.
 
   Args:
-    saved_model_dir: Directory containing the SavedModel to inspect or execute.
+    saved_model_dir: Directory containing the SavedModel to inspect.
     tag_set: Group of tag(s) of the MetaGraphDef to load, in string format,
-        separated by ','. For tag-set contains multiple tags, all tags must be
-        passed in.
+        separated by ','. The empty string tag is ignored so that passing ''
+        means the empty tag set. For tag-set contains multiple tags, all tags
+        must be passed in.
 
   Raises:
     RuntimeError: An error when the given tag-set does not exist in the
@@ -111,10 +113,11 @@ def get_meta_graph_def(saved_model_dir, tag_set):
     A MetaGraphDef corresponding to the tag-set.
   """
   saved_model = read_saved_model(saved_model_dir)
-  set_of_tags = set(tag_set.split(','))
+  # Note: Discard empty tags so that "" can mean the empty tag set.
+  set_of_tags = set([tag for tag in tag_set.split(",") if tag])
   for meta_graph_def in saved_model.meta_graphs:
     if set(meta_graph_def.meta_info_def.tags) == set_of_tags:
       return meta_graph_def
 
-  raise RuntimeError('MetaGraphDef associated with tag-set ' + tag_set +
-                     ' could not be found in SavedModel')
+  raise RuntimeError("MetaGraphDef associated with tag-set %r could not be"
+                     " found in SavedModel" % tag_set)

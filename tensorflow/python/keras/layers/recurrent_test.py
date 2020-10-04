@@ -30,14 +30,15 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -45,10 +46,11 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 # Used for nested input/output/state RNN test.
 NestedInput = collections.namedtuple('NestedInput', ['t1', 't2'])
@@ -82,8 +84,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
     # Test stacking.
@@ -96,8 +97,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
   def test_minimal_rnn_cell_non_layer_multiple_states(self):
@@ -127,8 +127,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
     # Test stacking.
@@ -143,8 +142,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
   def test_minimal_rnn_cell_layer(self):
@@ -186,8 +184,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
     # Test basic case serialization.
@@ -195,7 +192,7 @@ class RNNTest(keras_parameterized.TestCase):
     y_np = model.predict(x_np)
     weights = model.get_weights()
     config = layer.get_config()
-    with keras.utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
+    with generic_utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
       layer = keras.layers.RNN.from_config(config)
     y = layer(x)
     model = keras.models.Model(x, y)
@@ -213,8 +210,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
     # Test stacked RNN serialization.
@@ -222,7 +218,7 @@ class RNNTest(keras_parameterized.TestCase):
     y_np = model.predict(x_np)
     weights = model.get_weights()
     config = layer.get_config()
-    with keras.utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
+    with generic_utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
       layer = keras.layers.RNN.from_config(config)
     y = layer(x)
     model = keras.models.Model(x, y)
@@ -270,8 +266,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer="rmsprop",
         loss="mse",
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
     # Test stacking.
@@ -284,8 +279,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
   def test_rnn_with_time_major(self):
@@ -313,8 +307,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, time_step, embedding_dim)),
         np.zeros((batch, time_step, units)))
@@ -334,8 +327,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, time_step, embedding_dim)),
         np.zeros((batch, time_step, cell_units[-1])))
@@ -352,8 +344,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, time_step, embedding_dim)),
         np.zeros((batch, time_step, units)))
@@ -367,8 +358,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, time_step, embedding_dim)),
         np.zeros((batch, time_step, units)))
@@ -402,8 +392,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((6, 5, 5)), np.zeros((6, 3))],
         np.zeros((6, 32))
@@ -416,7 +405,7 @@ class RNNTest(keras_parameterized.TestCase):
     weights = model.get_weights()
     config = layer.get_config()
     custom_objects = {'RNNCellWithConstants': RNNCellWithConstants}
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer(x, constants=c)
     model = keras.models.Model([x, c], y)
@@ -425,7 +414,7 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
     # test flat list inputs.
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer([x, c])
     model = keras.models.Model([x, c], y)
@@ -443,8 +432,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((6, 5, 5)), np.zeros((6, 3))],
         np.zeros((6, 32))
@@ -460,8 +448,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((6, 5, 5)), np.zeros((6, 3))],
         np.zeros((6, 32))
@@ -473,7 +460,7 @@ class RNNTest(keras_parameterized.TestCase):
     y_np = model.predict([x_np, c_np])
     weights = model.get_weights()
     config = layer.get_config()
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.recurrent.RNN.from_config(config.copy())
     y = layer(x, constants=c)
     model = keras.models.Model([x, c], y)
@@ -493,8 +480,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
     # Test stacking.
@@ -507,8 +493,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
   def test_rnn_cell_with_constants_layer_passing_initial_state(self):
@@ -523,8 +508,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((6, 5, 5)), np.zeros((6, 32)), np.zeros((6, 3))],
         np.zeros((6, 32))
@@ -538,7 +522,7 @@ class RNNTest(keras_parameterized.TestCase):
     weights = model.get_weights()
     config = layer.get_config()
     custom_objects = {'RNNCellWithConstants': RNNCellWithConstants}
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer(x, initial_state=s, constants=c)
     model = keras.models.Model([x, s, c], y)
@@ -552,7 +536,7 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2_different_s, atol=1e-4)
 
     # test flat list inputs
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer([x, s, c])
     model = keras.models.Model([x, s, c], y)
@@ -573,8 +557,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
     # Test stacking.
@@ -590,8 +573,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
   def test_stacked_rnn_attributes(self):
@@ -619,7 +601,7 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertEqual(layer.get_losses_for(None), [loss_2])
     self.assertEqual(layer.get_losses_for(x), [loss_1])
 
-    # Test `get_updates_for` and `updates`
+    # Test `updates`
     cells = [keras.layers.LSTMCell(1),
              keras.layers.LSTMCell(1)]
     layer = keras.layers.RNN(cells)
@@ -635,8 +617,6 @@ class RNNTest(keras_parameterized.TestCase):
       cells[0].add_update(update_1, inputs=x)
       cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)
-    self.assertEqual(len(layer.get_updates_for(None)), 1)
-    self.assertEqual(len(layer.get_updates_for(x)), 1)
 
   def test_rnn_dynamic_trainability(self):
     layer_class = keras.layers.SimpleRNN
@@ -656,6 +636,16 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.weights), 3)
     self.assertEqual(len(layer.trainable_weights), 3)
     self.assertEqual(len(layer.non_trainable_weights), 0)
+
+  @parameterized.parameters(
+      [keras.layers.SimpleRNN, keras.layers.GRU, keras.layers.LSTM])
+  def test_rnn_cell_trainability(self, layer_cls):
+    # https://github.com/tensorflow/tensorflow/issues/32369.
+    layer = layer_cls(3, trainable=False)
+    self.assertFalse(layer.cell.trainable)
+
+    layer.trainable = True
+    self.assertTrue(layer.cell.trainable)
 
   def test_state_reuse_with_dropout(self):
     layer_class = keras.layers.SimpleRNN
@@ -679,10 +669,41 @@ class RNNTest(keras_parameterized.TestCase):
               np.random.random((num_samples, timesteps, embedding_dim))]
     model.predict(inputs)
 
-  def test_builtin_rnn_cell_serialization(self):
+  def test_builtin_and_custom_rnn_cell_serialization(self):
+
+    @keras.utils.generic_utils.register_keras_serializable(package='TestOnly')
+    class CustomRNNCell(keras.layers.Layer):
+
+      def __init__(self, units, **kwargs):
+        self.units = units
+        self.state_size = units
+        super(CustomRNNCell, self).__init__(**kwargs)
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                      initializer='uniform',
+                                      name='kernel')
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer='uniform',
+            name='recurrent_kernel')
+        self.built = True
+
+      def call(self, inputs, states):
+        prev_output = states[0]
+        h = keras.backend.dot(inputs, self.kernel)
+        output = h + keras.backend.dot(prev_output, self.recurrent_kernel)
+        return output, [output]
+
+      def get_config(self):
+        config = {'units': self.units}
+        base_config = super(CustomRNNCell, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
     for cell_class in [keras.layers.SimpleRNNCell,
                        keras.layers.GRUCell,
-                       keras.layers.LSTMCell]:
+                       keras.layers.LSTMCell,
+                       CustomRNNCell]:
       # Test basic case.
       x = keras.Input((None, 5))
       cell = cell_class(32)
@@ -692,8 +713,7 @@ class RNNTest(keras_parameterized.TestCase):
       model.compile(
           optimizer='rmsprop',
           loss='mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
       # Test basic case serialization.
       x_np = np.random.random((6, 5, 5))
@@ -717,8 +737,7 @@ class RNNTest(keras_parameterized.TestCase):
       model.compile(
           optimizer='rmsprop',
           loss='mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
       # Test stacked RNN serialization.
       x_np = np.random.random((6, 5, 5))
@@ -733,7 +752,7 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM,
                  rnn_v2.GRU, rnn_v2.LSTM],
           unroll=[True, False]))
@@ -748,14 +767,13 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     x_np = np.random.random((6, 5, 5))
     y_np = np.random.random((6, 3))
     model.train_on_batch(x_np, y_np)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           cell=[keras.layers.SimpleRNNCell, keras.layers.GRUCell,
                 keras.layers.LSTMCell],
           unroll=[True, False]))
@@ -773,8 +791,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     x_np = np.random.random((6, 5, 5))
     y_np = np.random.random((6, 3))
     model.train_on_batch(x_np, y_np)
@@ -783,33 +800,56 @@ class RNNTest(keras_parameterized.TestCase):
     # The layer is created with recurrent_initializer = zero, so that the
     # the recurrent state won't affect the output. By doing this, we can verify
     # the output and see if the same mask is applied to for each timestep.
-    rnn = keras.layers.SimpleRNN(3,
-                                 dropout=0.5,
-                                 kernel_initializer='ones',
-                                 recurrent_initializer='zeros',
-                                 return_sequences=True,
-                                 unroll=True)
+    layer_1 = keras.layers.SimpleRNN(3,
+                                     dropout=0.5,
+                                     kernel_initializer='ones',
+                                     recurrent_initializer='zeros',
+                                     return_sequences=True,
+                                     unroll=True)
+    layer_2 = keras.layers.RNN(
+        keras.layers.SimpleRNNCell(3,
+                                   dropout=0.5,
+                                   kernel_initializer='ones',
+                                   recurrent_initializer='zeros'),
+        return_sequences=True,
+        unroll=True)
+    layer_3 = keras.layers.RNN(
+        [keras.layers.SimpleRNNCell(3,
+                                    dropout=0.5,
+                                    kernel_initializer='ones',
+                                    recurrent_initializer='zeros'),
+         keras.layers.SimpleRNNCell(3,
+                                    dropout=0.5,
+                                    kernel_initializer='ones',
+                                    recurrent_initializer='zeros')
+        ],
+        return_sequences=True,
+        unroll=True)
 
-    inputs = constant_op.constant(1.0, shape=(6, 2, 5))
-    out = rnn(inputs, training=True)
-    if not context.executing_eagerly():
-      self.evaluate(variables_lib.global_variables_initializer())
-    batch_1 = self.evaluate(out)
-    batch_1_t0, batch_1_t1 = batch_1[:, 0, :], batch_1[:, 1, :]
-    self.assertAllClose(batch_1_t0, batch_1_t1)
+    def verify(rnn_layer):
+      inputs = constant_op.constant(1.0, shape=(6, 2, 5))
+      out = rnn_layer(inputs, training=True)
+      if not context.executing_eagerly():
+        self.evaluate(variables_lib.global_variables_initializer())
+      batch_1 = self.evaluate(out)
+      batch_1_t0, batch_1_t1 = batch_1[:, 0, :], batch_1[:, 1, :]
+      self.assertAllClose(batch_1_t0, batch_1_t1)
 
-    # This simulate the layer called with multiple batches in eager mode
-    if context.executing_eagerly():
-      out2 = rnn(inputs, training=True)
-    else:
-      out2 = out
-    batch_2 = self.evaluate(out2)
-    batch_2_t0, batch_2_t1 = batch_2[:, 0, :], batch_2[:, 1, :]
-    self.assertAllClose(batch_2_t0, batch_2_t1)
+      # This simulate the layer called with multiple batches in eager mode
+      if context.executing_eagerly():
+        out2 = rnn_layer(inputs, training=True)
+      else:
+        out2 = out
+      batch_2 = self.evaluate(out2)
+      batch_2_t0, batch_2_t1 = batch_2[:, 0, :], batch_2[:, 1, :]
+      self.assertAllClose(batch_2_t0, batch_2_t1)
 
-    # Also validate that different dropout is used by between batches.
-    self.assertNotAllClose(batch_1_t0, batch_2_t0)
-    self.assertNotAllClose(batch_1_t1, batch_2_t1)
+      # Also validate that different dropout is used by between batches.
+      self.assertNotAllClose(batch_1_t0, batch_2_t0)
+      self.assertNotAllClose(batch_1_t1, batch_2_t1)
+
+    for l in [layer_1, layer_2, layer_3]:
+      verify(l)
 
   def test_stacked_rnn_compute_output_shape(self):
     cells = [keras.layers.LSTMCell(3),
@@ -842,6 +882,43 @@ class RNNTest(keras_parameterized.TestCase):
         [tuple(o.as_list()) for o in output_shape],
         expected_output_shape)
 
+  def test_stacked_rnn_with_training_param(self):
+    # See https://github.com/tensorflow/tensorflow/issues/32586
+
+    class CellWrapper(keras.layers.AbstractRNNCell):
+
+      def __init__(self, cell):
+        super(CellWrapper, self).__init__()
+        self.cell = cell
+
+      @property
+      def state_size(self):
+        return self.cell.state_size
+
+      @property
+      def output_size(self):
+        return self.cell.output_size
+
+      def build(self, input_shape):
+        self.cell.build(input_shape)
+        self.built = True
+
+      def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        return self.cell.get_initial_state(
+            inputs=inputs, batch_size=batch_size, dtype=dtype)
+
+      def call(self, inputs, states, training=None, **kwargs):
+        assert training is not None
+        return self.cell(inputs, states=states, training=training)
+
+    cell = keras.layers.LSTMCell(32)
+    cell = CellWrapper(cell)
+    cell = keras.layers.StackedRNNCells([cell])
+
+    rnn = keras.layers.RNN(cell)
+    inputs = np.ones((8, 4, 16), dtype=np.float32)
+    rnn(inputs, training=True)
+
   def test_trackable_dependencies(self):
     rnn = keras.layers.SimpleRNN
     x = np.random.random((2, 2, 2))
@@ -851,16 +928,14 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, epochs=1, batch_size=1)
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = object_identity.ObjectIdentitySet(
-        trackable_util.list_objects(model))
+    checkpointed_objects = {id(o) for o in trackable_util.list_objects(model)}
     for v in model.variables:
-      self.assertIn(v, checkpointed_objects)
+      self.assertIn(id(v), checkpointed_objects)
 
   def test_high_dimension_RNN(self):
     # Basic test case.
@@ -887,8 +962,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, time_step, input_a, input_b)),
         np.zeros((batch, unit_a, unit_b)))
@@ -906,8 +980,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, time_step, input_a, input_b)),
         np.zeros((batch, unit_a * 4, unit_b * 4)))
@@ -932,8 +1005,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch([
         np.zeros((batch, time_step, input_a, input_b)),
         np.zeros((batch, unit_a, unit_b))
@@ -971,8 +1043,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, time_step, input_size)),
         np.zeros((batch, input_size)))
@@ -980,8 +1051,8 @@ class RNNTest(keras_parameterized.TestCase):
 
   def test_get_initial_state(self):
     cell = keras.layers.SimpleRNNCell(5)
-    with self.assertRaisesRegexp(ValueError,
-                                 'batch_size and dtype cannot be None'):
+    with self.assertRaisesRegex(ValueError,
+                                'batch_size and dtype cannot be None'):
       cell.get_initial_state(None, None, None)
 
     if not context.executing_eagerly():
@@ -1007,59 +1078,61 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertEqual(initial_state.shape.as_list(), [batch, 5])
       self.assertEqual(initial_state.dtype, inputs.dtype)
 
-  def test_nested_input_output(self):
+  @parameterized.parameters([True, False])
+  def test_nested_input_output(self, stateful):
     batch = 10
     t = 5
     i1, i2, i3 = 3, 4, 5
     o1, o2, o3 = 2, 3, 4
 
     cell = NestedCell(o1, o2, o3)
-    rnn = keras.layers.RNN(cell)
+    rnn = keras.layers.RNN(cell, stateful=stateful)
 
-    input_1 = keras.Input((t, i1))
-    input_2 = keras.Input((t, i2, i3))
+    batch_size = batch if stateful else None
+    input_1 = keras.Input((t, i1), batch_size=batch_size)
+    input_2 = keras.Input((t, i2, i3), batch_size=batch_size)
 
     outputs = rnn((input_1, input_2))
 
     self.assertEqual(len(outputs), 2)
-    self.assertEqual(outputs[0].shape.as_list(), [None, o1])
-    self.assertEqual(outputs[1].shape.as_list(), [None, o2, o3])
+    self.assertEqual(outputs[0].shape.as_list(), [batch_size, o1])
+    self.assertEqual(outputs[1].shape.as_list(), [batch_size, o2, o3])
 
     model = keras.models.Model((input_1, input_2), outputs)
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((batch, t, i1)), np.zeros((batch, t, i2, i3))],
         [np.zeros((batch, o1)), np.zeros((batch, o2, o3))])
-    self.assertEqual(model.output_shape, [(None, o1), (None, o2, o3)])
+    self.assertEqual(model.output_shape, [(batch_size, o1),
+                                          (batch_size, o2, o3)])
 
     cell = NestedCell(o1, o2, o3, use_tuple=True)
 
-    rnn = keras.layers.RNN(cell)
+    rnn = keras.layers.RNN(cell, stateful=stateful)
 
-    input_1 = keras.Input((t, i1))
-    input_2 = keras.Input((t, i2, i3))
+    input_1 = keras.Input((t, i1), batch_size=batch_size)
+    input_2 = keras.Input((t, i2, i3), batch_size=batch_size)
 
     outputs = rnn(NestedInput(t1=input_1, t2=input_2))
 
     self.assertEqual(len(outputs), 2)
-    self.assertEqual(outputs[0].shape.as_list(), [None, o1])
-    self.assertEqual(outputs[1].shape.as_list(), [None, o2, o3])
+    self.assertEqual(outputs[0].shape.as_list(), [batch_size, o1])
+    self.assertEqual(outputs[1].shape.as_list(), [batch_size, o2, o3])
 
     model = keras.models.Model([input_1, input_2], outputs)
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((batch, t, i1)),
          np.zeros((batch, t, i2, i3))],
         [np.zeros((batch, o1)), np.zeros((batch, o2, o3))])
-    self.assertEqual(model.output_shape, [(None, o1), (None, o2, o3)])
+    self.assertEqual(model.output_shape, [(batch_size, o1),
+                                          (batch_size, o2, o3)])
 
   def test_nested_input_output_with_state(self):
     batch = 10
@@ -1084,8 +1157,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((batch, t, i1)),
          np.zeros((batch, t, i2, i3))],
@@ -1111,8 +1183,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((batch, t, i1)),
          np.zeros((batch, t, i2, i3))],
@@ -1147,8 +1218,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((batch, t, i1)),
          np.zeros((batch, t, i2, i3)),
@@ -1181,8 +1251,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         [np.zeros((batch, t, i1)),
          np.zeros((batch, t, i2, i3)),
@@ -1259,8 +1328,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     # last time step masked
     x_np = np.array([[[1.], [2.], [0.]]])
@@ -1286,8 +1354,7 @@ class RNNTest(keras_parameterized.TestCase):
       model.compile(
           optimizer='rmsprop',
           loss='mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
       np_x = np.ones((6, 5, 5))
       result_1 = model.predict(np_x)
@@ -1311,8 +1378,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     np_x = np.ones((6, 1, 5))
     result = model.predict(np_x)
@@ -1323,7 +1389,7 @@ class RNNTest(keras_parameterized.TestCase):
     cell = keras.layers.SimpleRNNCell(5)
     x = keras.Input((None, 5))
     layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
-    with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
+    with self.assertRaisesRegex(ValueError, 'Cannot unroll a RNN.*'):
       layer(x)
 
   def test_full_input_spec(self):
@@ -1337,15 +1403,23 @@ class RNNTest(keras_parameterized.TestCase):
         initial_state=states
     )
     model = keras.Model([inputs, state_h, state_c], decoder_out)
+    output1 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    output2 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
     model.reset_states()
+    output3 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    self.assertAllClose(output1, output3)
+    self.assertNotAllClose(output1, output2)
 
   def test_reset_states(self):
     # See https://github.com/tensorflow/tensorflow/issues/25852
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       simple_rnn = keras.layers.SimpleRNN(1, stateful=True)
       simple_rnn.reset_states()
 
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       cell = Minimal2DRNNCell(1, 2)
       custom_rnn = keras.layers.RNN(cell, stateful=True)
       custom_rnn.reset_states()
@@ -1367,8 +1441,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, timesteps, input_dim)),
         np.zeros((batch, output_dim)))
@@ -1391,17 +1464,24 @@ class RNNTest(keras_parameterized.TestCase):
 
     test_inputs = np.full((batch, timesteps, input_dim), 0.5)
 
+    def make_model(stateful=False, with_initial_state=False):
+      input_layer = keras.Input(shape=(None, input_dim), batch_size=batch)
+      if with_initial_state:
+        initial_states = keras.backend.constant(np.ones((batch, output_dim)))
+      else:
+        initial_states = None
+      rnn_output = keras.layers.GRU(
+          units=output_dim, return_sequences=True, stateful=stateful)(
+              input_layer, initial_state=initial_states)
+      model = keras.Model(input_layer, rnn_output)
+      model.compile(
+          optimizer='rmsprop', loss='mse',
+          run_eagerly=testing_utils.should_run_eagerly())
+      return model
+
     # Define a model with a constant state initialization
-    input_layer = keras.Input(shape=(None, input_dim), batch_size=batch)
-    initial_states = keras.backend.constant(np.ones((batch, output_dim)))
-    rnn_output = keras.layers.GRU(
-        units=output_dim, return_sequences=True, stateful=True)(
-            input_layer, initial_state=initial_states)
-    model = keras.Model(input_layer, rnn_output)
-    model.compile(
-        optimizer=keras.optimizers.RMSprop(), loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    model = make_model(stateful=True, with_initial_state=True)
+    layer_weights = model.layers[1].get_weights()
 
     model.reset_states()
     predict_1 = model.predict(test_inputs)
@@ -1414,6 +1494,49 @@ class RNNTest(keras_parameterized.TestCase):
     # from batch 1 as the initial state.
     self.assertNotAllClose(predict_1, predict_2)
     self.assertAllClose(predict_1, predict_3)
+
+    # Create a new model with same weights but without initial states. Make sure
+    # the predict value is different from the model with non-zero initial state.
+    model_2 = make_model(stateful=True, with_initial_state=False)
+    model_2.layers[1].set_weights(layer_weights)
+
+    model_2.reset_states()
+    predict_4 = model_2.predict(test_inputs)
+    predict_5 = model_2.predict(test_inputs)
+    self.assertNotAllClose(predict_1, predict_4)
+    self.assertNotAllClose(predict_4, predict_5)
+
+    # Create models with stateful=False, and make sure they handle init state
+    # correctly.
+    model_3 = make_model(stateful=False, with_initial_state=True)
+    model_3.layers[1].set_weights(layer_weights)
+
+    model_3.reset_states()
+    predict_6 = model_3.predict(test_inputs)
+    predict_7 = model_3.predict(test_inputs)
+    self.assertAllClose(predict_1, predict_6)
+    self.assertAllClose(predict_6, predict_7)
+
+  def test_stateful_rnn_with_customized_get_initial_state(self):
+
+    class TestCell(keras.layers.AbstractRNNCell):
+
+      state_size = 1
+      output_size = 2
+
+      def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        return np.ones((batch_size, 1), dtype=dtype)
+
+      def call(self, inputs, states):
+        return inputs, states
+
+    layer = keras.layers.RNN(TestCell(), stateful=True, return_state=True)
+    inputs = keras.Input(shape=(10, 2), batch_size=4)
+    model = keras.Model(inputs, layer(inputs))
+    x = np.ones((4, 10, 2), dtype=np.float32)
+    output, state = model.predict(x)
+    self.assertAllClose(output, np.ones((4, 2)))
+    self.assertAllClose(state, np.ones((4, 1)))
 
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
@@ -1451,12 +1574,178 @@ class RNNTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(
         np.zeros((batch, timesteps, input_dim)),
         np.zeros((batch, output_dim)))
     model.predict(np.ones((batch, timesteps, input_dim)))
+
+  @parameterized.named_parameters(
+      *testing_utils.generate_combinations_with_testcase_name(layer=[
+          rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM, rnn_v2.GRU, rnn_v2.LSTM
+      ]))
+  def test_rnn_with_ragged_input(self, layer):
+    ragged_data = ragged_factory_ops.constant(
+        [[[1., 1., 1., 1., 1.], [1., 2., 3., 1., 1.]],
+         [[2., 4., 1., 3., 1.]],
+         [[2., 3., 4., 1., 5.], [2., 3., 1., 1., 1.], [1., 2., 3., 4., 5.]]],
+        ragged_rank=1)
+    label_data = np.array([[1, 0, 1], [1, 1, 0], [0, 0, 1]])
+
+    # Test results in feed forward
+    np.random.seed(100)
+    rnn_layer = layer(4, activation='sigmoid')
+
+    x_ragged = keras.Input(shape=(None, 5), ragged=True)
+    y_ragged = rnn_layer(x_ragged)
+    model = keras.models.Model(x_ragged, y_ragged)
+    output_ragged = model.predict(ragged_data, steps=1)
+
+    x_dense = keras.Input(shape=(3, 5))
+    masking = keras.layers.Masking()(x_dense)
+    y_dense = rnn_layer(masking)
+    model_2 = keras.models.Model(x_dense, y_dense)
+    dense_data = ragged_data.to_tensor()
+    output_dense = model_2.predict(dense_data, steps=1)
+
+    self.assertAllClose(output_dense, output_ragged)
+
+    # Test results with go backwards
+    np.random.seed(200)
+    back_rnn_layer = layer(8, go_backwards=True, activation='sigmoid')
+
+    x_ragged = keras.Input(shape=(None, 5), ragged=True)
+    y_ragged = back_rnn_layer(x_ragged)
+    model = keras.models.Model(x_ragged, y_ragged)
+    output_ragged = model.predict(ragged_data, steps=1)
+
+    x_dense = keras.Input(shape=(3, 5))
+    masking = keras.layers.Masking()(x_dense)
+    y_dense = back_rnn_layer(masking)
+    model_2 = keras.models.Model(x_dense, y_dense)
+    dense_data = ragged_data.to_tensor()
+    output_dense = model_2.predict(dense_data, steps=1)
+
+    self.assertAllClose(output_dense, output_ragged)
+
+    # Test densification of the ragged input
+    dense_tensor, row_lengths = keras.backend.convert_inputs_if_ragged(
+        ragged_data)
+    self.assertAllClose(dense_data, dense_tensor)
+
+    # Test optional params, all should work except unrolling
+    inputs = keras.Input(shape=(None, 5), dtype=dtypes.float32, ragged=True)
+    custom_rnn_layer = layer(
+        3, zero_output_for_mask=True, dropout=0.1, use_bias=True)
+    outputs = custom_rnn_layer(inputs)
+    model = keras.models.Model(inputs, outputs)
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(ragged_data, label_data)
+
+    # Test stateful and full shape specification
+    inputs = keras.Input(
+        shape=(None, 5), batch_size=3, dtype=dtypes.float32, ragged=True)
+    stateful_rnn_layer = layer(3, stateful=True)
+    outputs = stateful_rnn_layer(inputs)
+    model = keras.models.Model(inputs, outputs)
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(ragged_data, label_data)
+
+    # Must raise error when unroll is set to True
+    unroll_rnn_layer = layer(3, unroll=True)
+    with self.assertRaisesRegex(ValueError,
+                                'The input received contains RaggedTensors *'):
+      unroll_rnn_layer(inputs)
+
+    # Check if return sequences outputs are correct
+    np.random.seed(100)
+    returning_rnn_layer = layer(4, return_sequences=True)
+
+    x_ragged = keras.Input(shape=(None, 5), ragged=True)
+    y_ragged = returning_rnn_layer(x_ragged)
+    model = keras.models.Model(x_ragged, y_ragged)
+    output_ragged = model.predict(ragged_data, steps=1)
+    self.assertAllClose(output_ragged.ragged_rank, ragged_data.ragged_rank)
+    self.assertAllClose(output_ragged.row_splits, ragged_data.row_splits)
+
+    x_dense = keras.Input(shape=(3, 5))
+    masking = keras.layers.Masking()(x_dense)
+    y_dense = returning_rnn_layer(masking)
+    model_2 = keras.models.Model(x_dense, y_dense)
+    dense_data = ragged_data.to_tensor()
+    output_dense = model_2.predict(dense_data, steps=1)
+    # Convert the output here to ragged for value comparison
+    output_dense = ragged_tensor.RaggedTensor.from_tensor(
+        output_dense, lengths=row_lengths)
+    self.assertAllClose(output_ragged, output_dense)
+
+  def test_stateless_rnn_cell(self):
+
+    class StatelessCell(keras.layers.Layer):
+
+      def __init__(self):
+        self.state_size = ((), [], ())
+        self.output_size = None
+        super(StatelessCell, self).__init__()
+
+      def build(self, input_shape):
+        self.output_size = input_shape[-1]
+
+      def call(self, inputs, states):
+        return inputs, states
+
+    x = keras.Input((None, 5))
+    cell = StatelessCell()
+    initial_state = nest.map_structure(lambda t: None, cell.state_size)
+    layer = keras.layers.RNN(cell)
+    y = layer(x, initial_state=initial_state)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 5)))
+
+  @parameterized.parameters(
+      [rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM, rnn_v2.GRU, rnn_v2.LSTM])
+  def test_for_enable_caching_device_for_layer(self, layer_cls):
+    expected_caching_device = ops.executing_eagerly_outside_functions()
+    layer = layer_cls(1)
+    self.assertEqual(layer.cell._enable_caching_device, expected_caching_device)
+
+    # Make sure the config only appears when the none default value is used.
+    config = layer.get_config()
+    self.assertNotIn('enable_caching_device', config)
+
+    non_default_value = not expected_caching_device
+    layer = layer_cls(1, enable_caching_device=non_default_value)
+    self.assertEqual(layer.cell._enable_caching_device, non_default_value)
+    config = layer.get_config()
+    self.assertEqual(config['enable_caching_device'], non_default_value)
+
+  @parameterized.parameters(
+      [rnn_v1.SimpleRNNCell, rnn_v1.GRUCell, rnn_v1.LSTMCell, rnn_v2.GRUCell,
+       rnn_v2.LSTMCell])
+  def test_for_enable_caching_device_for_cell(self, cell_cls):
+    expected_caching_device = ops.executing_eagerly_outside_functions()
+    cell = cell_cls(1)
+    self.assertEqual(cell._enable_caching_device, expected_caching_device)
+
+    # Make sure the config only appears when the none default value is used.
+    config = cell.get_config()
+    self.assertNotIn('enable_caching_device', config)
+
+    non_default_value = not expected_caching_device
+    cell = cell_cls(1, enable_caching_device=non_default_value)
+    self.assertEqual(cell._enable_caching_device, non_default_value)
+    config = cell.get_config()
+    self.assertEqual(config['enable_caching_device'], non_default_value)
 
 
 class RNNCellWithConstants(keras.layers.Layer):
@@ -1507,8 +1796,8 @@ class Minimal2DRNNCell(keras.layers.Layer):
   def __init__(self, unit_a, unit_b, **kwargs):
     self.unit_a = unit_a
     self.unit_b = unit_b
-    self.state_size = tensor_shape.as_shape([unit_a, unit_b])
-    self.output_size = tensor_shape.as_shape([unit_a, unit_b])
+    self.state_size = tensor_shape.TensorShape([unit_a, unit_b])
+    self.output_size = tensor_shape.TensorShape([unit_a, unit_b])
     super(Minimal2DRNNCell, self).__init__(**kwargs)
 
   def build(self, input_shape):

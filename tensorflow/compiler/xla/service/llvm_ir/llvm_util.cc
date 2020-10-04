@@ -22,13 +22,16 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -88,8 +91,8 @@ llvm::CallInst* EmitCallToIntrinsic(
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max) {
+  if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -101,8 +104,8 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max) {
+  if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -245,15 +248,6 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
   return b->CreateGlobalStringPtr(encoded_shape);
 }
 
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes) {
-  ShapeProto shape_proto;
-  TF_RET_CHECK(shape_proto.ParseFromArray(shape_ptr, size_bytes));
-  Shape shape(shape_proto);
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return std::move(shape);
-}
-
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
@@ -295,7 +289,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(alignment);
+    alloca->setAlignment(llvm::Align(alignment));
   }
   return alloca;
 }
@@ -421,9 +415,10 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-string IrName(string a) {
-  a.erase(std::remove(a.begin(), a.end(), '%'), a.end());
-  return a;
+string IrName(absl::string_view a) {
+  std::string s(a);
+  s.erase(std::remove(s.begin(), s.end(), '%'), s.end());
+  return s;
 }
 
 string IrName(absl::string_view a, absl::string_view b) {
@@ -588,7 +583,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
@@ -596,7 +591,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // this if we're dumping to stdout; there's no point in duplicating everything
   // when writing to the terminal.
   if (!DumpingToStdout(debug_opts)) {
-    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+    DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
                     DumpModuleToString(*DropConstantInitializers(llvm_module)));
   }
 }
@@ -615,21 +610,12 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setHasUWTable();
 
-  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
-    function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-signed-zeros-fp-math", "true");
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
-      function->addFnAttr("no-nans-fp-math", "true");
-    }
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
-      function->addFnAttr("no-infs-fp-math", "true");
-    }
-    if (module_config.debug_options().xla_cpu_fast_math_honor_division()) {
-      function->addFnAttr("reciprocal-estimates", "none");
-    }
-  }
+  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
+  // denormals is safe. This allows vectorization using ARM's neon instruction
+  // set.
+  function->addFnAttr("denormal-fp-math", "preserve-sign");
 
-  // Add the optize attribute to the function if optimizing for size. This
+  // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
   if (cpu::options::OptimizeForSizeRequested(module_config)) {

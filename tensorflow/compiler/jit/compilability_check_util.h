@@ -26,13 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/function.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -80,29 +80,29 @@ class RecursiveCompilabilityChecker {
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model
     // their memory effects in jit/resource_operation_safety_analysis.
-    bool allow_resource_ops_in_called_functions;
+    bool allow_resource_ops_in_called_functions = false;
 
     // Whether Stack operations are allowed.  We avoid auto-clustering Stack
     // operations in general because we do not support snapshotting them.
     //
     // TODO(b/112837194): This restriction can be lifted with some work.
-    bool allow_stack_ops;
+    bool allow_stack_ops = false;
 
     // Whether TensorArray operations are allowed.  We avoid auto-clustering
     // TensorArray operations in general because we do not support snapshotting
     // them.
     //
     // TODO(b/112837194): This restriction can be lifted with some work.
-    bool allow_tensor_array_ops;
+    bool allow_tensor_array_ops = false;
 
     // Whether stateful RNG ops are allowed.  XLA's RNG does not have the same
     // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
     // auto-clustering stateful RNG ops.
-    bool allow_stateful_rng_ops;
+    bool allow_stateful_rng_ops = false;
 
     // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
     // to cluster ControlTrigger because of how we use deadness analysis.
-    bool allow_control_trigger;
+    bool allow_control_trigger = false;
 
     // Whether it is okay to "cluster" Assert and CheckNumerics by simply
     // removing them (they're not removed during clustering, but their
@@ -111,24 +111,25 @@ class RecursiveCompilabilityChecker {
     // user explicitly specifies to use XLA, it is fine to resort to a dummy
     // implementation. Currently Assert and CheckNumerics ops have dummy XLA
     // implementations.
-    bool allow_eliding_assert_and_checknumerics_ops;
+    bool allow_eliding_assert_and_checknumerics_ops = false;
 
     // Whether ops that produce or consume DT_VARIANT values are allowed.  We
     // don't auto-cluster these ops because we don't yet support live-in or
     // live-out DT_VARIANT values.
-    bool allow_ops_producing_or_consuming_variant;
+    bool allow_ops_producing_or_consuming_variant = false;
 
     // Whether ops known to be slow on XLA-GPU should be considered compilable.
-    bool allow_slow_ops;
+    bool allow_slow_ops = false;
 
     // Whether ops known to have numerical accuracy issues should be considered
     // compilable..
-    bool allow_inaccurate_ops;
+    bool allow_inaccurate_ops = false;
   };
 
-  RecursiveCompilabilityChecker(const OperationFilter* op_filter,
-                                const DeviceType* jit_device_type)
-      : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
+  RecursiveCompilabilityChecker(OperationFilter op_filter,
+                                DeviceType jit_device_type)
+      : op_filter_(std::move(op_filter)),
+        jit_device_type_(std::move(jit_device_type)) {}
 
   using UncompilableNodesMap =
       std::map<std::string,
@@ -257,14 +258,68 @@ class RecursiveCompilabilityChecker {
       UncompilableNodesMap* uncompilable_nodes_map);
 
   // Make sure we don't recurse infinitely on recursive functions.
-  const int kMaxRecursionDepth = 10;
+  const size_t kMaxRecursionDepth = 10;
 
-  const OperationFilter& op_filter_;
-  const DeviceType& jit_device_type_;
+  const OperationFilter op_filter_;
+  const DeviceType jit_device_type_;
 };
 
 RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
     const XlaOpRegistry::DeviceRegistration& registration);
+
+// Given a FunctionLibraryRuntime and a `function`, returns this function's body
+// in `fbody` as well as the indices of its constant and resource arguments.
+// `fbody` is owned by `flr`.
+// `constant_arg_indices` and `resource_arg_indices` should be empty vector.
+// They are sorted in ascending order on this function's return.
+Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
+                                       const NameAttrList& function,
+                                       const FunctionBody** fbody,
+                                       std::vector<int>* constant_arg_indices,
+                                       std::vector<int>* resource_arg_indices);
+
+// Given a NodeDef `node_def` returns true iff `node_def` has kXlaCompileAttr
+// set.
+bool CanCreateXlaKernel(const NodeDef& node_def);
+
+// Returns memory types for the input.
+// `constant_arg_indices` and `resource_arg_indices` are sorted arrays of
+// indices corresponding to constant and resource arguments respectively.
+//
+// One might wonder, about the case where a compile-time constant argument
+// (which must be in host memory) is also used as an input into an op,
+// e.g. `Add`, that expects its inputs in device memory. Here is how it
+// works now.
+// First, what do we mean by "op expects an input in XYZ memory"?
+// There are two types of "ops" here: the tf2xla kernel and the HLO
+// computation it builds. The tf2xla kernel needs to retrieve the actual
+// numeric value of the compile-time constant tensors, so it really expects
+// them to be on in host memory. However, for other inputs, it refers to them
+// using xla::ComputationDataHandle, which is just a symbolic handle that
+// xla::ComputationBuilder assigns. How does this handle gets assigned for
+// constant arguments? Even constant arguments get an _Arg node in the graph
+// instantiated for Function compilation. The tf2xla kernel for constant _Arg
+// nodes takes the constant value, converts it to XlaLiteral, and feeds it
+// to xla::ComputationBuilder.ConstantLiteral, which returns the handle. This
+// constant XlaLiteral is included in the HLO graph, and subsequently, in
+// the actual executable, which is copied to the device before being
+// executed. Thus, when this executable runs, the constant is available in
+// device memory.
+tensorflow::MemoryTypeVector GetInputMemoryTypes(
+    const tensorflow::FunctionBody* fbody,
+    absl::Span<int const> constant_arg_indices,
+    absl::Span<int const> resource_arg_indices);
+
+// Returns output memory types.
+//
+// XlaLaunch kernel keeps all outputs (including constants, which it copies),
+// in device memory except for resources.
+tensorflow::MemoryTypeVector GetOutputMemoryTypes(
+    const tensorflow::FunctionBody* fbody);
+
+// Check whether graph can trigger XLA compilation.
+bool CanTriggerXlaCompilation(const GraphDef& graph);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_COMPILABILITY_CHECK_UTIL_H_

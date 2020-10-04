@@ -108,16 +108,16 @@ cc_library(
     copts = [
         "-I external/ngraph/src",
         "-I external/nlohmann_json_lib/include/",
-        '-D SHARED_LIB_EXT=\\".so\\"',
-        '-D NGRAPH_VERSION=\\"0.11.0\\"',
+        "-D SHARED_LIB_EXT=\".so\"",
+        "-D NGRAPH_VERSION=\"0.11.0\"",
         "-D NGRAPH_DEX_ONLY",
-        '-D PROJECT_ROOT_DIR=\\"\\"',
+        "-D PROJECT_ROOT_DIR=\"\"",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":ngraph_headers",
         "@eigen_archive//:eigen",
-        "@mkl_dnn",
+        "@mkl_dnn_v1//:mkl_dnn",
         "@nlohmann_json_lib",
         "@tbb",
     ],
@@ -151,9 +151,9 @@ cc_library(
     copts = [
         "-I external/ngraph/src",
         "-I external/nlohmann_json_lib/include/",
-        '-D SHARED_LIB_EXT=\\".so\\"',
-        '-D NGRAPH_VERSION=\\"0.11.0\\"',
-        '-D PROJECT_ROOT_DIR=\\"\\"',
+        "-D SHARED_LIB_EXT=\\\".so\\\"",
+        "-D NGRAPH_VERSION=\\\"0.11.0\\\"",
+        "-D PROJECT_ROOT_DIR=\\\"\\\"",
     ],
     visibility = ["//visibility:public"],
     deps = [

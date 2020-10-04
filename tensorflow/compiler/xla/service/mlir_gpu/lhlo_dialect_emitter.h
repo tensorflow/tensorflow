@@ -17,16 +17,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -39,29 +41,38 @@ namespace mlir_gpu {
 class LhloDialectEmitter : public DfsHloVisitorWithDefault,
                            private gpu::ThunkEmitter::EmissionContext {
  public:
-  LhloDialectEmitter(const HloModule& hlo_module,
+  LhloDialectEmitter(xla::mlir_gpu::EmissionContext* emission_context,
                      const BufferAssignment& assignment,
                      const se::Platform* platform,
                      ::mlir::ModuleOp mlir_module);
   ~LhloDialectEmitter() override = default;
-
-  Status EmitComputation(const HloComputation& computation);
 
   // The following methods implement the DfsHloVisitor interface.
   //
   // Default action which emits code for most operations. Operations which are
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* instr) override;
-
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleParameter(HloInstruction* parameter) override;
+  Status HandleBroadcast(HloInstruction* instr) override;
+  Status HandleCompare(HloInstruction* instr) override;
+  Status HandleConcatenate(HloInstruction* instr) override;
+  Status HandleConstant(HloInstruction* instr) override;
+  Status HandleCustomCall(HloInstruction* instr) override;
+  Status HandleFusion(HloInstruction* instr) override;
+  Status HandleGather(HloInstruction* instr) override;
+  Status HandleIota(HloInstruction* instr) override;
+  Status HandleParameter(HloInstruction* instr) override;
+  Status HandleReduce(HloInstruction* instr) override;
+  Status HandleReduceWindow(HloInstruction* instr) override;
+  Status HandleSelectAndScatter(HloInstruction* instr) override;
+  Status HandleTuple(HloInstruction* instr) override;
 
   Status FinishVisit(HloInstruction* root) override;
 
   // Transfers the ownship of thunk_sequence_ out.
-  std::unique_ptr<gpu::ThunkSequence> ConsumeThunkSequence() {
-    return std::move(thunk_sequence_);
+  gpu::ThunkSequence ConsumeThunkSequence() {
+    gpu::ThunkSequence result;
+    std::swap(result, thunk_sequence_);
+    return result;
   }
 
   const absl::flat_hash_map<const xla::HloInstruction*, ::mlir::FuncOp>&
@@ -76,8 +87,11 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index) const override;
   int64 ByteSizeOf(const Shape& shape) const override;
-  const se::Platform* platform() const override;
+  absl::string_view platform_name() const override;
 
+  mlir::Location getLocation(const HloInstruction* instr) const;
+
+  xla::mlir_gpu::EmissionContext* emission_context_;
   ::mlir::ModuleOp mlir_module_;
   ::mlir::Builder builder_;
   absl::flat_hash_map<const xla::HloInstruction*, ::mlir::FuncOp>
@@ -87,7 +101,7 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   // Cached pointer size extracted from the mlir module.
   unsigned pointer_size_;
   // The thunk sequence this IrEmitter generates for the input computation.
-  std::unique_ptr<gpu::ThunkSequence> thunk_sequence_;
+  gpu::ThunkSequence thunk_sequence_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(LhloDialectEmitter);
 };

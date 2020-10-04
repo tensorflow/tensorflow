@@ -29,10 +29,10 @@ class ConvolutionGroupConverter : public HloModulePass {
  public:
   ConvolutionGroupConverter(std::function<bool(HloInstruction*)> is_cost_viable,
                             bool convert_batch_groups_only,
-                            bool canonicalize_depthwise_filter = false)
+                            bool filter_expansion = true)
       : is_cost_viable_(is_cost_viable),
         convert_batch_groups_only_(convert_batch_groups_only),
-        filter_expansion_(canonicalize_depthwise_filter) {}
+        filter_expansion_(filter_expansion) {}
 
   absl::string_view name() const override {
     return "convolution-group-converter";

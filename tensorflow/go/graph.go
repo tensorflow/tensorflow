@@ -61,7 +61,31 @@ type GraphImportOptions struct {
 	// Execution device
 	Device string
 
+	// inputMapping defines a mapping between Outputs in the graph
+	// and Outputs they should be replaced with.
+	inputMapping map[struct {
+		Name  string
+		Index int
+	}]Output
+
 	// TODO: extend this structure to support more options from TF_ImportGraphDefOptions
+}
+
+// AddInputMapping adds a mapping between an Output in the imported graph
+// and an Ouput in the destination graph that it should be replaced with,
+// where src:srcIndex is the name of the Operation and Output index to
+// replace and dst is the output to replace it with.
+func (o *GraphImportOptions) AddInputMapping(src string, srcIndex int, dst Output) {
+	if o.inputMapping == nil {
+		o.inputMapping = make(map[struct {
+			Name  string
+			Index int
+		}]Output)
+	}
+	o.inputMapping[struct {
+		Name  string
+		Index int
+	}{src, srcIndex}] = dst
 }
 
 // NewGraph returns a new Graph.
@@ -122,18 +146,20 @@ func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error 
 		C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
 	}
 
+	for src, dst := range options.inputMapping {
+		cSrcName := C.CString(src.Name)
+		C.TF_ImportGraphDefOptionsAddInputMapping(opts, cSrcName, C.int(src.Index), dst.c())
+		C.free(unsafe.Pointer(cSrcName))
+	}
+
 	buf := C.TF_NewBuffer()
 	defer C.TF_DeleteBuffer(buf)
-	// Would have preferred to use C.CBytes, but that does not play well
-	// with "go vet" till https://github.com/golang/go/issues/17201 is
-	// resolved.
 	buf.length = C.size_t(len(def))
-	buf.data = C.malloc(buf.length)
+	buf.data = C.CBytes(def)
 	if buf.data == nil {
 		return fmt.Errorf("unable to allocate memory")
 	}
 	defer C.free(buf.data)
-	C.memcpy(buf.data, unsafe.Pointer(&def[0]), buf.length)
 
 	status := newStatus()
 
@@ -468,4 +494,35 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		return fmt.Errorf("attribute %q has a type (%T) which is not valid for operation attributes", name, value)
 	}
 	return nil
+}
+
+type LibraryHandler struct {
+	cptr *C.TF_Library
+}
+
+// Load library content into current context, useful to load ops implementation into non-monolitic TF build. Returns LibraryHandler or nil and error
+func LoadLibrary(path string) (*LibraryHandler, error) {
+	status := newStatus()
+
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	cptr := C.TF_LoadLibrary(cpath, status.c)
+	if cptr == nil || status.Code() != C.TF_OK {
+		return nil, fmt.Errorf("could not load library %s: code: %d, error: %s", path, status.Code(), status.String())
+	}
+
+	lh := &LibraryHandler{
+		cptr: cptr,
+	}
+
+	runtime.SetFinalizer(lh, (*LibraryHandler).free)
+	return lh, nil
+}
+
+func (lh *LibraryHandler) free() {
+	if lh == nil || lh.cptr == nil {
+		return
+	}
+
+	C.TF_DeleteLibraryHandle(lh.cptr)
 }

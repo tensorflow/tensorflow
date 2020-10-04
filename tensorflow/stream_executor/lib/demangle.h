@@ -21,7 +21,7 @@ limitations under the License.
 namespace stream_executor {
 namespace port {
 
-string Demangle(const char* mangled);
+std::string Demangle(const char* mangled);
 
 }  // namespace port
 }  // namespace stream_executor

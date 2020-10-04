@@ -27,6 +27,12 @@ limitations under the License.
 
 namespace xla {
 
+enum class FusionConfigCollection {
+  kOff,      // Do not collect configuration.
+  kPerEdge,  // Collect per-edge configuration.
+  kPerNode,  // Collect per-node configuration.
+};
+
 // This class gathers all settings and values which affect the compiled
 // executable outside of the HLO code itself. This include layouts of inputs and
 // outputs to the module and settings such as HLO profiling. Together the
@@ -40,6 +46,9 @@ class HloModuleConfig {
   // optimization. If sharded, XLA will create separate sharding/unsharding
   // programs, and the caller is responsible to call the XLA-generated
   // sharding/unsharding programs before and after the sharded main program.
+  //
+  // If the variable is not updated and there is not a corresponding output, use
+  // {-1} as the output_shape_index.
   //
   // The sharding/unsharding programs will include all the input/output pairs in
   // shardable_value_update_pairs() as a flat tuple in their inputs/outputs,
@@ -72,9 +81,14 @@ class HloModuleConfig {
     return entry_computation_layout_.has_value();
   }
 
-  // Sets the entry computation layout for this config. If the entry computation
-  // layout already exists, it is silently replaced.
+  // Sets the entry_computation_layout's parameter and result shapes for this
+  // config, according to the given program shape. The parameters and result
+  // are set to default layout.
   void SetDefaultComputationLayout(const ProgramShape& program_shape);
+
+  // Same as above but if the given program contains layout for parameters or
+  // result, the entry_computation_layout's layout is updated accordingly.
+  void SetComputationLayoutIfExists(const ProgramShape& program_shape);
 
   // Returns a constant reference to the layout of the entry computation.
   // Assumes the layout was set.
@@ -95,14 +109,41 @@ class HloModuleConfig {
     return debug_options_.xla_hlo_profile();
   }
 
+  bool cpu_traceme_enabled() const {
+    return debug_options_.xla_cpu_enable_xprof_traceme();
+  }
+
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
   uint64 seed() const { return seed_; }
+
+  // Set the launch id of the program. Launch id identifies a set of programs
+  // that should be launched together.
+  void set_launch_id(uint64 launch_id) { launch_id_ = launch_id; }
+
+  int32 launch_id() const { return launch_id_; }
 
   void set_replica_count(int64 replica_count) {
     replica_count_ = replica_count;
   }
   int64 replica_count() const { return replica_count_; }
+
+  void set_num_partitions(int64 num_partitions) {
+    num_partitions_ = num_partitions;
+  }
+  int64 num_partitions() const { return num_partitions_; }
+
+  void set_use_spmd_partitioning(bool use_spmd_partitioning) {
+    use_spmd_partitioning_ = use_spmd_partitioning;
+  }
+  bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
+
+  // If enabled, deduplicate equivalent hlos into function calls to reduce code
+  // size.
+  void set_deduplicate_hlo(bool deduplicate_hlo) {
+    deduplicate_hlo_ = deduplicate_hlo;
+  }
+  bool deduplicate_hlo() const { return deduplicate_hlo_; }
 
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
@@ -154,6 +195,43 @@ class HloModuleConfig {
     alias_passthrough_params_ = alias_passthrough_params;
   }
 
+  bool content_aware_computation_sorting() const {
+    return content_aware_computation_sorting_;
+  }
+  void set_content_aware_computation_sorting(
+      bool content_aware_computation_sorting) {
+    content_aware_computation_sorting_ = content_aware_computation_sorting;
+  }
+
+  FusionConfigCollection fusion_config_collection() const {
+    return fusion_config_collection_;
+  }
+  void set_fusion_config_collection(
+      FusionConfigCollection fusion_config_collection) {
+    fusion_config_collection_ = fusion_config_collection;
+  }
+
+  const std::vector<std::vector<bool>>& fusion_config() const {
+    return fusion_config_;
+  }
+  std::vector<std::vector<bool>>* mutable_fusion_config() {
+    return &fusion_config_;
+  }
+
+  const std::vector<std::vector<int64>>& dot_config() const {
+    return dot_config_;
+  }
+
+  std::vector<std::vector<int64>>* mutable_dot_config() { return &dot_config_; }
+
+  const std::vector<std::vector<std::vector<int64>>>& layout_config() const {
+    return layout_config_;
+  }
+
+  std::vector<std::vector<std::vector<int64>>>* mutable_layout_config() {
+    return &layout_config_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -162,8 +240,22 @@ class HloModuleConfig {
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
 
-  // The number of replicas to compile this binary for.
+  // Program id that identifies a set of program to be launched together.
+  int32 launch_id_ = 0;
+
+  // The number of replicas (data parallelism) to compile this binary for.
   int64 replica_count_ = 1;
+
+  // The number of partitions (model parallelism) to compile this binary for.
+  int64 num_partitions_ = 1;
+
+  // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
+  // needs to partition the module.
+  bool use_spmd_partitioning_ = false;
+
+  // If enabled, deduplicate equivalent hlos into function calls to reduce code
+  // size.
+  bool deduplicate_hlo_ = false;
 
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
@@ -177,6 +269,27 @@ class HloModuleConfig {
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 
   bool alias_passthrough_params_ = false;
+
+  bool content_aware_computation_sorting_ = false;
+
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
+
+  // TODO(b/155665133): Consolidate fusion, dot, and layout config into a proto
+  // similar to backend config.
+
+  // Custom fusion configuration, where fusion_config_[c][v] control if node v
+  // in computation c must be fused to all its consumers (true) or not (false).
+  std::vector<std::vector<bool>> fusion_config_;
+
+  // Custom dot canonicalization configuration, where dot_config_[v] control
+  // how to convert dot operation v (sorted topologically and by computation) to
+  // convolution.
+  std::vector<std::vector<int64>> dot_config_;
+
+  // Layout configuration, where layout_config_[v][i] controls the layout
+  // decision i of operation v.
+  std::vector<std::vector<std::vector<int64>>> layout_config_;
 };
 
 }  // namespace xla

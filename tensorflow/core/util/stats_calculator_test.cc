@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/stats_calculator.h"
+
+#include <cfloat>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -70,6 +73,35 @@ TEST(StatsCalculatorTest, AddNodeStatsUpdate) {
   EXPECT_EQ(run1_start_us + run2_start_us, detail.start_us.sum());
   EXPECT_EQ(run1_end_us + run2_end_us, detail.rel_end_us.sum());
   EXPECT_EQ(run1_mem_used + run2_mem_used, detail.mem_used.sum());
+}
+
+TEST(StatsCalculatorTest, UpdateStat) {
+  Stat<double> stat;
+  EXPECT_TRUE(stat.empty());
+  EXPECT_TRUE(stat.all_same());
+  stat.UpdateStat(1);
+  EXPECT_TRUE(stat.all_same());
+  stat.UpdateStat(-1.0);
+  EXPECT_FALSE(stat.all_same());
+  stat.UpdateStat(100);
+  stat.UpdateStat(0);
+  EXPECT_EQ(4, stat.count());
+  EXPECT_EQ(-1, stat.min());
+  EXPECT_EQ(100, stat.max());
+  EXPECT_EQ(25, stat.avg());
+  EXPECT_EQ(1, stat.first());
+  EXPECT_EQ(0, stat.newest());
+  EXPECT_EQ(10002, stat.squared_sum());
+  EXPECT_EQ(625, stat.avg() * stat.avg());
+  // Sample variance
+  EXPECT_EQ(7502.0 / 3, stat.sample_variance());
+  // Sample standard deviation, from WolframAlpha
+  EXPECT_NEAR(50.00666622228147160678152, std::sqrt(stat.sample_variance()),
+              FLT_EPSILON);
+  // Population variance
+  EXPECT_NEAR(7502.0 / 4, stat.variance(), FLT_EPSILON);
+  // Population standard deviation, from WolframAlpha
+  EXPECT_NEAR(43.30704330706496060826769, stat.std_deviation(), FLT_EPSILON);
 }
 
 }  // namespace

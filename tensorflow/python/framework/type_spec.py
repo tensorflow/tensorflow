@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
+
 import numpy as np
 import six
 
@@ -26,6 +28,7 @@ from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -80,7 +83,11 @@ class TypeSpec(object):
 
   @abc.abstractproperty
   def value_type(self):
-    """The Python type for values that are compatible with this TypeSpec."""
+    """The Python type for values that are compatible with this TypeSpec.
+
+    In particular, all values that are compatible with this TypeSpec must be an
+    instance of this type.
+    """
     raise NotImplementedError("%s.value_type" % type(self).__name__)
 
   def is_compatible_with(self, spec_or_value):
@@ -124,6 +131,31 @@ class TypeSpec(object):
         self._serialize(), other._serialize())  # pylint: disable=protected-access
     return self._deserialize(merged)
 
+  def _with_tensor_ranks_only(self):
+    """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
+
+    Returns:
+      A `TypeSpec` that is compatible with `self`, where any `TensorShape`
+      information has been relaxed to include only tensor rank (and not
+      the dimension sizes for individual axes).
+    """
+
+    # === Subclassing ===
+    # If not overridden by a subclass, the default behavior is to serialize
+    # this TypeSpec, relax any TensorSpec or TensorShape values, and
+    # deserialize the result.
+
+    def relax(value):
+      if isinstance(value, TypeSpec):
+        return value._with_tensor_ranks_only()  # pylint: disable=protected-access
+      elif (isinstance(value, tensor_shape.TensorShape) and
+            value.rank is not None):
+        return tensor_shape.TensorShape([None] * value.rank)
+      else:
+        return value
+
+    return self._deserialize(nest.map_structure(relax, self._serialize()))
+
   # === Component encoding for values ===
 
   @abc.abstractmethod
@@ -148,7 +180,7 @@ class TypeSpec(object):
 
     Args:
       components: A nested structure of `tf.Tensor` or `tf.CompositeTensor`,
-        compatible with `self._component_specs`.  (Caller is repsonsible for
+        compatible with `self._component_specs`.  (Caller is responsible for
         ensuring compatibility.)
 
     Returns:
@@ -323,6 +355,8 @@ class TypeSpec(object):
       ])
     if isinstance(value, tuple):
       return tuple([self.__make_cmp_key(v) for v in value])
+    if isinstance(value, list):
+      return (list, tuple([self.__make_cmp_key(v) for v in value]))
     if isinstance(value, tensor_shape.TensorShape):
       if value.ndims is None:
         # Note: we include a type object in the tuple, to ensure we can't get
@@ -346,15 +380,17 @@ class TypeSpec(object):
   @staticmethod
   def __is_compatible(a, b):
     """Returns true if the given type serializations compatible."""
+    if isinstance(a, TypeSpec):
+      return a.is_compatible_with(b)
     if type(a) is not type(b):
       return False
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       return (len(a) == len(b) and
               all(TypeSpec.__is_compatible(x, y) for (x, y) in zip(a, b)))
     if isinstance(a, dict):
       return (len(a) == len(b) and sorted(a.keys()) == sorted(b.keys()) and all(
           TypeSpec.__is_compatible(a[k], b[k]) for k in a.keys()))
-    if isinstance(a, (TypeSpec, tensor_shape.TensorShape, dtypes.DType)):
+    if isinstance(a, (tensor_shape.TensorShape, dtypes.DType)):
       return a.is_compatible_with(b)
     return a == b
 
@@ -369,7 +405,7 @@ class TypeSpec(object):
     * If they are both dicts with the same keys, then recursively combine
       the respective dict elements.
     * If they are both TypeSpecs, then combine using
-      TypeSpec.most_specific_comptible_type.
+      TypeSpec.most_specific_compatible_type.
     * If they are both TensorShapes, then combine using
       TensorShape.most_specific_compatible_shape.
     * If they are both TensorSpecs with the same dtype, then combine using
@@ -389,11 +425,20 @@ class TypeSpec(object):
     """
     if type(a) is not type(b):
       raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       if len(a) != len(b):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)
                    for (x, y) in zip(a, b))
+    if isinstance(a, collections.OrderedDict):
+      a_keys, b_keys = a.keys(), b.keys()
+      if len(a) != len(b) or a_keys != b_keys:
+        raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+      return collections.OrderedDict([
+          (k,
+           TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k]))
+          for k in a_keys
+      ])
     if isinstance(a, dict):
       a_keys, b_keys = sorted(a.keys()), sorted(b.keys())
       if len(a) != len(b) or a_keys != b_keys:
@@ -460,11 +505,29 @@ class BatchableTypeSpec(TypeSpec):
     return tensor_list
 
 
+@tf_export("type_spec_from_value")
 def type_spec_from_value(value):
-  """Returns a `TypeSpec` that represents the given `value`.
+  """Returns a `tf.TypeSpec` that represents the given `value`.
+
+  Examples:
+
+    >>> tf.type_spec_from_value(tf.constant([1, 2, 3]))
+    TensorSpec(shape=(3,), dtype=tf.int32, name=None)
+    >>> tf.type_spec_from_value(np.array([4.0, 5.0], np.float64))
+    TensorSpec(shape=(2,), dtype=tf.float64, name=None)
+    >>> tf.type_spec_from_value(tf.ragged.constant([[1, 2], [3, 4, 5]]))
+    RaggedTensorSpec(TensorShape([2, None]), tf.int32, 1, tf.int64)
+
+    >>> example_input = tf.ragged.constant([[1, 2], [3]])
+    >>> @tf.function(input_signature=[tf.type_spec_from_value(example_input)])
+    ... def f(x):
+    ...   return tf.reduce_sum(x, axis=1)
 
   Args:
     value: A value that can be accepted or returned by TensorFlow APIs.
+      Accepted types for `value` include `tf.Tensor`, any value that can be
+      converted to `tf.Tensor` using `tf.convert_to_tensor`, and any subclass
+      of `CompositeTensor` (such as `tf.RaggedTensor`).
 
   Returns:
     A `TypeSpec` that is compatible with `value`.
@@ -483,8 +546,9 @@ def type_spec_from_value(value):
     spec = _type_spec_from_value(tensor)
     if spec is not None:
       return spec
-  except (ValueError, TypeError):
-    pass
+  except (ValueError, TypeError) as e:
+    logging.vlog(
+        3, "Failed to convert %r to tensor: %s" % (type(value).__name__, e))
 
   raise TypeError("Could not build a TypeSpec for %r with type %s" %
                   (value, type(value).__name__))

@@ -26,6 +26,7 @@ REGISTER_OP("TPUPartitionedCall")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
+    .Attr("autotuner_thresh: int = 0")
     .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace tensorflow

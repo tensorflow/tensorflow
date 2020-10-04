@@ -1,14 +1,15 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [":friends"],
@@ -137,7 +138,9 @@ cc_library(
         ":rocm_driver",
         ":rocm_gpu_executor",
         ":rocm_platform_id",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor",  # buildcleaner: keep
         "//tensorflow/stream_executor:executor_cache",
         "//tensorflow/stream_executor:multi_platform_manager",
@@ -164,6 +167,7 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
@@ -266,6 +270,23 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/stream_executor/gpu:gpu_rng_header",
         "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ] + if_static([
+        "@local_config_rocm//rocm:hiprand",
+    ])),
+    alwayslink = True,
+)
+
+cc_library(
+    name = "hipsparse_wrapper",
+    srcs = if_rocm_is_configured(["hipsparse_wrapper.h"]),
+    hdrs = if_rocm_is_configured(["hipsparse_wrapper.h"]),
+    deps = if_rocm_is_configured([
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",

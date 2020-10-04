@@ -18,16 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import re
 import threading
 import warnings
 
 import numpy as np
+import wrapt
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.client import pywrap_tf_session as tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device
@@ -40,13 +42,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
-from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 _python_session_create_counter = monitoring.Counter(
     '/tensorflow/api/python/session_create_counter',
     'Counter for number of sessions created in Python.')
+
 
 class SessionInterface(object):
   """Base class for implementations of TensorFlow client sessions."""
@@ -348,14 +350,14 @@ def _uniquify_fetches(fetch_mappers):
   """
   unique_fetches = []
   value_indices = []
-  seen_fetches = object_identity.ObjectIdentityDictionary()
+  seen_fetches = {}
   for m in fetch_mappers:
     m_value_indices = []
     for f in m.unique_fetches():
-      j = seen_fetches.get(f)
+      j = seen_fetches.get(id(f))
       if j is None:
         j = len(seen_fetches)
-        seen_fetches[f] = j
+        seen_fetches[id(f)] = j
         unique_fetches.append(f)
       m_value_indices.append(j)
     value_indices.append(m_value_indices)
@@ -371,7 +373,10 @@ class _ListFetchMapper(_FetchMapper):
     Args:
       fetches: List, tuple, or namedtuple of fetches.
     """
-    self._fetch_type = type(fetches)
+    if isinstance(fetches, wrapt.ObjectProxy):
+      self._fetch_type = type(fetches.__wrapped__)
+    else:
+      self._fetch_type = type(fetches)
     self._mappers = [_FetchMapper.for_fetch(fetch) for fetch in fetches]
     self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
 
@@ -403,6 +408,12 @@ class _DictFetchMapper(_FetchMapper):
       fetches: Dict of fetches.
     """
     self._fetch_type = type(fetches)
+    if isinstance(fetches, collections.defaultdict):
+      self._type_ctor = functools.partial(collections.defaultdict,
+                                          fetches.default_factory)
+    else:
+      self._type_ctor = self._fetch_type
+
     self._keys = fetches.keys()
     self._mappers = [
         _FetchMapper.for_fetch(fetch) for fetch in fetches.values()
@@ -413,10 +424,12 @@ class _DictFetchMapper(_FetchMapper):
     return self._unique_fetches
 
   def build_results(self, values):
-    results = self._fetch_type()
-    for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
-      results[k] = m.build_results([values[j] for j in vi])
-    return results
+
+    def _generator():
+      for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
+        yield k, m.build_results([values[j] for j in vi])
+
+    return self._type_ctor(_generator())
 
 
 class _AttrsFetchMapper(_FetchMapper):
@@ -475,10 +488,9 @@ class _FetchHandler(object):
     self._fetches = []
     self._targets = []
     self._feeds = feeds
-    self._feed_handles = (
-        feed_handles or object_identity.ObjectIdentityDictionary())
+    self._feed_handles = feed_handles or {}
     self._ops = []
-    self._fetch_handles = object_identity.ObjectIdentityDictionary()
+    self._fetch_handles = {}
     for fetch in self._fetch_mapper.unique_fetches():
       if isinstance(fetch, ops.Operation):
         self._assert_fetchable(graph, fetch)
@@ -492,8 +504,8 @@ class _FetchHandler(object):
       if (isinstance(fetch, ops.Tensor) and
           (fetch.op.type == 'GetSessionHandle' or
            fetch.op.type == 'GetSessionHandleV2')):
-        self._fetch_handles[fetch] = fetch.op.inputs[0].dtype
-    self._final_fetches = [x for x in self._fetches if x not in feeds]
+        self._fetch_handles[fetch.ref()] = fetch.op.inputs[0].dtype
+    self._final_fetches = [x for x in self._fetches if x.ref() not in feeds]
 
   def _assert_fetchable(self, graph, op):
     if not graph.is_fetchable(op):
@@ -549,16 +561,16 @@ class _FetchHandler(object):
       else:
         # If the fetch was in the feeds, use the fed value, otherwise
         # use the returned value.
-        if self._fetches[i] in self._feed_handles:
+        if self._fetches[i].ref() in self._feed_handles:
           # A fetch had a corresponding direct TensorHandle feed. Call eval()
           # to obtain the Tensor value from the TensorHandle.
-          value = self._feed_handles[self._fetches[i]].eval()
+          value = self._feed_handles[self._fetches[i].ref()].eval()
         else:
-          value = self._feeds.get(self._fetches[i])
+          value = self._feeds.get(self._fetches[i].ref())
         if value is None:
           value = tensor_values[j]
           j += 1
-        dtype = self._fetch_handles.get(self._fetches[i])
+        dtype = self._fetch_handles.get(self._fetches[i].ref())
         if dtype:
           full_values.append(session_ops.TensorHandle(value, dtype, session))
         else:
@@ -860,7 +872,7 @@ class BaseSession(SessionInterface):
     * A `tf.Tensor`.
       The corresponding fetched value will be a numpy ndarray containing the
       value of that tensor.
-    * A `tf.SparseTensor`.
+    * A `tf.sparse.SparseTensor`.
       The corresponding fetched value will be a
       `tf.compat.v1.SparseTensorValue`
       containing the value of that sparse tensor.
@@ -905,7 +917,7 @@ class BaseSession(SessionInterface):
       `tf.compat.v1.placeholder`, the shape of
       the value will be checked for compatibility with the placeholder.
     * If the key is a
-      `tf.SparseTensor`,
+      `tf.sparse.SparseTensor`,
       the value should be a
       `tf.compat.v1.SparseTensorValue`.
     * If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value
@@ -1071,8 +1083,7 @@ class BaseSession(SessionInterface):
 
     # Validate and process fetches.
     # TODO(touts): Support feeding and fetching the same tensor.
-    fetch_handler = _FetchHandler(self._graph, fetches,
-                                  object_identity.ObjectIdentityDictionary())
+    fetch_handler = _FetchHandler(self._graph, fetches, {})
 
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
@@ -1106,7 +1117,7 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Create request.
-    feed_dict_tensor = object_identity.ObjectIdentityDictionary()
+    feed_dict_tensor = {}
     feed_map = {}
 
     # Validate and process feed_dict.
@@ -1144,7 +1155,7 @@ class BaseSession(SessionInterface):
                                              session_ops.TensorHandle)
           if is_tensor_handle_feed:
             np_val = subfeed_val.to_numpy_array()
-            feed_handles[subfeed_t] = subfeed_val
+            feed_handles[subfeed_t.ref()] = subfeed_val
           else:
             np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
@@ -1157,7 +1168,7 @@ class BaseSession(SessionInterface):
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
 
-          feed_dict_tensor[subfeed_t] = np_val
+          feed_dict_tensor[subfeed_t.ref()] = np_val
           feed_map[compat.as_bytes(subfeed_t.name)] = (subfeed_t, subfeed_val)
 
     # Create a fetch handler to take care of the structure of fetches.
@@ -1240,8 +1251,7 @@ class BaseSession(SessionInterface):
     self._extend_graph()
 
     # Create a fetch handler to take care of the structure of fetches.
-    fetch_handler = _FetchHandler(self._graph, fetches,
-                                  object_identity.ObjectIdentityDictionary())
+    fetch_handler = _FetchHandler(self._graph, fetches, {})
     # pylint: disable=protected-access
     fetch_list = [t._as_tf_output() for t in fetch_handler.fetches()]
     target_list = [op._c_op for op in fetch_handler.targets()]
@@ -1337,7 +1347,7 @@ class BaseSession(SessionInterface):
       tf.errors.OpError: Or one of its subclasses on error.
     """
     # pylint: disable=protected-access
-    feeds = dict((t._as_tf_output(), v) for t, v in feed_dict.items())
+    feeds = dict((t.deref()._as_tf_output(), v) for t, v in feed_dict.items())
     fetches = [t._as_tf_output() for t in fetch_list]
     targets = [op._c_op for op in target_list]
 
@@ -1433,7 +1443,7 @@ class BaseSession(SessionInterface):
         np_val = np.array(handle.handle, dtype=np.object)
         feed_name = handle_mover[0]
         feed_tensor = feed_map[feed_name][0]
-        feed_dict[feed_tensor] = np_val
+        feed_dict[feed_tensor.ref()] = np_val
       return handles
 
   def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,
@@ -1514,6 +1524,7 @@ class Session(BaseSession):
   example:
 
   ```python
+  tf.compat.v1.disable_eager_execution() # need to disable eager in TF2.x
   # Build a graph.
   a = tf.constant(5.0)
   b = tf.constant(6.0)
@@ -1523,7 +1534,7 @@ class Session(BaseSession):
   sess = tf.compat.v1.Session()
 
   # Evaluate the tensor `c`.
-  print(sess.run(c))
+  print(sess.run(c)) # prints 30.0
   ```
 
   A session may own resources, such as

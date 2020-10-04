@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import time
+
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2

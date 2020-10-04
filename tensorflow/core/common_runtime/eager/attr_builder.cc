@@ -18,10 +18,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/version.h"
@@ -32,8 +32,9 @@ namespace {
 
 mutex g_op_name_to_attr_type_map_lock(LINKER_INITIALIZED);
 
-std::unordered_map<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
-  static auto* const m = new std::unordered_map<string, const AttrTypeMap*>;
+tensorflow::gtl::FlatMap<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
+  static auto* const m =
+      new tensorflow::gtl::FlatMap<string, const AttrTypeMap*>;
   return m;
 }
 
@@ -53,7 +54,7 @@ const AttrTypeMap* GetDefaultFunctionAttrTypeMap() {
 
 }  // namespace
 
-Status OpDefForOp(const char* op_name, const OpDef** op_def) {
+Status OpDefForOp(const string& op_name, const OpDef** op_def) {
   const OpRegistrationData* op_reg_data = nullptr;
   Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
   if (s.ok()) {
@@ -64,10 +65,21 @@ Status OpDefForOp(const char* op_name, const OpDef** op_def) {
 
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
                         bool* is_function) {
+  {
+    tf_shared_lock l(g_op_name_to_attr_type_map_lock);
+    *is_function = false;
+    *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
+    if (*out != nullptr) return Status::OK();
+  }
+
   mutex_lock l(g_op_name_to_attr_type_map_lock);
-  *is_function = false;
+
+  // Check the existence of AttrTypeMap for op_name again because another thread
+  // may insert this map after the tf_shared_lock is released but before the
+  // mutex_lock is acquired.
   *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
   if (*out != nullptr) return Status::OK();
+
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
   if (errors::IsNotFound(s)) {
@@ -117,7 +129,9 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     gtl::InsertIfNotPresent(m.get(), attr.name(), t);
   }
   *out = m.get();
-  (*OpNameToAttrTypeMap())[op_name] = m.release();
+  auto r = OpNameToAttrTypeMap()->emplace(op_name, m.release());
+  DCHECK(r.second) << "AttrTypeMap already exists for " << op_name;
+
   return Status::OK();
 }
 
@@ -158,7 +172,7 @@ void AttrBuilder::FillAttrValueMap(AttrValueMap* m) const {
   // specify all the default attr values (e.g. for matmul, the `transpose_a`
   // attr defaults to false).
   const OpDef* op_def = nullptr;
-  Status s = OpDefForOp(op_name_.c_str(), &op_def);
+  Status s = OpDefForOp(op_name().c_str(), &op_def);
   // This is expected, if this op is a custom function, and is therefore not
   // present in the op registry.
   if (!s.ok()) return;
@@ -171,20 +185,58 @@ void AttrBuilder::FillAttrValueMap(AttrValueMap* m) const {
   }
 }
 
+namespace {
+
+bool ValueMatchesDefault(const OpDef* op_def, const string& attr_name,
+                         const AttrValue& attr_value) {
+  // TODO(iga): It might make sense to augment OpRegistrationData with a
+  // {attr_name -> default_attr_value} FlatMap to avoid the loop here.
+  for (const OpDef::AttrDef& attr_def : op_def->attr()) {
+    if (attr_def.name() == attr_name && attr_def.has_default_value() &&
+        AreAttrValuesEqual(attr_def.default_value(), attr_value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+void AttrBuilder::FillAttrValueMapWithoutDefaults(AttrValueMap* m) const {
+  const OpDef* op_def = nullptr;
+  Status s = OpDefForOp(op_name().c_str(), &op_def);
+
+  for (auto& entry : encoded_attrs_) {
+    attr_tmp_.ParseFromString(entry.second);
+    // Insert the attr-value pair if we did not find the OpDef or if the value
+    // is different from default.
+    if (!s.ok() || !ValueMatchesDefault(op_def, entry.first, attr_tmp_)) {
+      m->insert(AttrValueMap::value_type(entry.first, attr_tmp_));
+    }
+  }
+}
+
 void AttrBuilder::AddAttrIfNotPresent(StringPiece attr_name,
                                       const AttrValue& value) {
   encoded_attrs_.emplace(string(attr_name), value.SerializeAsString());
 }
 
 const NodeDef& AttrBuilder::BuildNodeDef() {
-  if (node_def_finalized_) return *node_def_;
-  MayBeInitializeNodeDef();
-  for (int i = 0; i < num_inputs_; ++i) {
-    node_def_->add_input("dummy_input");
+  if (node_def_finalized_) return node_def_;
+  if (!node_def_initialized_) {
+    InitializeNodeDef();
   }
-  FillAttrValueMap(node_def_->mutable_attr());
+  for (int i = 0; i < num_inputs_; ++i) {
+    node_def_.add_input("dummy_input");
+  }
+  FillAttrValueMap(node_def_.mutable_attr());
   node_def_finalized_ = true;
-  return *node_def_;
+  return node_def_;
+}
+
+void AttrBuilder::CopyAttributes(const AttrBuilder& other) {
+  encoded_attrs_.insert(other.encoded_attrs_.begin(),
+                        other.encoded_attrs_.end());
 }
 
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
@@ -239,7 +291,7 @@ tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
 
 tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
     const StringPiece device) const {
-  tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name_);
+  tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name());
   f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   for (const auto& p : encoded_attrs_) {
     CombineUnordered(
@@ -248,12 +300,12 @@ tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
   return f;
 }
 
-void AttrBuilder::MayBeInitializeNodeDef() {
-  if (node_def_ == nullptr) {
-    node_def_.reset(new NodeDef());
-    node_def_->set_name(op_name_);
-    node_def_->set_op(op_name_);
-  }
+void AttrBuilder::InitializeNodeDef() {
+  DCHECK(!node_def_initialized_);
+  node_def_.Clear();
+  node_def_.set_name(op_name_);
+  node_def_.set_op(op_name_);
+  node_def_initialized_ = true;
 }
 
 }  // namespace tensorflow

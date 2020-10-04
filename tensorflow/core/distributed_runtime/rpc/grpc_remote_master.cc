@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
@@ -128,7 +130,7 @@ class GrpcRemoteMaster : public MasterInterface {
     int64 timeout_in_ms = call_options->GetTimeout();
     int64 expired_time_micros = Env::Default()->NowMicros();
     if (timeout_in_ms > 0) {
-      expired_time_micros += (timeout_in_ms / 1000.);
+      expired_time_micros += (timeout_in_ms * 1000);
     }
     Status s;
     for (int num_retries = 0;; ++num_retries) {
@@ -146,7 +148,8 @@ class GrpcRemoteMaster : public MasterInterface {
         // being double what was expected.
         // TODO(b/117162170): investigate fixing this behavior for legacy and
         // gRPC RPC layers.
-        ctx.set_deadline(gpr_time_from_millis(timeout_in_ms, GPR_TIMESPAN));
+        ctx.set_deadline(absl::ToChronoTime(absl::Now() +
+                                            absl::Milliseconds(timeout_in_ms)));
       }
       s = FromGrpcStatus((stub_.get()->*pfunc)(&ctx, *request, response));
       if (!errors::IsUnavailable(s)) {
@@ -173,8 +176,8 @@ class GrpcRemoteMaster : public MasterInterface {
               ? deadline_with_backoff_micros
               : expired_time_micros;
       Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
-      if (Env::Default()->NowMicros() > expired_time_micros &&
-          timeout_in_ms > 0) {
+      const int64 now = Env::Default()->NowMicros();
+      if (now > expired_time_micros && timeout_in_ms > 0) {
         // If timeout_in_ms is set, exit the retry loop on timeout.
         return errors::DeadlineExceeded(ctx.debug_error_string());
       }

@@ -17,31 +17,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import cardinality
+from absl.testing import parameterized
+
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class VariantTest(test_base.DatasetTestBase):
+class VariantTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testRoundtripRange(self):
     dataset = dataset_ops.Dataset.range(10)
     variant = dataset_ops.to_variant(dataset)
     dataset = dataset_ops.from_variant(variant,
                                        dataset_ops.get_structure(dataset))
     self.assertDatasetProduces(dataset, range(10))
-    self.assertEqual(self.evaluate(cardinality.cardinality(dataset)), 10)
+    self.assertEqual(self.evaluate(dataset.cardinality()), 10)
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[2], mode=["eager", "graph"]))
   def testRoundtripMap(self):
-    dataset = dataset_ops.Dataset.range(10).map(lambda x: x*x)
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: x * x)
     variant = dataset_ops.to_variant(dataset)
     dataset = dataset_ops.from_variant(variant,
                                        dataset_ops.get_structure(dataset))
     self.assertDatasetProduces(dataset, [x * x for x in range(10)])
-    self.assertEqual(self.evaluate(cardinality.cardinality(dataset)), 10)
+    self.assertEqual(self.evaluate(dataset.cardinality()), 10)
 
 
 if __name__ == "__main__":

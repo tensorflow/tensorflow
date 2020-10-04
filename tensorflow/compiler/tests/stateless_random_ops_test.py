@@ -21,11 +21,16 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.compiler.xla import xla
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -37,6 +42,26 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
     if include_int:
       allowed_types.update({dtypes.int32, dtypes.int64})
     return self.all_tf_types & allowed_types
+
+  @test_util.run_v2_only
+  def testForcedCompile(self):
+    """Tests whole-function forced-compilation.
+
+    This test checks that stateless_random_* can be used in forced-compilation
+    scenarios (e.g. TPU). The new version of stateless_random_* requires the
+    intermediate tensor `alg` to be compile-time constant, so we need to check
+    that this requirement is met. We use xla.compile instead of tf.function's
+    experimental_compile because the latter doesn't throw an error even if the
+    compile-time-constant constraint is not met.
+    """
+    if config.list_logical_devices('TPU'):
+      self.skipTest('To accommodate OSS, xla.compile support for TPU is not '
+                    'linked in.')
+    @def_function.function
+    def f(x):
+      return xla.compile(
+          lambda x: stateless.stateless_random_normal([], seed=x), [x])
+    f([1, 2])
 
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)
@@ -70,7 +95,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_uniform(
             shape=[1000], seed=seed_t, maxval=maxval, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertTrue(np.all(y >= 0))
         self.assertTrue(np.all(y < maxval))
 
@@ -101,7 +126,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_normal(
             shape=[10000], seed=seed_t, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertTrue(np.all(np.isfinite(y)))
 
   def testDistributionOfStatelessRandomNormal(self):
@@ -126,11 +151,45 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         n = 10000000
         x = stateless.stateless_truncated_normal(
             shape=[n], seed=seed_t, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         random_test_util.test_truncated_normal(
             self.assertEqual, self.assertAllClose, n, y,
             variance_rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)
 
 
+class StatelessRandomOpsBenchmark(test.Benchmark):
+  """Microbenchmarks for the stateless random ops."""
+
+  def _benchmarkUniform(self, name, dtype, use_xla_jit):
+
+    def builder_fn():
+      shape = (10, 1000, 1000)
+      seed_var = variables.Variable((312, 456),
+                                    dtype=dtypes.int32,
+                                    name='input')
+      random_t = stateless.stateless_random_uniform(
+          shape, seed=seed_var, dtype=dtype)
+      return '%s.shape%s' % (name, shape), [random_t]
+
+    xla_test.Benchmark(self, builder_fn, use_xla_jit=use_xla_jit, device='cpu')
+
+  def benchmarkUniformF32(self):
+    self._benchmarkUniform(
+        'uniform_f32', dtype=dtypes.float32, use_xla_jit=False)
+
+  def benchmarkUniformF64(self):
+    self._benchmarkUniform(
+        'uniform_f64', dtype=dtypes.float64, use_xla_jit=False)
+
+  def benchmarkUniformF32XLA(self):
+    self._benchmarkUniform(
+        'uniform_f32', dtype=dtypes.float32, use_xla_jit=True)
+
+  def benchmarkUniformF64XLA(self):
+    self._benchmarkUniform(
+        'uniform_f64', dtype=dtypes.float64, use_xla_jit=True)
+
+
 if __name__ == '__main__':
+  config.set_soft_device_placement(False)
   test.main()

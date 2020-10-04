@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -431,8 +432,10 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
 
     std::vector<void*> initial_ptrs;
     std::vector<size_t> initial_ptrs_allocated_sizes;
-    for (int i = 0; i < 5; i++) {
-      for (int j = 0; j < 2; j++) {
+    const int kNumTestSizes = 5;
+    const int kNumChunksPerSize = 2;
+    for (int i = 0; i < kNumTestSizes; i++) {
+      for (int j = 0; j < kNumChunksPerSize; j++) {
         size_t size = 256 << i;
         void* raw = a.AllocateRaw(1, size);
         ASSERT_NE(raw, nullptr);
@@ -447,29 +450,45 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
       bin_infos = a.get_bin_debug_info();
     }
 
-    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
-      const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
-      if (i < 5) {
-        const size_t requested_size = 2 * (256 << i);
-        EXPECT_EQ(requested_size, a.RequestedSize(initial_ptrs[2 * i]) +
-                                      a.RequestedSize(initial_ptrs[2 * i + 1]));
-        size_t allocated_size = initial_ptrs_allocated_sizes[2 * i] +
-                                initial_ptrs_allocated_sizes[2 * i + 1];
-        EXPECT_EQ(bin_info.total_bytes_in_use, allocated_size);
-        EXPECT_EQ(bin_info.total_bytes_in_bin, allocated_size);
-        EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
-        EXPECT_EQ(bin_info.total_chunks_in_use, 2);
-        EXPECT_EQ(bin_info.total_chunks_in_bin, 2);
-      } else {
-        EXPECT_EQ(bin_info.total_bytes_in_use, 0);
-        EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
-        EXPECT_EQ(bin_info.total_chunks_in_use, 0);
-        if (i == BFCAllocator::kNumBins - 1) {
-          EXPECT_GT(bin_info.total_bytes_in_bin, 0);
-          EXPECT_EQ(bin_info.total_chunks_in_bin, 1);
+    {
+      MemoryDump md = a.RecordMemoryMap();
+      EXPECT_EQ(md.chunk_size(), 1 + (kNumTestSizes * kNumChunksPerSize));
+      for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+        const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
+        const BinSummary& bin_summary = md.bin_summary(i);
+        if (i < kNumTestSizes) {
+          const size_t requested_size = 2 * (256 << i);
+          EXPECT_EQ(requested_size,
+                    a.RequestedSize(initial_ptrs[2 * i]) +
+                        a.RequestedSize(initial_ptrs[2 * i + 1]));
+          size_t allocated_size = initial_ptrs_allocated_sizes[2 * i] +
+                                  initial_ptrs_allocated_sizes[2 * i + 1];
+          EXPECT_EQ(bin_info.total_bytes_in_use, allocated_size);
+          EXPECT_EQ(bin_summary.total_bytes_in_use(), allocated_size);
+          EXPECT_EQ(bin_info.total_bytes_in_bin, allocated_size);
+          EXPECT_EQ(bin_summary.total_bytes_in_bin(), allocated_size);
+          EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
+          EXPECT_EQ(bin_info.total_chunks_in_use, kNumChunksPerSize);
+          EXPECT_EQ(bin_summary.total_chunks_in_use(), kNumChunksPerSize);
+          EXPECT_EQ(bin_info.total_chunks_in_bin, kNumChunksPerSize);
+          EXPECT_EQ(bin_summary.total_chunks_in_bin(), kNumChunksPerSize);
         } else {
-          EXPECT_EQ(bin_info.total_bytes_in_bin, 0);
-          EXPECT_EQ(bin_info.total_chunks_in_bin, 0);
+          EXPECT_EQ(bin_info.total_bytes_in_use, 0);
+          EXPECT_EQ(bin_summary.total_bytes_in_use(), 0);
+          EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
+          EXPECT_EQ(bin_info.total_chunks_in_use, 0);
+          EXPECT_EQ(bin_summary.total_chunks_in_use(), 0);
+          if (i == BFCAllocator::kNumBins - 1) {
+            EXPECT_GT(bin_info.total_bytes_in_bin, 0);
+            EXPECT_GT(bin_summary.total_bytes_in_bin(), 0);
+            EXPECT_EQ(bin_info.total_chunks_in_bin, 1);
+            EXPECT_EQ(bin_summary.total_chunks_in_bin(), 1);
+          } else {
+            EXPECT_EQ(bin_info.total_bytes_in_bin, 0);
+            EXPECT_EQ(bin_summary.total_bytes_in_bin(), 0);
+            EXPECT_EQ(bin_info.total_chunks_in_bin, 0);
+            EXPECT_EQ(bin_summary.total_chunks_in_bin(), 0);
+          }
         }
       }
     }

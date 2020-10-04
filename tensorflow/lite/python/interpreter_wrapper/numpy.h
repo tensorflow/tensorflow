@@ -50,7 +50,7 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {

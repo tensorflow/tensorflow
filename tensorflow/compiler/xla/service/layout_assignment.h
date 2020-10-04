@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -338,6 +339,9 @@ class LayoutAssignment : public HloModulePass {
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
+  virtual Layout GetUnconstrainedLayout(const LogicalBuffer& buffer) {
+    return LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+  }
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
   virtual Status Verify(const HloInstruction* instruction) {
@@ -355,6 +359,10 @@ class LayoutAssignment : public HloModulePass {
   Status PropagateUseConstraintToDefs(const ShapeLayout& shape_layout,
                                       const HloInstruction* instruction,
                                       LayoutConstraints* constraints);
+
+  // Propagates the memory space defined in the entry computation to the called
+  // computations.
+  Status PropagateMemorySpace(HloModule* module);
 
   // Chooses a layout of operand `operand_no` of `instruction` that minimizes
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
@@ -390,10 +398,10 @@ class LayoutAssignment : public HloModulePass {
     return Status::OK();
   }
 
-  // Construct contraints and assign layouts to all instructions in the
+  // Construct constraints and assign layouts to all instructions in the
   // computation satisfying the given ComputationLayout, if not nullptr.
   // Otherwise the ComputationLayout will be calculated by propagating the
-  // computation instruction contraints.
+  // computation instruction constraints.
   // Layouts constraints are added, then propagated until all LogicalBuffers in
   // the computation are constrained.
   Status RunOnComputation(ComputationLayout* computation_layout,
@@ -452,7 +460,7 @@ class LayoutAssignment : public HloModulePass {
   // when the instruction is a tuple, and in such case the index represents
   // the location from where the copy instruction was created from.
   // If the index is empty, the whole sharding will be propagated, even in case
-  // the intruction has a tuple sharding.
+  // the instruction has a tuple sharding.
   static void SetupCopiedInstruction(const HloInstruction& instruction,
                                      HloInstruction* copy,
                                      const ShapeIndex& index);
@@ -504,7 +512,7 @@ class LayoutAssignment : public HloModulePass {
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
 
-  // Map from branch computations to the result layout they shuould apply.
+  // Map from branch computations to the result layout they should apply.
   std::map<HloComputation*, ComputationLayout> conditional_mismatch_;
 
   // Every copy added to the module by the layout assignment pass is registered

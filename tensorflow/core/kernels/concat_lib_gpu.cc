@@ -98,17 +98,42 @@ void ConcatGPU(
           inputs_flat,                                                        \
       Tensor* output, typename TTypes<T, 2>::Tensor* output_flat);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-TF_CALL_complex64(REGISTER);
-TF_CALL_complex128(REGISTER);
-TF_CALL_int32(REGISTER);  // Needed for TensorLists.
-TF_CALL_int64(REGISTER);
-TF_CALL_int16(REGISTER);
+TF_CALL_INTEGRAL_TYPES(REGISTER);  // int32 Needed for TensorLists.
 TF_CALL_bfloat16(REGISTER);
-TF_CALL_bool(REGISTER);
-TF_CALL_uint8(REGISTER);
+TF_CALL_GPU_ALL_TYPES(REGISTER);
 
 #undef REGISTER
+
+#if defined(_MSC_VER)
+// Required by MSVC non-release build to ensure the compiler sees all the
+// template expansions that are needed.
+#define FORCE_CONCAT(TYPE)                                             \
+  template <>                                                          \
+  void ConcatGPU<TYPE>(                                                \
+      OpKernelContext * c,                                             \
+      const std::vector<                                               \
+          std::unique_ptr<typename TTypes<TYPE, 2>::ConstMatrix>>&     \
+          inputs_flat,                                                 \
+      Tensor* output, typename TTypes<TYPE, 2>::Tensor* output_flat) { \
+    LOG(FATAL) << "Should not be called";                              \
+  }
+
+FORCE_CONCAT(tensorflow::Variant)
+FORCE_CONCAT(tensorflow::ResourceHandle)
+FORCE_CONCAT(unsigned short)
+FORCE_CONCAT(signed char)
+FORCE_CONCAT(tensorflow::tstring)
+FORCE_CONCAT(Eigen::QUInt8)
+FORCE_CONCAT(Eigen::QInt8)
+FORCE_CONCAT(Eigen::QUInt16)
+FORCE_CONCAT(Eigen::QInt16)
+FORCE_CONCAT(Eigen::QInt32)
+FORCE_CONCAT(unsigned int)
+FORCE_CONCAT(unsigned __int64)
+
+#undef FORCE_CONCAT
+
+#endif
 
 }  // namespace tensorflow
 

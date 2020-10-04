@@ -14,73 +14,120 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 namespace tf_executor {
 
-// Prunes a TF graph eliminating dead nodes.
-void prune_graph(GraphOp graph) {
-  // A graph has a single block which forms a DAG: nodes that aren't reachable
-  // from the `fetch` operands can be eliminated.
-
-  // Delete unreachable node from the graph. We traverse it in reverse order so
-  // that we just have to check that a node does not have any users to delete
-  // it.
-  for (Operation &op : llvm::make_early_inc_range(
-           llvm::drop_begin(llvm::reverse(graph.GetBody()), 1))) {
-    // NextIteration.Sink operation are handled specially: they are live if the
-    // source is live, and removed when the source is processed.
-    if (auto sinkOp = dyn_cast<NextIterationSinkOp>(op)) continue;
-
-    // For NextIteration.Source, we just check that the source does not have any
-    // other user than the sink.
-    if (auto sourceOp = dyn_cast<NextIterationSourceOp>(op)) {
-      Operation *sink = sourceOp.GetSink().getOperation();
-      if (llvm::any_of(sourceOp.getResults(), [sink](Value *result) {
-            return llvm::any_of(result->getUsers(), [sink](Operation *user) {
-              return user != sink;
-            });
-          }))
-        continue;
-
-      // No other users than the sink, erase the pair!
-      sink->erase();
-      sourceOp.erase();
-      continue;
-    }
-
-    // General case.
-    if (op.use_empty()) op.erase();
+// Visits an op's operand if it is an output of an Operation in the same
+// tf_executor.graph.
+void VisitOpOperand(GraphOp graph, Value operand,
+                    llvm::SmallPtrSetImpl<Operation*>* reachable_ops,
+                    llvm::SmallVectorImpl<Operation*>* ops_to_visit) {
+  Operation* def = operand.getDefiningOp();
+  if (def && def->getParentOp() == graph && reachable_ops->insert(def).second) {
+    // Op has not been visited, add to queue to visit later.
+    ops_to_visit->push_back(def);
   }
+}
+
+// Visits all operands of an op where each operand is an output of an Operation
+// in the same tf_executor.graph.
+void VisitOpOperands(GraphOp graph, Operation* op,
+                     llvm::SmallPtrSetImpl<Operation*>* reachable_ops,
+                     llvm::SmallVectorImpl<Operation*>* ops_to_visit) {
+  for (Value operand : op->getOperands())
+    VisitOpOperand(graph, operand, reachable_ops, ops_to_visit);
+}
+
+// Visits an op and it's associated operands. IslandOps are handled differently
+// where it's regions op operands are also visited as values may be implicitly
+// captured within. NextIterationSourceOp will also visit it's associated
+// NextIterationSinkOp.
+void VisitOp(GraphOp graph, Operation* op,
+             llvm::SmallPtrSetImpl<Operation*>* reachable_ops,
+             llvm::SmallVectorImpl<Operation*>* ops_to_visit) {
+  if (auto island = llvm::dyn_cast<IslandOp>(op)) {
+    mlir::visitUsedValuesDefinedAbove(
+        island.body(), island.body(), [&](OpOperand* operand) {
+          VisitOpOperand(graph, operand->get(), reachable_ops, ops_to_visit);
+        });
+  }
+
+  VisitOpOperands(graph, op, reachable_ops, ops_to_visit);
+
+  // If op is a `tf_executor.NextIteration.Source`, visit its associated
+  // `tf_executor.NextIteration.Sink` op.
+  if (auto source_op = llvm::dyn_cast<NextIterationSourceOp>(op)) {
+    Operation* sink_op = source_op.GetSink().getOperation();
+    if (reachable_ops->insert(sink_op).second) ops_to_visit->push_back(sink_op);
+  }
+}
+
+// Prunes unreachable operations of a tf_executor.graph operation.
+void PruneGraph(GraphOp graph) {
+  // A graph has a single block which forms a DAG: operations that aren't
+  // reachable from the `fetch` operands can be eliminated.
+
+  llvm::SmallPtrSet<Operation*, 8> reachable_ops;
+  llvm::SmallVector<Operation*, 8> ops_to_visit;
+
+  // Visit fetches first to create a starting point for ops that are reachable.
+  reachable_ops.insert(graph.GetFetch());
+  VisitOpOperands(graph, graph.GetFetch(), &reachable_ops, &ops_to_visit);
+
+  // Visit transitive ops until no there are no reachable ops left that have not
+  // been visited.
+  while (!ops_to_visit.empty()) {
+    Operation* op = ops_to_visit.pop_back_val();
+    VisitOp(graph, op, &reachable_ops, &ops_to_visit);
+  }
+
+  // Erase unreachable ops in reverse order so references don't need to be
+  // dropped before removing an op. Going in reverse order will guarantee that
+  // when an op to be erased is reached, there are no users left.
+  for (Operation& op :
+       llvm::make_early_inc_range(llvm::reverse(graph.GetBody())))
+    if (!reachable_ops.contains(&op)) op.erase();
 }
 
 namespace {
 
 // This transformation pass prunes a TF graph eliminating dead-nodes.
-struct GraphPruning : public FunctionPass<GraphPruning> {
+struct GraphPruning : public PassWrapper<GraphPruning, FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([](tf_executor::GraphOp graph) { prune_graph(graph); });
+    getFunction().walk([](tf_executor::GraphOp graph) {
+      // For TensorFlow V1.0 compatibility: when importing a graph without
+      // providing feeds/fetches we should not attempt to prune. The best
+      // approximation here is to check if the graph does not have any fetched
+      // values.
+      if (!graph.GetFetch().getNumOperands()) return;
+
+      PruneGraph(graph);
+    });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateTFExecutorGraphPruningPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass() {
   return std::make_unique<GraphPruning>();
 }
 
 static PassRegistration<GraphPruning> pass(
-    "tf-executor-graph-pruning", "Prune a TensorFlow Graph from dead nodes.");
+    "tf-executor-graph-pruning",
+    "Prune unreachable nodes in a TensorFlow Graph.");
 
 }  // namespace tf_executor
 }  // namespace mlir

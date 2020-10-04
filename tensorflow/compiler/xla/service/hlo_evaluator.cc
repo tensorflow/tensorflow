@@ -274,10 +274,26 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   engine_.seed(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
+
+  if (VLOG_IS_ON(100)) {
+    for (const HloInstruction* instr : computation.instructions()) {
+      VLOG(100) << instr->name() << " = " << GetEvaluatedLiteralFor(instr);
+    }
+  }
+
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
+  // If the instruction is a kCopyDone, simply find the argument that it is
+  // copied from.
+  while (instruction->opcode() == HloOpcode::kCopyDone) {
+    if (instruction->operand(0)->opcode() != HloOpcode::kCopyStart) {
+      return tensorflow::errors::FailedPrecondition(
+          "kCopyDone has an argument different than a kCopyStart.");
+    }
+    instruction = instruction->mutable_operand(0)->mutable_operand(0);
+  }
   if (instruction->opcode() == HloOpcode::kParameter) {
     return tensorflow::errors::FailedPrecondition(
         "Cannot evaluate a parameter.");
@@ -414,6 +430,21 @@ Status HloEvaluator::HandleGetDimensionSize(
   output.PopulateWithValue(
       static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleSetDimensionSize(
+    HloInstruction* set_dimension_size) {
+  const Literal& operand_literal =
+      GetEvaluatedLiteralFor(set_dimension_size->operand(0));
+  Literal result(set_dimension_size->shape());
+  memcpy(result.untyped_data(), operand_literal.untyped_data(),
+         operand_literal.size_bytes());
+  const Literal& size_literal =
+      GetEvaluatedLiteralFor(set_dimension_size->operand(1));
+  result.SetDynamicSize(set_dimension_size->dimension(),
+                        size_literal.Get<int32>({}));
+  evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }
 
@@ -1113,7 +1144,7 @@ bool CopyDataFromInput(const Literal& input_literal, int64 input_start,
   auto base_case = [&](int64 axis, int64 dst_index, int64 src_index,
                        bool within_src_bounds) {
     if (axis == 0) {
-      // For IRFFT, the negavie frequencies are only needed for the sweep along
+      // For IRFFT, the negative frequencies are only needed for the sweep along
       // the X axis, which is performed last. Leave this part of the working set
       // uninitialized until then.
       const int64 length = fft_lengths[axis];
@@ -1542,9 +1573,9 @@ class OutputBatchIndexToInputIndex {
     int64 index_vector_dim = dim_numbers_.index_vector_dim();
     for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
       index_vector_index_[index_vector_dim] = i;
-      // TODO(george): OK what should happen here?
-      // seems OK to crash though.
-      index_vector_[i] = *start_indices_.GetIntegralAsS64(index_vector_index_);
+      auto start_index = start_indices_.GetIntegralAsS64(index_vector_index_);
+      TF_RET_CHECK(start_index.has_value());
+      index_vector_[i] = *start_index;
     }
     return Status::OK();
   }
@@ -1664,7 +1695,7 @@ class OutputOffsetIndexToInputIndex {
   std::vector<int64> input_index_;
 };
 
-// Rehapes the gather indices input to have a trailing degenerate `1` dimension
+// Reshapes the gather indices input to have a trailing degenerate `1` dimension
 // if necessary.  Hands over the ownership of the newly created literal (if
 // there is one) to `reshaped_start_indices`.
 static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
@@ -1749,7 +1780,7 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       //                                       output_dim_size);
       input_index_clamped[i] =
           std::min(operand_shape.dimensions(i) - output_dim_size,
-                   std::max(0LL, input_gather_index[i]));
+                   std::max(int64{0}, input_gather_index[i]));
     }
     for (int i = 0, e = input_index.size(); i < e; i++) {
       input_index[i] = input_index_clamped[i] + input_window_index[i];
@@ -1841,6 +1872,44 @@ Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
   evaluated_[copy] = GetEvaluatedLiteralFor(copy->operand(0)).Clone();
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
+  if (copy_start->user_count() != 1 ||
+      copy_start->users().at(0)->opcode() != HloOpcode::kCopyDone) {
+    return tensorflow::errors::FailedPrecondition(
+        "Cannot evaluate a kCopyStart that doesn't have a single kCopyDone "
+        "user.");
+  }
+
+  // The context in index {2} is undefined, but since we can't represent
+  // undefined values using a Literal, we just use 0. This should be safe though
+  // since we ensure that the only user of a kCopyStart is a kCopyDone which
+  // consumes the context. Also note that MakeTuple copies its arguments, so
+  // this is memory-safe.
+  const Literal context_literal = LiteralUtil::CreateR0<uint32>(0);
+  evaluated_[copy_start] = LiteralUtil::MakeTuple(
+      {&GetEvaluatedLiteralFor(copy_start->operand(0)),
+       &GetEvaluatedLiteralFor(copy_start->operand(0)), &context_literal});
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
+  const HloInstruction* operand = copy_done->operand(0);
+  if (operand->opcode() != HloOpcode::kCopyStart) {
+    return tensorflow::errors::FailedPrecondition(
+        "Cannot evaluate a kCopyDone that doesn't have a kCopyStart as "
+        "operand.");
+  }
+
+  const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
+
+  evaluated_[copy_done] =
+      Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
+  TF_RETURN_IF_ERROR(evaluated_[copy_done].CopyFrom(operand_tuple_literal,
+                                                    /*dest_shape_index=*/{},
+                                                    /*src_shape_index=*/{0}));
   return Status::OK();
 }
 
@@ -2218,11 +2287,11 @@ static bool IsScalarAdd(HloComputation* computation) {
 // (until the reduction is completed, the output element is also used as
 // an accumulator).
 static StatusOr<bool> PerformReductionStep(
-    absl::Span<const int64> input_index, absl::Span<const int64> output_index,
+    bool is_tuple, absl::Span<const int64> input_index,
+    absl::Span<const int64> output_index,
     absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
     HloComputation* computation, HloEvaluator* embedded_evaluator) {
   int num_args = results.size();
-  bool is_tuple = num_args > 1;
 
   absl::InlinedVector<Literal, 1> arg_values;
   arg_values.reserve(num_args);
@@ -2272,7 +2341,7 @@ static StatusOr<bool> PerformReductionStep(
 }
 
 static StatusOr<bool> GenerateReduceOutputElement(
-    absl::Span<const int64> output_index,
+    bool is_tuple, absl::Span<const int64> output_index,
 
     absl::Span<const Literal* const> init_values,
     absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
@@ -2282,7 +2351,6 @@ static StatusOr<bool> GenerateReduceOutputElement(
     absl::Span<const int64> arg_dim_steps,
     absl::Span<const int64> arg_dim_counts,
     absl::Span<const int64> result_to_arg_index) {
-  bool is_tuple = results.size() > 1;
   bool use_fast_add = ShapeUtil::ElementIsFloating(init_values[0]->shape()) &&
                       IsScalarAdd(function) && !is_tuple;
 
@@ -2317,8 +2385,9 @@ static StatusOr<bool> GenerateReduceOutputElement(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
       arg_shape, base, arg_dim_counts, arg_dim_steps,
       [&](absl::Span<const int64> input_index) {
-        return PerformReductionStep(input_index, output_index, input_args,
-                                    results, function, embedded_evaluator);
+        return PerformReductionStep(is_tuple, input_index, output_index,
+                                    input_args, results, function,
+                                    embedded_evaluator);
       }));
   return true;
 }
@@ -2395,9 +2464,9 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
       output_shape, [&](absl::Span<const int64> output_index) {
         return GenerateReduceOutputElement(
-            output_index, init_values, input_args, absl::Span<Literal>(results),
-            function, &embedded_evaluator, arg_dim_steps, arg_dim_counts,
-            result_to_arg_index);
+            is_tuple, output_index, init_values, input_args,
+            absl::Span<Literal>(results), function, &embedded_evaluator,
+            arg_dim_steps, arg_dim_counts, result_to_arg_index);
       }));
 
   if (is_tuple) {
@@ -2496,6 +2565,26 @@ std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
     const Array2D<double>& lhs, const Array2D<double>& rhs) {
   return MatmulArray2DImpl<double>(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+}
+
+std::unique_ptr<Array2D<std::complex<float>>> HloEvaluator::MatmulArray2D(
+    const Array2D<std::complex<float>>& lhs,
+    const Array2D<std::complex<float>>& rhs) {
+  return MatmulArray2DImpl<std::complex<float>>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC64);
+}
+
+std::unique_ptr<Array2D<std::complex<double>>> HloEvaluator::MatmulArray2D(
+    const Array2D<std::complex<double>>& lhs,
+    const Array2D<std::complex<double>>& rhs) {
+  return MatmulArray2DImpl<std::complex<double>>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC128);
+}
+
+std::unique_ptr<Array2D<int32>> HloEvaluator::MatmulArray2D(
+    const Array2D<int32>& lhs, const Array2D<int32>& rhs) {
+  return MatmulArray2DImpl<int32>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
 }
 
 }  // namespace xla

@@ -83,7 +83,7 @@ class TypedConditionalAccumulatorBase : public ConditionalAccumulatorBase {
   // Gradient is returned via the GradientTensorType** tensor.
   virtual bool GetAndValidateTensorInputForApplyGrad(
       OpKernelContext* ctx, GradientTensorType** tensor)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;
 
   // Method for cleaning up any memory allocated in
   // GetAndValidateTensorInputForApplyGrad

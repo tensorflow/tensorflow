@@ -1,8 +1,0 @@
-add_subdirectory(LoopsToGPU)
-add_subdirectory(ControlFlowToCFG)
-add_subdirectory(GPUToCUDA)
-add_subdirectory(GPUToNVVM)
-add_subdirectory(GPUToSPIRV)
-add_subdirectory(StandardToLLVM)
-add_subdirectory(StandardToSPIRV)
-add_subdirectory(VectorToLLVM)

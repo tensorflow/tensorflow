@@ -15,23 +15,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 
+#include <new>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#endif
+#include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
 
 namespace tensorflow {
 namespace profiler {
-
-// This is specifically used for instrumenting Tensorflow ops.
-// Takes input as whether a TF op is expensive or not and returns the TraceMe
-// level to be assigned to trace that particular op. Assigns level 2 for
-// expensive ops (these are high-level details and shown by default in profiler
-// UI). Assigns level 3 for cheap ops (low-level details not shown by default).
-inline int GetTFTraceMeLevel(bool is_expensive) { return is_expensive ? 2 : 3; }
 
 // Predefined levels:
 // - Level 1 (kCritical) is the default and used only for user instrumentation.
@@ -44,6 +44,15 @@ enum TraceMeLevel {
   kInfo = 2,
   kVerbose = 3,
 };
+
+// This is specifically used for instrumenting Tensorflow ops.
+// Takes input as whether a TF op is expensive or not and returns the TraceMe
+// level to be assigned to trace that particular op. Assigns level 2 for
+// expensive ops (these are high-level details and shown by default in profiler
+// UI). Assigns level 3 for cheap ops (low-level details not shown by default).
+inline int GetTFTraceMeLevel(bool is_expensive) {
+  return is_expensive ? kInfo : kVerbose;
+}
 
 // This class permits user-specified (CPU) tracing activities. A trace activity
 // is started when an object of this class is created and stopped when the
@@ -68,69 +77,70 @@ enum TraceMeLevel {
 //          auto id = ActivityStart("step");
 //          ... do some work ...
 //          ActivityEnd(id);
+//       The two static methods should be called within the same thread.
 class TraceMe {
  public:
-  // Constructor that traces a user-defined activity labeled with activity_name
+  // Constructor that traces a user-defined activity labeled with name
   // in the UI. Level defines the trace priority, used for filtering TraceMe
   // events. By default, traces with TraceMe level <= 2 are recorded. Levels:
   // - Must be a positive integer.
   // - Can be a value in enum TraceMeLevel.
   // Users are welcome to use level > 3 in their code, if they wish to filter
   // out their host traces based on verbosity.
-  explicit TraceMe(absl::string_view activity_name, int level = 1) {
+  explicit TraceMe(absl::string_view name, int level = 1) {
     DCHECK_GE(level, 1);
-    if (TraceMeRecorder::Active(level)) {
-      new (&no_init_.name) string(activity_name);
-      start_time_ = EnvTime::Default()->NowNanos();
-    } else {
-      start_time_ = kUntracedActivity;
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      new (&no_init_.name) std::string(name);
+      start_time_ = EnvTime::NowNanos();
     }
+#endif
   }
 
-  // string&& constructor to prevent an unnecessary string copy, e.g. when a
-  // TraceMe is constructed based on the result of a StrCat operation.
-  // Note: We can't take the string by value because a) it would make the
-  // overloads ambiguous, and b) we want lvalue strings to use the string_view
-  // constructor so we avoid copying them when tracing is disabled.
-  explicit TraceMe(string &&activity_name, int level = 1) {
-    DCHECK_GE(level, 1);
-    if (TraceMeRecorder::Active(level)) {
-      new (&no_init_.name) string(std::move(activity_name));
-      start_time_ = EnvTime::Default()->NowNanos();
-    } else {
-      start_time_ = kUntracedActivity;
-    }
-  }
+  // Do not allow passing a temporary string as the overhead of generating that
+  // string should only be incurred when tracing is enabled. Wrap the temporary
+  // string generation (e.g., StrCat) in a lambda and use the name_generator
+  // template instead.
+  explicit TraceMe(std::string&& name, int level = 1) = delete;
 
   // Do not allow passing strings by reference or value since the caller
-  // may unintentionally maintain ownership of the activity_name.
-  // Explicitly std::move the activity_name or wrap it in a string_view if
-  // you really wish to maintain ownership.
-  explicit TraceMe(const string &activity_name, int level = 1) = delete;
+  // may unintentionally maintain ownership of the name.
+  // Explicitly wrap the name in a string_view if you really wish to maintain
+  // ownership of a string already generated for other purposes. For temporary
+  // strings (e.g., result of StrCat) use the name_generator template.
+  explicit TraceMe(const std::string& name, int level = 1) = delete;
 
   // This overload is necessary to make TraceMe's with string literals work.
-  // Otherwise, the string&& and the string_view constructor would be equally
-  // good overload candidates.
-  explicit TraceMe(const char *raw, int level = 1)
+  // Otherwise, the name_generator template would be used.
+  explicit TraceMe(const char* raw, int level = 1)
       : TraceMe(absl::string_view(raw), level) {}
 
-  // This overload only generates the activity name if tracing is enabled.
-  // Useful for avoiding things like string concatenation when tracing is
-  // disabled. The |name_generator| may be a lambda or functor that returns a
-  // type that the string() constructor can take.
+  // This overload only generates the name (and possibly metadata) if tracing is
+  // enabled. Useful for avoiding expensive operations (e.g., string
+  // concatenation) when tracing is disabled.
+  // name_generator may be a lambda or functor that returns a type that the
+  // string() constructor can take, e.g., the result of TraceMeEncode.
   // name_generator is templated, rather than a std::function to avoid
   // allocations std::function might make even if never called.
-  // Usage: profiler::TraceMe([&]{ return StrCat(prefix, ":", postfix); });
+  // Example Usage:
+  //   TraceMe op_trace_me([&]() {
+  //     return StrCat(op_name, ":", op_type);
+  //   }
+  //   TraceMe trace_me_with_metadata([&value1]() {
+  //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
+  //   });
   template <typename NameGeneratorT>
   explicit TraceMe(NameGeneratorT name_generator, int level = 1) {
     DCHECK_GE(level, 1);
-    if (TraceMeRecorder::Active(level)) {
-      new (&no_init_.name) string(name_generator());
-      start_time_ = EnvTime::Default()->NowNanos();
-    } else {
-      start_time_ = kUntracedActivity;
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      new (&no_init_.name) std::string(name_generator());
+      start_time_ = EnvTime::NowNanos();
     }
+#endif
   }
+
+  ~TraceMe() { Stop(); }
 
   // Stop tracing the activity. Called by the destructor, but exposed to allow
   // stopping tracing before the object goes out of scope. Only has an effect
@@ -144,39 +154,96 @@ class TraceMe {
     //   spuriously record the event. This is extremely rare, and acceptable as
     //   event will be discarded when its start timestamp fall outside of the
     //   start/stop session timestamp.
-    if (start_time_ != kUntracedActivity) {
-      if (TraceMeRecorder::Active()) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
+      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record({kCompleteActivity, std::move(no_init_.name),
-                                 start_time_, EnvTime::Default()->NowNanos()});
+                                 start_time_, EnvTime::NowNanos()});
       }
       no_init_.name.~string();
       start_time_ = kUntracedActivity;
     }
+#endif
   }
 
-  ~TraceMe() { Stop(); }
-
-  // TraceMe is not movable or copyable.
-  TraceMe(const TraceMe &) = delete;
-  TraceMe &operator=(const TraceMe &) = delete;
+  // Appends new_metadata to the TraceMe name passed to the constructor.
+  // metadata_generator may be a lambda or functor that returns a type that the
+  // string() constructor can take, e.g., the result of TraceMeEncode.
+  // metadata_generator is only evaluated when tracing is enabled.
+  // metadata_generator is templated, rather than a std::function to avoid
+  // allocations std::function might make even if never called.
+  // Example Usage:
+  //   trace_me.AppendMetadata([&value1]() {
+  //     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
+  //   });
+  template <typename MetadataGeneratorT>
+  void AppendMetadata(MetadataGeneratorT metadata_generator) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
+      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
+        traceme_internal::AppendMetadata(&no_init_.name, metadata_generator());
+      }
+    }
+#endif
+  }
 
   // Static API, for use when scoped objects are inconvenient.
 
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
   static uint64 ActivityStart(absl::string_view name, int level = 1) {
-    return TraceMeRecorder::Active(level) ? ActivityStartImpl(name)
-                                          : kUntracedActivity;
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      uint64 activity_id = TraceMeRecorder::NewActivityId();
+      TraceMeRecorder::Record({activity_id, std::string(name),
+                               /*start_time=*/EnvTime::NowNanos(),
+                               /*end_time=*/0});
+      return activity_id;
+    }
+#endif
+    return kUntracedActivity;
   }
 
   // Record the end time of an activity started by ActivityStart().
   static void ActivityEnd(uint64 activity_id) {
-    // We don't check the level again (see ~TraceMe()).
-    if (activity_id != kUntracedActivity) {
-      if (TraceMeRecorder::Active()) {
-        ActivityEndImpl(activity_id);
+#if !defined(IS_MOBILE_PLATFORM)
+    // We don't check the level again (see TraceMe::Stop()).
+    if (TF_PREDICT_FALSE(activity_id != kUntracedActivity)) {
+      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
+        TraceMeRecorder::Record({activity_id, /*name=*/std::string(),
+                                 /*start_time=*/0,
+                                 /*end_time=*/EnvTime::NowNanos()});
       }
     }
+#endif
+  }
+
+  // Records the time of an instant activity.
+  template <typename NameGeneratorT>
+  static void InstantActivity(NameGeneratorT name_generator, int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      uint64 now = EnvTime::NowNanos();
+      TraceMeRecorder::Record({kCompleteActivity, name_generator(),
+                               /*start_time=*/now, /*end_time=*/now});
+    }
+#endif
+  }
+
+  static bool Active(int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
+    return TraceMeRecorder::Active(level);
+#else
+    return false;
+#endif
+  }
+
+  static uint64 NewActivityId() {
+#if !defined(IS_MOBILE_PLATFORM)
+    return TraceMeRecorder::NewActivityId();
+#else
+    return 0;
+#endif
   }
 
  private:
@@ -185,19 +252,24 @@ class TraceMe {
   // Activity ID used as a placeholder when both start and end are present.
   constexpr static uint64 kCompleteActivity = 1;
 
-  static uint64 ActivityStartImpl(absl::string_view activity_name);
-  static void ActivityEndImpl(uint64 activity_id);
+  TF_DISALLOW_COPY_AND_ASSIGN(TraceMe);
 
   // Wrap the name into a union so that we can avoid the cost of string
   // initialization when tracing is disabled.
   union NoInit {
     NoInit() {}
     ~NoInit() {}
-    string name;
+    std::string name;
   } no_init_;
 
-  uint64 start_time_;
+  uint64 start_time_ = kUntracedActivity;
 };
+
+// Whether OpKernel::TraceString will populate additional information for
+// profiler, such as tensor shapes.
+inline bool TfOpDetailsEnabled() {
+  return TraceMe::Active(TraceMeLevel::kVerbose);
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

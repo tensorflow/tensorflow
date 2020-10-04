@@ -2,6 +2,7 @@
 # For keeping the history of OpDefs for every major version of TensorFlow,
 # to validate that we don't make backwards-incompatible changes.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -12,8 +13,6 @@ package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 cc_library(
     name = "op_compatibility_lib",
@@ -32,13 +31,19 @@ cc_library(
 tf_cc_test(
     name = "backwards_compatibility_test",
     size = "small",
-    srcs = ["backwards_compatibility_test.cc"],
+    srcs = [
+        "backwards_compatibility_test.cc",
+    ],
     data = [
         "//tensorflow/core:ops/ops.pbtxt",
+        "//tensorflow/core/ops/compat/ops_history_v1:ops_history_v1_srcs",
+        "//tensorflow/core/ops/compat/ops_history_v2:ops_history_v2_srcs",
     ] + glob([
-        "ops_history_v*/*.pbtxt",
         "ops_history.v*.pbtxt",
     ]),
+    tags = [
+        "no_windows",  # TODO(b/150030420): Issues with the path separator
+    ],
     deps = [
         ":op_compatibility_lib",
         "//tensorflow/core:framework",

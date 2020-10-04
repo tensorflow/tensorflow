@@ -2,13 +2,15 @@
 // model training or inference.
 syntax = "proto3";
 
+package tensorflow;
+
 import "tensorflow/core/example/feature.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ExampleProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.example";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example";
-package tensorflow;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example/example_protos_go_proto";
 
 // An Example is a mostly-normalized data format for storing data for
 // training and inference.  It contains a key-value store (features); where
@@ -87,7 +89,7 @@ package tensorflow;
 
 message Example {
   Features features = 1;
-};
+}
 
 // A SequenceExample is an Example representing one or more sequences, and
 // some context.  The context contains features which apply to the entire
@@ -298,4 +300,4 @@ message Example {
 message SequenceExample {
   Features context = 1;
   FeatureLists feature_lists = 2;
-};
+}

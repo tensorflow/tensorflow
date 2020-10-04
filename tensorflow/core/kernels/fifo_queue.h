@@ -59,7 +59,7 @@ class FIFOQueue : public TypedQueue<std::deque<PersistentTensor> > {
 
   // Helper for dequeuing a single element from queues_.
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static Status GetElementComponentFromBatch(const Tuple& tuple, int64 index,
                                              int component,
@@ -80,7 +80,7 @@ class FIFOQueueOp : public TypedQueueOp {
 
  private:
   Status CreateResource(QueueInterface** ret) override
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   std::vector<TensorShape> component_shapes_;
   TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueueOp);

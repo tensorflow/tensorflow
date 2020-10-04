@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -34,9 +34,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace mlir {
+class ShapedType;
+}  // namespace mlir
+
 namespace tensorflow {
 
 using stream_executor::port::StatusOr;
+
+// Add custom op prefix for TensorFlow dialects.
+Status AddTensorFlowOpPrefix(std::string);
 
 // Maps an MLIR op name in the TensorFlow dialect or the TensorFlow control
 // dialect back into a TensorFlow valid op name.
@@ -57,11 +64,22 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 Status ConvertAttributes(
     const llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    AttrValueMap* values);
+    bool remove_ref_type, AttrValueMap* values);
 
-// Sets type attribute with the given name. If the attribute already exists with
-// a different value, returns an error.
-Status SetAttribute(absl::string_view name, mlir::Type type,
-                    AttrValueMap* values);
+// Sets shape attribute with the given name. If the attribute already exists
+// with a different value, returns an error.
+Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shape,
+                         AttrValueMap* values);
+
+// Returns true if the given instruction is an mlir::TF::LegacyCallOp or the
+// result of such an operation transformed by the
+// ExecutorToControlDialectConversion pass.
+//
+// TODO(b/145706023): When the ExecutorToControlDialectConversion pass runs
+// before the exporter, it mutates an mlir::TF::LegacyCallOp instruction to
+// an instruction with a different operation name. As such, this routine checks
+// both forms of a LegacyCall instruction. We only need to check for
+// mlir::TF::LegacyCallOp when the ticket is resolved.
+bool IsLegacyCallInstruction(mlir::Operation* inst);
 }  // namespace tensorflow
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_EXPORTER_UTILS_H_

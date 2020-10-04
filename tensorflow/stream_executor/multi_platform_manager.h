@@ -100,6 +100,13 @@ class MultiPlatformManager {
   static port::StatusOr<Platform*> PlatformWithName(absl::string_view target);
   static port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id);
 
+  // Same functions as above, but allows platforms to be returned without
+  // initialization if initialize_platform == false.
+  static port::StatusOr<Platform*> PlatformWithName(absl::string_view target,
+                                                    bool initialize_platform);
+  static port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id,
+                                                  bool initialize_platform);
+
   // Retrieves the platform registered with the given platform name (e.g.
   // "CUDA", "OpenCL", ...) or id (an opaque, comparable value provided by the
   // Platform's Id() method).
@@ -111,12 +118,21 @@ class MultiPlatformManager {
   // Ownership of the platform is NOT transferred to the caller --
   // the MultiPlatformManager owns the platforms in a singleton-like fashion.
   static port::StatusOr<Platform*> InitializePlatformWithName(
-      absl::string_view target, const std::map<string, string>& options);
+      absl::string_view target,
+      const std::map<std::string, std::string>& options);
 
   static port::StatusOr<Platform*> InitializePlatformWithId(
-      const Platform::Id& id, const std::map<string, string>& options);
+      const Platform::Id& id,
+      const std::map<std::string, std::string>& options);
 
-  static std::vector<Platform*> AllPlatforms();
+  // Retrieves the platforms satisfying the given filter, i.e. returns true.
+  // Returned Platforms are always initialized.
+  static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
+      const std::function<bool(const Platform*)>& filter);
+
+  static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
+      const std::function<bool(const Platform*)>& filter,
+      bool initialize_platform);
 
   // Although the MultiPlatformManager "owns" its platforms, it holds them as
   // undecorated pointers to prevent races during program exit (between this
@@ -131,7 +147,7 @@ class MultiPlatformManager {
   // during allocation of such Platforms, to avoid spurious reporting at program
   // exit.
 
-  // Interface for a listener that gets notfied at certain events.
+  // Interface for a listener that gets notified at certain events.
   class Listener {
    public:
     virtual ~Listener() = default;

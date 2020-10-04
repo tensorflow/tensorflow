@@ -68,6 +68,7 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 // Use in tests to allow XLA to fallback to TF classic. This has global effect.
 TF_CAPI_EXPORT unsigned char TF_SetXlaEnableLazyCompilation(
     unsigned char enable);
+TF_CAPI_EXPORT unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable);
 
 // Sets XLA's auto jit mode according to the specified string, which is parsed
 // as if passed in XLA_FLAGS. This has global effect.
@@ -144,73 +145,6 @@ TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
                                                  TF_Status* status);
 // Create a serialized tensorflow.ServerDef proto.
 TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status);
-
-// TODO: remove this API in favor of the next one.
-TF_CAPI_EXPORT extern TFE_Context* TFE_NewContextFromSession(
-    const TFE_ContextOptions* opts, TF_Session* sess, TF_Status* status);
-
-// Creates from `session` a new eager context to run a graph function or
-// sends/recvs, so that these concurrent TFE executions can share (via
-// `session` and its associated device mgr) the same set of fifo queue resource
-// ops, used for host<->TF tensor transfers. This way the sends/recvs calls and
-// graph function execution can access the same fifo queue resource handles
-// (associated with devices managed by the device manager, which can be obtained
-// from `session`).
-//
-// TODO: Remove this function once we migrate away from using session.
-TF_CAPI_EXPORT extern TFE_Context* TFE_CreateContextFromSession(
-    TF_Session* session, TF_Status* status);
-
-// TODO: Retire this API in favor of the next one.
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueNamedTensor(
-    TF_Session* session, int tensor_id, TF_DataType inputType,
-    TF_Status* status);
-
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueNamedTensorFromCtx(
-    TFE_Context* ctx, int tensor_id, TF_DataType inputType, TF_Status* status);
-
-TF_CAPI_EXPORT extern void TFE_EnqueueNamedTensor(TF_Session* session,
-                                                  int tensor_id,
-                                                  TFE_TensorHandle* tensor,
-                                                  TF_Status* status);
-
-TF_CAPI_EXPORT extern void TFE_EnqueueNamedTensorFromCtx(
-    TFE_Context* ctx, int tensor_id, TFE_TensorHandle* tensor,
-    TF_Status* status);
-
-// TODO: consider folding the 2 APIs below into the ones above.
-TF_CAPI_EXPORT extern void TFE_EnqueueVariantTensor(TF_Session* session,
-                                                    int tensor_id,
-                                                    TFE_TensorHandle* tensor,
-                                                    TF_Status* status);
-
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
-    TF_Session* session, int tensor_id, TF_Status* status);
-
-// Prints `handle` in a human readable format to standard output for debugging.
-TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
-    TFE_TensorHandle* handle);
-
-TF_CAPI_EXPORT extern void TFE_OpPrintDebugString(TFE_Op* op);
-
-typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
-
-// Allows invoking a kernel asynchronously, and explicitly returns a
-// notification that can be waited upon. This always executes the kernel in a
-// new thread.
-// 1. `retvals` and `num_retvals` can only be consumed after
-// `TFE_ExecuteOp` returns successfully. They shouldn't be used
-// if the return is unsuccessful
-// 2. These new APIs cannot be used together with the TFE context level async
-// support.
-TF_CAPI_EXPORT extern TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(
-    TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
-    TF_Status* status);
-
-// Waits to complete the op execution, and cleans up the notification.
-// Errors reported by op execution are set in `status`.
-TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
-    TFE_ExecuteOpNotification* notification, TF_Status* status);
 
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
@@ -296,52 +230,20 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-// Create a symbolic tensor from the input graph node.
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(
-    TF_Output t, TF_DataType data_type);
-
-// Returns 0 if the input tensor handle represents a symbolic tensor (i.e., a
-// graph node). Otherwise returns non-0.
-TF_CAPI_EXPORT extern unsigned char TFE_TensorHandleIsConcrete(
-    TFE_TensorHandle* handle);
-
-// If `handle` is a symbolic tensor, return the corresponding graph node
-// represented by TF_Output. Otherwise, return an error status.
-TF_CAPI_EXPORT extern TF_Output TFE_GetTFOutputFromTensorHandle(
-    TFE_TensorHandle* handle, TF_Status* status);
-
-typedef struct TFE_TraceContext TFE_TraceContext;
-
-// A trace context contains a trace graph, to which TFE_AddEagerOpToGraph()
-// calls add graph nodes as a way to symbolically execute the eager ops.
+// Aborts all ongoing collectives with the specified status. After abortion,
+// subsequent collectives will error with this status immediately. To reset the
+// collectives, create a new EagerContext.
 //
-// It also contains a hash map from concrete input tensors to symbolic
-// tensors. That map will be used to create input tensors to the trace graph.
-TF_CAPI_EXPORT extern TFE_TraceContext* TFE_NewTraceContext(TF_Graph* graph);
+// This is intended to be used when a peer failure is detected.
+TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
+                                                  TF_Status* status);
 
-TF_CAPI_EXPORT extern void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx);
-
-// Symbolically executes `op`, by adding a corresponding node to the graph
-// associated with `trace_ctx`. This graph node outputs a set of symbolic
-// tensors in `retvals` and `num_retvals`. Returns the corresponding graph
-// operation on success, otherwise returns nullptr.
-TF_CAPI_EXPORT extern TF_Operation* TFE_AddEagerOpToGraph(
-    TFE_Op* op, TFE_TraceContext* trace_ctx, TFE_TensorHandle** retvals,
-    int* num_retvals, TF_Status* status);
-
-// Finalizes the trace graph and its inputs, and returns the number of inputs.
-// After this call, the next two APIs can be called to iterate over the input
-// tensors.
-TF_CAPI_EXPORT extern int TFE_FinalizeInputTensorsFromTraceContext(
-    TFE_TraceContext* trace_ctx);
-
-TF_CAPI_EXPORT extern TF_Output TFE_GetInputGraphNodeFromTraceContext(
-    TFE_TraceContext* trace_ctx, unsigned int idx);
-
-// Each input tensor should be consumed at most once.
-TF_CAPI_EXPORT extern TFE_TensorHandle*
-TFE_ConsumeInputConcreteTensorFromTraceContext(TFE_TraceContext* trace_ctx,
-                                               unsigned int idx);
+// Checks the health of collective ops peers. Explicit health check is needed in
+// multi worker collective ops to detect failures in the cluster.  If a peer is
+// down, collective ops may hang.
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(TFE_Context* ctx,
+                                                            const char* task,
+                                                            TF_Status* status);
 
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {

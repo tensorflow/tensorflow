@@ -4,6 +4,13 @@
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
 
+# RBE settings for tests that require a GPU. This is used in exec_properties of rules
+# that need GPU access.
+GPU_TEST_PROPERTIES = {
+    "dockerRuntime": "nvidia",
+    "Pool": "gpu-pool",
+}
+
 def tf_gpu_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
 
@@ -11,14 +18,11 @@ def tf_gpu_tests_tags():
 def tf_cuda_tests_tags():
     return tf_gpu_tests_tags()
 
-def tf_sycl_tests_tags():
-    return ["requires-gpu", "gpu"] + gpu_test_tags()
-
-def tf_exec_compatible_with(kwargs):
+def tf_exec_properties(kwargs):
     if ("tags" in kwargs and kwargs["tags"] != None and
         "remote-gpu" in kwargs["tags"]):
-        return ["@org_tensorflow//third_party/toolchains:gpu_test"]
-    return []
+        return GPU_TEST_PROPERTIES
+    return {}
 
 def tf_additional_plugin_deps():
     return select({
@@ -28,6 +32,9 @@ def tf_additional_plugin_deps():
         "//conditions:default": [],
     })
 
+def tf_additional_profiler_deps():
+    return []
+
 def tf_additional_xla_deps_py():
     return []
 
@@ -35,10 +42,7 @@ def tf_additional_grpc_deps_py():
     return []
 
 def tf_additional_license_deps():
-    return select({
-        str(Label("//tensorflow:with_xla_support")): ["@llvm//:LICENSE.TXT"],
-        "//conditions:default": [],
-    })
+    return []
 
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that
@@ -67,3 +71,6 @@ def if_dynamic_kernels(extra_deps, otherwise = []):
         str(Label("//tensorflow:dynamic_loaded_kernels")): extra_deps,
         "//conditions:default": otherwise,
     })
+
+def register_extension_info(**kwargs):
+    pass

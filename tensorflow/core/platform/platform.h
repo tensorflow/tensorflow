@@ -29,25 +29,23 @@ limitations under the License.
 #define IS_MOBILE_PLATFORM
 
 #elif defined(__APPLE__)
-#define PLATFORM_POSIX
 #include "TargetConditionals.h"
-#if TARGET_IPHONE_SIMULATOR
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+#define PLATFORM_POSIX_IOS
 #define IS_MOBILE_PLATFORM
-#elif TARGET_OS_IPHONE
-#define IS_MOBILE_PLATFORM
+#else
+// If no platform specified, use:
+#define PLATFORM_POSIX
 #endif
 
 #elif defined(_WIN32)
 #define PLATFORM_WINDOWS
 
-#elif defined(__arm__) || defined(__EMSCRIPTEN__)
+#elif defined(__EMSCRIPTEN__)
+#define PLATFORM_PORTABLE_GOOGLE
 #define PLATFORM_POSIX
-
-// Require an outside macro to tell us if we're building for Raspberry Pi or
-// another ARM device that's not a mobile platform.
-#if !defined(RASPBERRY_PI) && !defined(ARM_NON_MOBILE)
+// EMSCRIPTEN builds are considered "mobile" for the sake of portability.
 #define IS_MOBILE_PLATFORM
-#endif  // !defined(RASPBERRY_PI) && !defined(ARM_NON_MOBILE)
 
 #else
 // If no platform specified, use:
@@ -62,11 +60,5 @@ limitations under the License.
     defined(_M_X64)
 #define PLATFORM_IS_X86
 #endif
-
-// A temporary hack for the sake of TensorFlow Data Validation, which uses the
-// same version of RE2 that TensorFlow uses and so needs some way to know when
-// to use absl::string_view rather than re2::StringPiece. This will be removed
-// in a future release of TensorFlow.
-#define PLATFORM_RE2_STRINGPIECE_IS_NOW_ABSL_STRING_VIEW
 
 #endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_

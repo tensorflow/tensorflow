@@ -492,8 +492,7 @@ TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
-      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({}, 0, {}));
 
   auto buffers = RunBufferAssignment(module.get());
 
@@ -729,7 +728,8 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto preset_assignments = absl::make_unique<PresetAssignments>();
   preset_assignments->add_chunk({mul, {}}, {/*offset=*/100, /*size=*/400});
   preset_assignments->add_chunk({add, {}}, {/*offset=*/550, /*size=*/400});
-  preset_assignments->add_size(/*memory_space=*/1, /*size=*/950);
+  preset_assignments->assignment_information_for_space(/*memory_space=*/1)
+      ->size = 950;
 
   auto buffers = RunBufferAssignmentWithPresetAssignments(
       module.get(), std::move(preset_assignments));
@@ -767,6 +767,88 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
+  // Tests preset assignments when there is no 1-to-1 correspondence between
+  // HloValue and HloBuffer (i.e., a while loop).
+  auto module = CreateNewVerifiedModule();
+  Shape f32vec10_color1 =
+      ShapeUtil::MakeShapeWithLayout(F32, {10}, {0}, {}, 0, 1);
+  Shape t_s32_f32v10_color1 =
+      ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, t_s32_f32v10_color1, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(s32_, cond_param, 0));
+  HloInstruction* cond_limit = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(50)));
+  cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, t_s32_f32v10_color1, "body_param"));
+  HloInstruction* body_iter = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(s32_, body_param, 0));
+  HloInstruction* body_data = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec10_color1, body_param, 1));
+  HloInstruction* body_data_increment = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
+          {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f})));
+  HloInstruction* body_data_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          f32vec10_color1, HloOpcode::kAdd, body_data, body_data_increment));
+  HloInstruction* body_iter_increment = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
+  HloInstruction* body_iter_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          s32_, HloOpcode::kAdd, body_iter, body_iter_increment));
+  body_builder.AddInstruction(
+      HloInstruction::CreateTuple({body_iter_next, body_data_next}));
+  HloComputation* body_computation =
+      module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* iter = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s32_, "param_iter"));
+  HloInstruction* data = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec10_, "param_data"));
+  HloInstruction* negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec10_color1, HloOpcode::kNegate, data));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({iter, negate}));
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      t_s32_f32v10_color1, cond_computation, body_computation, tuple));
+  HloInstruction* while_data = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec10_color1, while_op, 1));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec10_, HloOpcode::kAdd, while_data, data));
+  module->AddEntryComputation(builder.Build());
+
+  // Set only one preset assignment for while data and its aliases.
+  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({negate, {}}, {/*offset=*/100, /*size=*/40});
+  preset_assignments->assignment_information_for_space(/*memory_space=*/1)
+      ->size = 140;
+
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      module.get(), std::move(preset_assignments));
+
+  // All assigned buffers are aliased so they should have the same offset and
+  // size.
+  const BufferAllocation& data_buffer = GetTopLevelAllocation(*buffers, negate);
+  EXPECT_EQ(data_buffer.assigned_buffers().size(), 5);
+  for (const auto& value_and_offsetsize : data_buffer.assigned_buffers()) {
+    EXPECT_EQ(value_and_offsetsize.second.offset, 100);
+    EXPECT_EQ(value_and_offsetsize.second.size, 40);
+    EXPECT_EQ(value_and_offsetsize.first->color(), LogicalBuffer::Color(1));
+  }
 }
 
 TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
@@ -1843,8 +1925,10 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   HloInstruction* parameter =
       m->entry_computation()->GetInstructionWithName("get-tuple-element.4");
-  HloInstruction* dus =
+  HloInstruction* dus1 =
       m->entry_computation()->GetInstructionWithName("dynamic-update-slice.5");
+  HloInstruction* dus2 =
+      m->entry_computation()->GetInstructionWithName("dynamic-update-slice.9");
 
   auto buffers = RunBufferAssignment(m.get());
 
@@ -1852,8 +1936,10 @@ ENTRY main {
     const BufferAllocation& parameter_alloc =
         GetTopLevelAllocation(*buffers, parameter);
 
-    const BufferAllocation& dus_alloc = GetTopLevelAllocation(*buffers, dus);
-    EXPECT_NE(parameter_alloc, dus_alloc);
+    const BufferAllocation& dus1_alloc = GetTopLevelAllocation(*buffers, dus1);
+    EXPECT_EQ(parameter_alloc, dus1_alloc);
+    const BufferAllocation& dus2_alloc = GetTopLevelAllocation(*buffers, dus2);
+    EXPECT_EQ(parameter_alloc, dus2_alloc);
   }
 }
 
@@ -2432,50 +2518,6 @@ ENTRY Main {
             GetAllocation(*buffers, param0, {1, 1}));
 }
 
-TEST_F(BufferAssignmentTest, ProcessingOrderTest) {
-  const char* hlo_text = R"(
-HloModule nested_convolution
-
-ENTRY %nested_convolution (param: f32[200,32,32,1]) -> f32[200,32,32,1] {
-  %param = f32[200,32,32,1]{3,2,1,0} parameter(0)
-  %bitcast = f32[200,32,32,1]{2,1,3,0} bitcast(f32[200,32,32,1]{3,2,1,0} %param)
-  %one = f32[] constant(1)
-  %conv_window = f32[3,3,1,1]{1,0,2,3} broadcast(f32[] %one), dimensions={}
-  %conv0 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %bitcast, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.6 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv0), index=0
-  %conv1 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.6, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.7 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv1), index=0
-  %conv2 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.7, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.8 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv2), index=0
-  %conv3 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.8, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.9 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv3), index=0
-  %conv4 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.9, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.10 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv4), index=0
-  %conv5 = (f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) custom-call(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.10, f32[3,3,1,1]{1,0,2,3} %conv_window),
-    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{algorithm:1,tensor_ops_enabled:true,conv_result_scale:1}"
-  %get-tuple-element.11 = f32[200,32,32,1]{2,1,3,0} get-tuple-element((f32[200,32,32,1]{2,1,3,0}, u8[6152]{0}) %conv5), index=0
-  ROOT %bitcast.1 = f32[200,32,32,1]{3,2,1,0} bitcast(f32[200,32,32,1]{2,1,3,0} %get-tuple-element.11)
-}
-)";
-
-  HloModuleConfig config;
-  config.set_debug_options(GetDebugOptionsFromFlags());
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
-
-  std::unique_ptr<BufferAssignment> buffers = RunBufferAssignment(m.get());
-
-  // We should occupy strictly less size than 4 * size of the buffer required
-  // for convolution.
-  int64 conv_size_bytes = 200 * 32 * 32 * 4;
-  EXPECT_LT(buffers->GetStats().total_allocation_bytes, conv_size_bytes * 4);
-}
-
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
@@ -2649,8 +2691,7 @@ ENTRY entry_computation {
 }
 
 )";
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   auto module = module_or_status.ConsumeValueOrDie();
 
   RunCopyInsertion(module.get());

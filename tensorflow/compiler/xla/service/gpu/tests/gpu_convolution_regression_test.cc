@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -28,7 +27,7 @@ class GpuConvolutionRegressionTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
     (void)backend().compiler()->RunHloPasses(
-        ParseAndReturnUnverifiedModule(hlo_string, config).ConsumeValueOrDie(),
+        ParseAndReturnVerifiedModule(hlo_string, config).ConsumeValueOrDie(),
         backend().default_stream_executor(), backend().memory_allocator());
   }
 };
@@ -104,6 +103,17 @@ ENTRY %TestComputation {
   %param_0 = f32[2,128,1,378]{3,2,1,0} parameter(0)
   %param_1 = f32[1,5,128,128]{1,0,2,3} parameter(1)
   ROOT %custom-call.1 = (f32[2,128,1,378]{3,2,1,0}, u8[0]{0}) custom-call(%param_0, %param_1), window={size=1x5 pad=0_0x2_2}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}"
+})");
+}
+
+TEST_F(GpuConvolutionRegressionTest, Conv0D) {
+  CheckForHloText(R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %parameter.1 = f32[10,5]{1,0} parameter(0)
+  %parameter.2 = f32[5,7]{0,1} parameter(1)
+  ROOT %custom-call.1 = (f32[10,7]{1,0}, u8[0]{0}) custom-call(f32[10,5]{1,0} %parameter.1, f32[5,7]{0,1} %parameter.2), window={}, dim_labels=bf_io->bf, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}"
 })");
 }
 

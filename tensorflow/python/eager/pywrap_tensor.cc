@@ -18,10 +18,14 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <cmath>
+
 #include "structmember.h"  // NOLINT // For PyMemberDef
+#include "pybind11/pybind11.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -30,65 +34,13 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 // forward declare
 struct EagerTensor;
-
-namespace {
-
-// An instance of _EagerTensorProfiler that will receive callbacks about
-// events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
-PyObject* eager_tensor_profiler = nullptr;
-
-TFE_Context* GetContextHandle(PyObject* py_context) {
-  tensorflow::Safe_PyObjectPtr py_context_handle(
-      PyObject_GetAttrString(py_context, "_handle"));
-  if (py_context_handle == nullptr) {
-    // Current Python code makes sure this never happens. If it does, or
-    // becomes hard to maintain, we can call the ensure_initialized() method
-    // here.
-    PyErr_SetString(
-        PyExc_TypeError,
-        "Expected `context` argument in EagerTensor constructor to have a "
-        "`_handle` attribute but it did not. Was eager Context initialized?");
-    return nullptr;
-  }
-
-  auto* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
-  if (ctx == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    tensorflow::strings::StrCat(
-                        "Expected context._handle to contain a PyCapsule "
-                        "encoded pointer to TFE_Context. Got ",
-                        Py_TYPE(py_context_handle.get())->tp_name)
-                        .c_str());
-  }
-  return ctx;
-}
-
-// Convert a Python numpy.ndarray object to a TFE_TensorHandle.
-// The two may share underlying storage so changes to one may reflect in the
-// other.
-TFE_TensorHandle* NumpyToTFE_TensorHandle(PyObject* obj) {
-  tensorflow::TensorHandle* handle;
-  tensorflow::Tensor t;
-  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
-  if (cppstatus.ok()) {
-    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
-  }
-  if (!cppstatus.ok()) {
-    PyErr_SetString(PyExc_ValueError,
-                    tensorflow::strings::StrCat(
-                        "Failed to convert a NumPy array to a Tensor (",
-                        cppstatus.error_message(), ").")
-                        .c_str());
-    return nullptr;
-  }
-  return new TFE_TensorHandle(handle);
-}
+namespace tensorflow {
 
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.
 // The two may share underlying storage so changes to one may reflect in the
@@ -119,6 +71,55 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
   CHECK_NE(ret, nullptr);
   return ret;
 }
+}  // namespace tensorflow
+namespace {
+
+using tensorflow::TFE_TensorHandleToNumpy;
+
+// An instance of _EagerTensorProfiler that will receive callbacks about
+// events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
+PyObject* eager_tensor_profiler = nullptr;
+
+// Read-only dict. Please don't use this in any setting where the dict might
+// actually get mutated. This is only used to pass empty kwargs when creating a
+// new EagerTensor.
+PyObject* EmptyDict() {
+  static PyObject* empty_dict = PyDict_New();
+  return empty_dict;
+}
+
+PyObject* EmptyTuple() {
+  static PyObject* empty_tuple = PyTuple_New(0);
+  return empty_tuple;
+}
+
+TFE_Context* GetContextHandle(PyObject* py_context) {
+  tensorflow::Safe_PyObjectPtr py_context_handle(
+      PyObject_GetAttrString(py_context, "_handle"));
+  if (py_context_handle == nullptr) {
+    // Current Python code makes sure this never happens. If it does, or
+    // becomes hard to maintain, we can call the ensure_initialized() method
+    // here.
+    PyErr_SetString(
+        PyExc_TypeError,
+        "Expected `context` argument in EagerTensor constructor to have a "
+        "`_handle` attribute but it did not. Was eager Context initialized?");
+    return nullptr;
+  }
+
+  auto* ctx = reinterpret_cast<TFE_Context*>(
+      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
+  if (ctx == nullptr) {
+    PyErr_SetString(PyExc_TypeError,
+                    tensorflow::strings::StrCat(
+                        "Expected context._handle to contain a PyCapsule "
+                        "encoded pointer to TFE_Context. Got ",
+                        Py_TYPE(py_context_handle.get())->tp_name)
+                        .c_str());
+  }
+  return ctx;
+}
+
 
 // Helper function to convert `v` to a tensorflow::DataType and store it in
 // `*out`. Returns true on success, false otherwise.
@@ -181,6 +182,15 @@ int ConvertDeviceName(PyObject* obj, const char** dst) {
   }
 
   return 1;
+}
+
+void RaiseExceptionTypeFromTFStatus(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  PyObject* exception = tensorflow::PyExceptionRegistry::Lookup(code);
+  PyErr_SetObject(exception,
+                  pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                       TF_Message(status))
+                      .ptr());
 }
 
 }  // namespace
@@ -249,23 +259,6 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
 #undef RETURN_ERROR
 }
 
-TFE_TensorHandle* PySeqToTFE_TensorHandle(PyObject* value, DataType dtype) {
-  tensorflow::TensorHandle* handle = nullptr;
-  tensorflow::Tensor t;
-  // TODO(josh11b): Have PySeqToTensor set python errors instead of
-  // returning Status.
-  auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
-  if (cppstatus.ok()) {
-    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
-  }
-  if (!cppstatus.ok()) {
-    PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
-    return nullptr;
-  }
-  CHECK_NE(handle, nullptr);
-  return new TFE_TensorHandle(handle);
-}
-
 TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
                                                PyObject* value,
                                                tensorflow::DataType dtype,
@@ -279,41 +272,8 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     value_decrefer.reset(value);
   }
 
-  Safe_TFE_TensorHandlePtr handle;
-  if (PyArray_Check(value)) {
-    int desired_np_dtype = -1;
-    if (dtype != tensorflow::DT_INVALID) {
-      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
-               static_cast<TF_DataType>(dtype), &desired_np_dtype)
-               .ok()) {
-        PyErr_SetString(
-            PyExc_TypeError,
-            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
-                .c_str());
-        return nullptr;
-      }
-    }
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
-    int current_np_dtype = PyArray_TYPE(array);
-    auto safe_value = tensorflow::make_safe(static_cast<PyObject*>(nullptr));
-    if ((desired_np_dtype >= 0 && desired_np_dtype != current_np_dtype) ||
-        !PyArray_ISCARRAY(array)) {
-      int new_dtype =
-          desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
-      safe_value = tensorflow::make_safe(
-          PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
-                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
-      if (PyErr_Occurred()) return nullptr;
-      if (safe_value == nullptr) {
-        PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
-        return nullptr;
-      }
-      value = safe_value.get();
-    }
-    handle = make_safe(NumpyToTFE_TensorHandle(value));
-  } else {
-    handle = make_safe(PySeqToTFE_TensorHandle(value, dtype));
-  }
+  Safe_TFE_TensorHandlePtr handle =
+      make_safe(PySeqToTFE_TensorHandle(ctx, value, dtype));
 
   if (handle == nullptr) return nullptr;
 
@@ -347,42 +307,18 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     }
   }
 
-  // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
-  // memory. We approximate the same behavior for eager execution - keeping
-  // int32 tensors in host memory.
+  // We always generate CPU:0 tensors, but we may need to change the device
+  // slightly, as for example from /job:localhost/... to /job:worker/...
   //
-  // We do so to preclude the need for callers into such kernels from having to
-  // explicitly place the int32 tensors in host memory. For example, without
-  // this, one needed:
-  //
-  // with tf.device('/gpu:0'):
-  //   ...// code here
-  //   with tf.device('/cpu:0'):
-  //     shape = tf.constant(...)
-  //   y = tf.random_uniform(shape)
-  //
-  // Without the CPU device block, tfe.ops.random_uniform would fail since the
-  // kernel expects the shape in host memory.
-  //
-  // With this support, we simplify the code:
-  //
-  // with tf.device('/gpu:0'):
-  //   y = tf.random_uniform(...)
-  //
-  // The approximation is not exact there are GPU kernels which do not require
-  // host memory for int32 tensors. This will lead to a discrepancy between
-  // eager and graph execution.
-  //
-  // To support remote execution copy int32 tensors to another CPU device.
-  // TODO(ashankar): Fix this.
+  // Note that this is a shallow copy and will share the underlying buffer,
+  // because we are copying to the same device.
   if (device_name != nullptr &&
-      (TFE_TensorHandleDataType(handle.get()) != TF_INT32 ||
-       strstr(device_name, "/device:CPU:0") != nullptr)) {
-    // Note that this is a shallow copy and will share the underlying buffer
-    // if copying to the same device.
+      strstr(device_name, "/device:CPU:0") != nullptr) {
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
                                                     device_name, status.get()));
-    if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
+    const TF_Code code = TF_GetCode(status.get());
+    if (code != TF_OK) {
+      RaiseExceptionTypeFromTFStatus(status.get());
       return nullptr;
     }
   }
@@ -399,11 +335,13 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
   // TODO(slebedev): also cache singleton NumPy arrays and scalars?
   if (PyArray_IsPythonNumber(value)) {
     auto* cache = TFE_TensorHandleCache::Get();
-    TFE_TensorHandle* handle = cache->Lookup(value, dtype, device_name);
+    TFE_TensorHandle* handle = cache->Lookup(value, dtype, ctx, device_name);
     if (handle != nullptr) return handle;
     handle = ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
     if (handle == nullptr) return nullptr;
-    cache->Insert(value, dtype, device_name, handle);
+    if (!PyFloat_Check(value) || std::isfinite(PyFloat_AS_DOUBLE(value))) {
+      cache->Insert(value, dtype, ctx, device_name, handle);
+    }
     return handle;
   } else {
     return ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
@@ -425,8 +363,10 @@ typedef struct EagerTensor {
   char unused[kMaxEagerTensorParentSize];
   TFE_TensorHandle* handle;
   int64_t id;
+  // Indicates whether it's a packed tensor or not.
+  bool is_packed;
   // This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
-  // be None for tensors of type other than DT_REOSURCE. For DT_RESOURCE
+  // be None for tensors of type other than DT_RESOURCE. For DT_RESOURCE
   // tensors, this will contain a serialized HandleData proto with shape
   // inference metadata about shapes and dtypes of resources accessible from
   // this handle.
@@ -498,6 +438,7 @@ bool MaybeInvokeCreatedOnEagerTensorProfiler(EagerTensor* created_tensor) {
 int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->id = get_uid();
   self->handle = nullptr;
+  self->is_packed = false;
   Py_INCREF(Py_None);
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
@@ -578,7 +519,9 @@ static PyObject* EagerTensor_datatype_enum(EagerTensor* self) {
 static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   auto handle = self->handle;
   int n = TFE_TensorHandleNumDims(handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
+  TF_Code code = TF_GetCode(&self->status);
+  if (code != TF_OK) {
+    RaiseExceptionTypeFromTFStatus(&self->status);
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -588,13 +531,18 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   for (int i = 0; i < n; ++i) {
     PyObject* dim =
         PyLong_FromLongLong(TFE_TensorHandleDim(handle, i, &self->status));
-    if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr) ||
-        dim == nullptr || PyTuple_SetItem(shape, i, dim) != 0) {
+    code = TF_GetCode(&self->status);
+    if (code != TF_OK || dim == nullptr ||
+        PyTuple_SetItem(shape, i, dim) != 0) {
+      if (code != TF_OK) {
+        RaiseExceptionTypeFromTFStatus(&self->status);
+      } else {
+        PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
+      }
       // Cleanup self->status before returning.
       self->status.status = tensorflow::Status::OK();
       Py_DECREF(shape);
       if (dim != nullptr) Py_DECREF(dim);
-      PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
       return nullptr;
     }
   }
@@ -628,13 +576,13 @@ static PyObject* EagerTensor_num_elements(EagerTensor* self) {
   return PyLong_FromLongLong(n);
 }
 
-static PyObject* EagerTensor_tensor_handle(EagerTensor* self, void* unused) {
+static PyObject* EagerTensor_handle_data(EagerTensor* self, void* unused) {
   Py_INCREF(self->handle_data);
   return self->handle_data;
 }
 
-static int EagerTensor_settensor_handle(EagerTensor* self, PyObject* value,
-                                        void* unused) {
+static int EagerTensor_sethandle_data(EagerTensor* self, PyObject* value,
+                                      void* unused) {
   Py_DECREF(self->handle_data);
   Py_INCREF(value);
   self->handle_data = value;
@@ -727,19 +675,29 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
 #endif
 }
 
-static PyGetSetDef EagerTensor_getseters[] = {
+// Getter `is_packed`.
+static PyObject* EagerTensor_is_packed(EagerTensor* self) {
+  return PyBool_FromLong(self->is_packed);
+}
+
+static PyGetSetDef EagerTensor_getsetters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
-     const_cast<char*>("_id"), nullptr},
+     const_cast<char*>("Tensor ID."), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
-     const_cast<char*>("device"), nullptr},
+     const_cast<char*>("Device of op that produced the tensor."), nullptr},
     {const_cast<char*>("backing_device"), (getter)EagerTensor_backing_device,
-     nullptr, const_cast<char*>("backing_device"), nullptr},
-    {const_cast<char*>("_handle_data"), (getter)EagerTensor_tensor_handle,
-     (setter)EagerTensor_settensor_handle, const_cast<char*>("_tensor_handle"),
+     nullptr, const_cast<char*>("Device on which tensor's memory is resident."),
+     nullptr},
+    {const_cast<char*>("is_packed"), (getter)EagerTensor_is_packed, nullptr,
+     const_cast<char*>("Whether the EagerTensor is a packed tensor or not."),
+     nullptr},
+    {const_cast<char*>("_handle_data"), (getter)EagerTensor_handle_data,
+     (setter)EagerTensor_sethandle_data,
+     const_cast<char*>("Shape/DType data if the EagerTensor is a DT_RESOURCE"),
      nullptr},
     {const_cast<char*>("_tensor_shape"), (getter)EagerTensor_tensor_shape,
-     (setter)EagerTensor_settensor_shape, const_cast<char*>("_tensor_shape"),
-     nullptr},
+     (setter)EagerTensor_settensor_shape,
+     const_cast<char*>("Shape of the tensor."), nullptr},
     {nullptr} /* Sentinel */
 };
 
@@ -754,16 +712,18 @@ static PyMemberDef EagerTensor_members[] = {
 
 static PyMethodDef EagerTensor_methods[] = {
     {"_numpy_internal", (PyCFunction)EagerTensor_numpy_internal, METH_NOARGS,
-     PyDoc_STR("_numpy_internal")},
+     PyDoc_STR("Internal method to get a NumPy array for the tensor.")},
     {"_datatype_enum", (PyCFunction)EagerTensor_datatype_enum, METH_NOARGS,
-     PyDoc_STR("_datatype_enum")},
+     PyDoc_STR("The DType of the tensor as an enum.")},
     {"_shape_tuple", (PyCFunction)EagerTensor_shape_tuple, METH_NOARGS,
-     PyDoc_STR("_shape_tuple")},
-    {"_rank", (PyCFunction)EagerTensor_rank, METH_NOARGS, PyDoc_STR("_rank")},
+     PyDoc_STR("The shape of the tensor as a python tuple.")},
+    {"_rank", (PyCFunction)EagerTensor_rank, METH_NOARGS,
+     PyDoc_STR("The rank of the tensor.")},
     {"_copy_to_device", (PyCFunction)EagerTensor_copy_to_device,
-     METH_VARARGS | METH_KEYWORDS, PyDoc_STR("_copy_to_device")},
+     METH_VARARGS | METH_KEYWORDS,
+     PyDoc_STR("Copies the tensor to the desired device.")},
     {"_num_elements", (PyCFunction)EagerTensor_num_elements, METH_NOARGS,
-     PyDoc_STR("_num_elements")},
+     PyDoc_STR("Number of elements in the tensor.")},
     {nullptr, nullptr},
 };
 
@@ -821,7 +781,7 @@ PyTypeObject* EagerTensorType = nullptr;
 static PyType_Slot EagerTensor_Type_slots[] = {
     {Py_tp_dealloc, reinterpret_cast<void*>(EagerTensor_dealloc)},
     {Py_tp_methods, reinterpret_cast<void*>(EagerTensor_methods)},
-    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getseters)},
+    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getsetters)},
     {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
     {0, nullptr},
 };
@@ -838,7 +798,11 @@ static PyTypeObject _EagerTensorType = {
     sizeof(EagerTensor),                /* tp_basicsize */
     0,                                  /* tp_itemsize */
     (destructor)EagerTensor_dealloc,    /* tp_dealloc */
+#if PY_VERSION_HEX < 0x03080000
     nullptr,                            /* tp_print */
+#else
+    0, /* tp_vectorcall_offset */
+#endif
     nullptr,                            /* tp_getattr */
     nullptr,                            /* tp_setattr */
     nullptr,                            /* tp_compare */
@@ -862,7 +826,7 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_iternext */
     EagerTensor_methods,                /* tp_methods */
     EagerTensor_members,                /* tp_members */
-    EagerTensor_getseters,              /* tp_getset */
+    EagerTensor_getsetters,             /* tp_getset */
     nullptr,                            /* tp_base */
     nullptr,                            /* tp_dict */
     nullptr,                            /* tp_descr_get */
@@ -885,14 +849,16 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o) {
   return reinterpret_cast<const EagerTensor*>(o)->handle;
 }
 
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed) {
   if (handle == nullptr) {
     return nullptr;
   }
   EagerTensor* t = reinterpret_cast<EagerTensor*>(
-      EagerTensorType->tp_new(EagerTensorType, Py_None, Py_None));
+      EagerTensorType->tp_new(EagerTensorType, EmptyTuple(), EmptyDict()));
   if (t != nullptr) {
     t->id = get_uid();
+    t->is_packed = is_packed;
     Py_INCREF(Py_None);
     t->handle_data = Py_None;
     Py_INCREF(Py_None);

@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape as tape_lib
@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -66,24 +67,17 @@ def copy_handle_data(source_t, target_t):
         and handle_data.is_set
         and handle_data.shape_and_type):
       # pylint: disable=protected-access
-      pywrap_tensorflow.SetHandleShapeAndType(target_t.graph._c_graph,
+      if isinstance(target_t, ops.EagerTensor):
+        target_t._handle_data = handle_data
+        return
+      pywrap_tf_session.SetHandleShapeAndType(target_t.graph._c_graph,
                                               target_t._as_tf_output(),
                                               handle_data.SerializeToString())
       # pylint: enable=protected-access
-      # Ensure that shapes and dtypes are propagated.
-      shapes, types = zip(*[(pair.shape, pair.dtype)
-                            for pair in handle_data.shape_and_type])
-      ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
-      shapes = [[d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
-                if not s.unknown_rank else None for s in shapes]
-      pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-          target_t._op._graph._c_graph,  # pylint: disable=protected-access
-          target_t._as_tf_output(),  # pylint: disable=protected-access
-          shapes, ranks, types)
 
 
 @tf_export("custom_gradient")
-def custom_gradient(f=None, primals=None):
+def custom_gradient(f=None):
   """Decorator to define a function with a custom gradient.
 
   This decorator allows fine grained control over the gradients of a sequence
@@ -98,8 +92,8 @@ def custom_gradient(f=None, primals=None):
     return tf.math.log(1 + tf.exp(x))
   ```
 
-  Due to numerical instability, the gradient this function evaluated at x=100 is
-  NaN.  For example:
+  Due to numerical instability, the gradient of this function evaluated at x=100
+  is NaN.  For example:
 
   ```python
   x = tf.constant(100.)
@@ -122,6 +116,42 @@ def custom_gradient(f=None, primals=None):
   With this definition, the gradient at x=100 will be correctly evaluated as
   1.0.
 
+  The variable `dy` is defined as the upstream gradient. i.e. the gradient from
+  all the layers or functions originating from this layer.
+
+  By chain rule we know that
+  `dy/dx = dy/x_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
+
+  In this case the gradient of our current function defined as 
+  `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be
+  `dx_i+1/dx_i+2 * dx_i+2/dx_i+3 * ... * dx_n/dx`. The upstream gradient 
+  multiplied by the current gradient is then passed downstream.
+
+  In case the function takes multiple variables as input, the `grad` 
+  function must also return  the same number of variables.
+  We take the function `z = x * y` as an example.
+
+  >>> @tf.custom_gradient
+  ... def bar(x, y):
+  ...   def grad(upstream):
+  ...     dz_dx = y
+  ...     dz_dy = x
+  ...     return upstream * dz_dx, upstream * dz_dy
+  ...   z = x * y
+  ...   return z, grad
+  >>> x = tf.constant(2.0, dtype=tf.float32)
+  >>> y = tf.constant(3.0, dtype=tf.float32)
+  >>> with tf.GradientTape(persistent=True) as tape:
+  ...   tape.watch(x)
+  ...   tape.watch(y)
+  ...   z = bar(x, y)
+  >>> z
+  <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+  >>> tape.gradient(z, x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=3.0>
+  >>> tape.gradient(z, y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=2.0>
+
   Nesting custom gradients can lead to unintuitive results. The default
   behavior does not correspond to n-th order derivatives. For example
 
@@ -143,31 +173,7 @@ def custom_gradient(f=None, primals=None):
   gradient graphs from backward-mode gradient graphs, but is not the same as
   the second order gradient of `op` with respect to `x`.
 
-  Instead, when overriding `n`-th order gradients, specify a `primals` argument
-  to the inner decorator(s). For example overriding both first- and second-order
-  gradients is necessary when making an operation with a fused forward and
-  backward pass infinitely differentiable:
-
-  ```python
-  @tf.custom_gradient
-  def op_with_fused_backprop(x):
-    y, x_grad = fused_op(x)
-    @tf.custom_gradient(primals=x)
-    def grad_fn(dy):
-      def grad_grad_fn(ddy):
-        return infinitely_differentiable_second_order_grad_for_x(x, y, ddy)
-      return x_grad, grad_grad_fn
-    return y, grad_fn
-  ```
-
-  Likewise when also overriding third or higher-order gradients, `primals` will
-  typically be the original zeroth-order inputs.
-
-  You can achieve the same effect by wrapping nested `@tf.custom_gradients` in
-  another function. For example you may need to override gradients with respect
-  to output gradients in addition to second-order gradients. Gradients with
-  respect to output gradients are used for generating forward-mode gradient
-  graphs from backward graphs, transposing the gradient function.
+  Instead, wrap nested `@tf.custom_gradients` in another function:
 
   ```python
   @tf.custom_gradient
@@ -175,17 +181,16 @@ def custom_gradient(f=None, primals=None):
     y, x_grad = fused_op(x)
     def first_order_gradient(dy):
       @tf.custom_gradient
-      def first_order_custom(unused_x, unused_dy):
+      def first_order_custom(unused_x):
         def second_order_and_transpose(ddy):
           return second_order_for_x(...), gradient_wrt_dy(...)
         return x_grad, second_order_and_transpose
-      return first_order_custom(x, dy)
+      return dy * first_order_custom(x)
     return y, first_order_gradient
   ```
 
-  With the additional layer of nesting, `primals` is no longer
-  necessary. Additional arguments to the inner `@tf.custom_gradient`-decorated
-  function control the expected return values of the innermost function.
+  Additional arguments to the inner `@tf.custom_gradient`-decorated function
+  control the expected return values of the innermost function.
 
   See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
@@ -197,20 +202,23 @@ def custom_gradient(f=None, primals=None):
 
   Args:
     f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
-       - `x` is a sequence of `Tensor` inputs to the function.
-       - `y` is a `Tensor` or sequence of `Tensor` outputs of applying
-         TensorFlow operations in `f` to `x`.
+       - `x` is a sequence of (nested structures of) `Tensor` inputs to the
+         function.
+       - `y` is a (nested structure of) `Tensor` outputs of applying TensorFlow
+         operations in `f` to `x`.
        - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
-         a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
-         to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
-         `Tensor`s the same size as `y` holding the initial value gradients for
-         each `Tensor` in `y`. In a pure mathematical sense, a vector-argument
-         vector-valued function `f`'s derivatives should be its Jacobian matrix
-         `J`. Here we are expressing the Jacobian `J` as a function `grad_fn`
-         which defines how `J` will transform a vector `grad_ys` when
-         left-multiplied with it (`grad_ys * J`). This functional representation
-         of a matrix is convenient to use for chain-rule calculation
-         (in e.g. the back-propagation algorithm).
+         a list of `Tensor`s the same size as (flattened) `x` - the derivatives
+         of `Tensor`s in `y` with respect to the `Tensor`s in `x`.  `grad_ys` is
+         a sequence of `Tensor`s the same size as (flattened) `y` holding the
+         initial value gradients for each `Tensor` in `y`.
+
+         In a pure mathematical sense, a vector-argument vector-valued function
+         `f`'s derivatives should be its Jacobian matrix `J`. Here we are
+         expressing the Jacobian `J` as a function `grad_fn` which defines how
+         `J` will transform a vector `grad_ys` when left-multiplied with it
+         (`grad_ys * J`, the vector-Jacobian product, or VJP). This functional
+         representation of a matrix is convenient to use for chain-rule
+         calculation (in e.g. the back-propagation algorithm).
 
          If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have
@@ -219,30 +227,68 @@ def custom_gradient(f=None, primals=None):
          `grad_xs` is the same as above, and `grad_vars` is a `list<Tensor>`
          with the derivatives of `Tensor`s in `y` with respect to the variables
          (that is, grad_vars has one Tensor per variable in variables).
-    primals: A `Tensor` or list of `Tensor`. The tensors with respect to which
-      the gradient function will be returning. When nesting custom gradients,
-      specifying `primals` allows you to control which original tensors the
-      higher-order gradients are for. See examples above.
 
   Returns:
     A function `h(x)` which returns the same value as `f(x)[0]` and whose
     gradient (as calculated by `tf.gradients`) is determined by `f(x)[1]`.
   """
 
-  def decorator(f):
-    def decorated(*args, **kwargs):
-      """Decorated function with custom gradient."""
-      if context.executing_eagerly():
-        return _eager_mode_decorator(f, primals, *args, **kwargs)
-      else:
-        return _graph_mode_decorator(f, primals, *args, **kwargs)
-
-    return tf_decorator.make_decorator(f, decorated)
-
   if f is None:
-    return decorator
-  else:
-    return decorator(f)
+    return lambda f: custom_gradient(f=f)
+
+  @Bind.decorator
+  def decorated(wrapped, args, kwargs):
+    """Decorated function with custom gradient."""
+    # raise ValueError("PW: trap")
+
+    if context.executing_eagerly():
+      return _eager_mode_decorator(wrapped, args, kwargs)
+    else:
+      return _graph_mode_decorator(wrapped, args, kwargs)
+
+  return tf_decorator.make_decorator(f, decorated(f))  # pylint: disable=no-value-for-parameter
+
+
+class Bind(object):
+  """When called evaluates `d(f, args, kwargs)` but supports binding `f`.
+
+  >>> @Bind.decorator
+  ... def my_decorator(f, args, kwargs):
+  ...   print("my_decorator called with", args, kwargs)
+  ...   return f(*args, **kwargs)
+
+  >>> class Foo(object):
+  ...   @my_decorator
+  ...   def bar(self, a, b, c):
+  ...     return a * b * c
+
+  >>> Foo.bar(None, 1, 2, c=3)
+  my_decorator called with (None, 1, 2) {'c': 3}
+  6
+
+  >>> foo = Foo()
+  >>> foo.bar(1, 2, c=3)
+  my_decorator called with (1, 2) {'c': 3}
+  6
+  """
+
+  @classmethod
+  def decorator(cls, d):
+    return lambda f: Bind(f, d)
+
+  def __init__(self, f, d):
+    self._f = f
+    self._d = d
+
+  def __get__(self, instance, owner):
+    if instance is not None:
+      f = self._f.__get__(instance, owner)
+      return tf_decorator.make_decorator(f, Bind(f, self._d))
+    else:
+      return self
+
+  def __call__(self, *a, **k):
+    return self._d(self._f, a, k)
 
 
 def get_variable_by_name(var_name):
@@ -268,14 +314,22 @@ def get_variable_by_name(var_name):
     return None
 
 
-def get_dependent_variables(input_ops, output_ops):
-  """Finds variables involved in the subgraph b/w input_ops and output_ops."""
+def _get_dependent_variables(input_ops, output_ops):
+  """Finds variables involved in the subgraph between input_ops and output_ops.
+
+  Args:
+    input_ops: Flattened list of input ops
+    output_ops: Flattened list of output ops
+
+  Returns:
+    A list of variables
+  """
 
   # avoids the edge-case when input_ops == output_ops.
   output_ops = nest.map_structure(gen_array_ops.identity, output_ops)
   inbetween_ops = op_selector.get_backward_walk_ops(
-      seed_ops=nest.flatten(output_ops),
-      stop_at_ts=nest.flatten(input_ops),
+      seed_ops=output_ops,
+      stop_at_ts=input_ops,
       inclusive=False,
       only_differentiable=True)
   var_ops = (op for op in inbetween_ops if op.type in VAR_OP_TYPES)
@@ -285,7 +339,7 @@ def get_dependent_variables(input_ops, output_ops):
   return tf_vars
 
 
-def _graph_mode_decorator(f, primals, *args, **kwargs):
+def _graph_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for graph mode."""
   # TODO(rsepassi): Add support for kwargs
   if kwargs:
@@ -293,19 +347,26 @@ def _graph_mode_decorator(f, primals, *args, **kwargs):
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
   name = "CustomGradient-%s" % ops.uid()
-  args = [ops.convert_to_tensor(x) for x in args]
+  args = nest.map_structure(ops.convert_to_tensor, args)
 
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
   current_var_scope = variable_scope.get_variable_scope()
-  before_vars = set(
-      [v.experimental_ref() for v in current_var_scope.global_variables() +
-       current_var_scope.local_variables()])
-  with backprop.GradientTape() as tape:
+  before_vars = set([
+      v.ref() for v in current_var_scope.global_variables() +
+      current_var_scope.local_variables()
+  ])
+  with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
-  after_vars = set(
-      [v.experimental_ref() for v in current_var_scope.global_variables() +
-       current_var_scope.local_variables()])
+
+  args = nest.flatten(args)
+  flat_result = nest.flatten(result)
+  flat_result_len = len(flat_result)
+
+  after_vars = set([
+      v.ref() for v in current_var_scope.global_variables() +
+      current_var_scope.local_variables()
+  ])
   new_vars = after_vars - before_vars
   new_vars_list = [v.deref() for v in new_vars]
   for v in new_vars_list:
@@ -314,46 +375,51 @@ def _graph_mode_decorator(f, primals, *args, **kwargs):
           "All variables used by a function wrapped with @custom_gradient must "
           "be `ResourceVariable`s. Ensure that no `variable_scope` is created "
           "with `use_resource=False`.")
+
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  if primals is None:
-    inputs = args
-  else:
-    primals = [ops.convert_to_tensor(x) for x in nest.flatten(primals)]
-    inputs = primals + args
   variables_in_tape = frozenset([
-      v.experimental_ref() for v in tape.watched_variables()
-  ]) - frozenset(v.experimental_ref() for v in inputs)
+      v.ref() for v in variable_watcher.watched_variables()
+  ])
+
+  graphs = {getattr(o, "graph", None) for o in flat_result}
+  # Not all results may be tensors. However, we want to ensure all tensor
+  # outputs are from the same graph and get a list of captured inputs for
+  # variable search
+  graphs.discard(None)  # Discard non-graph outputs
+  if graphs:
+    if len(graphs) > 1:
+      raise ValueError(
+          "All custom_gradient outputs should be from the same graph")
+    output_graph = graphs.pop()
+    filtered_input_tensors = []
+    for i in args:
+      if i.graph == output_graph:
+        filtered_input_tensors.append(i)
+  else:
+    filtered_input_tensors = args
+
   variables_in_subgraph = frozenset([
-      v.experimental_ref()
-      for v in get_dependent_variables(input_ops=inputs, output_ops=result)
+      v.ref() for v in _get_dependent_variables(
+          input_ops=filtered_input_tensors, output_ops=flat_result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
+                            "variables" in grad_argspec.kwonlyargs or
                             grad_argspec.varkw)
   if variables and not variables_in_signature:
-    raise TypeError("If using @custom_gradient with a function that "
-                    "uses variables, then grad_fn must accept a keyword "
-                    "argument 'variables'.")
+    raise TypeError(
+        "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "
+        "since function uses variables: {}".format(variables))
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
-    if not variable_scope.get_variable_scope().use_resource:
-      raise TypeError("If using @custom_gradient with a function that "
-                      "uses variables, the enclosing variable scope must "
-                      "have use_resource=True.")
-    else:
-      logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
-                   "no ResourceVariables were used on the forward pass.")
-  flat_result = nest.flatten(result)
-  flat_result_len = len(flat_result)
+    logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
+                 "no ResourceVariables were used on the forward pass.")
 
-  if primals is None:
-    all_tensors = flat_result + args + variables
-  else:
-    all_tensors = flat_result + primals + variables
+  all_tensors = flat_result + args + variables
 
   def tape_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
@@ -396,27 +462,26 @@ def _graph_mode_decorator(f, primals, *args, **kwargs):
       structure=result, flat_sequence=all_tensors[:flat_result_len])
 
 
-def _eager_mode_decorator(f, primals, *args, **kwargs):
+def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
-  with backprop.GradientTape() as tape:
+  with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
-  if primals is None:
-    all_inputs = list(args) + list(kwargs.values())
-  else:
-    all_inputs = primals
+  args = nest.flatten(args)
+  all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [
       v.deref()  # pylint: disable=g-complex-comprehension
-      for v in set(v.experimental_ref() for v in tape.watched_variables())
+      for v in set(v.ref() for v in variable_watcher.watched_variables())
       if all(v.deref() is not i for i in all_inputs)
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   if (variables and ("variables" not in grad_argspec.args) and
+      ("variables" not in grad_argspec.kwonlyargs) and
       not grad_argspec.varkw):
-    raise TypeError("If using @custom_gradient with a function that "
-                    "uses variables, then grad_fn must accept a keyword "
-                    "argument 'variables'.")
+    raise TypeError(
+        "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "
+        "since function uses variables: {}".format(variables))
   flat_result = nest.flatten(result)
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
@@ -424,12 +489,8 @@ def _eager_mode_decorator(f, primals, *args, **kwargs):
   input_tensors = [ops.convert_to_tensor(x) for x
                    in list(args) + list(variables)]
 
-  if primals is None:
-    recorded_inputs = input_tensors
-    arg_count = len(args)
-  else:
-    recorded_inputs = [ops.convert_to_tensor(x) for x in nest.flatten(primals)]
-    arg_count = len(recorded_inputs)
+  recorded_inputs = input_tensors
+  arg_count = len(args)
 
   def actual_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
@@ -446,7 +507,7 @@ def _eager_mode_decorator(f, primals, *args, **kwargs):
       raise ValueError(
           "custom_gradient function expected to return", arg_count,
           "gradients but returned", len(flat_grads), "instead.")
-    return nest.flatten(input_grads) + variable_grads
+    return flat_grads + variable_grads
 
   tape_lib.record_operation(f.__name__, flat_result, recorded_inputs,
                             actual_grad_fn)
@@ -458,8 +519,8 @@ def _eager_mode_decorator(f, primals, *args, **kwargs):
 def recompute_grad(f):
   """An eager-compatible version of recompute_grad.
 
-  For f(*args, **kwargs), this supports gradients with respect to args, or to
-  gradients with respect to any variables residing in the kwarg 'variables'.
+  For f(*args, **kwargs), this supports gradients with respect to args or
+  kwargs, but kwargs are currently only supported in eager-mode.
   Note that for keras layer and model objects, this is handled automatically.
 
   Warning: If `f` was originally a tf.keras Model or Layer object, `g` will not
@@ -472,32 +533,57 @@ def recompute_grad(f):
     f: function `f(*x)` that returns a `Tensor` or sequence of `Tensor` outputs.
 
   Returns:
-   A function `g` that wraps `f`, but which recomputes `f` on the backwards
-   pass of a gradient call.
+    A function `g` that wraps `f`, but which recomputes `f` on the backwards
+    pass of a gradient call.
   """
   # TODO(cdfreeman) Add is_recomputing functionality from graph mode version
 
   @custom_gradient
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
-    result = f(*args, **kwargs)
+    current_var_scope = variable_scope.get_variable_scope()
+    with tape_lib.stop_recording():
+      result = f(*args, **kwargs)
 
-    def grad(dresult, variables=None):
-      """Gradient function calculation for inner function."""
-      with backprop.GradientTape() as t:
-        t.watch(args)
+    def grad_wrapper(*wrapper_args, **grad_kwargs):
+      """Wrapper function to accomodate lack of kwargs in graph mode decorator."""
+
+      @custom_gradient
+      def inner_recompute_grad(*dresult):
+        """Nested custom gradient function for computing grads in reverse and forward mode autodiff."""
+        # Gradient calculation for reverse mode autodiff.
+        variables = grad_kwargs.get("variables")
+        with backprop.GradientTape() as t:
+          id_args = [gen_array_ops.identity(x) for x in args]
+          t.watch(id_args)
+          if variables is not None:
+            t.watch(variables)
+          with ops.control_dependencies(dresult):
+            with variable_scope.variable_scope(current_var_scope):
+              result = f(*id_args, **kwargs)
+        kw_vars = []
         if variables is not None:
-          t.watch(variables)
-        with ops.control_dependencies([dresult]):
-          result = f(*args, **kwargs)
-      kw_vars = []
-      if variables is not None:
-        kw_vars = list(variables)
-      grads = t.gradient(
-          result, list(args) + kw_vars, output_gradients=[dresult])
-      return grads[:len(args)], grads[len(args):]
+          kw_vars = list(variables)
+        grads = t.gradient(
+            result,
+            list(id_args) + kw_vars,
+            output_gradients=dresult,
+            unconnected_gradients=UnconnectedGradients.ZERO)
 
-    return result, grad
+        def transpose(*t_args, **t_kwargs):
+          """Gradient function calculation for forward mode autodiff."""
+          # Just throw an error since gradients / activations are not stored on
+          # tape for recompute.
+          raise NotImplementedError(
+              "recompute_grad tried to transpose grad of {}. "
+              "Consider not using recompute_grad in forward mode"
+              "autodiff".format(f.__name__))
+
+        return (grads[:len(id_args)], grads[len(id_args):]), transpose
+
+      return inner_recompute_grad(*wrapper_args)
+
+    return result, grad_wrapper
 
   return inner
 
@@ -540,8 +626,8 @@ def grad_pass_through(f):
       outputs.
 
   Returns:
-   A function `h(x)` which returns the same values as `f(x)` and whose
-   gradients are the same as those of an identity function.
+    A function `h(x)` which returns the same values as `f(x)` and whose
+    gradients are the same as those of an identity function.
   """
   @custom_gradient
   def _grad_pass_through_op(*args, **kwargs):

@@ -31,14 +31,15 @@ class NodeDef;
 
 // Padding: the padding we apply to the input tensor along the rows and columns
 // dimensions. This is usually used to make sure that the spatial dimensions do
-// not shrink when we progress with convolutions. Two types of padding are
+// not shrink when we progress with convolutions. Three types of padding are
 // supported:
 //   VALID: No padding is carried out.
 //   SAME: The pad value is computed so that the output will have the same
 //         dimensions as the input.
-//   EXPLICIT: The user specifies the pad values in the explicit_padding
+//   EXPLICIT: The user specifies the pad values in the explicit_paddings
 //             attribute.
-// The padded area is zero-filled.
+// The padded area is typically zero-filled. For pooling ops, the padded area is
+// instead ignored. For max pool, this is equivalent to padding with -infinity.
 enum Padding {
   VALID = 1,     // No padding.
   SAME = 2,      // Input and output layers have the same size.
@@ -52,16 +53,15 @@ Status CheckValidPadding(Padding padding_type,
 
 // Return the string containing the list of valid padding types, that can be
 // used as an Attr() in REGISTER_OP.
-string GetPaddingAttrString();
+std::string GetPaddingAttrString();
 
 // Like GetPaddingAttrString(), but also includes EXPLICIT.
-string GetPaddingAttrStringWithExplicit();
+std::string GetPaddingAttrStringWithExplicit();
 
-string GetExplicitPaddingsAttrString();
+std::string GetExplicitPaddingsAttrString();
 
-// Specialization to parse an attribute directly into a Padding enum.
-Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
-                   Padding* value);
+// Sets padding value based on the given string padding value.
+Status GetPaddingFromString(StringPiece str_value, Padding* value);
 
 }  // end namespace tensorflow
 

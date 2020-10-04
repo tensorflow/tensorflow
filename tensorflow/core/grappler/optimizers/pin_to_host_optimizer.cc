@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/tpu.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -36,8 +36,8 @@ namespace internal {
 // dynamically determined.
 constexpr int64 kTensorMaxSize = 64;
 
-// All the nodes that should be blacklisted and not swapped.
-bool IsBlacklisted(const NodeDef& node) {
+// All the nodes that should be denylisted and not swapped.
+bool IsDenylisted(const NodeDef& node) {
   return
       // Collective ops should not be swapped.
       IsCollective(node) ||
@@ -55,7 +55,8 @@ bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
 
   // Check type to be int32 or int64.
   if (prop.dtype() != DataType::DT_INT32 &&
-      prop.dtype() != DataType::DT_INT64) {
+      prop.dtype() != DataType::DT_INT64 &&
+      prop.dtype() != DataType::DT_FLOAT) {
     return false;
   }
 
@@ -93,8 +94,8 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
                                     bool* is_candidate) {
   *is_candidate = false;
 
-  // Make sure we are not a blacklisted op.
-  if (IsBlacklisted(node)) {
+  // Make sure we are not a denylisted op.
+  if (IsDenylisted(node)) {
     return Status::OK();
   }
 
@@ -106,7 +107,8 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
         /*include_tensor_values=*/false));
   }
   const auto& output_properties = properties->GetOutputProperties(node.name());
-  if (port_id >= output_properties.size()) {
+  int output_properties_size = output_properties.size();
+  if (port_id >= output_properties_size) {
     LOG(WARNING) << "port_id=" << port_id
                  << " but output_properties.size()=" << output_properties.size()
                  << "\n"
@@ -118,7 +120,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
   }
 
   // These nodes may be optimized away downstream (even if pinned to Host), we
-  // should (recusively) check their source.
+  // should (recursively) check their source.
   if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
     for (const auto& fanin : graph.GetFanins(node, false)) {
       bool fanin_candidate = false;
@@ -213,7 +215,7 @@ bool IsNodeInputPortHostFriendly(const NodeDef& node, int port_id) {
 
 // Checks if a node is a candidate to pin to Host.
 // The rough algorithm is as follows:
-// 1] Check if node is blacklisted.
+// 1] Check if node is denylisted.
 // 2] Check if node can run on Host.
 // 3] Check all input/outputs are Host "friendly" (atm, friendly means small,
 //    ints, and pinned to Host).
@@ -228,7 +230,7 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   }
 
   // Skip these node types.
-  if (IsBlacklisted(node)) {
+  if (IsDenylisted(node)) {
     return Status::OK();
   }
 
@@ -339,6 +341,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       if (IsConstant(node)) {
         const_nodes.emplace_back(&node, node.device());
       }
+      VLOG(2) << "Moving node " << node.name() << " to device " << device;
       *node.mutable_device() = std::move(device);
     }
   }
@@ -355,6 +358,8 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // The consumer is not Host friendly, swap it back to the original device.
       if (!internal::IsNodeInputPortHostFriendly(*fanout.node,
                                                  fanout.port_id)) {
+        VLOG(2) << "Swapping node " << node->name() << " back to device "
+                << device;
         node->set_device(device);
         break;
       }

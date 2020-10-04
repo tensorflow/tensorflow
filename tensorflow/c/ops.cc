@@ -104,6 +104,12 @@ TF_ShapeHandle* TF_NewShapeHandle() {
   return reinterpret_cast<TF_ShapeHandle*>(new ShapeHandle);
 }
 
+TF_ShapeHandle* TF_ShapeInferenceContextScalar(TF_ShapeInferenceContext* ctx) {
+  auto* handle = new ShapeHandle;
+  *handle = reinterpret_cast<InferenceContext*>(ctx)->Scalar();
+  return reinterpret_cast<TF_ShapeHandle*>(handle);
+}
+
 TF_ShapeHandle* TF_ShapeInferenceContextVectorFromSize(
     TF_ShapeInferenceContext* ctx, size_t size) {
   auto* handle = new ShapeHandle;

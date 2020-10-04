@@ -16,84 +16,69 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/dw_convolution_selector.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
 
-Status SelectDWConvolutionTextureArray(
-    const DepthwiseConvolution2DAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
-  if (IsDepthWiseConv3x3Supported(attr)) {
-    DepthWiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(CreateDepthWiseConv3x3(creation_context, op_def,
-                                                  attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+std::unique_ptr<GPUOperation> SelectDWConvolutionAdreno(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  if (IsDepthwiseConv3x3Supported(attr)) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthWiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return OkStatus();
 }
 
-Status SelectDWConvolutionTexture2D(
-    const DepthwiseConvolution2DAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
-  if (IsDepthWiseConv3x3Supported(attr)) {
-    DepthWiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(CreateDepthWiseConv3x3(creation_context, op_def,
-                                                  attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+std::unique_ptr<GPUOperation> SelectDWConvolutionPowerVR(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  if (IsDepthwiseConv3x3Supported(attr)) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthWiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return OkStatus();
 }
 
-Status SelectDWConvolutionBuffer(const DepthwiseConvolution2DAttributes& attr,
-                                 const CreationContext& creation_context,
-                                 const OperationDef& op_def,
-                                 std::unique_ptr<GPUOperation>* ptr) {
-  if (!creation_context.device->IsMali() && IsDepthWiseConv3x3Supported(attr)) {
-    DepthWiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  const auto storage_type = op_def.src_tensors[0].storage_type;
+  bool buffer_type = storage_type == TensorStorageType::BUFFER ||
+                     storage_type == TensorStorageType::IMAGE_BUFFER;
+  const MaliInfo mali_info = device_info.mali_info;
+  if (IsDepthwiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
+      !buffer_type && op_def.precision != CalculationsPrecision::F32) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthWiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return OkStatus();
 }
 }  // namespace
 
-Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
-                           const CreationContext& creation_context,
-                           const OperationDef& op_def,
-                           std::unique_ptr<GPUOperation>* ptr) {
-  switch (op_def.GetPrimaryStorageType()) {
-    case TensorStorageType::TEXTURE_ARRAY:
-      return SelectDWConvolutionTextureArray(attr, creation_context, op_def,
-                                             ptr);
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return SelectDWConvolutionTexture2D(attr, creation_context, op_def, ptr);
-    case TensorStorageType::BUFFER:
-      return SelectDWConvolutionBuffer(attr, creation_context, op_def, ptr);
-    default:
-      return InternalError("Unknown storage type.");
+std::unique_ptr<GPUOperation> SelectDWConvolution(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  if (device_info.IsAdreno()) {
+    return SelectDWConvolutionAdreno(attr, device_info, op_def);
+  } else if (device_info.IsPowerVR()) {
+    return SelectDWConvolutionPowerVR(attr, device_info, op_def);
+  } else if (device_info.IsMali()) {
+    return SelectDWConvolutionMali(attr, device_info, op_def);
+  } else {
+    return SelectDWConvolutionAdreno(attr, device_info, op_def);
   }
 }
 

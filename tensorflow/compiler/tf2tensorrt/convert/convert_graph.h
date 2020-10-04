@@ -18,35 +18,35 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
-#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
 struct ConversionParams {
-  const GraphDef* input_graph_def = nullptr;
+  const grappler::GrapplerItem* grappler_item = nullptr;
   const std::vector<string>* output_names = nullptr;
+  string trt_logger_name;
   size_t max_batch_size = 1;
   size_t max_workspace_size_bytes = 1 << 30;
   GraphDef* output_graph_def = nullptr;
   TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32;
   int minimum_segment_size = 3;
-  const grappler::GraphProperties* graph_properties = nullptr;
   const grappler::Cluster* cluster = nullptr;
   // Whether to create engine on conversion or execution time
   bool is_dyn_op = false;
   // maximum number of cached engines
   int max_cached_engines = 1;
   bool use_calibration = true;
+  bool use_implicit_batch = true;
+  bool allow_build_at_runtime = true;
 };
 
 // Method to call from optimization pass
@@ -65,7 +65,6 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_CONVERT_GRAPH_H_

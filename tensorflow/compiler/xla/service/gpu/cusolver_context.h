@@ -57,7 +57,7 @@ class CusolverContext {
                             std::is_same<T, std::complex<double>>::value>>
   Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<T> dev_A,
                int lda, se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<T> workspace);
+               se::DeviceMemory<T> workspace) = delete;
 
   // Returns the size of the `workspace` required by Potrf, in number of
   // elements of `type`.
@@ -72,6 +72,17 @@ class CusolverContext {
   se::Stream* stream_ = nullptr;
   cusolverDnHandle_t handle_ = nullptr;
 };
+
+#define CALL_LAPACK_TYPES(m) \
+  m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
+#define POTRF_INSTANCE(T, type_prefix)                                  \
+  template <>                                                           \
+  Status CusolverContext::Potrf<T>(                                     \
+      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda, \
+      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace);
+CALL_LAPACK_TYPES(POTRF_INSTANCE);
+#undef POTRF_INSTANCE
+#undef CALL_LAPACK_TYPES
 
 #else
 

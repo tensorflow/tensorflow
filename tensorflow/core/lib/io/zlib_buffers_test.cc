@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -21,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace io {
@@ -63,7 +63,8 @@ typedef io::ZlibCompressionOptions CompressionOptions;
 void TestAllCombinations(CompressionOptions input_options,
                          CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
     // Write to compressed file
     string data = GenTestString(file_size);
@@ -114,7 +115,8 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   CompressionOptions input_options = CompressionOptions::DEFAULT();
   CompressionOptions output_options = CompressionOptions::DEFAULT();
 
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   string data = GenTestString();
   std::unique_ptr<WritableFile> file_writer;
   string actual_result;
@@ -162,7 +164,8 @@ TEST(ZlibBuffers, MultipleWriteCallsWithFlush) {
 
 TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   CompressionOptions output_options = CompressionOptions::DEFAULT();
   CompressionOptions input_options = CompressionOptions::DEFAULT();
   int input_buf_size = 200, output_buf_size = 200;
@@ -214,7 +217,8 @@ void WriteCompressedFile(Env* env, const string& fname, int input_buf_size,
 void TestTell(CompressionOptions input_options,
               CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
     string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
@@ -258,7 +262,8 @@ void TestTell(CompressionOptions input_options,
 void TestSkipNBytes(CompressionOptions input_options,
                     CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
     string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
@@ -296,7 +301,8 @@ void TestSkipNBytes(CompressionOptions input_options,
 
 void TestSoftErrorOnDecompress(CompressionOptions input_options) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/garbage_data";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
 
   input_options.soft_fail_on_error = true;
 

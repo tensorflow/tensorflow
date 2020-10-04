@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
@@ -63,6 +64,11 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -96,14 +102,16 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
       }
       int n = tokens.size();
       for (size_t i = 0; i < dataset()->transformations_.size(); ++i) {
-        if (dataset()->transformations_[i] != tokens[n - 2 - i]) {
-          return errors::InvalidArgument(
-              "Asserted ", dataset()->transformations_[i],
-              " transformation at offset ", i, " but encountered ",
-              tokens[n - 2 - i], " transformation instead.");
+        if (!MatchesAnyVersion(dataset()->transformations_[i],
+                               tokens[n - 2 - i])) {
+          return errors::InvalidArgument("Asserted transformation matching ",
+                                         dataset()->transformations_[i],
+                                         " at offset ", i, " but encountered ",
+                                         tokens[n - 2 - i],
+                                         " transformation instead.");
         }
       }
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -119,8 +127,9 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       return Status::OK();
     }
 

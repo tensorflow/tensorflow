@@ -72,6 +72,12 @@ class HloModule {
   HloComputation* AddEntryComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Same as the AddEntryComputation function above but the module's
+  // entry_computation_layout is updated to match the layout of the new entry
+  // computation.
+  HloComputation* AddEntryComputationWithLayouts(
+      std::unique_ptr<HloComputation> computation);
+
   // Replaces the current entry computation with another computation.
   // The new entry computation must be a computation that is already in the
   // module.
@@ -184,10 +190,21 @@ class HloModule {
   // Gets the number of instructions in this module.
   int64 instruction_count() const;
 
+  // Deallocate removed instructions in each computation.
+  void Cleanup() {
+    for (auto& comp : computations_) {
+      comp->Cleanup();
+    }
+  }
+
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
+
+  // Same as MakeComputationPostOrder() but sorting the computations by their
+  // contents. The order is longer post order.
+  std::vector<HloComputation*> MakeComputationSorted() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -200,11 +217,11 @@ class HloModule {
   // MakeNonfusionComputations().
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
-  // Same as MakeNonfusionComputations() but sorting the computations by names.
+  // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }
-  void set_config(HloModuleConfig& config) { config_ = config; }
+  void set_config(const HloModuleConfig& config) { config_ = config; }
 
   // Return a string representation of the module.
   //
@@ -216,12 +233,20 @@ class HloModule {
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
-      const HloModuleProto& proto, const HloModuleConfig& module_config);
+      const HloModuleProto& proto, const HloModuleConfig& module_config,
+      bool prohibit_empty_literal = true);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
   static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
-      const HloModuleProto& module, const DebugOptions& debug_options);
+      const HloModuleProto& module, const DebugOptions& debug_options,
+      const ExecutionOptions* execution_options = nullptr);
+
+  // Creates and returns an HloModuleConfig with an appropriate program shape
+  // for the HLO module in the given proto.
+  static StatusOr<HloModuleConfig> CreateModuleConfigFromShape(
+      const ProgramShape& program_shape, const DebugOptions& debug_options,
+      const ExecutionOptions* execution_options = nullptr);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.
@@ -278,7 +303,7 @@ class HloModule {
   // Returns true if the module has a schedule set.
   bool has_schedule() const { return schedule_.has_value(); }
 
-  // Returns the schedue of the module. CHECK fails if no schedule is set.
+  // Returns the schedule of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
 
@@ -289,14 +314,11 @@ class HloModule {
       instruction->ClearUniqueIdInternal();
     }
     return AddComputationInternal(std::move(computation), is_entry,
-                                  /*uniquify_identifiers=*/true);
+                                  /*uniquify_identifiers=*/true,
+                                  /*preserve_entry_layouts=*/true);
   }
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
-
-  std::vector<std::vector<bool>>* mutable_fusion_config() {
-    return &fusion_config_;
-  }
 
   // Checks if this config has a list of entry parameters' HLO shardings for
   // SPMD.
@@ -330,10 +352,21 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Add a program argument to be prefetched across programs.
+  void AddCrossProgramPrefetch(int64 parameter, const ShapeIndex& index) {
+    cross_program_prefetches_.emplace_back(parameter, index);
+  }
+
+  // Get the list of program arguments to be prefetch across programs.
+  const absl::Span<const std::pair<int64, ShapeIndex>> CrossProgramPrefetches()
+      const {
+    return cross_program_prefetches_;
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
-      bool uniquify_identifiers);
+      bool uniquify_identifiers, bool preserve_entry_layouts);
 
   string name_;
   HloModuleConfig config_;
@@ -370,9 +403,6 @@ class HloModule {
   // Bindings for dynamic parameter mapping.
   DynamicParameterBinding dynamic_parameter_binding_;
 
-  // Fusion configuration.
-  std::vector<std::vector<bool>> fusion_config_;
-
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.
   absl::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
@@ -380,6 +410,9 @@ class HloModule {
   // The HLO sharding of the entry computation's output (root) for
   // SPMD-partitioned programs.
   absl::optional<HloSharding> spmd_output_sharding_;
+
+  // Arguments to be prefetched across programs.
+  std::vector<std::pair<int64, ShapeIndex>> cross_program_prefetches_;
 };
 
 }  // namespace xla

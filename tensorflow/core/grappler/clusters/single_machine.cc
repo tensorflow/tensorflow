@@ -202,9 +202,9 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   return Status::OK();
 }
 
-Status SingleMachine::EnablePeakMemoryStats(bool enable) {
-  EnableCPUAllocatorStats(enable);
-  cpu_allocator_stats_enabled_ = enable;
+Status SingleMachine::EnablePeakMemoryStats() {
+  EnableCPUAllocatorStats();
+  cpu_allocator_stats_enabled_ = true;
   // No need to enable GPU allocator stats since its stats are always collected.
   return Status::OK();
 }

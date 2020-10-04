@@ -25,32 +25,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Padding : public GPUOperation {
- public:
-  Padding(const OperationDef& definition, const PadAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-
-  Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  Padding(Padding&& kernel);
-  Padding& operator=(Padding&& kernel);
-  Padding(const Padding&) = delete;
-  Padding& operator=(const Padding&) = delete;
-
- private:
-  Status BindArguments();
-  int3 GetGridSize() const;
-
-  void SetPrepended(const int3& prepended);
-  int4 prepended_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
-};
-
-Padding CreatePadding(const OperationDef& definition,
-                      const PadAttributes& attr);
+GPUOperation CreatePadding(const OperationDef& definition,
+                           const PadAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

@@ -1,0 +1,113 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s
+
+# Verify arg devices are added as arg attributes.
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<*xf32> {tf.device = "/CPU:0"}, %[[ARG_1:[a-z0-9]+]]: tensor<2x4x6x8xi32>) -> (tensor<*xf32>, tensor<*xi32>)
+
+node {
+  name: "args_0"
+  op: "_Arg"
+  device: "/CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "args_1"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 4
+          }
+          dim {
+            size: 6
+          }
+          dim {
+            size: 8
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "identity"
+  op: "IdentityN"
+  input: "args_0"
+  input: "args_1"
+  attr: {
+    key: "T"
+    value: {
+      list: {
+        type: DT_FLOAT
+        type: DT_INT32
+      }
+    }
+  }
+}
+node {
+  name: "rets_0"
+  op: "_Retval"
+  input: "identity:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "rets_1"
+  op: "_Retval"
+  input: "identity:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+versions {
+  producer: 121
+}

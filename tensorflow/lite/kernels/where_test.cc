@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -46,25 +48,49 @@ class IntegerWhereOpModel : public BaseWhereOpModel {
  public:
   using BaseWhereOpModel::BaseWhereOpModel;
 
-  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+  std::vector<int64_t> GetOutput() { return ExtractVector<int64_t>(output_); }
 };
 
+template <typename T1>
+class ConstInputWhereOpModel : public SingleOpModel {
+ public:
+  ConstInputWhereOpModel(T1 constant_values, const TensorData& output) {
+    input_ = AddConstInput(GetTensorType<T1>(), {constant_values}, {});
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_WHERE, BuiltinOptions_WhereOptions,
+                 CreateWhereOptions(builder_).Union());
+    BuildInterpreter({{}});
+  }
+
+  int input() { return input_; }
+  std::vector<int64_t> GetOutput() { return ExtractVector<int64_t>(output_); }
+
+ protected:
+  int input_;
+  int output_;
+};
+
+TEST(WhereOpTest, ScalarValueFail) {
+  ConstInputWhereOpModel<bool> m(false, {TensorType_INT64, {}});
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteError);
+}
+
 TEST(WhereOpTest, SelectFromVectorNoResult) {
-  IntegerWhereOpModel m({TensorType_BOOL, {3}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {3}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {false, false, false});
   m.Invoke();
   EXPECT_THAT(m.GetOutput().size(), 0);
 }
 
 TEST(WhereOpTest, SelectFromVector) {
-  IntegerWhereOpModel m({TensorType_BOOL, {3}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {3}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {true, false, true});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2}));
 }
 
 TEST(WhereOpTest, SelectFromMatrixNoResult) {
-  IntegerWhereOpModel m({TensorType_BOOL, {3, 3}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {3, 3}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {false, false, false,  //
                                      false, false, false,  //
                                      false, false, false});
@@ -73,7 +99,7 @@ TEST(WhereOpTest, SelectFromMatrixNoResult) {
 }
 
 TEST(WhereOpTest, SelectFromMatrix1) {
-  IntegerWhereOpModel m({TensorType_BOOL, {3, 1}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {3, 1}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {true, false, true});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0,  //
@@ -81,7 +107,7 @@ TEST(WhereOpTest, SelectFromMatrix1) {
 }
 
 TEST(WhereOpTest, SelectFromMatrix2) {
-  IntegerWhereOpModel m({TensorType_BOOL, {3, 3}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {3, 3}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {true, true, false,   //
                                      true, false, false,  //
                                      true, false, true});
@@ -94,7 +120,7 @@ TEST(WhereOpTest, SelectFromMatrix2) {
 }
 
 TEST(WhereOpTest, SelectFromMatrix3) {
-  IntegerWhereOpModel m({TensorType_BOOL, {3, 5}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {3, 5}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {true, false, false, true, true,   //
                                      false, true, true, false, false,  //
                                      true, false, true, false, false});
@@ -109,7 +135,7 @@ TEST(WhereOpTest, SelectFromMatrix3) {
 }
 
 TEST(WhereOpTest, SelectFromRank3TensorNoResult) {
-  IntegerWhereOpModel m({TensorType_BOOL, {2, 2, 2}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {2, 2, 2}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {false, false, false, false,  //
                                      false, false, false, false});
   m.Invoke();
@@ -117,7 +143,7 @@ TEST(WhereOpTest, SelectFromRank3TensorNoResult) {
 }
 
 TEST(WhereOpTest, SelectFromRank3Tensor1) {
-  IntegerWhereOpModel m({TensorType_BOOL, {2, 1, 3}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {2, 1, 3}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {true, false, true,  //
                                      false, false, true});
   m.Invoke();
@@ -127,7 +153,7 @@ TEST(WhereOpTest, SelectFromRank3Tensor1) {
 }
 
 TEST(WhereOpTest, SelectFromRank3Tensor2) {
-  IntegerWhereOpModel m({TensorType_BOOL, {2, 2, 2}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {2, 2, 2}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {true, true, false, true,  //
                                      false, false, true, true});
   m.Invoke();
@@ -139,7 +165,7 @@ TEST(WhereOpTest, SelectFromRank3Tensor2) {
 }
 
 TEST(WhereOpTest, SelectFromRank3Tensor3) {
-  IntegerWhereOpModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_INT32, {}});
+  IntegerWhereOpModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_INT64, {}});
   m.PopulateTensor<bool>(m.input(), {true, true, false, true, false, false,  //
                                      false, false, true, false, true, true});
   m.Invoke();

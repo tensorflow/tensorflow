@@ -19,10 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -106,20 +104,22 @@ def _DepthwiseConv2dNativeBackpropInputGrad(op, grad):
   """
   return [
       None,
-      nn_ops.depthwise_conv2d_native_backprop_filter(
+      gen_nn_ops.depthwise_conv2d_native_backprop_filter(
           grad,
           array_ops.shape(op.inputs[1]),
           op.inputs[2],
           dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
+          explicit_paddings=op.get_attr("explicit_paddings"),
           data_format=op.get_attr("data_format")),
-      nn_ops.depthwise_conv2d_native(
+      gen_nn_ops.depthwise_conv2d_native(
           grad,
           op.inputs[1],
           dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
+          explicit_paddings=op.get_attr("explicit_paddings"),
           data_format=op.get_attr("data_format"))
   ]
 
@@ -127,20 +127,22 @@ def _DepthwiseConv2dNativeBackpropInputGrad(op, grad):
 @ops.RegisterGradient("DepthwiseConv2dNativeBackpropFilter")
 def _DepthwiseConv2dNativeBackpropFilterGrad(op, grad):
   return [
-      nn_ops.depthwise_conv2d_native_backprop_input(
+      gen_nn_ops.depthwise_conv2d_native_backprop_input(
           array_ops.shape(op.inputs[0]),
           grad,
           op.inputs[2],
           dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
+          explicit_paddings=op.get_attr("explicit_paddings"),
           data_format=op.get_attr("data_format")), None,
-      nn_ops.depthwise_conv2d_native(
+      gen_nn_ops.depthwise_conv2d_native(
           op.inputs[0],
           grad,
           dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
+          explicit_paddings=op.get_attr("explicit_paddings"),
           data_format=op.get_attr("data_format"))
   ]
 
@@ -524,18 +526,9 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   softmax_grad = op.outputs[1]
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
-  def IsZero(g):
-    # Some introspection to check if the gradient is feeding zeros
-    if context.executing_eagerly():
-      # TODO(apassos) add an efficient way to detect eager zeros here.
-      return False
-    if g.op.type in ("ZerosLike", "Zeros"):
-      return True
-    const_fill_value = tensor_util.constant_value(g)
-    return const_fill_value is not None and (const_fill_value == 0).all()
-
   logits = op.inputs[0]
-  if grad_grad is not None and not IsZero(grad_grad):
+  if (grad_grad is not None and
+      not getattr(grad_grad, "_is_zeros_tensor", False)):
     softmax = nn_ops.softmax(logits)
 
     grad += ((grad_grad - array_ops.squeeze(
@@ -548,22 +541,29 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
-def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
+def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   """Gradient function for SparseSoftmaxCrossEntropyWithLogits."""
-  # grad_0 is the backprop for cost, and we multiply it with the gradients
+  # grad_loss is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
+  # grad_grad is the backprop for softmax gradient.
   # There is no gradient for the labels
   #
-  # Currently there is no way to take the second derivative of this op
-  # due to the fused implementation's interaction with tf.gradients(),
-  # so we make sure we prevent silently incorrect results by raising
-  # an error if the second derivative is requested via prevent_gradient.
-  sparse_softmax_grad_without_gradient = array_ops.prevent_gradient(
-      op.outputs[1],
-      message="Currently there is no way to take the second "
-      "derivative of sparse_softmax_cross_entropy_with_logits due to the fused "
-      "implementation's interaction with tf.gradients()")
-  return _BroadcastMul(grad_0, sparse_softmax_grad_without_gradient), None
+  # Second derivative is just softmax derivative w.r.t. logits.
+  softmax_grad = op.outputs[1]
+  grad = _BroadcastMul(grad_loss, softmax_grad)
+
+  logits = op.inputs[0]
+  if (grad_grad is not None and
+      not getattr(grad_grad, "_is_zeros_tensor", False)):
+    softmax = nn_ops.softmax(logits)
+
+    grad += ((grad_grad - array_ops.squeeze(
+        math_ops.matmul(
+            array_ops.expand_dims(grad_grad, 1),
+            array_ops.expand_dims(softmax, 2)),
+        axis=1)) * softmax)
+
+  return grad, None
 
 
 @ops.RegisterGradient("Conv2D")
@@ -610,21 +610,23 @@ def _Conv2DGrad(op, grad):
 @ops.RegisterGradient("DepthwiseConv2dNative")
 def _DepthwiseConv2dNativeGrad(op, grad):
   return [
-      nn_ops.depthwise_conv2d_native_backprop_input(
+      gen_nn_ops.depthwise_conv2d_native_backprop_input(
           array_ops.shape(op.inputs[0]),
           op.inputs[1],
           grad,
           dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
+          explicit_paddings=op.get_attr("explicit_paddings"),
           data_format=op.get_attr("data_format")),
-      nn_ops.depthwise_conv2d_native_backprop_filter(
+      gen_nn_ops.depthwise_conv2d_native_backprop_filter(
           op.inputs[0],
           array_ops.shape(op.inputs[1]),
           grad,
           dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
+          explicit_paddings=op.get_attr("explicit_paddings"),
           data_format=op.get_attr("data_format"))
   ]
 
@@ -686,6 +688,7 @@ def _MaxPoolGrad(op, grad):
       op.get_attr("ksize"),
       op.get_attr("strides"),
       padding=op.get_attr("padding"),
+      explicit_paddings=op.get_attr("explicit_paddings"),
       data_format=op.get_attr("data_format"))
 
 
@@ -887,13 +890,18 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     }
     if version == 2:
       args["reserve_space_3"] = op.outputs[5]
-    return grad_fun(**args)
+    dx, dscale, doffset, _, _ = grad_fun(**args)
   else:
     pop_mean = op.inputs[3]
     pop_var = op.inputs[4]
     if data_format == b"NCHW":
       x = array_ops.transpose(x, [0, 2, 3, 1])
       grad_y = array_ops.transpose(grad_y, [0, 2, 3, 1])
+    elif data_format == b"NCDHW":
+      x = array_ops.transpose(x, [0, 2, 3, 4, 1])
+      grad_y = array_ops.transpose(grad_y, [0, 2, 3, 4, 1])
+    target_data_format = ("NHWC" if data_format in (b"NCHW",
+                                                    b"NHWC") else "NDHWC")
     args = {
         "y_backprop": grad_y,
         "x": x,
@@ -901,7 +909,7 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
         "reserve_space_1": pop_mean,
         "reserve_space_2": pop_var,
         "epsilon": epsilon,
-        "data_format": "NHWC",
+        "data_format": target_data_format,
         "is_training": is_training
     }
     if version == 2:
@@ -909,7 +917,10 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     dx, dscale, doffset, _, _ = grad_fun(**args)
     if data_format == b"NCHW":
       dx = array_ops.transpose(dx, [0, 3, 1, 2])
-    return dx, dscale, doffset, None, None
+    elif data_format == b"NCDHW":
+      dx = array_ops.transpose(dx, [0, 4, 1, 2, 3])
+  return dx, dscale, doffset, None, None
+
 
 @ops.RegisterGradient("FusedBatchNorm")
 def _FusedBatchNormGrad(op, *grad):
@@ -937,8 +948,8 @@ def _BatchNormGrad(grad_y,
   """Returns the gradients for the 3 inputs of BatchNorm.
 
   Args:
-    grad_y: A `Tensor` of 4 dimensions for gradient for y.
-    x: A `Tensor` of 4 dimensions for x.
+    grad_y: A `Tensor` of 4 or 5 dimensions for gradient for y.
+    x: A `Tensor` of 4 or 5 dimensions for x.
     scale: A `Tensor` of 1 dimension for scaling.
     pop_mean: A `Tensor` of 1 dimension for the population mean. Only used when
       is_training=False.
@@ -964,10 +975,18 @@ def _BatchNormGrad(grad_y,
     if data_format == b"NHWC":
       keepdims = False
       reduce_axis = [0, 1, 2]
-    else:
+    elif data_format == b"NDHWC":
+      keepdims = False
+      reduce_axis = [0, 1, 2, 3]
+    elif data_format == b"NCHW":
       keepdims = True
       reduce_axis = [0, 2, 3]
       shape = [1, array_ops.size(scale), 1, 1]
+      scale = array_ops.reshape(scale, shape)
+    else:
+      keepdims = True
+      reduce_axis = [0, 2, 3, 4]
+      shape = [1, array_ops.size(scale), 1, 1, 1]
       scale = array_ops.reshape(scale, shape)
     mean_grad_y = math_ops.reduce_mean(grad_y, reduce_axis, keepdims=keepdims)
     mean_x = math_ops.reduce_mean(x, reduce_axis, keepdims=keepdims)
@@ -983,16 +1002,24 @@ def _BatchNormGrad(grad_y,
         grad_y_offset - math_ops.reciprocal(var_x + epsilon) * mean * x_offset)
     grad_scale = math_ops.rsqrt(var_x + epsilon) * math_ops.reduce_sum(
         grad_y * x_offset, axis=reduce_axis, keepdims=keepdims)
-    if data_format == b"NCHW":
+    if data_format == b"NCHW" or data_format == b"NCDHW":
       grad_scale = array_ops.squeeze(grad_scale)
     grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)
     return math_ops.cast(grad_x, x_dtype), grad_scale, grad_offset
   else:
     if data_format == b"NHWC":
       reduce_axis = [0, 1, 2]
-    else:
+    elif data_format == b"NDHWC":
+      reduce_axis = [0, 1, 2, 3]
+    elif data_format == b"NCHW":
       reduce_axis = [0, 2, 3]
       shape = [1, array_ops.size(pop_mean), 1, 1]
+      pop_mean = array_ops.reshape(pop_mean, shape)
+      pop_var = array_ops.reshape(pop_var, shape)
+      scale = array_ops.reshape(scale, shape)
+    else:
+      reduce_axis = [0, 2, 3, 4]
+      shape = [1, array_ops.size(pop_mean), 1, 1, 1]
       pop_mean = array_ops.reshape(pop_mean, shape)
       pop_var = array_ops.reshape(pop_var, shape)
       scale = array_ops.reshape(scale, shape)
@@ -1138,4 +1165,49 @@ def _NthElementGrad(op, grad):
   grad = array_ops.expand_dims(grad, -1)
   num_selected = array_ops.expand_dims(math_ops.reduce_sum(indicators, -1), -1)
 
-  return [math_ops.div(indicators, num_selected) * grad, None]
+  return [math_ops.divide(indicators, num_selected) * grad, None]
+
+
+def _MeanAggregator(inputs, segments):
+  """Replaces each segment with its mean along the last axis.
+
+  Specifically, each value in the `inputs` tensor gets replaced by the mean
+  value computed from the values that belong to the same segment.
+
+  Args:
+   inputs: A 2-tensor. Aggregation is done over dimension 1.
+   segments: A 2-tensor, same shape as `input`.
+
+  Returns:
+    The result, same shape and type as `inputs`.
+  """
+  result = []
+  for inputs_i, segments_i in zip(
+      array_ops.split(inputs, inputs.shape[0]),
+      array_ops.split(segments, segments.shape[0])):
+    # Note that we do not use tf.math.segment_mean, as it has no TPU support.
+    means_i = math_ops.unsorted_segment_mean(
+        inputs_i, segments_i, num_segments=math_ops.reduce_max(segments_i) + 1)
+    result.append(
+        array_ops.reshape(array_ops.gather(means_i, segments_i), [-1]))
+  return array_ops.stack(result, axis=0)
+
+
+# We have to register the gradients for these ops so that tensorflow will know
+# how to differentiate them.
+@ops.RegisterGradient("IsotonicRegression")
+def _IsotonicRegressionGrad(op, grad_output, grad_segments):
+  """Gradient for the isotonic regression function.
+
+  Args:
+    op: The IsotonicRegression tensorflow op.
+    grad_output: Tensor of incoming gradients with respect to the output.
+    grad_segments: Tensor of incoming gradients with respect to the segments.
+
+  Returns:
+    A tensor, same size as `grad_output` with the gradient with respect to
+    the input.
+  """
+  del grad_segments  # Discrete, non-differentiable.
+  segments = op.outputs[1]
+  return _MeanAggregator(grad_output, segments)

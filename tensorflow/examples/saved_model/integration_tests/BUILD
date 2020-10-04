@@ -1,10 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "integration_scripts",
@@ -48,17 +46,10 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "saved_model_test",
     srcs = [
         "saved_model_test.py",
-    ],
-    additional_deps = [
-        ":distribution_strategy_utils",
-        ":integration_scripts",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/distribute:combinations",
     ],
     shard_count = 4,
     tags = [
@@ -67,7 +58,17 @@ cuda_py_test(
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
     ],
-    xla_enable_strict_auto_jit = True,
+    tpu_tags = [
+        "no_oss",  # Test infra collision (b/157754990)
+    ],
+    deps = [
+        ":distribution_strategy_utils",
+        ":integration_scripts",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python/distribute:combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 # b/132234211: Target added to support internal test target that runs the test

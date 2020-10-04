@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
 
@@ -41,6 +41,10 @@ struct MemcpyDetails {
   // This contains CUpti_ActivityMemcpyKind for activity event (on device).
   // For events from other CuptiTracerEventSource, it is always 0.
   int8 kind;
+  // CUpti_ActivityMemoryKind of source.
+  int8 src_mem_kind;
+  // CUpti_ActivityMemoryKind of destination.
+  int8 dst_mem_kind;
 };
 
 struct MemAllocDetails {
@@ -132,8 +136,6 @@ struct CuptiTracerOptions {
   bool enable_event_based_activity = false;
 
   bool required_callback_api_events = true;
-  // Maximum number of annotation strings that we can accommodate.
-  uint64 max_annotation_strings = 1024 * 1024;
   // The callback ids that will be enabled and monitored, if empty, all
   // Callback ids to be enabled using Callback API.
   // We only care CUPTI_CB_DOMAIN_DRIVER_API domain for now. It is kind of
@@ -145,6 +147,8 @@ struct CuptiTracerOptions {
   std::vector<CUpti_ActivityKind> activities_selected;
   // Whether to call cuptiFinalize.
   bool cupti_finalize = false;
+  // Whether to call cuCtxSynchronize for each device before Stop().
+  bool sync_devices_before_stop = false;
 };
 
 struct CuptiTracerCollectorOptions {
@@ -154,24 +158,10 @@ struct CuptiTracerCollectorOptions {
   uint64 max_callback_api_events = 2 * 1024 * 1024;
   // Maximum number of events to collect from activity API; if -1, no limit.
   uint64 max_activity_api_events = 2 * 1024 * 1024;
-};
-
-class CuptiTraceCollector {
- public:
-  explicit CuptiTraceCollector(const CuptiTracerCollectorOptions& options)
-      : options_(options) {}
-  virtual ~CuptiTraceCollector() {}
-
-  virtual void AddEvent(CuptiTracerEvent&& event) = 0;
-  virtual void OnEventsDropped(const std::string& reason,
-                               uint32 num_events) = 0;
-  virtual void Flush() = 0;
-
- protected:
-  CuptiTracerCollectorOptions options_;
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CuptiTraceCollector);
+  // Maximum number of annotation strings that we can accommodate.
+  uint64 max_annotation_strings = 1024 * 1024;
+  // Number of GPUs involved.
+  uint32 num_gpus;
 };
 
 class AnnotationMap {
@@ -184,7 +174,7 @@ class AnnotationMap {
 
  private:
   struct PerDeviceAnnotationMap {
-    // The population/consuption of annotations might happen from multiple
+    // The population/consumption of annotations might happen from multiple
     // callback/activity api related threads.
     absl::Mutex mutex;
     // Annotation tends to be repetitive, use a hash_set to store the strings,
@@ -198,6 +188,29 @@ class AnnotationMap {
   TF_DISALLOW_COPY_AND_ASSIGN(AnnotationMap);
 };
 
+class CuptiTraceCollector {
+ public:
+  explicit CuptiTraceCollector(const CuptiTracerCollectorOptions& options)
+      : options_(options),
+        annotation_map_(options.max_annotation_strings, options.num_gpus) {}
+  virtual ~CuptiTraceCollector() {}
+
+  virtual void AddEvent(CuptiTracerEvent&& event) = 0;
+  virtual void OnEventsDropped(const std::string& reason,
+                               uint32 num_events) = 0;
+  virtual void Flush() = 0;
+
+  AnnotationMap* annotation_map() { return &annotation_map_; }
+
+ protected:
+  CuptiTracerCollectorOptions options_;
+
+ private:
+  AnnotationMap annotation_map_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CuptiTraceCollector);
+};
+
 class CuptiDriverApiHook {
  public:
   virtual ~CuptiDriverApiHook() {}
@@ -208,7 +221,7 @@ class CuptiDriverApiHook {
   virtual Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                  CUpti_CallbackId cbid,
                                  const CUpti_CallbackData* callback_info) = 0;
-  virtual Status Flush() = 0;
+  virtual Status SyncAndFlush() = 0;
 
  protected:
   static Status AddDriverApiCallbackEvent(
@@ -228,9 +241,9 @@ class CuptiTracer {
 
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
+  bool NeedRootAccess() const { return need_root_access_; }
 
-  void Enable(const CuptiTracerOptions& option, CuptiInterface* cupti_interface,
-              CuptiTraceCollector* collector);
+  void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
   Status HandleCallback(CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
@@ -242,10 +255,15 @@ class CuptiTracer {
 
   static uint64 GetTimestamp();
   static int NumGpus();
+  // Returns the error (if any) when using libcupti.
+  static std::string ErrorIfAny();
+
+ protected:
+  // protected constructor for injecting mock cupti interface for testing.
+  explicit CuptiTracer(CuptiInterface* cupti_interface)
+      : num_gpus_(NumGpus()), cupti_interface_(cupti_interface) {}
 
  private:
-  CuptiTracer() : num_gpus_(NumGpus()) {}
-
   Status EnableApiTracing();
   Status EnableActivityTracing();
   Status DisableApiTracing();
@@ -257,7 +275,9 @@ class CuptiTracer {
   absl::optional<CuptiTracerOptions> option_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
-  absl::optional<AnnotationMap> annotation_map_;
+
+  // CUPTI 10.1 and higher need root access to profile.
+  bool need_root_access_ = false;
 
   bool api_tracing_enabled_ = false;
   // Cupti handle for driver or runtime API callbacks. Cupti permits a single

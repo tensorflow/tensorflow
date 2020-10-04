@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 
@@ -67,11 +69,14 @@ struct GrpcServerOptions {
   WorkerCreationFunction worker_func = nullptr;
   StatsPublisherFactory stats_factory = CreateNoOpStatsPublisher;
   GrpcWorkerServiceOptions worker_service_options;
+  const DeviceMgr* local_device_mgr = nullptr;
 };
 
 class GrpcServer : public ServerInterface {
  protected:
   GrpcServer(const ServerDef& server_def, Env* env);
+  GrpcServer(const ServerDef& server_def, DeviceMgr* local_device_mgr,
+             Env* env);
   // Allow children classes to override this and provide custom args to the
   // server before it is constructed. Default behavior is to do nothing.
   virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder);
@@ -81,6 +86,10 @@ class GrpcServer : public ServerInterface {
                        std::unique_ptr<ServerInterface>* out_server);
   static Status Create(const ServerDef& server_def, Env* env,
                        std::unique_ptr<GrpcServer>* out_server);
+  // Reuse the local_device_mgr.
+  static Status Create(const ServerDef& server_def, Env* env,
+                       const DeviceMgr* local_device_mgr,
+                       std::unique_ptr<ServerInterface>* out_server);
 
   // Destruction is only supported in the factory method. Clean
   // shutdown is not currently implemented for this server type.
@@ -99,9 +108,12 @@ class GrpcServer : public ServerInterface {
   // requests from remote workers.
   Status AddMasterEagerContextToEagerService(
       const tensorflow::uint64 context_id, tensorflow::EagerContext* context);
+  // Update the set of workers that can be reached by the GRPC server
+  Status UpdateServerDef(const ServerDef& server_def);
 
  protected:
-  virtual Status GetPort(int* port) const;
+  virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name,
+                                int* port) const;
   Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
 
   // A subclass can override this method to support secure credentials.
@@ -126,17 +138,18 @@ class GrpcServer : public ServerInterface {
 
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
-
+  GrpcWorkerEnv* grpc_worker_env() const { return grpc_worker_env_.get(); }
 
  private:
-  // The overall server configuration.
-  const ServerDef server_def_;
   Env* env_;
 
   // The port to which this server is bound.
   int bound_port_ = 0;
 
-  // Guards state transitions.
+  // The host name of this server
+  string host_name_;
+
+  // Guards server configuration, server, and state.
   mutex mu_;
 
   // Represents the current state of the server, which changes as follows:
@@ -149,26 +162,34 @@ class GrpcServer : public ServerInterface {
   //    \________________________/
   //            Stop(), Join()
   enum State { NEW, STARTED, STOPPED };
-  State state_ GUARDED_BY(mu_);
+  State state_ TF_GUARDED_BY(mu_);
 
   // Implementation of a TensorFlow master, and RPC polling thread.
   MasterEnv master_env_;
   std::unique_ptr<Master> master_impl_;
   AsyncServiceInterface* master_service_ = nullptr;
-  std::unique_ptr<Thread> master_thread_ GUARDED_BY(mu_);
+  std::unique_ptr<Thread> master_thread_ TF_GUARDED_BY(mu_);
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;
+  std::unique_ptr<const DeviceMgr> owned_device_manager_;
   std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
-  std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
+  std::unique_ptr<Thread> worker_thread_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<GrpcWorkerEnv> grpc_worker_env_;
 
   // TensorFlow Eager implementation, and RPC polling thread.
   AsyncServiceInterface* eager_service_ = nullptr;
-  std::unique_ptr<Thread> eager_thread_ GUARDED_BY(mu_);
+  std::unique_ptr<Thread> eager_thread_ TF_GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> worker_session_;
 
-  std::unique_ptr<::grpc::Server> server_ GUARDED_BY(mu_);
+  // TensorFlow profiler service implementation.
+  std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;
+
+  // The overall server configuration.
+  ServerDef server_def_ TF_GUARDED_BY(mu_);
+
+  std::unique_ptr<::grpc::Server> server_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

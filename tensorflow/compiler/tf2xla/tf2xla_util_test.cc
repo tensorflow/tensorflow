@@ -293,8 +293,8 @@ TEST(CachedFunctionHandles, Basic) {
   FunctionLibraryDefinition fld(OpRegistry::Global(), proto);
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(
-          /*device_mgr=*/nullptr, Env::Default(), TF_GRAPH_DEF_VERSION, &fld,
-          OptimizerOptions()));
+          /*device_mgr=*/nullptr, Env::Default(), /*config=*/nullptr,
+          TF_GRAPH_DEF_VERSION, &fld, OptimizerOptions()));
   FunctionLibraryRuntime* flr =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 

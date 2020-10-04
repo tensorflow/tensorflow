@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -32,7 +34,7 @@ from tensorflow.python.platform import test
 # at Google, this code is tested against a reference implementation that follows
 # HTK conventions.
 @test_util.run_all_in_graph_and_eager_modes
-class MFCCTest(test.TestCase):
+class MFCCTest(test.TestCase, parameterized.TestCase):
 
   def test_error(self):
     # num_mel_bins must be positive.
@@ -40,14 +42,10 @@ class MFCCTest(test.TestCase):
       signal = array_ops.zeros((2, 3, 0))
       mfcc_ops.mfccs_from_log_mel_spectrograms(signal)
 
-    # signal must be float32
-    with self.assertRaises(ValueError):
-      signal = array_ops.zeros((2, 3, 5), dtype=dtypes.float64)
-      mfcc_ops.mfccs_from_log_mel_spectrograms(signal)
-
-  def test_basic(self):
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def test_basic(self, dtype):
     """A basic test that the op runs on random input."""
-    signal = random_ops.random_normal((2, 3, 5))
+    signal = random_ops.random_normal((2, 3, 5), dtype=dtype)
     self.evaluate(mfcc_ops.mfccs_from_log_mel_spectrograms(signal))
 
   def test_unknown_shape(self):

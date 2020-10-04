@@ -218,6 +218,23 @@ void PopulateWithFloatingPointData<bfloat16>(Literal* literal,
   }
 }
 
+// uniform_int_distribution is not defined for 8-bit integers.
+// Use 'short' for those types.
+template <typename IntT>
+struct RngT {
+  using type = IntT;
+};
+
+template <>
+struct RngT<int8> {
+  using type = int16;
+};
+
+template <>
+struct RngT<uint8> {
+  using type = uint16;
+};
+
 template <typename IntT>
 void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
                                     bool no_duplicates) {
@@ -230,7 +247,7 @@ void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
                  *engine);
   } else {
-    std::uniform_int_distribution<IntT> generator(
+    std::uniform_int_distribution<typename RngT<IntT>::type> generator(
         std::numeric_limits<IntT>::lowest(), std::numeric_limits<IntT>::max());
     for (IntT& value : literal->data<IntT>()) {
       value = generator(*engine);
@@ -324,9 +341,6 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
           }));
       break;
     }
-    // Token requires no data.
-    case TOKEN:
-      break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
                            ShapeUtil::HumanString(shape));
@@ -341,7 +355,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
   CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
-  std::uniform_int_distribution<IntT> generator(min, max);
+  std::uniform_int_distribution<typename RngT<IntT>::type> generator(min, max);
   for (IntT& value : literal->data<IntT>()) {
     value = generator(*engine);
   }
@@ -532,8 +546,8 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // zero in the case of init_values for reductions).
 StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
-    const HloInstruction& param, std::minstd_rand0* engine,
-    bool use_large_range) {
+    const HloInstruction& param, const Shape& param_shape,
+    std::minstd_rand0* engine, bool use_large_range) {
   int64 index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
@@ -613,23 +627,23 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteralInternalWithBounds(param.shape(), engine, -1,
+    return MakeFakeLiteralInternalWithBounds(param_shape, engine, -1,
                                              index_bound, needs_sorted_indices);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
-        return LiteralUtil::Zero(param.shape().element_type());
+        return LiteralUtil::Zero(param_shape.element_type());
       case ConstantType::kOne:
-        return LiteralUtil::One(param.shape().element_type());
+        return LiteralUtil::One(param_shape.element_type());
       case ConstantType::kUnknown:
         // We want the identity element for the computation, but we don't really
         // know what it is - so any value we generate will be just as wrong.
-        return MakeFakeLiteralInternal(param.shape(), engine,
+        return MakeFakeLiteralInternal(param_shape, engine,
                                        /*no_duplicates=*/false,
                                        use_large_range);
     }
   } else {
-    return MakeFakeLiteralInternal(param.shape(), engine, no_duplicates,
+    return MakeFakeLiteralInternal(param_shape, engine, no_duplicates,
                                    use_large_range);
   }
 }
@@ -638,11 +652,12 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
 // special case literal must be created, or if we can generate fake data.
 StatusOr<Literal> MakeConstrainedArgument(const HloDataflowAnalysis& dataflow,
                                           const HloInstruction& param,
+                                          const Shape& param_shape,
                                           std::minstd_rand0* engine,
                                           bool use_large_range) {
   const auto constrained_uses = FindConstrainedUses(dataflow, param);
-  return CreateLiteralForConstrainedUses(constrained_uses, param, engine,
-                                         use_large_range);
+  return CreateLiteralForConstrainedUses(constrained_uses, param, param_shape,
+                                         engine, use_large_range);
 }
 
 }  // namespace
@@ -670,9 +685,16 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
   for (int i = 0; i < params.size(); ++i) {
-    arguments[i] =
-        MakeConstrainedArgument(*dataflow, *params[i], engine, use_large_range)
-            .ValueOrDie();
+    const HloModuleConfig& module_config = module->config();
+    const Shape& param_shape = module_config.has_entry_computation_layout()
+                                   ? module_config.entry_computation_layout()
+                                         .parameter_layout(i)
+                                         .shape()
+                                   : params[i]->shape();
+
+    arguments[i] = MakeConstrainedArgument(*dataflow, *params[i], param_shape,
+                                           engine, use_large_range)
+                       .ValueOrDie();
   }
   return std::move(arguments);
 }

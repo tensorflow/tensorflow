@@ -21,6 +21,7 @@ import static org.junit.Assert.fail;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,12 +38,23 @@ public final class InterpreterTest {
       "tensorflow/lite/testdata/multi_add.bin";
   private static final String FLEX_MODEL_PATH =
       "tensorflow/lite/testdata/multi_add_flex.bin";
+  private static final String UNKNOWN_DIMS_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/add_unknown_dimensions.bin";
+  private static final String DYNAMIC_SHAPES_MODEL_PATH =
+      "tensorflow/lite/testdata/dynamic_shapes.bin";
+  private static final String BOOL_MODEL =
+      "tensorflow/lite/java/src/testdata/tile_with_bool_input.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(MULTIPLE_INPUTS_MODEL_PATH);
   private static final ByteBuffer FLEX_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(FLEX_MODEL_PATH);
+  private static final ByteBuffer UNKNOWN_DIMS_MODEL_PATH_BUFFER =
+      TestUtils.getTestFileAsBuffer(UNKNOWN_DIMS_MODEL_PATH);
+  private static final ByteBuffer DYNAMIC_SHAPES_MODEL_BUFFER =
+      TestUtils.getTestFileAsBuffer(DYNAMIC_SHAPES_MODEL_PATH);
+  private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
 
   @Test
   public void testInterpreter() throws Exception {
@@ -56,6 +68,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  @SuppressWarnings("deprecation")
   public void testInterpreterWithOptions() throws Exception {
     Interpreter interpreter =
         new Interpreter(
@@ -206,6 +219,15 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testRunWithScalarInput() {
+    FloatBuffer parsedOutput = FloatBuffer.allocate(1);
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.run(2.37f, parsedOutput);
+    }
+    assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
+  }
+
+  @Test
   public void testResizeInput() {
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       int[] inputDims = {1};
@@ -213,6 +235,69 @@ public final class InterpreterTest {
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
       ByteBuffer input = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
       ByteBuffer output = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      interpreter.run(input, output);
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+    }
+  }
+
+  @Test
+  public void testAllocateTensors() {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      // Redundant allocateTensors() should have no effect.
+      interpreter.allocateTensors();
+
+      // allocateTensors() should propagate resizes.
+      int[] inputDims = {1};
+      assertThat(interpreter.getOutputTensor(0).shape()).isNotEqualTo(inputDims);
+      interpreter.resizeInput(0, inputDims);
+      assertThat(interpreter.getOutputTensor(0).shape()).isNotEqualTo(inputDims);
+      interpreter.allocateTensors();
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+
+      // Additional redundant calls should have no effect.
+      interpreter.allocateTensors();
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+
+      // Execution should succeed as expected.
+      ByteBuffer input = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      ByteBuffer output = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      interpreter.run(input, output);
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+    }
+  }
+
+  @Test
+  public void testUnknownDims() {
+    try (Interpreter interpreter = new Interpreter(UNKNOWN_DIMS_MODEL_PATH_BUFFER)) {
+      int[] inputDims = {1, 1, 3, 3};
+      int[] inputDimsSignature = {1, -1, 3, 3};
+      assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
+      assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
+
+      // Resize tensor with strict checking. Try invalid resize.
+      inputDims[2] = 5;
+      try {
+        interpreter.resizeInput(0, inputDims, true);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "ResizeInputTensorStrict only allows mutating unknown dimensions identified by -1");
+      }
+      inputDims[2] = 3;
+
+      // Set the dimension of the unknown dimension to the expected dimension and ensure shape
+      // signature doesn't change.
+      inputDims[1] = 3;
+      interpreter.resizeInput(0, inputDims, true);
+      assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
+      assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
+
+      ByteBuffer input =
+          ByteBuffer.allocateDirect(1 * 3 * 3 * 3 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer output =
+          ByteBuffer.allocateDirect(1 * 3 * 3 * 3 * 4).order(ByteOrder.nativeOrder());
       interpreter.run(input, output);
       assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
     }
@@ -242,10 +327,10 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithUnsupportedInputType() {
-    FloatBuffer floatBuffer = FloatBuffer.allocate(10);
+    DoubleBuffer doubleBuffer = DoubleBuffer.allocate(10);
     float[][][][] parsedOutputs = new float[2][8][8][3];
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
-      interpreter.run(floatBuffer, parsedOutputs);
+      interpreter.run(doubleBuffer, parsedOutputs);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("DataType error: cannot resolve DataType of");
@@ -309,6 +394,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     Interpreter interpreter =
         new Interpreter(
@@ -324,6 +410,38 @@ public final class InterpreterTest {
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
+  }
+
+  @Test
+  public void testUseXNNPACK() throws Exception {
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    interpreter.run(fourD, parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    interpreter.close();
+  }
+
+  @Test
+  public void testResizeWithEnhancedCpuKernels() throws Exception {
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
+    float[] input = {1.f};
+    float[] output = new float[1];
+    interpreter.run(input, output);
+    assertThat(output).usingTolerance(0.1f).containsExactly(new float[] {3.f}).inOrder();
+
+    // The new input shape should trigger a resize. Inference should still work properly.
+    float[] input2 = {1.f, 2.f};
+    float[] output2 = new float[2];
+    interpreter.run(input2, output2);
+    assertThat(output2).usingTolerance(0.1f).containsExactly(new float[] {3.f, 6.f}).inOrder();
   }
 
   @Test
@@ -357,7 +475,7 @@ public final class InterpreterTest {
     interpreter.close();
   }
 
-  /** Smoke test validating that flex model loading fails when the flex delegate is not linked. */
+  // Smoke test validating that flex model loading fails when the flex delegate is not linked.
   @Test
   public void testFlexModel() throws Exception {
     try {
@@ -493,6 +611,107 @@ public final class InterpreterTest {
       interpreter.resetVariableTensors();
       interpreter.resetVariableTensors();
       interpreter.run(inputs, parsedOutputs);
+    }
+  }
+
+  @Test
+  public void testBoolModel() throws Exception {
+    boolean[][][] inputs = {{{true, false}, {false, true}}, {{true, true}, {false, true}}};
+    int[] multipliers = {1, 1, 2};
+    boolean[][][] parsedOutputs = new boolean[2][2][4];
+
+    try (Interpreter interpreter = new Interpreter(BOOL_MODEL_BUFFER)) {
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.BOOL);
+      Object[] inputsArray = {inputs, multipliers};
+      Map<Integer, Object> outputsMap = new HashMap<>();
+      outputsMap.put(0, parsedOutputs);
+      interpreter.runForMultipleInputsOutputs(inputsArray, outputsMap);
+
+      boolean[][][] expectedOutputs = {
+        {{true, false, true, false}, {false, true, false, true}},
+        {{true, true, true, true}, {false, true, false, true}}
+      };
+      assertThat(parsedOutputs).isEqualTo(expectedOutputs);
+    }
+  }
+
+  @Test
+  public void testCancelInference() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    Interpreter interpreter = new Interpreter(
+        MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
+
+    // Part 1: Should be interrupted when flag is set to true.
+    try {
+      interpreter.setCancelled(true);
+      interpreter.run(inputs, parsedOutputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+    // TODO(b/168266570): Return InterruptedException.
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Internal error: Failed to run on the given Interpreter: Client requested cancel"
+                  + " during Invoke()");
+    }
+
+    // Part 2: Should be resumed when flag is set to false.
+    interpreter.setCancelled(false);
+    interpreter.run(inputs, parsedOutputs);
+  }
+
+  @Test
+  public void testCancelInferenceOnNoncancellableInterpreter() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+
+    try {
+      interpreter.setCancelled(true);
+      fail();
+    } catch (IllegalStateException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+    }
+  }
+
+  private static FloatBuffer fill(FloatBuffer buffer, float value) {
+    while (buffer.hasRemaining()) {
+      buffer.put(value);
+    }
+    buffer.rewind();
+    return buffer;
+  }
+
+  // Regression test case to ensure that graphs with dynamically computed shapes work properly.
+  // Historically, direct ByteBuffer addresses would overwrite the arena-allocated tensor input
+  // pointers. Normally this works fine, but for dynamic graphs, the original input tensor pointers
+  // may be "restored" at invocation time by the arena allocator, resetting the direct ByteBuffer
+  // address and leading to stale input data being used.
+  @Test
+  public void testDynamicShapesWithDirectBufferInputs() {
+    try (Interpreter interpreter = new Interpreter(DYNAMIC_SHAPES_MODEL_BUFFER)) {
+      ByteBuffer input0 =
+          ByteBuffer.allocateDirect(8 * 42 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input1 =
+          ByteBuffer.allocateDirect(1 * 90 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input2 = ByteBuffer.allocateDirect(1 * 4).order(ByteOrder.nativeOrder());
+      Object[] inputs = {input0, input1, input2};
+
+      fill(input0.asFloatBuffer(), 2.0f);
+      fill(input1.asFloatBuffer(), 0.5f);
+      // Note that the value of this input dictates the shape of the output.
+      fill(input2.asFloatBuffer(), 1.0f);
+
+      FloatBuffer output = FloatBuffer.allocate(8 * 1 * 1024);
+      Map<Integer, Object> outputs = new HashMap<>();
+      outputs.put(0, output);
+
+      interpreter.runForMultipleInputsOutputs(inputs, outputs);
+
+      FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
     }
   }
 

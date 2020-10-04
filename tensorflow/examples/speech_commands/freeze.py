@@ -44,10 +44,10 @@ import sys
 
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
 import input_data
 import models
 from tensorflow.python.framework import graph_util
+from tensorflow.python.ops import gen_audio_ops as audio_ops
 
 # If it's available, load the specialized feature generator. If this doesn't
 # work, try building with bazel instead of running the Python script directly.
@@ -80,6 +80,9 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
     preprocess: How the spectrogram is processed to produce features, for
       example 'mfcc', 'average', or 'micro'.
 
+  Returns:
+    Input and output tensor objects.
+
   Raises:
     Exception: If the preprocessing mode isn't recognized.
   """
@@ -92,12 +95,12 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
 
   wav_data_placeholder = tf.compat.v1.placeholder(tf.string, [],
                                                   name='wav_data')
-  decoded_sample_data = contrib_audio.decode_wav(
+  decoded_sample_data = tf.audio.decode_wav(
       wav_data_placeholder,
       desired_channels=1,
       desired_samples=model_settings['desired_samples'],
       name='decoded_sample_data')
-  spectrogram = contrib_audio.audio_spectrogram(
+  spectrogram = audio_ops.audio_spectrogram(
       decoded_sample_data.audio,
       window_size=model_settings['window_size_samples'],
       stride=model_settings['window_stride_samples'],
@@ -111,7 +114,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
         pooling_type='AVG',
         padding='SAME')
   elif preprocess == 'mfcc':
-    fingerprint_input = contrib_audio.mfcc(
+    fingerprint_input = audio_ops.mfcc(
         spectrogram,
         sample_rate,
         dct_coefficient_count=model_settings['fingerprint_width'])
@@ -150,14 +153,76 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
       runtime_settings=runtime_settings)
 
   # Create an output to use for inference.
-  tf.nn.softmax(logits, name='labels_softmax')
+  softmax = tf.nn.softmax(logits, name='labels_softmax')
+
+  return reshaped_input, softmax
+
+
+def save_graph_def(file_name, frozen_graph_def):
+  """Writes a graph def file out to disk.
+
+  Args:
+    file_name: Where to save the file.
+    frozen_graph_def: GraphDef proto object to save.
+  """
+  tf.io.write_graph(
+      frozen_graph_def,
+      os.path.dirname(file_name),
+      os.path.basename(file_name),
+      as_text=False)
+  tf.compat.v1.logging.info('Saved frozen graph to %s', file_name)
+
+
+def save_saved_model(file_name, sess, input_tensor, output_tensor):
+  """Writes a SavedModel out to disk.
+
+  Args:
+    file_name: Where to save the file.
+    sess: TensorFlow session containing the graph.
+    input_tensor: Tensor object defining the input's properties.
+    output_tensor: Tensor object defining the output's properties.
+  """
+  # Store the frozen graph as a SavedModel for v2 compatibility.
+  builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(file_name)
+  tensor_info_inputs = {
+      'input': tf.compat.v1.saved_model.utils.build_tensor_info(input_tensor)
+  }
+  tensor_info_outputs = {
+      'output': tf.compat.v1.saved_model.utils.build_tensor_info(output_tensor)
+  }
+  signature = (
+      tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+          inputs=tensor_info_inputs,
+          outputs=tensor_info_outputs,
+          method_name=tf.compat.v1.saved_model.signature_constants
+          .PREDICT_METHOD_NAME))
+  builder.add_meta_graph_and_variables(
+      sess,
+      [tf.compat.v1.saved_model.tag_constants.SERVING],
+      signature_def_map={
+          tf.compat.v1.saved_model.signature_constants
+          .DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+              signature,
+      },
+  )
+  builder.save()
 
 
 def main(_):
+  if FLAGS.quantize:
+    try:
+      _ = tf.contrib
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
 
   # Create the model and load its weights.
   sess = tf.compat.v1.InteractiveSession()
-  create_inference_graph(
+  input_tensor, output_tensor = create_inference_graph(
       FLAGS.wanted_words, FLAGS.sample_rate, FLAGS.clip_duration_ms,
       FLAGS.clip_stride_ms, FLAGS.window_size_ms, FLAGS.window_stride_ms,
       FLAGS.feature_bin_count, FLAGS.model_architecture, FLAGS.preprocess)
@@ -168,12 +233,14 @@ def main(_):
   # Turn all the variables into inline constants inside the graph and save it.
   frozen_graph_def = graph_util.convert_variables_to_constants(
       sess, sess.graph_def, ['labels_softmax'])
-  tf.io.write_graph(
-      frozen_graph_def,
-      os.path.dirname(FLAGS.output_file),
-      os.path.basename(FLAGS.output_file),
-      as_text=False)
-  tf.compat.v1.logging.info('Saved frozen graph to %s', FLAGS.output_file)
+
+  if FLAGS.save_format == 'graph_def':
+    save_graph_def(FLAGS.output_file, frozen_graph_def)
+  elif FLAGS.save_format == 'saved_model':
+    save_saved_model(FLAGS.output_file, sess, input_tensor, output_tensor)
+  else:
+    raise Exception('Unknown save format "%s" (should be "graph_def" or'
+                    ' "saved_model")' % (FLAGS.save_format))
 
 
 if __name__ == '__main__':
@@ -236,5 +303,10 @@ if __name__ == '__main__':
       type=str,
       default='mfcc',
       help='Spectrogram processing mode. Can be "mfcc" or "average"')
+  parser.add_argument(
+      '--save_format',
+      type=str,
+      default='graph_def',
+      help='How to save the result. Can be "graph_def" or "saved_model"')
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -14,18 +14,22 @@
 
 #import "tensorflow/lite/experimental/objc/apis/TFLInterpreter.h"
 
+#include <vector>
+
 #import "TFLErrorUtil.h"
 #import "TFLQuantizationParameters+Internal.h"
 #import "TFLTensor+Internal.h"
+#import "tensorflow/lite/experimental/objc/apis/TFLDelegate.h"
 #import "tensorflow/lite/experimental/objc/apis/TFLInterpreterOptions.h"
 #import "tensorflow/lite/experimental/objc/apis/TFLTensor.h"
 
-#include "tensorflow/lite/experimental/c/c_api.h"
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 FOUNDATION_EXPORT NSString *const TFLVersion =
-    TfLiteVersion() == NULL ? @"" : [NSString stringWithUTF8String:TfLiteVersion()];
+    TfLiteVersion() == nullptr ? @"" : [NSString stringWithUTF8String:TfLiteVersion()];
 
 /**
  * Error reporter for TFLInterpreter.
@@ -43,6 +47,9 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 /** TfLiteInterpreter backed by C API. */
 @property(nonatomic, nullable) TfLiteInterpreter *interpreter;
 
+/** TfLiteDelegate backed by C API. */
+@property(nonatomic, nullable) TfLiteDelegate *xnnPackDelegate;
+
 @end
 
 @implementation TFLInterpreter
@@ -51,6 +58,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 
 - (void)dealloc {
   TfLiteInterpreterDelete(_interpreter);
+  TfLiteXNNPackDelegateDelete(_xnnPackDelegate);
 }
 
 #pragma mark - Public
@@ -58,11 +66,19 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath error:(NSError **)error {
   return [self initWithModelPath:modelPath
                          options:[[TFLInterpreterOptions alloc] init]
+                       delegates:@[]
                            error:error];
 }
 
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
                                    options:(TFLInterpreterOptions *)options
+                                     error:(NSError **)error {
+  return [self initWithModelPath:modelPath options:options delegates:@[] error:error];
+}
+
+- (nullable instancetype)initWithModelPath:(NSString *)modelPath
+                                   options:(TFLInterpreterOptions *)options
+                                 delegates:(NSArray<TFLDelegate *> *)delegates
                                      error:(NSError **)error {
   self = [super init];
 
@@ -101,6 +117,23 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
         TfLiteInterpreterOptionsSetNumThreads(cOptions, (int32_t)options.numberOfThreads);
       }
       TfLiteInterpreterOptionsSetErrorReporter(cOptions, TFLInterpreterErrorReporter, nullptr);
+
+      if (options.useXNNPACK) {
+        TfLiteXNNPackDelegateOptions xnnPackOptions = TfLiteXNNPackDelegateOptionsDefault();
+        if (options.numberOfThreads > 0) {
+          xnnPackOptions.num_threads = (int32_t)options.numberOfThreads;
+        }
+
+        _xnnPackDelegate = TfLiteXNNPackDelegateCreate(&xnnPackOptions);
+        TfLiteInterpreterOptionsAddDelegate(cOptions, _xnnPackDelegate);
+      }
+
+      for (TFLDelegate *delegate in delegates) {
+        if (delegate.cDelegate != nullptr) {
+          TfLiteInterpreterOptionsAddDelegate(
+              cOptions, reinterpret_cast<TfLiteDelegate *>(delegate.cDelegate));
+        }
+      }
 
       _interpreter = TfLiteInterpreterCreate(model, cOptions);
       if (_interpreter == nullptr) {
@@ -168,7 +201,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     return NO;
   }
 
-  int cDimensions[self.inputTensorCount];
+  std::vector<int> cDimensions(self.inputTensorCount);
   for (int dimIndex = 0; dimIndex < shape.count; ++dimIndex) {
     int dimension = shape[dimIndex].intValue;
     if (dimension <= 0) {
@@ -181,8 +214,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     cDimensions[dimIndex] = dimension;
   }
 
-  if (TfLiteInterpreterResizeInputTensor(self.interpreter, (int32_t)index, cDimensions,
-                                       (int32_t)shape.count) != kTfLiteOk) {
+  if (TfLiteInterpreterResizeInputTensor(self.interpreter, (int32_t)index, cDimensions.data(),
+                                         (int32_t)shape.count) != kTfLiteOk) {
     NSString *errorDescription = [NSString
         stringWithFormat:@"Failed to resize input tensor at index (%lu).", (unsigned long)index];
     [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeFailedToResizeInputTensor
@@ -276,7 +309,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     return nil;
   }
 
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:rank];
+  NSMutableArray<NSNumber *> *shape = [NSMutableArray arrayWithCapacity:rank];
   for (int32_t dimIndex = 0; dimIndex < rank; dimIndex++) {
     int32_t dimension = TfLiteTensorDim(cTensor, dimIndex);
     if (dimension <= 0) {
@@ -297,8 +330,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 #pragma mark - Private
 
 - (const TfLiteTensor *)cTensorOfType:(TFLTensorType)type
-                            atIndex:(NSUInteger)index
-                              error:(NSError **)error {
+                              atIndex:(NSUInteger)index
+                                error:(NSError **)error {
   const TfLiteTensor *tensor = nullptr;
 
   switch (type) {
@@ -356,7 +389,6 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
                                                                 zeroPoint:cParams.zero_point];
   }
 
-  // TODO: Set quantization parameters when C API supports it.
   return [[TFLTensor alloc] initWithInterpreter:self
                                            type:type
                                           index:index
@@ -371,6 +403,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
       return TFLTensorDataTypeFloat32;
     case kTfLiteFloat16:
       return TFLTensorDataTypeFloat16;
+    case kTfLiteFloat64:
+      return TFLTensorDataTypeFloat64;
     case kTfLiteInt32:
       return TFLTensorDataTypeInt32;
     case kTfLiteUInt8:
@@ -386,7 +420,9 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     case kTfLiteNoType:
     case kTfLiteString:
     case kTfLiteComplex64:
-      // kTfLiteString and kTfLiteComplex64 are not supported in TensorFlow Lite Objc API.
+    case kTfLiteComplex128:
+      // kTfLiteString, kTfLiteComplex64 and kTfLiteComplex128 are not supported in TensorFlow Lite
+      // Objc API.
       return TFLTensorDataTypeNoType;
   }
 }
@@ -397,7 +433,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   if (index >= totalTensorCount) {
     NSString *errorDescription =
         [NSString stringWithFormat:@"Invalid tensor index (%lu) exceeds max (%lu).",
-                                   (unsigned long)index, (unsigned long)(totalTensorCount - 1)];
+                                   (unsigned long)index, (totalTensorCount - 1)];
     [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeInvalidTensorIndex
                                    description:errorDescription
                                          error:error];

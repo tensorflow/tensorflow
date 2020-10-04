@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -34,16 +36,14 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -92,18 +92,20 @@ class FakeDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
-  static std::unique_ptr<Device> MakeCPU(const string& name) {
+  static std::unique_ptr<Device> MakeDevice(const string& name,
+                                            const string& device_type) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
-    device_attributes.set_device_type(DeviceType("FakeCPU").type());
+    device_attributes.set_device_type(device_type);
     return std::unique_ptr<Device>(new FakeDevice(device_attributes));
   }
 
+  static std::unique_ptr<Device> MakeCPU(const string& name) {
+    return MakeDevice(name, "FakeCPU");
+  }
+
   static std::unique_ptr<Device> MakeGPU(const string& name) {
-    DeviceAttributes device_attributes;
-    device_attributes.set_name(name);
-    device_attributes.set_device_type(DeviceType("FakeGPU").type());
-    return std::unique_ptr<Device>(new FakeDevice(device_attributes));
+    return MakeDevice(name, "FakeGPU");
   }
 };
 
@@ -192,6 +194,13 @@ REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeCPU").Priority(2),
 REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeGPU").Priority(1),
                         DummyOp);
 
+// Op that has kernels with XLA device priority higher than FakeCPU.
+REGISTER_OP("TestXlaOp").Input("a: float").Output("b: float");
+REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("XLA_CPU").Priority(2),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("FakeCPU").Priority(1),
+                        DummyOp);
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // A PlacerTest method has three phases:
@@ -207,7 +216,8 @@ class PlacerTest : public ::testing::Test {
   PlacerTest() : PlacerTest(10) {}
 
   explicit PlacerTest(int num_devices) {
-    // Build a set of num_devices GPU and num_devices CPU devices.
+    // Build a set of num_devices GPU, num_devices CPU devices, and one XLA_CPU
+    // device.
     // NOTE: this->local_devices_ owns the device objects;
     // this->devices_ contains borrowed pointers to the device
     // objects.
@@ -220,6 +230,12 @@ class PlacerTest : public ::testing::Test {
           "/job:a/replica:0/task:0/device:FakeGPU:", num_devices - 1 - i)));
       devices_.AddDevice(local_devices_.back().get());
     }
+    local_devices_.emplace_back(FakeDevice::MakeDevice(
+        "/job:a/replica:0/task:0/device:XLA_CPU:0", "XLA_CPU"));
+    devices_.AddDevice(local_devices_.back().get());
+    local_devices_.emplace_back(FakeDevice::MakeDevice(
+        "/job:a/replica:0/task:0/device:COMPOSITE:0", "COMPOSITE"));
+    devices_.AddDevice(local_devices_.back().get());
   }
 
   // Builds the given graph, and (if successful) indexes the node
@@ -261,7 +277,7 @@ class PlacerTest : public ::testing::Test {
     RewriterConfig* rewriter_config = graph_opts->mutable_rewrite_options();
     rewriter_config->set_disable_meta_optimizer(true);
 
-    // Placing nested functions requires go through some PRE_PLACEMNT passes.
+    // Placing nested functions requires go through some PRE_PLACEMENT passes.
     // Currently, just the IsolateDeepOpsPass.
     GraphOptimizationPassOptions optimization_options;
     std::unique_ptr<Graph> graph_ptr(graph);
@@ -342,7 +358,7 @@ class PlacerTest : public ::testing::Test {
 class SoftPlacementPlacerTest : public PlacerTest,
                                 public ::testing::WithParamInterface<bool> {};
 
-INSTANTIATE_TEST_SUITE_P(, SoftPlacementPlacerTest,
+INSTANTIATE_TEST_SUITE_P(All, SoftPlacementPlacerTest,
                          ::testing::Values(false, true),
                          ::testing::PrintToStringParamName());
 
@@ -421,6 +437,31 @@ TEST_F(PlacerTest, TestNoConstraintsWithPrioritizedKernels) {
   EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "n2", "FakeCPU");
+}
+
+// Test that if the node supports XLA_CPU and FakeCPU, it will be placed on
+// XLA_CPU if and only if the node is assigned to the XLA_CPU device.
+TEST_F(PlacerTest, TestXlaOpPlacement) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    ops::UnaryOp("TestXlaOp", ops::NodeOut(input, 0), b.opts().WithName("n1"));
+    ops::UnaryOp("TestXlaOp", ops::NodeOut(input, 1), b.opts().WithName("n2"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  GetNodeByName(g, "n2")->set_assigned_device_name(
+      "/job:a/replica:0/task:0/device:XLA_CPU:0");
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
+  // n1 should be placed on FakeCPU even if the op supports XLA_CPU with higher
+  // priority than FakeCPU.
+  EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
+  // n2 should be placed on XLA_CPU because it supports XLA_CPU and it is
+  // assigned to a XLA_CPU device.
+  EXPECT_DEVICE_TYPE(g, "n2", "XLA_CPU");
 }
 
 TEST_F(PlacerTest, TestGPUInputIntoPrioritizedKernel) {
@@ -1137,6 +1178,40 @@ TEST_F(PlacerTest, TestReferenceConnectionNoSourceDevice) {
   EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
 }
 
+TEST_F(PlacerTest, TestResourceHandleOnCompositeDevice) {
+  auto build_graph = [this](Graph* g) -> Status {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    // Build ten variable-and-assignment pairs.
+    Node* var = ops::SourceOp("HandleVariableCPU", b.opts().WithName("var"));
+    ops::BinaryOp("TestHandleAssign", var, input, b.opts().WithName("assign"));
+    TF_RETURN_IF_ERROR(BuildGraph(b, g));
+    // `var` is assigned to COMPOSITE.
+    GetNodeByName(*g, "var")->set_assigned_device_name(
+        "/job:a/replica:0/task:0/device:COMPOSITE:0");
+    return Status::OK();
+  };
+
+  {
+    // `assign` is not assigned to any device.
+    Graph g(OpRegistry::Global());
+    TF_ASSERT_OK(build_graph(&g));
+    TF_ASSERT_OK(Place(&g));
+    EXPECT_DEVICE_TYPE(g, "var", "COMPOSITE");
+    EXPECT_DEVICE_TYPE(g, "assign", "COMPOSITE");
+  }
+  {
+    // `assign` is assigned to FakeCPU.
+    Graph g(OpRegistry::Global());
+    TF_ASSERT_OK(build_graph(&g));
+    GetNodeByName(g, "assign")
+        ->set_assigned_device_name("/job:a/replica:0/task:0/device:FakeCPU:0");
+    TF_ASSERT_OK(Place(&g));
+    EXPECT_DEVICE_TYPE(g, "var", "COMPOSITE");
+    EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
+  }
+}
+
 TEST_F(PlacerTest, TestColocationGroup) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -1172,6 +1247,27 @@ TEST_F(PlacerTest, TestMultipleColocationGroups) {
         ops::UnaryOp("TestRelu", input,
                      b.opts().WithName("foo").WithAttr(
                          "_class", {"loc:@in", "loc:@colocated_1"}));
+    CHECK(colocated_with_input);
+    CHECK(colocated_with_input_and_other);
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "in", "colocated_1");
+  EXPECT_COLOCATED(g, "in", "foo");
+}
+
+TEST_F(PlacerTest, TestChainColocation) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    Node* colocated_with_input = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
+    Node* colocated_with_input_and_other = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("foo").WithAttr("_class", {"loc:@colocated_1"}));
     CHECK(colocated_with_input);
     CHECK(colocated_with_input_and_other);
     TF_EXPECT_OK(BuildGraph(b, &g));
@@ -1223,6 +1319,9 @@ TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
     Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
     Node* var1 = ops::SourceOp("VariableCPU", b.opts().WithName("var1"));
     Node* var2 = ops::SourceOp("VariableCPU", b.opts().WithName("var2"));
+    Node* var3 = ops::SourceOp(
+        "VariableCPU",
+        b.opts().WithName("var3").WithDevice("/device:COMPOSITE:0"));
 
     // Two assigns (reference connections) with two different
     // colocation groups. Because their colocation groups all map to the
@@ -1233,14 +1332,20 @@ TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
     ops::BinaryOp(
         "TestAssign", var2, input,
         b.opts().WithName("assign2").WithAttr("_class", {"loc:@var2"}));
+    ops::BinaryOp(
+        "TestAssign", var3, input,
+        b.opts().WithName("assign3").WithAttr("_class", {"loc:@var3"}));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
   EXPECT_COLOCATED(g, "in", "var1");
   EXPECT_COLOCATED(g, "in", "var2");
   EXPECT_COLOCATED(g, "var1", "assign2");
   EXPECT_COLOCATED(g, "var2", "assign1");
+  EXPECT_DEVICE_TYPE(g, "var3", "COMPOSITE");
+  EXPECT_COLOCATED(g, "var3", "assign3");
 }
 
 TEST_P(SoftPlacementPlacerTest,
@@ -1434,7 +1539,7 @@ TEST_F(PlacerTest, TestUnknownAssignedDevice) {
 
 // Test that placement fails when an op with no registered kernels is
 // requested and no device is requested for the node
-TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequstedDevice) {
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequestedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1665,7 +1770,7 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   EXPECT_TRUE(absl::StrContains(s.error_message(), "but available devices"));
 }
 
-#if !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Test that we inform the user if they appear to be explicitly placing nodes
 // on a GPU when CUDA is not available
 TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
@@ -2227,7 +2332,7 @@ TEST_F(NestedPlacerTest, OutputTwoResources_UnassignedResource) {
    * the "second pass" as they are "sources". It assigns `r1` to GPU because it
    * is in the same group as `b`. It assigns `r2` to GPU because GPU has a
    * higher device preference. Finally, `a` is assigned to GPU because `r2` is
-   * on GPU - this test that the "second pass" heuristics respect colocaton
+   * on GPU - this test that the "second pass" heuristics respect colocation
    * groups (even when the consumer of the source, i.e. PCO is on a different
    * device).
    */
@@ -2435,7 +2540,7 @@ TEST_F(NestedPlacerTest, DuplicateInputResource_Conflict) {
    *                 r1:RESOURCE:GPU
    *
    * There is a conflict but Placer always overrides requested devices
-   * when they result in coflict due to resource edges. Which device
+   * when they result in conflict due to resource edges. Which device
    * is picked for a/r1/r2 is indeterministic.
    */
   FunctionDef func = test::function::Swap();

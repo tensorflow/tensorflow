@@ -13,43 +13,57 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Tests for saving/loading function for keras Model."""
+"""Tests for saving and loading Keras models and layers from SavedModel.
+
+These should ensure that all layer properties are correctly assigned after
+loading from the SavedModel.
+
+Tests that focus on the model structure should go in revive_structure_test.py
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os
 import shutil
+import sys
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python import keras
+from tensorflow.python import tf2
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
-from tensorflow.python.feature_column.dense_features import DenseFeatures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.feature_column.dense_features import DenseFeatures
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
-from tensorflow.python.util import tf_inspect
 
 
 class LayerWithLearningPhase(keras.engine.base_layer.Layer):
@@ -61,8 +75,8 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
   def call(self, x, training=None):
     if training is None:
       training = keras.backend.learning_phase()
-    output = tf_utils.smart_cond(
-        training, lambda: x * 0, lambda: array_ops.identity(x))
+    output = control_flow_util.smart_cond(training, lambda: x * 0,
+                                          lambda: array_ops.identity(x))
     if not context.executing_eagerly():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
@@ -74,11 +88,32 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
 class LayerWithLoss(keras.layers.Layer):
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
-    return inputs
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
+    return inputs * 2
 
 
-@test_util.run_all_in_graph_and_eager_modes
+class LayerWithUpdate(keras.layers.Layer):
+
+  def build(self, _):
+    self.v = self.add_weight(
+        'v',
+        shape=[],
+        initializer=keras.initializers.zeros,
+        trainable=False,
+        dtype=dtypes.float32)
+
+  def call(self, inputs, training=True):
+    if training:
+      self.add_update(self.v.assign_add(1.))
+    return inputs * 2.
+
+
+@generic_utils.register_keras_serializable('Testing')
+class GlobalLayerThatShouldFailIfNotAdded(keras.layers.Layer):
+  _must_restore_from_config = True
+
+
+@keras_parameterized.run_all_keras_modes
 class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -86,22 +121,32 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
     return os.path.join(temp_dir, dirname)
 
-  @keras_parameterized.run_with_all_model_types
-  def test_model_save_and_load(self):
-    input_arr = np.random.random((1, 3)).astype(np.float32)
-    target_arr = np.random.random((1, 4)).astype(np.float32)
-
+  def _test_save_and_load(self, use_dataset=False):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.layers[-1].activity_regularizer = regularizers.get('l2')
     model.activity_regularizer = regularizers.get('l2')
     model.compile(
         loss='mse',
         optimizer='rmsprop')
-    model.train_on_batch(input_arr, target_arr)
-
     def callable_loss():
       return math_ops.reduce_sum(model.weights[0])
     model.add_loss(callable_loss)
+
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 4))
+
+    if not tf2.enabled():
+      # The layer autocast behavior only runs when autocast is enabled, so
+      # in V1, the numpy inputs still need to be cast to float32.
+      x = x.astype(np.float32)
+      y = y.astype(np.float32)
+
+    if use_dataset:
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(1)
+      model.fit(dataset)
+    else:
+      model.train_on_batch(x, y)
+
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
     loaded = keras_load.load(saved_model_dir)
@@ -124,6 +169,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       self.assertAllClose(
           sorted(self.evaluate(model.get_losses_for(input_arr))),
           sorted(self.evaluate(loaded.get_losses_for(input_arr))))
+
+  @keras_parameterized.run_with_all_model_types
+  def test_model_save_and_load(self):
+    self._test_save_and_load(use_dataset=True)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_model_save_and_load_dataset(self):
+    self._test_save_and_load(use_dataset=True)
 
   def test_trainable_weights(self):
     layer = keras.layers.Dense(4, name='custom_layer')
@@ -158,8 +211,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop')
-    input_arr = np.random.random((1, 3)).astype(np.float32)
-    target_arr = np.random.random((1, 3)).astype(np.float32)
+    input_arr = np.random.random((1, 3))
+    target_arr = np.random.random((1, 3))
 
     # Test that symbolic losses are maintained (train_on_batch saves symbolic
     # losses.)
@@ -168,7 +221,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
-    self.assertAllEqual(previous_losses, model.losses)
+
+    with previous_losses[0].graph.as_default():
+      # If we try to compare symbolic Tensors in eager mode assertAllEqual will
+      # return False even if they are the same Tensor.
+      self.assertAllEqual(previous_losses, model.losses)
 
     if context.executing_eagerly():
       # Test that eager losses are maintained.
@@ -185,7 +242,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     input_arr = array_ops.ones((4, 3))
 
-    # Run the layer, and use the keras backend learing phase
+    # Run the layer, and use the keras backend learning phase
     keras.backend.set_learning_phase(0)
     self.assertAllEqual(input_arr, loaded(input_arr))
     keras.backend.set_learning_phase(1)
@@ -207,7 +264,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.add_loss(eager_loss)
 
     # Call predict to ensure that all layers are built and inputs are set.
-    model.predict(np.random.random((1, 3)))
+    model.predict(np.random.random((1, 3)).astype(np.float32))
     saved_model_dir = self._save_model_dir()
 
     tf_save.save(model, saved_model_dir)
@@ -228,6 +285,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_compiled_model(self):
+    # TODO(b/134519980): Issue with model.fit if the model call function uses
+    # a tf.function (Graph mode only).
+    if not context.executing_eagerly():
+      return
+
     input_arr = np.random.random((1, 3))
     target_arr = np.random.random((1, 4))
 
@@ -239,21 +301,18 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
 
-    # TODO(b/134519980): Issue with model.fit if the model call function uses
-    # a tf.function (Graph mode only).
-    with context.eager_mode():
-      loaded = keras_load.load(saved_model_dir)
-      actual_predict = loaded.predict(input_arr)
-      self.assertAllClose(expected_predict, actual_predict)
+    loaded = keras_load.load(saved_model_dir)
+    actual_predict = loaded.predict(input_arr)
+    self.assertAllClose(expected_predict, actual_predict)
 
-      loss_before = loaded.evaluate(input_arr, target_arr)
-      loaded.fit(input_arr, target_arr)
-      loss_after = loaded.evaluate(input_arr, target_arr)
-      self.assertLess(loss_after, loss_before)
-      predict = loaded.predict(input_arr)
+    loss_before = loaded.evaluate(input_arr, target_arr)
+    loaded.fit(input_arr, target_arr)
+    loss_after = loaded.evaluate(input_arr, target_arr)
+    self.assertLess(loss_after, loss_before)
+    predict = loaded.predict(input_arr)
 
-      ckpt_path = os.path.join(self.get_temp_dir(), 'weights')
-      loaded.save_weights(ckpt_path)
+    ckpt_path = os.path.join(self.get_temp_dir(), 'weights')
+    loaded.save_weights(ckpt_path)
 
     # Ensure that the checkpoint is compatible with the original model.
     model.load_weights(ckpt_path)
@@ -276,6 +335,35 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertEqual({-1: 2}, loaded.input_spec['a'].axes)
     self.assertAllEqual([None, 2, 3], loaded.input_spec['b'].shape)
     self.assertEqual('float16', loaded.input_spec['b'].dtype)
+
+  def test_must_restore_from_config_fails_if_layer_is_not_in_scope(self):
+
+    class LayerThatShouldFailIfNotAdded(keras.layers.Layer):
+      _must_restore_from_config = True
+
+    layer = LayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    with self.assertRaisesRegex(RuntimeError, 'Unable to restore a layer of'):
+      _ = keras_load.load(saved_model_dir)
+
+  def test_must_restore_from_config_custom_object_scope(self):
+
+    class LayerThatShouldFailIfNotAdded(keras.layers.Layer):
+      _must_restore_from_config = True
+
+    layer = LayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    with generic_utils.CustomObjectScope(
+        {'LayerThatShouldFailIfNotAdded': LayerThatShouldFailIfNotAdded}):
+      _ = keras_load.load(saved_model_dir)
+
+  def test_must_restore_from_config_registration(self):
+    layer = GlobalLayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    _ = keras_load.load(saved_model_dir)
 
   def test_multi_input_model(self):
     input_1 = keras.layers.Input(shape=(3,))
@@ -322,15 +410,60 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         keras.layers.BatchNormalization(input_shape=(1,)))
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
+
+    with self.captureWritesToStream(sys.stderr) as captured_logs:
+      model.save(saved_model_dir, save_format='tf')
+      loaded = keras_load.load(saved_model_dir)
+
+    # Assert that saving does not log deprecation warnings
+    # (even if it needs to set learning phase for compat reasons)
+    if context.executing_eagerly():
+      self.assertNotIn('deprecated', captured_logs.contents())
+
+    input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
+    input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
+
+    self.evaluate(loaded(input_arr, training=True))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+    self.evaluate(loaded(input_arr2, training=False))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr2))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+  def testDisablingBatchNormTrainableBeforeSaving(self):
+    # We disable trainable on the batchnorm layers before saving
+    model = keras.models.Sequential(
+        keras.layers.BatchNormalization(input_shape=(1,)))
+    model.trainable = False
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
     model.save(saved_model_dir, save_format='tf')
     loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
-    input_arr_1 = np.array([[11], [12], [13]]).astype('float32')
+    input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
+    input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
-    self.evaluate(loaded(input_arr_1, training=True))
-    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
-    self.evaluate(loaded(input_arr_1, training=False))
-    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+    # Trainable should still be disabled after loading
+    self.evaluate(loaded(input_arr, training=True))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.0])
+
+    # Re-enabling trainable on the loaded model should cause the batchnorm
+    # layer to start training again.
+    # Note: this only works in v2.
+    if context.executing_eagerly():
+      loaded.trainable = True
+      self.evaluate(loaded(input_arr, training=True))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+      self.evaluate(loaded(input_arr2, training=False))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
 
   def testSaveWithSignatures(self):
     model = keras.models.Sequential()
@@ -339,8 +472,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.add(keras.layers.Dropout(0.5))
     model.add(keras.layers.Dense(4, kernel_regularizer=regularizers.get('l2')))
 
-    input_arr = np.random.random((2, 3)).astype(np.float32)
-    target_arr = np.random.random((2, 4)).astype(np.float32)
+    input_arr = np.random.random((2, 3))
+    target_arr = np.random.random((2, 4))
 
     model.compile(
         loss='mse',
@@ -374,16 +507,17 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     self.assertAllClose(
         model.predict(input_arr),
-        loaded.signatures['predict'](
-            ops.convert_to_tensor(input_arr))['predictions'])
+        loaded.signatures['predict'](ops.convert_to_tensor_v2_with_dispatch(
+            input_arr.astype('float32')))['predictions'])
 
     feature = {
         'inputs': feature_pb2.Feature(
-            float_list=feature_pb2.FloatList(value=input_arr.flatten()))}
+            float_list=feature_pb2.FloatList(
+                value=input_arr.astype('float32').flatten()))}
     example = example_pb2.Example(
         features=feature_pb2.Features(feature=feature))
     outputs = loaded.signatures['parse_and_predict'](
-        ops.convert_to_tensor([example.SerializeToString()]))
+        ops.convert_to_tensor_v2_with_dispatch([example.SerializeToString()]))
     self.assertAllClose(model.predict(input_arr), outputs['predictions'])
     self.assertAllClose(model.layers[0](input_arr), outputs['layer_1_outputs'])
 
@@ -396,14 +530,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     class LayerWithTrainingRequiredArg(keras.engine.base_layer.Layer):
 
       def call(self, inputs, training):
-        return tf_utils.smart_cond(
-            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+        return control_flow_util.smart_cond(training, lambda: inputs * 0,
+                                            lambda: array_ops.identity(inputs))
 
     class LayerWithTrainingDefaultTrue(keras.engine.base_layer.Layer):
 
       def call(self, inputs, training=True):
-        return tf_utils.smart_cond(
-            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+        return control_flow_util.smart_cond(training, lambda: inputs * 0,
+                                            lambda: array_ops.identity(inputs))
 
     class Model(keras.models.Model):
 
@@ -425,6 +559,9 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
     model.save(saved_model_dir, save_format='tf')
     load = tf_load.load(saved_model_dir)
+
+    # Ensure that the Keras loader is able to load and build the model.
+    _ = keras_load.load(saved_model_dir)
 
     assert_training_default(load.__call__, False)
     assert_training_default(
@@ -484,11 +621,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         else:
           return inputs
 
-    t = array_ops.sequence_mask(1)
+    t = self.evaluate(array_ops.sequence_mask(1))
     inputs = keras.layers.Input(shape=(3))
     model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
 
-    input_arr = np.random.random((1, 3)).astype(np.float32)
+    input_arr = np.random.random((1, 3))
     predictions = model.predict(input_arr)
 
     saved_model_dir = self._save_model_dir()
@@ -551,8 +688,178 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertEqual('CustomAdd', type(loaded.get_layer('custom')).__name__)
     self.assertLen(loaded.get_layer('custom').weights, 1)
 
+  def _testAddUpdate(self, scope):
+    with scope:
+      layer_with_update = LayerWithUpdate()
+      model = testing_utils.get_model_from_layers([layer_with_update],
+                                                  input_shape=(3,))
 
-class TestLayerCallTracing(test.TestCase):
+      x = np.ones((10, 3))
+      if testing_utils.get_model_type() == 'subclass':
+        model.predict(x, batch_size=10)
+      self.evaluate(variables.variables_initializer(model.variables))
+      saved_model_dir = self._save_model_dir()
+      model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    loaded_layer = loaded.layers[-1]
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    self.assertEqual(self.evaluate(loaded_layer.v), 0.)
+
+    loaded.compile('sgd', 'mse')
+    loaded.fit(x, x, batch_size=10)
+    self.assertEqual(self.evaluate(loaded_layer.v), 1.)
+
+  @keras_parameterized.run_with_all_model_types
+  def testSaveLayerWithUpdates(self):
+    @tf_contextlib.contextmanager
+    def nullcontextmanager():
+      yield
+    self._testAddUpdate(nullcontextmanager())
+
+  @keras_parameterized.run_with_all_model_types
+  def testSaveInStrategyScope(self):
+    self._testAddUpdate(mirrored_strategy.MirroredStrategy().scope())
+
+  def testSaveTimeDistributedLayer(self):
+    model = keras.Sequential([
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(1, kernel_regularizer=regularizers.get('l2')),
+            input_shape=(None, 1))])
+    predictions = model.predict_on_batch(array_ops.ones((3, 2, 1)))
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllClose(loaded.predict_on_batch(array_ops.ones((3, 2, 1))),
+                        predictions)
+
+  @parameterized.named_parameters([
+      # TODO(b/148491963): Unrolling does not work with SavedModel
+      # ('with_unrolling', True),
+      ('no_unrolling', False)
+  ])
+  def testSaveStatefulRNN(self, unroll):
+    batch = 12
+    timesteps = 10
+    input_dim = 8
+    input_arr = np.ones((batch, timesteps, input_dim)).astype('float32')
+
+    cells = [keras.layers.LSTMCell(32), keras.layers.LSTMCell(64)]
+    if unroll:
+      x = keras.Input(batch_shape=(batch, timesteps, input_dim))
+    else:
+      x = keras.Input(batch_shape=(batch, None, input_dim))
+    layer = keras.layers.RNN(cells, stateful=True, unroll=unroll)
+    y = layer(x)
+
+    model = keras.Model(x, y)
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        np.zeros((batch, timesteps, input_dim)).astype('float32'),
+        np.zeros((batch, 64)).astype('float32'))
+
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    loaded_layer = loaded.layers[1]
+
+    if not context.executing_eagerly():
+      keras.backend.get_session()  # force variable initialization
+
+    self.assertAllClose(layer.states, loaded_layer.states)
+    self.assertAllClose(model(input_arr), loaded(input_arr))
+
+  def testSaveStatelessConvLSTM2D(self):
+    data_format = 'channels_first'
+    batch, timesteps, channels, rows, cols = 12, 10, 8, 4, 4
+    input_arr = np.ones(
+        (batch, timesteps, channels, rows, cols)).astype('float32')
+    layer = keras.layers.ConvLSTM2D(
+        filters=16, kernel_size=(1, 1), data_format=data_format)
+    x = keras.Input(batch_shape=(batch, timesteps, channels, rows, cols))
+    y = layer(x)
+    model = keras.Model(x, y)
+
+    predict_1 = model(input_arr)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+    del model
+
+    loaded = keras_load.load(saved_model_dir)
+    predict_2 = loaded(input_arr)
+    self.assertAllClose(predict_1, predict_2)
+
+  def testSaveWithRaggedInputs(self):
+
+    class EmbeddingMerger(keras.layers.Layer):
+
+      def __init__(self, list_features, **kwargs):
+        super().__init__(**kwargs)
+        self._supports_ragged_inputs = True
+        self.embeddings = {
+            feature: keras.layers.Embedding(10, 3) for feature in list_features}
+        self.mean = keras.layers.Lambda(
+            math_ops.reduce_mean, arguments=dict(axis=1))
+
+      def call(self, inputs):
+        tensors = [self.embeddings[col](inputs[col]) for col in inputs]
+        tensors = [self.mean(inp) for inp in tensors]
+        return keras.layers.Add()(tensors)
+
+    list_features = ['feature_1', 'feature_2']
+    feature_1 = ragged_factory_ops.constant([[0.], [1, 3]])
+    feature_2 = ragged_factory_ops.constant([[1., 2], [4]])
+    f = {'feature_1': feature_1,
+         'feature_2': feature_2}
+    f_inputs = {
+        'feature_1': keras.Input(shape=(None,), name='feature_1', ragged=True),
+        'feature_2': keras.Input(shape=(None,), name='feature_2', ragged=True)}
+
+    out = EmbeddingMerger(list_features)(f_inputs)
+    model = keras.Model(f_inputs, out)
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    self.assertAllClose(model.predict(f), loaded.predict(f))
+
+  def test_load_with_partially_failed_serialization(self):
+
+    class BadCustomLayer(keras.layers.Layer):
+
+      def __call__(self, inputs):
+        return inputs
+
+    class Model(keras.models.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.layer = BadCustomLayer()
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([None, 1])])
+      def call(self, inputs):
+        return self.layer(inputs)
+
+    model = Model()
+    inp = constant_op.constant([[1.0]])
+    model(inp)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
+    with self.assertRaisesRegex(ValueError, 'call function was not serialized'):
+      loaded.layer(inp)
+
+
+class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
 
   def test_functions_have_same_trace(self):
 
@@ -625,7 +932,7 @@ class TestLayerCallTracing(test.TestCase):
 
     assert_num_traces(LayerWithChildLayer, training_keyword=False)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_maintains_losses(self):
     layer = LayerWithLoss()
     layer(np.ones((2, 3)))
@@ -636,6 +943,158 @@ class TestLayerCallTracing(test.TestCase):
     fn(np.ones((2, 3)))
 
     self.assertAllEqual(previous_losses, layer.losses)
+
+
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class MetricTest(test.TestCase, parameterized.TestCase):
+
+  def _save_model_dir(self, dirname='saved_model'):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    return os.path.join(temp_dir, dirname)
+
+  def generate_inputs(self, num_tensor_args, shape=(1, 5)):
+    return [
+        np.random.uniform(0, 1, shape).astype('float32')
+        for _ in range(num_tensor_args)
+    ]
+
+  def _test_metric_save_and_load(self,
+                                 metric,
+                                 save_dir,
+                                 num_tensor_args,
+                                 shape=(1, 5),
+                                 test_sample_weight=True):
+    tf_save.save(metric, save_dir)
+    loaded = keras_load.load(save_dir)
+    self.evaluate([v.initializer for v in loaded.variables])
+    self.assertEqual(metric.name, loaded.name)
+    self.assertEqual(metric.dtype, loaded.dtype)
+
+    inputs = self.generate_inputs(num_tensor_args, shape)
+    actual = self.evaluate(metric(*inputs))
+    self.assertAllClose(actual, loaded(*inputs))
+    self.assertAllClose(metric.variables, loaded.variables)
+
+    # Test with separate calls to update state and result.
+    inputs = self.generate_inputs(num_tensor_args, shape)
+    self.evaluate(metric.update_state(*inputs))
+    self.evaluate(loaded.update_state(*inputs))
+    actual = self.evaluate(metric.result())
+    self.assertAllClose(actual, loaded.result())
+
+    if test_sample_weight:
+      # Test with sample weights input.
+      inputs = self.generate_inputs(num_tensor_args, shape)
+      sample_weight = self.generate_inputs(1, [])[0]
+      inputs.append(sample_weight)
+
+      actual = self.evaluate(metric(*inputs))
+      self.assertAllClose(actual, loaded(*inputs))
+    return loaded
+
+  @parameterized.named_parameters([
+      ('mean', keras.metrics.Mean, 1, (1, 5)),
+      ('false_positives', keras.metrics.FalsePositives, 2, (1, 5)),
+      ('precision_at_top_k', keras.metrics.Precision, 2, (2, 3, 4), {
+          'top_k': 2,
+          'class_id': 1
+      }),
+      ('precision_at_recall', keras.metrics.PrecisionAtRecall, 2, (1, 5), {
+          'recall': .8
+      }), ('auc', keras.metrics.AUC, 2, (1, 5), {
+          'multi_label': True
+      }), ('cosine_similarity', keras.metrics.CosineSimilarity, 2, (2, 3, 1))
+  ])
+  def test_metric(self, metric_cls, num_tensor_args, shape, init_kwargs=None):
+    init_kwargs = init_kwargs or {}
+    metric = metric_cls(**init_kwargs)
+    metric(*self.generate_inputs(num_tensor_args, shape))
+    self.evaluate([v.initializer for v in metric.variables])
+    loaded = self._test_metric_save_and_load(metric, self._save_model_dir(),
+                                             num_tensor_args, shape)
+    self.assertEqual(type(loaded), type(metric))
+
+  @parameterized.named_parameters([
+      ('mean', keras.metrics.Mean, 1, False),
+      ('auc', keras.metrics.AUC, 2, False),
+      ('mean_tensor', keras.metrics.MeanTensor, 1, True)])
+  def test_custom_metric(self, base_cls, num_tensor_args, requires_build):
+
+    class CustomMetric(base_cls):
+
+      def update_state(self, *args):  # pylint: disable=useless-super-delegation
+        # Sometimes built-in metrics return an op in update_state. Custom
+        # metrics don't support returning ops, so wrap the update_state method
+        # while returning nothing.
+        super(CustomMetric, self).update_state(*args)
+
+    with self.cached_session():
+      metric = CustomMetric()
+      save_dir = self._save_model_dir('first_save')
+
+      if requires_build:
+        metric(*self.generate_inputs(num_tensor_args))  # pylint: disable=not-callable
+
+      self.evaluate([v.initializer for v in metric.variables])
+
+      with self.assertRaisesRegex(ValueError,
+                                  'Unable to restore custom object'):
+        self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
+      with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
+        loaded = self._test_metric_save_and_load(
+            metric,
+            save_dir,
+            num_tensor_args,
+            test_sample_weight=False)
+
+        self._test_metric_save_and_load(
+            loaded,
+            self._save_model_dir('second_save'),
+            num_tensor_args,
+            test_sample_weight=False)
+
+  def test_registered_custom_metric(self):
+
+    @generic_utils.register_keras_serializable('Testing')
+    class CustomMeanMetric(keras.metrics.Mean):
+
+      def update_state(self, *args):  # pylint: disable=useless-super-delegation
+        # Sometimes built-in metrics return an op in update_state. Custom
+        # metrics don't support returning ops, so wrap the update_state method
+        # while returning nothing.
+        super(CustomMeanMetric, self).update_state(*args)
+
+    with self.cached_session():
+      metric = CustomMeanMetric()
+      save_dir = self._save_model_dir('first_save')
+      self.evaluate([v.initializer for v in metric.variables])
+      loaded = self._test_metric_save_and_load(
+          metric,
+          save_dir,
+          num_tensor_args=1,
+          test_sample_weight=False)
+
+      self._test_metric_save_and_load(
+          loaded,
+          self._save_model_dir('second_save'),
+          num_tensor_args=1,
+          test_sample_weight=False)
+
+  def test_custom_metric_wrapped_call(self):
+
+    class NegativeMean(keras.metrics.Mean):
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+      def update_state(self, value):
+        super(NegativeMean, self).update_state(-value)
+
+    metric = NegativeMean()
+    self.evaluate([v.initializer for v in metric.variables])
+    with generic_utils.CustomObjectScope({'NegativeMean': NegativeMean}):
+      self._test_metric_save_and_load(
+          metric, self._save_model_dir(), 1, test_sample_weight=False)
 
 
 if __name__ == '__main__':

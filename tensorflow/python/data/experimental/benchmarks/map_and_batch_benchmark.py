@@ -116,7 +116,7 @@ class MapAndBatchBenchmark(test.Benchmark):
     def name(method, label, num_calls, inter_op, element_size, batch_size):
       return ("%s_id_%s_num_calls_%d_inter_op_%d_elem_size_%d_batch_size_%d" % (
           method,
-          hashlib.sha1(label).hexdigest()[:8],
+          hashlib.sha1((label).encode("utf-8")).hexdigest()[:8],
           num_calls,
           inter_op,
           element_size,

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -67,17 +68,28 @@ class Thunk {
     kWhile,
   };
 
+  struct ThunkInfo {
+    // Optional. It's only used by subclasses which haven't been migrated away
+    // from HloInstructions. Once the migration is done, Thunks should be fully
+    // serializable.
+    const HloInstruction* hlo_instruction = nullptr;
+    absl::optional<int64> profile_index;
+    std::string profile_annotation;
+  };
+
   // The hlo_instruction argument is meant to be the instruction this thunk was
   // generated from, but Thunk never uses this argument other than to save it
   // to Thunk::hlo_instruction, so it can be null.
-  explicit Thunk(Kind kind, const HloInstruction* hlo_instruction)
-      : kind_(kind), hlo_instruction_(hlo_instruction) {}
+  explicit Thunk(Kind kind, ThunkInfo thunk_info)
+      : kind_(kind),
+        profile_index_(thunk_info.profile_index),
+        profile_annotation_(thunk_info.profile_annotation) {}
   virtual ~Thunk() {}
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
   Kind kind() const { return kind_; }
-  const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
+  string profile_annotation() const { return profile_annotation_; }
 
   // Prepares the thunk for execution on the given StreamExecutor.
   //
@@ -95,8 +107,11 @@ class Thunk {
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
     RunId run_id;
-    HloExecutionProfiler* profiler;       // never null
-    const DeviceAssignment* device_assn;  // never null
+    HloExecutionProfiler* profiler;                               // never null
+    const DeviceAssignment* device_assn;                          // never null
+    std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
+    const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
+    const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be
@@ -107,23 +122,24 @@ class Thunk {
   virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
  protected:
-  const HloModuleConfig& GetModuleConfig() const {
-    return hlo_instruction()->GetModule()->config();
-  }
+  absl::optional<int64> profile_index() const { return profile_index_; }
 
   // Safely copies the given buffer to the GPU, deleting it on the host only
   // after the copy has completed.
   template <typename T>
-  void SafeH2DMemcpy(se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf,
-                     int64 count, se::Stream* stream) {
+  void SafeH2DMemcpy(
+      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64 count,
+      se::Stream* stream,
+      std::vector<std::function<void()>>* deferred_host_callbacks) {
     stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));
     auto* buf_raw = buf.release();
-    stream->ThenRunAfterNextBlockHostUntilDone([buf_raw] { delete[] buf_raw; });
+    deferred_host_callbacks->push_back([buf_raw] { delete[] buf_raw; });
   }
 
  private:
   Kind kind_;
-  const HloInstruction* hlo_instruction_;
+  absl::optional<int64> profile_index_;
+  std::string profile_annotation_;
 };
 
 // A sequence of thunks.

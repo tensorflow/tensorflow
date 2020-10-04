@@ -28,8 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -44,6 +43,7 @@ Status TRTOptimizationPass::Init(
   if (config == nullptr) {
     return Status::OK();
   }
+  VLOG(1) << "config = " << config->DebugString();
   const auto params = config->parameter_map();
   if (params.count("minimum_segment_size")) {
     minimum_segment_size_ = params.at("minimum_segment_size").i();
@@ -67,6 +67,15 @@ Status TRTOptimizationPass::Init(
   if (params.count("use_calibration")) {
     use_calibration_ = params.at("use_calibration").b();
   }
+  if (params.count("trt_logger")) {
+    trt_logger_name_ = params.at("trt_logger").s();
+  }
+  if (params.count("allow_build_at_runtime")) {
+    allow_build_at_runtime_ = params.at("allow_build_at_runtime").b();
+  }
+  if (params.count("use_implicit_batch")) {
+    use_implicit_batch_ = params.at("use_implicit_batch").b();
+  }
   return Status::OK();
 }
 
@@ -77,13 +86,14 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   string offset2 = StrCat(offset, offset);
   string offset3 = StrCat(offset2, offset);
   string offset4 = StrCat(offset2, offset2);
+
   if (cluster) {
     LOG(INFO) << offset << "type             = " << cluster->type();
     LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
     const auto dev_names = cluster->GetDeviceNames();
     if (!dev_names.empty()) {
       LOG(INFO) << offset << " Device names:";
-      for (const auto s : dev_names) {
+      for (const auto& s : dev_names) {
         LOG(INFO) << offset2 << s;
       }
     }
@@ -91,7 +101,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
     auto status = cluster->GetPeakMemoryUsage(&peak_mem);
     if (status == Status::OK()) {
       LOG(INFO) << offset << "Peak Memory Usage :";
-      for (auto s : peak_mem) {
+      for (const auto& s : peak_mem) {
         LOG(INFO) << offset2 << s.first << " = " << s.second;
       }
     }
@@ -99,7 +109,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
     const auto dev_props = cluster->GetDevices();
     if (!dev_props.empty()) {
       LOG(INFO) << offset << "Device properties:";
-      for (auto k : dev_props) {
+      for (const auto& k : dev_props) {
         LOG(INFO) << offset2 << k.first;
         const auto& dt = k.second;
         LOG(INFO) << offset3 << "type          = " << dt.type();
@@ -117,13 +127,21 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
         LOG(INFO) << offset3 << "bandwidth     = " << dt.bandwidth();
         if (dt.environment_size()) {
           LOG(INFO) << offset3 << "environment   :";
-          for (const auto e : dt.environment()) {
+          for (const auto& e : dt.environment()) {
             LOG(INFO) << offset4 << e.first << " = " << e.second;
           }
         }
       }
     }
+
+    if (cluster->GetDeviceSet()) {
+      for (const auto dev : cluster->GetDeviceSet()->devices()) {
+        LOG(INFO) << "Device name= " << dev->name() << "Pased name= "
+                  << DeviceNameUtils::ParsedNameToString(dev->parsed_name());
+      }
+    }
   }
+
   LOG(INFO) << "item: " << item.id;
   if (!item.feed.empty()) {
     LOG(INFO) << offset << "Feeds  :";
@@ -162,13 +180,6 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   } else {
     LOG(INFO) << offset << "No keep ops";
   }
-  for (const auto dev : cluster->GetDeviceSet()->devices()) {
-    const auto& pname = dev->parsed_name();
-    LOG(INFO) << "Device name= " << dev->name()
-              << " parsedname job= " << pname.job << " id= " << pname.id
-              << " has_id: " << pname.has_id << " has_job: " << pname.has_job
-              << "has_type: " << pname.has_type << " type =" << pname.type;
-  }
 }
 
 Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
@@ -180,9 +191,11 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   // generated funcdefs! This is fragile but we don't have any other option
   // until framework fixes it.
   if (item.id != "tf_graph") {
-    LOG(WARNING) << name_
-                 << " is probably called on funcdef! This optimizer must *NOT* "
-                    "be called on function objects.";
+    VLOG(1) << "Called TRTOptimization Pass " << name_
+            << " on a grappler item with id=" << item.id
+            << ", which is probably a function object (funcdef). "
+            << "Skipping optimization because TensorRTOptimizer "
+            << "should not be called on function objects.";
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -216,9 +229,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
                 << "This can result in poor performance.";
     }
   }
-  grappler::GraphProperties static_graph_properties(item);
-  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
-  ConversionParams cp;
 
   if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
     VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
@@ -243,18 +253,22 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     }
     nodes_to_preserve.push_back(s);
   }
-  cp.input_graph_def = &item.graph;
+
+  ConversionParams cp;
+  cp.grappler_item = &item;
   cp.output_names = &nodes_to_preserve;
+  cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
   cp.max_workspace_size_bytes = max_workspace_size_bytes_;
   cp.output_graph_def = optimized_graph;
   cp.precision_mode = precision_mode_;
   cp.minimum_segment_size = minimum_segment_size_;
-  cp.graph_properties = &static_graph_properties;
   cp.cluster = cluster;
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
+  cp.use_implicit_batch = use_implicit_batch_;
+  cp.allow_build_at_runtime = allow_build_at_runtime_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;
@@ -289,5 +303,4 @@ static VerboseCustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

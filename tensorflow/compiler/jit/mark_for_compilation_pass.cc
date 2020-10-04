@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
@@ -31,14 +32,15 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -160,6 +161,11 @@ class MarkForCompilationPassImpl {
     // The ID of the cluster as represented in `cycles_graph_`.
     int cycles_graph_node_id() const { return cycles_graph_node_id_; }
 
+    // Sets the ID of the cluster as represented in `cycles_graph_`.
+    void set_cycles_graph_node_id(int cycles_graph_node_id) {
+      cycles_graph_node_id_ = cycles_graph_node_id;
+    }
+
     // The size of the cluster excluding constant and identity nodes.
     int effective_cluster_size() const { return effective_cluster_size_; }
 
@@ -208,8 +214,13 @@ class MarkForCompilationPassImpl {
         return absl::StrCat("NULL NODE IN #", cycles_graph_node_id());
       }
 
-      return absl::StrCat("<", node->name(), " + ", cluster_size(), " others #",
-                          cycles_graph_node_id(), ">");
+      if (cluster_size() == 1) {
+        return absl::StrCat("<", node->name(), " #", cycles_graph_node_id(),
+                            ">");
+      }
+
+      return absl::StrCat("<", node->name(), " + ", cluster_size() - 1,
+                          " others #", cycles_graph_node_id(), ">");
     }
 
    private:
@@ -375,14 +386,16 @@ class MarkForCompilationPassImpl {
   // R, B} cluster.
   string DescribePotentialCycle(int from, int to);
 
-  // Merge the clusters `cluster_from` and `cluster_to`.  After this step the
-  // larger combined cluster is represented by `cluster_from`'s ID in
-  // `cycles_graph_`.
+  // Merge the clusters `cluster_from` and `cluster_to`. After this step the
+  // larger combined cluster is represented by `cluster_from`, but can have
+  // `cycles_graph_`'s ID of either `cluster_from` or `cluster_to` depending on
+  // which way will require less operations.
   bool MergeClusters(Cluster* cluster_from, Cluster* cluster_to) {
     int from = cluster_from->cycles_graph_node_id();
     int to = cluster_to->cycles_graph_node_id();
 
-    if (!cycles_graph_.ContractEdge(from, to)) {
+    auto optional_merged_node = cycles_graph_.ContractEdge(from, to);
+    if (!optional_merged_node.has_value()) {
       VLOG(3) << "Could not contract " << cluster_from->DebugString(*graph_)
               << " -> " << cluster_to->DebugString(*graph_)
               << " because contracting the edge would create a cycle via "
@@ -392,6 +405,8 @@ class MarkForCompilationPassImpl {
 
     // Merge the clusters.
     cluster_from->Merge(cluster_to);
+    // Update `cycle_graph_`'s ID.
+    cluster_from->set_cycles_graph_node_id(optional_merged_node.value());
 
     // Merge the UnionFind<Cluster*>.
     cluster_for_node_[from].Merge(&cluster_for_node_[to]);
@@ -957,6 +972,22 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
   return absl::nullopt;
 }
 
+// Returns true iff the attribute `attr_name` is attached to either the node or
+// to it's callee.
+static bool GetNodeOrFuncAttr(Node* node, FunctionLibraryDefinition* flib_def,
+                              const char* attr_name) {
+  bool out = false;
+  bool attr_value;
+  if (TryGetNodeAttr(node->attrs(), attr_name, &attr_value)) {
+    out |= attr_value;
+  }
+
+  if (flib_def->GetAttr(*node, attr_name, &attr_value).ok()) {
+    out |= attr_value;
+  }
+  return out;
+}
+
 Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
     return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
@@ -1010,16 +1041,10 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
       resource_var_operation_node_id = node->id();
     }
 
-    bool is_xla_compile_attr_true = false;
-
-    bool xla_compile_attr;
-    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
-
-    if (flib_def_->GetAttr(*node, kXlaCompileAttr, &xla_compile_attr).ok()) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
+    bool is_xla_compile_attr_true =
+        GetNodeOrFuncAttr(node, flib_def_, kXlaCompileAttr) ||
+        (global_jit_level_ != OptimizerOptions::OFF &&
+         GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr));
 
     DeviceSet devices;
     devices.Insert(device);
@@ -1071,20 +1096,48 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
+absl::flat_hash_set<string> GetOrCreateAllowlist() {
+  absl::flat_hash_map<string, std::vector<string>>* allowlist_table =
+      tensorflow::GetAllowlistTable();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+  absl::flat_hash_set<string> allowlist;
+
+  for (auto s : absl::StrSplit(flags->tf_xla_ops_to_cluster, ',')) {
+    if (s == "FUSIBLE") {
+      for (auto pair : *allowlist_table) {
+        allowlist.insert(pair.second.begin(), pair.second.end());
+      }
+    } else if (allowlist_table->contains(s)) {
+      auto v = allowlist_table->at(s);
+      allowlist.insert(v.begin(), v.end());
+    } else if (!s.empty()) {
+      // Should be a user provided TF operation.
+      allowlist.insert(string(s));
+    }
+  }
+
+  if (VLOG_IS_ON(2) && !allowlist.empty()) {
+    std::vector<string> vallowlist(allowlist.begin(), allowlist.end());
+    absl::c_sort(vallowlist);
+    VLOG(2) << "XLA clustering will only consider the following TF operations: "
+            << absl::StrJoin(vallowlist, " ");
+  }
+  return allowlist;
+}
+
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, env_, TF_GRAPH_DEF_VERSION,
-                                        flib_def_, opts));
+      new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
+                                        TF_GRAPH_DEF_VERSION, flib_def_, opts));
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   std::vector<bool> compile_time_const_nodes(graph_->num_node_ids(), false);
   TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
       *graph_, /*compile_time_const_arg_indices=*/nullptr,
       &compile_time_const_nodes, lib_runtime));
-
   // Iterate over nodes in sorted order so that compiler fuel is deterministic.
-  // We can't simply pass op_nodes().begin() and op_nodes().end to the
+  // We can't simply pass op_nodes().begin() and op_nodes().end() to the
   // std::vector constructor because they're not proper iterators, with
   // iterator_traits defined and so on.
   std::vector<Node*> sorted_nodes;
@@ -1102,6 +1155,19 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   }
 
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
+
+  auto allowlist = GetOrCreateAllowlist();
+
+  std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
+  absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
+  // Check that user's provided TF operation really exists.
+  for (const auto& s : allowlist) {
+    if (!all_ops.contains(string(s))) {
+      return errors::InvalidArgument(
+          "The operation '", s,
+          "' passed to --tf_xla_ops_to_cluster is not supported by XLA.");
+    }
+  }
 
   for (Node* node : sorted_nodes) {
     if (*debug_options_.fuel <= 0) {
@@ -1130,13 +1196,16 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    DeviceType jit_device_type(registration->compilation_device_name);
-
-    RecursiveCompilabilityChecker::OperationFilter op_filter =
-        CreateOperationFilter(*registration);
-
-    if (!RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
+    if (!RecursiveCompilabilityChecker{
+            CreateOperationFilter(*registration),
+            DeviceType{registration->compilation_device_name}}
              .IsCompilableNode(*node, lib_runtime)) {
+      continue;
+    }
+
+    if (!allowlist.empty() && !allowlist.contains(node->def().op())) {
+      VLOG(1) << "Rejecting TF operation " << node->def().op()
+              << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
     }
 
@@ -1361,7 +1430,7 @@ Status MarkForCompilationPassImpl::Run() {
 void MarkForCompilationPassImpl::DumpPostClusteringGraphs() {
   DumpGraphToFile("mark_for_compilation", *graph_, flib_def_);
 
-  // We also dump out an annoated version of the TF graph where the nodes
+  // We also dump out an annotated version of the TF graph where the nodes
   // names are prefixed with the cluster names.  This can help visualizing the
   // clustering decisions on TensorBoard.
   Graph new_graph(graph_->op_registry());
@@ -1403,7 +1472,7 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
           << RatioToString(auto_clustering_info.clustered_node_count(),
                            graph_->num_nodes());
 
-  for (XlaAutoClusteringSummary::Cluster cluster :
+  for (const XlaAutoClusteringSummary::Cluster& cluster :
        auto_clustering_info.clusters()) {
     absl::string_view cluster_name = cluster.name();
     int size = cluster.size();
@@ -1564,8 +1633,8 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
 
   if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
-    static std::once_flag once;
-    std::call_once(once, [] {
+    static absl::once_flag once;
+    absl::call_once(once, [] {
       LOG(WARNING)
           << "(One-time warning): Not using XLA:CPU for cluster because envvar "
              "TF_XLA_FLAGS=--tf_xla_cpu_global_jit was not set.  If you want "
@@ -1639,40 +1708,6 @@ std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
 }
 }  // anonymous namespace
 
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
-                  RecursiveCompilabilityChecker::UncompilableNodesMap*
-                      uncompilable_node_info) {
-  Device* device = flr->device();
-  const XlaOpRegistry::DeviceRegistration* registration;
-  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
-                                            &registration));
-  DeviceType jit_device_type(registration->compilation_device_name);
-
-  // We can always *compile* resource operations, stateful RNGs and dummy ops,
-  // even if we are sometimes unable to auto-cluster them.
-  RecursiveCompilabilityChecker::OperationFilter op_filter;
-  op_filter.allow_resource_ops_in_called_functions = true;
-  op_filter.allow_stack_ops = true;
-  op_filter.allow_tensor_array_ops = true;
-  op_filter.allow_stateful_rng_ops = true;
-  op_filter.allow_control_trigger = true;
-  op_filter.allow_eliding_assert_and_checknumerics_ops = true;
-  op_filter.allow_ops_producing_or_consuming_variant = true;
-  op_filter.allow_slow_ops = true;
-  op_filter.allow_inaccurate_ops = true;
-
-  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
-  if (!uncompilable_node_info) {
-    // We do not need uncompilable node info. Just return the result.
-    return checker.IsCompilableCall(ndef, flr);
-  }
-
-  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_node_result =
-      checker.FindUncompilableNodes(ndef, flr);
-  uncompilable_node_info->swap(uncompilable_node_result);
-  return uncompilable_node_info->empty();
-}
-
 Status MarkForCompilationPass::Run(
     const GraphOptimizationPassOptions& options) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
@@ -1709,7 +1744,332 @@ Status MarkForCompilationPass::RunForTest(
   return MarkForCompilation(options, debug_options);
 }
 
+absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
+  // Table format: category name: {list of TF operations in that category}
+  static absl::flat_hash_map<string, std::vector<string>>* result =
+      new absl::flat_hash_map<string, std::vector<string>>{
+          // Unary
+          {"PW",
+           {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
+            "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp", "Expm1",
+            "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal", "Log",
+            "Log1p", "Invert", "LogicalNot", "Ndtri", "Neg", "Rint", "Round",
+            "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
+            "Square", "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Erfinv",
+            "Lgamma", "Digamma",
+            // Binary
+            "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
+            "MulNoNan", "FloorDiv", "Xlogy", "Xlog1py", "Xdivy", "FloorMod",
+            "BitwiseAnd", "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift",
+            "LogicalAnd", "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
+            "ReciprocalGrad", "RsqrtGrad", "SqrtGrad", "TruncateDiv",
+            "TruncateMod", "Equal", "NotEqual", "Greater", "GreaterEqual",
+            "Less", "LessEqual", "SigmoidGrad", "SoftplusGrad", "SoftsignGrad",
+            "TanhGrad", "Pow", "SquaredDifference", "ApproximateEqual",
+            // Others
+            "AddN", "Bitcast", "Cast", "ClipByValue", "Const", "Empty",
+            "Identity", "IdentityN", "Relu", "Relu6", "ReluGrad", "Relu6Grad",
+            "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
+            "SelectV2", "Transpose", "ConjugateTranspose",
+            "_UnaryOpsComposition",
+            // The following 4 operations are converted to identity
+            "PlaceholderWithDefault", "PreventGradient", "StopGradient",
+            "Snapshot"}},
+          // clang-format off
+    {"RED",
+     {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
+          // clang-format on
+          {"PWRED",
+           {"ArgMax", "ArgMin", "DiagPart", "Softmax",
+            "SparseSoftmaxCrossEntropyWithLogits", "LogSoftmax"}},
+          {"REDUCEWINDOW",
+           {"ArgMax", "ArgMin", "DiagPart", "Softmax",
+            "SparseSoftmaxCrossEntropyWithLogits", "LogSoftmax"}},
+          {"REDUCEWINDOWPW", {"BiasAddGrad", "LRN", "LRNGrad"}},
+          {"BN",
+           {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3",
+            "_FusedBatchNormEx", "FusedBatchNormGrad", "FusedBatchNormGradV2",
+            "FusedBatchNormGradV3"}},
+          {"SORT", {"TopKV2"}},  // XLA version much faster then TF version.
+          {"MISC",
+           // clang-format off
+     {"BroadcastTo", "ExpandDims", "Fill", "NoOp",
+      "Range", "Rank", "Reshape", "Shape", "ShapeN", "Size", "Squeeze",
+      "Transpose", "ZerosLike", "OnesLike", "BiasAdd" /*PW + Broadcast*/,
+      "BroadcastArgs", "BroadcastGradientArgs", "OneHot", "Concat", "ConcatV2",
+      "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
+      "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
+      "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
+      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex",
+      "TensorStridedSliceUpdate",
+     }}};
+  // clang-format on
+  return result;
+}
+
 namespace testing {
 void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
+
+absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
+  absl::flat_hash_set<string> result{"AdjustContrastv2",
+                                     "AdjustHue",
+                                     "AdjustSaturation",
+                                     "Asinh",
+                                     "Assert",
+                                     "AssignAddVariableOp",
+                                     "AssignSubVariableOp",
+                                     "AssignVariableOp",
+                                     "AvgPool",
+                                     "AvgPool3D",
+                                     "AvgPool3DGrad",
+                                     "AvgPoolGrad",
+                                     "BatchMatMul",
+                                     "BatchMatMulV2",
+                                     "BatchToSpace",
+                                     "BatchToSpaceND",
+                                     "BesselI0e",
+                                     "BesselI1e",
+                                     "Betainc",
+                                     "BiasAddV1",
+                                     "Bucketize",
+                                     "Case",
+                                     "CheckNumerics",
+                                     "Cholesky",
+                                     "ControlTrigger",
+                                     "Conv2D",
+                                     "Conv2DBackpropFilter",
+                                     "Conv2DBackpropInput",
+                                     "Conv3D",
+                                     "Conv3DBackpropFilterV2",
+                                     "Conv3DBackpropInputV2",
+                                     "Cross",
+                                     "Cumprod",
+                                     "Cumsum",
+                                     "DataFormatDimMap",
+                                     "DataFormatVecPermute",
+                                     "DepthToSpace",
+                                     "DepthwiseConv2dNative",
+                                     "DepthwiseConv2dNativeBackpropFilter",
+                                     "DepthwiseConv2dNativeBackpropInput",
+                                     "Dequantize",
+                                     "Diag",
+                                     "DynamicStitch",
+                                     "Einsum",
+                                     "EmptyTensorList",
+                                     "EnsureShape",
+                                     "ExtractImagePatches",
+                                     "Igamma",
+                                     "IgammaGradA",
+                                     "RandomGammaGrad",
+                                     "Igammac",
+                                     "FFT",
+                                     "FFT2D",
+                                     "FFT3D",
+                                     "FakeParam",
+                                     "FakeQuantWithMinMaxArgs",
+                                     "FakeQuantWithMinMaxArgsGradient",
+                                     "FakeQuantWithMinMaxVars",
+                                     "FakeQuantWithMinMaxVarsGradient",
+                                     "Gather",
+                                     "GatherNd",
+                                     "GatherV2",
+                                     "HSVToRGB",
+                                     "IFFT",
+                                     "IFFT2D",
+                                     "IFFT3D",
+                                     "IRFFT",
+                                     "IRFFT2D",
+                                     "IRFFT3D",
+                                     "If",
+                                     "InTopKV2",
+                                     "L2Loss",
+                                     "LeakyRelu",
+                                     "LinSpace",
+                                     "ListDiff",
+                                     "LogMatrixDeterminant",
+                                     "LowerBound",
+                                     "MatMul",
+                                     "MatrixBandPart",
+                                     "MatrixDiag",
+                                     "MatrixDiagPart",
+                                     "MatrixDiagPartV2",
+                                     "MatrixDiagPartV3",
+                                     "MatrixDiagV2",
+                                     "MatrixDiagV3",
+                                     "MatrixInverse",
+                                     "MatrixSetDiag",
+                                     "MatrixSetDiagV2",
+                                     "MatrixSetDiagV3",
+                                     "MatrixSolve",
+                                     "MatrixTriangularSolve",
+                                     "MaxPool",
+                                     "MaxPool3D",
+                                     "MaxPool3DGrad",
+                                     "MaxPool3DGradGrad",
+                                     "MaxPoolGrad",
+                                     "MaxPoolGradGrad",
+                                     "MaxPoolGradGradV2",
+                                     "MaxPoolGradV2",
+                                     "MaxPoolV2",
+                                     "Multinomial",
+                                     "NextAfter",
+                                     "NonMaxSuppressionV4",
+                                     "ParallelDynamicStitch",
+                                     "ParameterizedTruncatedNormal",
+                                     "PartitionedCall",
+                                     "Polygamma",
+                                     "PopulationCount",
+                                     "Qr",
+                                     "QuantizeAndDequantizeV2",
+                                     "QuantizeAndDequantizeV3",
+                                     "RFFT",
+                                     "RFFT2D",
+                                     "RFFT3D",
+                                     "RGBToHSV",
+                                     "RandomShuffle",
+                                     "RandomStandardNormal",
+                                     "RandomUniform",
+                                     "RandomUniformInt",
+                                     "ReadVariableOp",
+                                     "ResizeBilinear",
+                                     "ResizeBilinearGrad",
+                                     "ResizeNearestNeighbor",
+                                     "ResourceApplyAdaMax",
+                                     "ResourceApplyAdadelta",
+                                     "ResourceApplyAdagrad",
+                                     "ResourceApplyAdagradDA",
+                                     "ResourceApplyAdagradV2",
+                                     "ResourceApplyAdam",
+                                     "ResourceApplyAddSign",
+                                     "ResourceApplyCenteredRMSProp",
+                                     "ResourceApplyFtrl",
+                                     "ResourceApplyFtrlV2",
+                                     "ResourceApplyGradientDescent",
+                                     "ResourceApplyKerasMomentum",
+                                     "ResourceApplyMomentum",
+                                     "ResourceApplyPowerSign",
+                                     "ResourceApplyProximalAdagrad",
+                                     "ResourceApplyProximalGradientDescent",
+                                     "ResourceApplyRMSProp",
+                                     "ResourceGather",
+                                     "ResourceScatterAdd",
+                                     "ResourceScatterDiv",
+                                     "ResourceScatterMax",
+                                     "ResourceScatterMin",
+                                     "ResourceScatterMul",
+                                     "ResourceScatterNdAdd",
+                                     "ResourceScatterNdSub",
+                                     "ResourceScatterNdUpdate",
+                                     "ResourceScatterSub",
+                                     "ResourceScatterUpdate",
+                                     "RngReadAndSkip",
+                                     "RngSkip",
+                                     "Roll",
+                                     "ScatterNd",
+                                     "SelfAdjointEigV2",
+                                     "SoftmaxCrossEntropyWithLogits",
+                                     "SpaceToBatch",
+                                     "SpaceToBatchND",
+                                     "SpaceToDepth",
+                                     "SparseMatMul",
+                                     "SparseToDense",
+                                     "StackCloseV2",
+                                     "StackPopV2",
+                                     "StackPushV2",
+                                     "StackV2",
+                                     "StatefulPartitionedCall",
+                                     "StatefulStandardNormalV2",
+                                     "StatefulTruncatedNormal",
+                                     "StatefulUniform",
+                                     "StatefulUniformFullInt",
+                                     "StatefulUniformInt",
+                                     "StatelessCase",
+                                     "StatelessIf",
+                                     "StatelessMultinomial",
+                                     "StatelessRandomGetKeyCounterAlg",
+                                     "StatelessRandomNormal",
+                                     "StatelessRandomNormalV2",
+                                     "StatelessRandomUniform",
+                                     "StatelessRandomUniformV2",
+                                     "StatelessRandomUniformInt",
+                                     "StatelessRandomUniformIntV2",
+                                     "StatelessRandomUniformFullInt",
+                                     "StatelessRandomUniformFullIntV2",
+                                     "StatelessTruncatedNormal",
+                                     "StatelessTruncatedNormalV2",
+                                     "StatelessWhile",
+                                     "Svd",
+                                     "SymbolicGradient",
+                                     "TensorArrayCloseV3",
+                                     "TensorArrayConcatV3",
+                                     "TensorArrayGatherV3",
+                                     "TensorArrayGradV3",
+                                     "TensorArrayReadV3",
+                                     "TensorArrayScatterV3",
+                                     "TensorArraySizeV3",
+                                     "TensorArraySplitV3",
+                                     "TensorArrayV3",
+                                     "TensorArrayWriteV3",
+                                     "TensorListConcatV2",
+                                     "TensorListElementShape",
+                                     "TensorListFromTensor",
+                                     "TensorListGather",
+                                     "TensorListGetItem",
+                                     "TensorListLength",
+                                     "TensorListPopBack",
+                                     "TensorListPushBack",
+                                     "TensorListReserve",
+                                     "TensorListSetItem",
+                                     "TensorListSplit",
+                                     "TensorListStack",
+                                     "TensorScatterAdd",
+                                     "TensorScatterMax",
+                                     "TensorScatterMin",
+                                     "TensorScatterSub",
+                                     "TensorScatterUpdate",
+                                     "TridiagonalSolve",
+                                     "TruncatedNormal",
+                                     "UpperBound",
+                                     "UnsortedSegmentMax",
+                                     "UnsortedSegmentMin",
+                                     "UnsortedSegmentProd",
+                                     "UnsortedSegmentSum",
+                                     "VarIsInitializedOp",
+                                     "VariableShape",
+                                     "While",
+                                     "XlaBroadcastHelper",
+                                     "XlaConv",
+                                     "XlaDequantize",
+                                     "XlaDot",
+                                     "XlaDynamicSlice",
+                                     "XlaDynamicUpdateSlice",
+                                     "XlaEinsum",
+                                     "XlaGather",
+                                     "XlaIf",
+                                     "XlaKeyValueSort",
+                                     "XlaPad",
+                                     "XlaRecv",
+                                     "XlaReduce",
+                                     "XlaReduceWindow",
+                                     "XlaReplicaId",
+                                     "XlaScatter",
+                                     "XlaSelectAndScatter",
+                                     "XlaSelfAdjointEig",
+                                     "XlaSend",
+                                     "XlaSetBound",
+                                     "XlaSharding",
+                                     "XlaSort",
+                                     "XlaSpmdFullToShardShape",
+                                     "XlaSpmdShardToFullShape",
+                                     "XlaSvd",
+                                     "XlaWhile",
+                                     "Zeta",
+                                     "_Arg",
+                                     "_ArrayToList",
+                                     "_ListToArray",
+                                     "_Retval"};
+  return result;
+}
+
 }  // namespace testing
 }  // namespace tensorflow

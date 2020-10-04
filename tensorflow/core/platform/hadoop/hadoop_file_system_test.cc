@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/core/platform/hadoop/hadoop_file_system.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "third_party/hadoop/hdfs.h"
 
 namespace tensorflow {
 namespace {
@@ -120,12 +121,12 @@ TEST_F(HadoopFileSystemTest, FileExists) {
 
 TEST_F(HadoopFileSystemTest, GetChildren) {
   const string base = TmpDir("GetChildren");
-  TF_EXPECT_OK(hdfs.CreateDir(base));
+  TF_EXPECT_OK(hdfs.CreateDir(base, nullptr));
 
   const string file = io::JoinPath(base, "testfile.csv");
   TF_EXPECT_OK(WriteString(file, "blah"));
   const string subdir = io::JoinPath(base, "subdir");
-  TF_EXPECT_OK(hdfs.CreateDir(subdir));
+  TF_EXPECT_OK(hdfs.CreateDir(subdir, nullptr));
 
   std::vector<string> children;
   TF_EXPECT_OK(hdfs.GetChildren(base, &children));
@@ -150,7 +151,7 @@ TEST_F(HadoopFileSystemTest, GetFileSize) {
 
 TEST_F(HadoopFileSystemTest, CreateDirStat) {
   const string dir = TmpDir("CreateDirStat");
-  TF_EXPECT_OK(hdfs.CreateDir(dir));
+  TF_EXPECT_OK(hdfs.CreateDir(dir, nullptr));
   FileStatistics stat;
   TF_EXPECT_OK(hdfs.Stat(dir, &stat));
   EXPECT_TRUE(stat.is_directory);
@@ -159,7 +160,7 @@ TEST_F(HadoopFileSystemTest, CreateDirStat) {
 TEST_F(HadoopFileSystemTest, DeleteDir) {
   const string dir = TmpDir("DeleteDir");
   EXPECT_FALSE(hdfs.DeleteDir(dir).ok());
-  TF_EXPECT_OK(hdfs.CreateDir(dir));
+  TF_EXPECT_OK(hdfs.CreateDir(dir, nullptr));
   TF_EXPECT_OK(hdfs.DeleteDir(dir));
   FileStatistics stat;
   EXPECT_FALSE(hdfs.Stat(dir, &stat).ok());
@@ -235,6 +236,95 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   TF_EXPECT_OK(writer->Close());
 }
 
+TEST_F(HadoopFileSystemTest, ReadWhileOverwriting) {
+  static char set_disable_var[] = "HDFS_DISABLE_READ_EOF_RETRIED=1";
+  putenv(set_disable_var);
+  const string fname = TmpDir("ReadWhileOverwriting");
+
+  if (!str_util::StartsWith(fname, "hdfs://")) {
+    return;
+  }
+
+  const string content1 = "content1";
+  TF_ASSERT_OK(WriteString(fname, content1));
+
+  std::unique_ptr<RandomAccessFile> reader;
+  TF_EXPECT_OK(hdfs.NewRandomAccessFile(fname, &reader));
+
+  string got;
+  got.resize(content1.size());
+  StringPiece result;
+  TF_EXPECT_OK(reader->Read(0, content1.size(), &result, &*got.begin()));
+  EXPECT_EQ(content1, result);
+
+  TF_EXPECT_OK(hdfs.DeleteFile(fname));
+
+  string content2 = "overwrite";
+  TF_ASSERT_OK(WriteString(fname, content1 + content2));
+
+  got.resize(content2.size());
+  reader->Read(content1.size(), content2.size(), &result, &*got.begin());
+  EXPECT_EQ(0, result.size());
+
+  static char set_enable_var[] = "HDFS_DISABLE_READ_EOF_RETRIED=0";
+  putenv(set_enable_var);
+}
+
+TEST_F(HadoopFileSystemTest, HarSplit) {
+  string har_path =
+      "har://hdfs-root/user/j.doe/my_archive.har/dir0/dir1/file.txt";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har/dir0/dir1/file.txt", path);
+  string nn(namenode);
+  TF_EXPECT_OK(SplitArchiveNameAndPath(path, nn));
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", nn);
+  EXPECT_EQ("/dir0/dir1/file.txt", path);
+}
+
+TEST_F(HadoopFileSystemTest, NoHarExtension) {
+  string har_path = "har://hdfs-root/user/j.doe/my_archive/dir0/dir1/file.txt";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive/dir0/dir1/file.txt", path);
+  string nn(namenode);
+  EXPECT_EQ(errors::InvalidArgument("").code(),
+            SplitArchiveNameAndPath(path, nn).code());
+}
+
+TEST_F(HadoopFileSystemTest, HarRootPath) {
+  string har_path = "har://hdfs-root/user/j.doe/my_archive.har";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har", path);
+  string nn(namenode);
+  TF_EXPECT_OK(SplitArchiveNameAndPath(path, nn));
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", nn);
+  EXPECT_EQ("/", path);
+}
+
+TEST_F(HadoopFileSystemTest, WriteBigFile) {
+  const string fname = TmpDir("BigFile");
+  const size_t file_len =
+      static_cast<size_t>(std::numeric_limits<tSize>::max()) + 1024;
+  // Fake a test string .
+  char* p = new char[file_len];
+  for (size_t i = 0; i < file_len; ++i) {
+    *(p + i) = (i % 128);
+  }
+  string file_write_content(p, file_len);
+  TF_ASSERT_OK(WriteString(fname, file_write_content));
+  string file_read_content;
+  TF_EXPECT_OK(ReadAll(fname, &file_read_content));
+  EXPECT_EQ(file_write_content, file_read_content);
+  delete p;
+}
 // NewAppendableFile() is not testable. Local filesystem maps to
 // ChecksumFileSystem in Hadoop, where appending is an unsupported operation.
 

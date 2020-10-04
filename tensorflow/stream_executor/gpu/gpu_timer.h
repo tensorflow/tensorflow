@@ -30,7 +30,7 @@ class GpuExecutor;
 class GpuStream;
 
 // Wraps a pair of GpuEventHandles in order to satisfy the platform-independent
-// TimerInferface -- both a start and a stop event are present which may be
+// TimerInterface -- both a start and a stop event are present which may be
 // recorded in a stream.
 class GpuTimer : public internal::TimerInterface {
  public:

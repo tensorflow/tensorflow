@@ -158,6 +158,29 @@ typename Collection::value_type::second_type& LookupOrInsert(
                         typename Collection::value_type(key, value));
 }
 
+// Saves the reverse mapping into reverse. Returns true if values could all be
+// inserted.
+template <typename M, typename ReverseM>
+bool ReverseMap(const M& m, ReverseM* reverse) {
+  bool all_unique = true;
+  for (const auto& kv : m) {
+    if (!InsertOrUpdate(reverse, kv.second, kv.first)) {
+      all_unique = false;
+    }
+  }
+  return all_unique;
+}
+
+// Like ReverseMap above, but returns its output m. Return type has to
+// be specified explicitly. Example:
+// M::M(...) : m_(...), r_(ReverseMap<decltype(r_)>(m_)) {}
+template <typename ReverseM, typename M>
+ReverseM ReverseMap(const M& m) {
+  typename std::remove_const<ReverseM>::type reverse;
+  ReverseMap(m, &reverse);
+  return reverse;
+}
+
 // Erases the m item identified by the given key, and returns the value
 // associated with that key. It is assumed that the value (i.e., the
 // mapped_type) is a pointer. Returns null if the key was not found in the

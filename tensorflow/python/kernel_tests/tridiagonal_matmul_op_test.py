@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 
 from tensorflow.python.client import session
@@ -121,9 +122,6 @@ class TridiagonalMulOpTest(test.TestCase):
     self.assertAllClose(grad_theoretical, grad_numerical)
     self.assertAllClose(grad_theoretical, grad_reference)
 
-  def test1x1(self):
-    self._testAllFormats([], [2], [], [[1, 4]], [[2, 8]])
-
   def test2x2(self):
     self._testAllFormats([1], [2, 3], [4], [[2, 1], [4, 3]], [[8, 5], [20, 13]])
 
@@ -223,7 +221,7 @@ class TridiagonalMulOpTest(test.TestCase):
                                               vec,
                                               diagonals_format='sequence')
 
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x1),

@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/process_state.h"
 
+#include <atomic>
 #include <cstring>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -34,15 +35,16 @@ namespace tensorflow {
 
 /*static*/ ProcessState* ProcessState::singleton() {
   static ProcessState* instance = new ProcessState;
-  static std::once_flag f;
-  std::call_once(f, []() {
+  static absl::once_flag f;
+  absl::call_once(f, []() {
     AllocatorFactoryRegistry::singleton()->process_state_ = instance;
   });
 
   return instance;
 }
 
-ProcessState::ProcessState() : numa_enabled_(false) {}
+ProcessState::ProcessState()
+    : numa_enabled_(false), cpu_allocators_cached_(0) {}
 
 string ProcessState::MemDesc::DebugString() {
   return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
@@ -61,6 +63,12 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
 
 Allocator* ProcessState::GetCPUAllocator(int numa_node) {
   if (!numa_enabled_ || numa_node == port::kNUMANoAffinity) numa_node = 0;
+
+  // Check if allocator for the numa node is in lock-free cache.
+  if (numa_node < cpu_allocators_cached_.load(std::memory_order_acquire)) {
+    return cpu_allocators_cache_[numa_node];
+  }
+
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
     // If visitors have been defined we need an Allocator built from
@@ -115,6 +123,10 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
       allocator = new TrackingAllocator(allocator, true);
     }
     cpu_allocators_.push_back(allocator);
+    if (cpu_allocators_.size() < cpu_allocators_cache_.max_size()) {
+      cpu_allocators_cache_[cpu_allocators_.size() - 1] = allocator;
+      cpu_allocators_cached_.fetch_add(1, std::memory_order_release);
+    }
     if (!sub_allocator) {
       DCHECK(cpu_alloc_visitors_.empty() && cpu_free_visitors_.empty());
     }
@@ -148,7 +160,10 @@ void ProcessState::TestOnlyReset() {
     if (a != default_cpu_allocator) delete a;
   }
   cpu_allocators_.clear();
-  gtl::STLDeleteElements(&cpu_al_);
+  for (Allocator* a : cpu_al_) {
+    delete a;
+  }
+  cpu_al_.clear();
 }
 
 }  // namespace tensorflow

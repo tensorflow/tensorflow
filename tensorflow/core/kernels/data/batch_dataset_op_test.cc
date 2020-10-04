@@ -19,7 +19,7 @@ namespace {
 
 constexpr char kNodeName[] = "batch_dataset";
 
-class BatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class BatchDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test Case 1: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can evenly split the input dataset.

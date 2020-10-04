@@ -65,6 +65,8 @@ class RemoteCopyNode : public AsyncEagerNode {
 
   ~RemoteCopyNode() override;
 
+  Status Prepare() override;
+
   void RunAsync(StatusCallback done) override;
 
   void Abort(Status status) override;
@@ -119,6 +121,9 @@ class RemoteCopyNode : public AsyncEagerNode {
   // SendTensor RPC *on the receiver*.
   void StartRemoteSendTensor(StatusCallback done);
 
+  // Send a local packed TensorHandle to a remote device.
+  void StartSendPackedHandle(StatusCallback done);
+
   // State that is captured by Send and/or Recv callbacks (depending on which
   // one(s) is remote) and outlives this node in the case of remote->remote
   // copy.
@@ -164,6 +169,7 @@ class RemoteCopyNode : public AsyncEagerNode {
   const uint64 recv_op_id_;
 
   std::shared_ptr<CapturedSharedState> captured_state_;
+  bool started_;
 };
 
 }  // namespace eager

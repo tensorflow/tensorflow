@@ -25,7 +25,7 @@ namespace xla {
 namespace gpu {
 
 // Implements handling of GPU execution for HLO operations that are handed off
-// to specialzied thunks that do not require code generation. Intended to be
+// to specialized thunks that do not require code generation. Intended to be
 // mixed into GPU emitters.
 class ThunkEmitter {
  public:
@@ -35,7 +35,8 @@ class ThunkEmitter {
     virtual StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
         const HloInstruction& hlo, const ShapeIndex& index) const = 0;
     virtual int64 ByteSizeOf(const Shape& shape) const = 0;
-    virtual const se::Platform* platform() const = 0;
+    virtual absl::string_view platform_name() const = 0;
+    virtual Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const;
 
     virtual ~EmissionContext() = default;
   };
@@ -62,7 +63,7 @@ class ThunkEmitter {
 
   int64 ByteSizeOf(const Shape& shape) { return context_->ByteSizeOf(shape); }
 
-  const se::Platform* platform() const { return context_->platform(); }
+  absl::string_view platform_name() const { return context_->platform_name(); }
 
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {

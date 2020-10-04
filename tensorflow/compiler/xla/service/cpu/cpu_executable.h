@@ -55,9 +55,9 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   // This should be called after set_ir_module_string.
@@ -81,6 +81,8 @@ class CpuExecutable : public Executable {
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
+  int64 SizeOfGeneratedCodeInBytes() const override;
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
@@ -96,24 +98,28 @@ class CpuExecutable : public Executable {
   //    allocated by this routine.  This routine allocates buffers for temporary
   //    storage and the live-out buffer into which the computation writes it
   //    result.
-  StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
-                     std::vector<se::OwningDeviceMemory>>>
-  CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
-                    int device_ordinal,
-                    absl::Span<const ShapedBuffer* const> arguments);
+  //
+  //  - buffers_to_free: buffers whose ownership was donated by the caller that
+  //    are to be freed by the caller.
+  StatusOr<std::vector<MaybeOwningDeviceMemory>> CreateBufferTable(
+      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      absl::Span<ExecutionInput const> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
-  Status ExecuteComputeFunction(const ExecutableRunOptions* run_options,
-                                absl::Span<const se::DeviceMemoryBase> buffers,
-                                HloExecutionProfile* hlo_execution_profile);
+  Status ExecuteComputeFunction(
+      const ExecutableRunOptions* run_options,
+      absl::Span<MaybeOwningDeviceMemory const> buffers,
+      HloExecutionProfile* hlo_execution_profile);
 
-  // Creates a ScopedShapedBuffer for holding the result of the computation,
-  // moving buffers out of allocated_buffers and into the result as appropriate.
-  // The addresses are set according to buffer assignment.
-  StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
+  // Creates an Execution output holding ScopedShapedBuffer for holding the
+  // result of the computation, moving buffers out of allocated_buffers and into
+  // the result as appropriate.  The addresses are set according to buffer
+  // assignment.
+  StatusOr<ExecutionOutput> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<se::OwningDeviceMemory> buffers);
+      absl::Span<MaybeOwningDeviceMemory> buffers,
+      absl::Span<ExecutionInput> arguments);
 
   // Returns the instruction value set of the root instruction of the entry
   // computation. Uses dataflow analysis from buffer assignment.

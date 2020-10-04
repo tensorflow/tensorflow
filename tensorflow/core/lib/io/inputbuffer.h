@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_INPUTBUFFER_H_
 
 #include <string>
+
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
@@ -74,6 +75,9 @@ class InputBuffer {
   // read will trigger a File::Read().
   Status Seek(int64 position);
 
+  // Provides a hint about future reads, which may improve their performance.
+  Status Hint(int64 bytes_to_read);
+
   // Returns the position in the file.
   int64 Tell() const { return file_pos_ - (limit_ - pos_); }
 
@@ -107,6 +111,10 @@ class InputBuffer {
 };
 
 // Implementation details.
+
+// Explicit instantiations defined in inputbuffer.cc.
+extern template Status InputBuffer::ReadLine<string>(string* result);
+extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
 
 // Inlined for performance.
 inline Status InputBuffer::ReadVarint32(uint32* result) {

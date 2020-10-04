@@ -78,7 +78,7 @@ class PriorityQueue
 
   // Helper for dequeuing a single element from queues_.
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static Status GetElementComponentFromBatch(const Tuple& tuple, int index,
                                              int component,

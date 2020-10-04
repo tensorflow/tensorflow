@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -48,8 +49,9 @@ class TestEnv {
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     OptimizerOptions opts;
     pflr_ = tensorflow::MakeUnique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, &flib_def_,
-        opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, &flib_def_, opts,
+        /*default_thread_pool=*/nullptr);
 
     flr_ = pflr_->GetFLR("/job:a/replica:0/task:0/device:CPU:0");
     CHECK(flr_ != nullptr);
@@ -120,7 +122,7 @@ void BM_KernelAndDeviceInit(int iters) {
                       nullptr, env.cpu_device());
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Init(ndef, nullptr));
+    TF_CHECK_OK(k.Init({}, ndef, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
@@ -131,7 +133,7 @@ void BM_KernelAndDeviceRun(int iters) {
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.push_back(TensorValue(&t));
   inputs.push_back(TensorValue(&t));
-  std::vector<Tensor> outputs;
+  std::vector<EagerKernelRet> outputs;
   NodeDef ndef(AttrBuilder("MatMul")
                    .Set("T", DT_FLOAT)
                    .Set("transpose_a", false)
@@ -141,10 +143,11 @@ void BM_KernelAndDeviceRun(int iters) {
   TestEnv env;
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
-  TF_CHECK_OK(k.Init(ndef, nullptr));
+  TF_CHECK_OK(k.Init({}, ndef, nullptr));
+  const EagerKernelArgs args(std::move(inputs));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Run(inputs, &outputs, nullptr, nullptr, nullptr, nullptr));
+    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, absl::nullopt));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

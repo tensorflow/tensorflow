@@ -1,0 +1,51 @@
+op {
+  name: "BoostedTreesSparseAggregateStats"
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "hessians"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "feature_indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "feature_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "feature_shape"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "stats_summary_indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "stats_summary_values"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "stats_summary_shape"
+    type: DT_INT32
+  }
+  attr {
+    name: "max_splits"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}

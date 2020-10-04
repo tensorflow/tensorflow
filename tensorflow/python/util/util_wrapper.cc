@@ -13,18 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
+#include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/util/util.h"
 
 namespace py = pybind11;
-
-inline py::object pyo_or_throw(PyObject* ptr) {
-  if (PyErr_Occurred() || ptr == nullptr) {
-    throw py::error_already_set();
-  }
-  return py::reinterpret_steal<py::object>(ptr);
-}
 
 PYBIND11_MODULE(_pywrap_utils, m) {
   m.doc() = R"pbdoc(
@@ -33,9 +27,13 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   )pbdoc";
   m.def("RegisterType",
         [](const py::handle& type_name, const py::handle& type) {
-          return pyo_or_throw(
+          return tensorflow::PyoOrThrow(
               tensorflow::swig::RegisterType(type_name.ptr(), type.ptr()));
         });
+  m.def("RegisterPyObject", [](const py::handle& name, const py::handle& type) {
+    return tensorflow::PyoOrThrow(
+        tensorflow::swig::RegisterPyObject(name.ptr(), type.ptr()));
+  });
   m.def(
       "IsTensor",
       [](const py::handle& o) {
@@ -122,7 +120,8 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "IsNamedtuple",
       [](const py::handle& o, bool strict) {
-        return pyo_or_throw(tensorflow::swig::IsNamedtuple(o.ptr(), strict));
+        return tensorflow::PyoOrThrow(
+            tensorflow::swig::IsNamedtuple(o.ptr(), strict));
       },
       R"pbdoc(
       Check if an object is a NamedTuple.
@@ -144,6 +143,24 @@ PYBIND11_MODULE(_pywrap_utils, m) {
 
       Returns:
         True if `instance` is a `collections.Mapping`.
+    )pbdoc");
+  m.def(
+      "IsMutableMapping",
+      [](const py::handle& o) {
+        bool result = tensorflow::swig::IsMutableMapping(o.ptr());
+        if (PyErr_Occurred()) {
+          throw py::error_already_set();
+        }
+        return result;
+      },
+      R"pbdoc(
+      Returns True if `instance` is a `collections.MutableMapping`.
+
+      Args:
+        instance: An instance of a Python object.
+
+      Returns:
+        True if `instance` is a `collections.MutableMapping`.
     )pbdoc");
   m.def(
       "IsMappingView",
@@ -184,7 +201,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "SameNamedtuples",
       [](const py::handle& o1, const py::handle& o2) {
-        return pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tensorflow::swig::SameNamedtuples(o1.ptr(), o2.ptr()));
       },
       R"pbdoc(
@@ -207,7 +224,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "Flatten",
       [](const py::handle& o, bool expand_composites) {
-        return pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tensorflow::swig::Flatten(o.ptr(), expand_composites));
       },
       R"pbdoc(
@@ -231,7 +248,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
       Args:
         nest: an arbitrarily nested structure or a scalar object. Note, numpy
             arrays are considered scalars.
-        expand_composites: If true, then composite tensors such as `tf.SparseTensor`
+        expand_composites: If true, then composite tensors such as `tf.sparse.SparseTensor`
             and `tf.RaggedTensor` are expanded into their component tensors.
 
       Returns:
@@ -267,7 +284,8 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "FlattenForData",
       [](const py::handle& o) {
-        return pyo_or_throw(tensorflow::swig::FlattenForData(o.ptr()));
+        return tensorflow::PyoOrThrow(
+            tensorflow::swig::FlattenForData(o.ptr()));
       },
       R"pbdoc(
       Returns a flat sequence from a given nested structure.

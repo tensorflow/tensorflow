@@ -1,6 +1,9 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = [
         "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/core/tpu:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -9,15 +12,19 @@ XLA_OPS_DEPS = [
     "@com_google_absl//absl/container:flat_hash_map",
     "@com_google_absl//absl/memory",
     "//tensorflow/compiler/jit:common",
+    "//tensorflow/compiler/jit:compilation_passes",
     "//tensorflow/compiler/jit:flags",
     "//tensorflow/compiler/jit:xla_activity_listener",
     "//tensorflow/compiler/jit:xla_activity_proto_cc",
     "//tensorflow/compiler/jit:xla_compilation_cache",
     "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+    "//tensorflow/compiler/jit:xla_cluster_util",
     "//tensorflow/compiler/jit:xla_launch_util",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:tf2xla_util",
     "//tensorflow/compiler/tf2xla:xla_compiler",
+    "//tensorflow/compiler/tf2xla:xla_op_registry",
+    "//tensorflow/compiler/xla:executable_run_options",
     "//tensorflow/compiler/xla:status_macros",
     "//tensorflow/compiler/xla:statusor",
     "//tensorflow/compiler/xla/client:client_library",

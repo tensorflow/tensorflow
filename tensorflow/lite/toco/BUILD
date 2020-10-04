@@ -1,7 +1,6 @@
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -15,48 +14,25 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "toco_flags_proto",
     srcs = ["toco_flags.proto"],
+    cc_api_version = 2,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "model_flags_proto",
     srcs = ["model_flags.proto"],
-    protodeps = [":types_proto"],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_py(
-    name = "types_proto",
-    srcs = [
-        "types.proto",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_py(
-    name = "toco_flags_proto",
-    srcs = [
-        "toco_flags.proto",
-    ],
-    protodeps = [":types_proto"],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_py(
-    name = "model_flags_proto",
-    srcs = [
-        "model_flags.proto",
-    ],
+    cc_api_version = 2,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
@@ -166,11 +142,10 @@ cc_library(
         "toco_types.h",
     ],
     deps = [
-        # Placeholder for internal file dependency.
-        "@com_google_protobuf//:protobuf_headers",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -178,8 +153,8 @@ cc_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations/convert_expanddims_to_reshape.cc",
-        "graph_transformations/convert_matrix_diag_v2_to_v1.cc",
-        "graph_transformations/convert_matrix_set_diag_v2_to_v1.cc",
+        "graph_transformations/convert_matrix_diag_v2_or_v3_to_v1.cc",
+        "graph_transformations/convert_matrix_set_diag_v2_or_v3_to_v1.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
         "graph_transformations/convert_reorder_axes.cc",
         "graph_transformations/convert_squeeze_to_reshape.cc",
@@ -207,6 +182,7 @@ cc_library(
         "graph_transformations/identify_lstm.cc",
         "graph_transformations/identify_lstm_merge_inputs.cc",
         "graph_transformations/identify_lstm_split_inputs.cc",
+        "graph_transformations/identify_nearest_upsample.cc",
         "graph_transformations/identify_prelu.cc",
         "graph_transformations/identify_relu1.cc",
         "graph_transformations/identify_util.cc",

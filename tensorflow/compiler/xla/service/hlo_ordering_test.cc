@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -338,7 +337,7 @@ ENTRY while.v11 {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   DependencyHloOrdering ordering(module.get());
   ordering.ToString();  // Shouldn't crash.
 }
@@ -375,7 +374,7 @@ ENTRY root {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
                           HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
@@ -507,23 +506,22 @@ TEST_F(HloOrderingTest, InterferenceWithOuterRoot) {
   absl::string_view hlo_string = R"(
 HloModule InterferenceWithOuterRoot, is_scheduled=true
 
-Emmbedded (embedded_param: f32[42]) -> f32[42] {
-  embedded_param = f32[42]{0} parameter(0)
-  multiply = f32[42]{0} multiply(embedded_param, embedded_param)
-  ROOT log = f32[42]{0} log(multiply)
+Embedded (embedded_param: f32[4096,4096]) -> f32[4096,4096] {
+  embedded_param = f32[4096,4096]{1,0} parameter(0)
+  multiply = f32[4096,4096]{1,0} multiply(embedded_param, embedded_param)
+  ROOT log = f32[4096,4096]{1,0} log(multiply)
 }
 
 ENTRY InterferenceWithOuterRoot {
   param = f32[4096,4096]{1,0} parameter(0)
   ROOT add = f32[4096,4096]{1,0} add(param, param)
-  call = f32[42]{0} call(param), to_apply=Emmbedded
+  call = f32[4096,4096]{1,0} call(param), to_apply=Embedded
 }
 
 )";
   HloModuleConfig hlo_config;
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnUnverifiedModule(hlo_string, hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, hlo_config));
   TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
                           HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());

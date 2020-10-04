@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 
@@ -99,7 +99,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   // TODO(jeff,sanjay): Eviction when the map becomes too big.
   mutex mu_;
-  std::unordered_map<string, WorkerState> workers_ GUARDED_BY(mu_);
+  std::unordered_map<string, WorkerState> workers_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
@@ -109,11 +109,11 @@ WorkerSession::WorkerSession(
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     std::unique_ptr<DeviceMgr> device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
-    : session_name(session_name),
-      worker_name(worker_name),
-      worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
-      graph_mgr(std::move(graph_mgr)),
-      cluster_flr(new ClusterFunctionLibraryRuntime(
+    : session_name_(session_name),
+      worker_name_(worker_name),
+      worker_cache_(new WorkerFreeListCache(std::move(worker_cache))),
+      graph_mgr_(std::move(graph_mgr)),
+      cluster_flr_(new ClusterFunctionLibraryRuntime(
           this, !session_name.empty(),
           remote_device_mgr ? remote_device_mgr.get() : nullptr)),
       device_mgr_(std::move(device_mgr)),
@@ -123,14 +123,28 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
+}
+
+Status WorkerSession::UpdateWorkerCacheAndDevices(
+    std::unique_ptr<WorkerCacheInterface> new_worker_cache,
+    std::vector<std::unique_ptr<Device>> added_remote_devices,
+    const std::vector<Device*>& removed_remote_devices) {
+  {
+    mutex_lock l(worker_session_state_mu_);
+    worker_cache_ = std::shared_ptr<WorkerCacheInterface>(
+        new WorkerFreeListCache(std::move(new_worker_cache)));
+  }
+  TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
+  TF_RETURN_IF_ERROR(
+      remote_device_mgr_->AddDevices(std::move(added_remote_devices)));
+  return Status::OK();
 }
 
 /* static */
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr) {
   return std::shared_ptr<WorkerSession>(new WorkerSession(
       session_name, worker_name, std::move(worker_cache), borrowed_device_mgr,
@@ -140,14 +154,14 @@ std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
 WorkerSession::WorkerSession(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
-    : session_name(session_name),
-      worker_name(worker_name),
-      worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
-      graph_mgr(std::move(graph_mgr)),
-      cluster_flr(new ClusterFunctionLibraryRuntime(this, !session_name.empty(),
-                                                    remote_device_mgr.get())),
+    : session_name_(session_name),
+      worker_name_(worker_name),
+      worker_cache_(new WorkerFreeListCache(std::move(worker_cache))),
+      graph_mgr_(std::move(graph_mgr)),
+      cluster_flr_(new ClusterFunctionLibraryRuntime(
+          this, !session_name.empty(), remote_device_mgr.get())),
       device_mgr_(nullptr),
       borrowed_device_mgr_(borrowed_device_mgr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
@@ -155,12 +169,11 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
 }
 
 WorkerSession::~WorkerSession() {
-  if (graph_mgr) {
-    Status s = graph_mgr->DeregisterAll();
+  if (graph_mgr_) {
+    Status s = graph_mgr_->DeregisterAll();
     if (!s.ok()) {
       LOG(WARNING) << "Error during worker session deletion: " << s;
     }

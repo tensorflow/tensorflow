@@ -19,6 +19,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -101,6 +102,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
@@ -144,9 +146,12 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCholesky:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
@@ -157,6 +162,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kGather:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kPower:
@@ -166,6 +172,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
@@ -173,11 +180,13 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kWhile:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
       return true;
   }
 
@@ -468,8 +477,10 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   module_ = module;
   int64 fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
+  HloModuleConfig module_config;
   if (config_collection_mode_ != FusionConfigCollection::kOff) {
-    fusion_config = module->mutable_fusion_config();
+    module_config = module->config();
+    fusion_config = module_config.mutable_fusion_config();
     fusion_config->clear();
   }
 
@@ -495,7 +506,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     while (true) {
       auto next_entry =
           fusion_queue->DequeueNextInstructionAndOperandsToFuseInOrder();
-      auto instruction = next_entry.first;
+      HloInstruction* instruction = next_entry.first;
       if (instruction == nullptr) {
         break;
       }
@@ -509,8 +520,11 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 
       for (int64 i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);
+        VLOG(5) << "Considering fusion of: " << instruction->ToString()
+                << " with operand " << operand->name();
 
         if (!operand->IsFusible()) {
+          VLOG(3) << "Operand (" << operand->ToString() << ") is not fusible";
           continue;
         }
 
@@ -568,7 +582,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     if (config_collection_mode_ != FusionConfigCollection::kOff) {
       const std::vector<bool>* comp_fusion_config =
           fusion_queue->FusionConfiguration();
-      if (comp_fusion_config && comp_fusion_config->size() > 0) {
+      if (comp_fusion_config && !comp_fusion_config->empty()) {
         fusion_config->push_back(*comp_fusion_config);
       }
     }
@@ -586,7 +600,11 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     VLOG(1) << "There are " << fused_count << " fused bits that cause "
             << fuse_count << " fusion actions.";
     VLOG(1) << FusionConfigToString(*fusion_config);
+    module->set_config(module_config);
   }
+
+  reachability_.reset();
+
   VLOG(1) << "Fusion count: " << fuse_count;
 
   return changed;
@@ -609,12 +627,20 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
   return fusion_instruction;
 }
 
+HloInstruction* InstructionFusion::FuseInstruction(
+    HloInstruction* fusion_instruction, HloInstruction* producer) {
+  return fusion_instruction->FuseInstruction(producer);
+}
+
 HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
                                         HloInstruction* consumer) {
   VLOG(2) << "Fusing " << producer->ToString() << " into "
           << consumer->ToString();
   HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
-  fusion_instruction->FuseInstruction(producer);
+  FuseInstruction(fusion_instruction, producer);
+  if (fusion_instruction != producer && fusion_instruction != consumer) {
+    VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
+  }
   return fusion_instruction;
 }
 
@@ -675,14 +701,8 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
-    return false;
-  }
-
-  if (producer->CouldBeBitcast() &&
-      // We can't fuse parameters anyhow, so we leave the user unfused to become
-      // a bitcast. If the operand is not a parameter, we would break a
-      // potential fusion to make it a bitcast, which is not so clear a win.
-      producer->operand(0)->opcode() == HloOpcode::kParameter) {
+    VLOG(4) << "Stopping: fusion may duplicate operand ("
+            << producer->ToString() << ") , and this is expensive";
     return false;
   }
 
@@ -692,6 +712,25 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
 HloInstruction::FusionKind InstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
   return HloInstruction::FusionKind::kLoop;
+}
+
+bool InstructionFusion::ReusesOperandElements(const HloInstruction* consumer,
+                                              int64 operand_index) {
+  auto operand = consumer->operand(operand_index);
+  auto it = reused_fusion_operands_.find(consumer);
+  if (it != reused_fusion_operands_.end() && it->second.contains(operand)) {
+    return true;
+  }
+  bool reuses = consumer->ReusesOperandElements(operand_index);
+  // If a parameter was reused, we can cache this information. Fusion
+  // computations only ever grow, so it becomes more likely that a parameter is
+  // reused, but a reused parameter will never become *not* reused.
+  if (reuses) {
+    // We cache the operand corresponding to the fusion parameter, because the
+    // parameter pointers would be invalidated after the next fusion.
+    reused_fusion_operands_[consumer].insert(operand);
+  }
+  return reuses;
 }
 
 }  // namespace xla

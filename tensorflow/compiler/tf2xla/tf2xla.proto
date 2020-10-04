@@ -52,7 +52,7 @@ message Variable {
   TensorShapeProto shape = 3;
   DataType type = 4;
 
-  // Flag for variables that are never assigned. Assigments to a read-only
+  // Flag for variables that are never assigned. Assignments to a read-only
   // variable or unassigned variables that are not read-only are invalid.
   bool readonly = 5;
 }

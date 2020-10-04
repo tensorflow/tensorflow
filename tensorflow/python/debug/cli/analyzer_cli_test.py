@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 import numpy as np
@@ -38,6 +37,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -374,8 +374,6 @@ def assert_node_attribute_lines(tst,
 
       tst.assertEqual("", next(line_iter))
 
-    tst.assertItemsEqual(attr_key_val_pairs, kv_pairs)
-
   if num_dumped_tensors is not None:
     tst.assertEqual("%d dumped tensor(s):" % num_dumped_tensors,
                     next(line_iter))
@@ -638,8 +636,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
-    shutil.rmtree(cls._dump_root_for_unique)
+    file_io.delete_recursively(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root_for_unique)
 
   def testMeasureTensorListColumnWidthsGivesRightAnswerForEmptyData(self):
     timestamp_col_width, dump_size_col_width, op_type_col_width = (
@@ -1342,24 +1340,24 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
                                           _cli_config_from_temp_file())
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Input argument filter_name cannot be empty."):
+    with self.assertRaisesRegex(ValueError,
+                                "Input argument filter_name cannot be empty."):
       analyzer.add_tensor_filter("", lambda datum, tensor: True)
 
   def testAddTensorFilterNonStrName(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
                                           _cli_config_from_temp_file())
 
-    with self.assertRaisesRegexp(
-        TypeError,
-        "Input argument filter_name is expected to be str, ""but is not"):
+    with self.assertRaisesRegex(
+        TypeError, "Input argument filter_name is expected to be str, "
+        "but is not"):
       analyzer.add_tensor_filter(1, lambda datum, tensor: True)
 
   def testAddGetTensorFilterNonCallable(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
                                           _cli_config_from_temp_file())
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, "Input argument filter_callable is expected to be callable, "
         "but is not."):
       analyzer.add_tensor_filter("foo_filter", "bar")
@@ -1369,8 +1367,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
                                           _cli_config_from_temp_file())
 
     analyzer.add_tensor_filter("foo_filter", lambda datum, tensor: True)
-    with self.assertRaisesRegexp(ValueError,
-                                 "There is no tensor filter named \"bar\""):
+    with self.assertRaisesRegex(ValueError,
+                                "There is no tensor filter named \"bar\""):
       analyzer.get_tensor_filter("bar")
 
   def _findSourceLine(self, annotated_source, line_number):
@@ -1580,9 +1578,9 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testListSourceWithCompiledPythonSourceWorks(self):
     def fake_list_source_files_against_dump(dump,
-                                            path_regex_whitelist=None,
-                                            node_name_regex_whitelist=None):
-      del dump, path_regex_whitelist, node_name_regex_whitelist
+                                            path_regex_allowlist=None,
+                                            node_name_regex_allowlist=None):
+      del dump, path_regex_allowlist, node_name_regex_allowlist
       return [("compiled_1.pyc", False, 10, 20, 30, 4),
               ("compiled_2.pyo", False, 10, 20, 30, 5),
               ("uncompiled.py", False, 10, 20, 30, 6)]
@@ -1667,7 +1665,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root)
 
   def testPrintLargeTensorWithoutAllOption(self):
     out = self._registry.dispatch_command(
@@ -1747,7 +1745,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root)
 
   def testNodeInfoWithControlDependencies(self):
     # Call node_info on a node with control inputs.
@@ -2063,7 +2061,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root)
 
   def testMultipleDumpsPrintTensorNoNumber(self):
     output = self._registry.dispatch_command("pt", ["while/Identity:0"])

@@ -9,7 +9,7 @@ op {
     description: <<END
 Length in bytes for each element of the decoded output. Must be a multiple
 of the size of the output type.
-END 
+END
   }
   out_arg {
     name: "output"

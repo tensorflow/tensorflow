@@ -19,19 +19,24 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python import keras
-from tensorflow.python.distribute import combinations
-from tensorflow.python.eager import test
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.eager import context
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul. Even if Dense layers run in '
+    'float64, the test sometimes fails with TensorFloat-32 enabled for unknown '
+    'reasons')
 class DistributionStrategyCnnCorrectnessTest(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
   def get_model(self,
                 initial_weights=None,
                 distribution=None,
-                experimental_run_tf_function=None,
                 input_shapes=None):
     del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
@@ -43,8 +48,10 @@ class DistributionStrategyCnnCorrectnessTest(
           strides=(4, 4),
           kernel_regularizer=keras.regularizers.l2(1e-4))(
               image)
-      if self.with_batch_norm:
+      if self.with_batch_norm == 'regular':
         c1 = keras.layers.BatchNormalization(name='bn1')(c1)
+      elif self.with_batch_norm == 'sync':
+        c1 = keras.layers.SyncBatchNormalization(name='bn1')(c1)
       c1 = keras.layers.MaxPooling2D(pool_size=(2, 2))(c1)
       logits = keras.layers.Dense(
           10, activation='softmax', name='pred')(
@@ -57,8 +64,7 @@ class DistributionStrategyCnnCorrectnessTest(
       model.compile(
           optimizer=gradient_descent.SGD(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
-          metrics=['sparse_categorical_accuracy'],
-          experimental_run_tf_function=experimental_run_tf_function)
+          metrics=['sparse_categorical_accuracy'])
 
     return model
 
@@ -90,30 +96,42 @@ class DistributionStrategyCnnCorrectnessTest(
     x_eval, y_eval = self._get_data(count=1000)
     return x_train, y_train, x_eval, y_eval, x_eval
 
-  @combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
-  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data,
-                           experimental_run_tf_function):
-    self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              experimental_run_tf_function)
+  @ds_combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
+  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data):
+    self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  @ds_combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
-                                           use_validation_data,
-                                           experimental_run_tf_function):
-    self.skipTest('Flakily times out, b/134670856')
+                                           use_validation_data):
     self.run_correctness_test(
         distribution,
         use_numpy,
         use_validation_data,
-        with_batch_norm=True,
-        experimental_run_tf_function=experimental_run_tf_function)
+        with_batch_norm='regular')
 
-  @combinations.generate(
-      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
+  @ds_combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
+  def test_cnn_with_sync_batch_norm_correctness(self, distribution, use_numpy,
+                                                use_validation_data):
+    if not context.executing_eagerly():
+      self.skipTest('SyncBatchNorm is not enabled in graph mode.')
+
+    self.run_correctness_test(
+        distribution,
+        use_numpy,
+        use_validation_data,
+        with_batch_norm='sync')
+
+  @ds_combinations.generate(
       keras_correctness_test_base
-      .strategy_minus_tpu_and_input_config_combinations_eager())
+      .all_strategy_and_input_config_combinations_eager() +
+      keras_correctness_test_base.multi_worker_mirrored_eager() +
+      keras_correctness_test_base.test_combinations_with_tpu_strategies_graph())
   def test_cnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
                                                         use_validation_data):
@@ -124,19 +142,20 @@ class DistributionStrategyCnnCorrectnessTest(
         partial_last_batch=True,
         training_epochs=1)
 
-  @combinations.generate(
-      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
-      keras_correctness_test_base
-      .strategy_minus_tpu_and_input_config_combinations_eager())
+  @ds_combinations.generate(
+      keras_correctness_test_base.
+      all_strategy_and_input_config_combinations_eager() +
+      keras_correctness_test_base.multi_worker_mirrored_eager() +
+      keras_correctness_test_base.test_combinations_with_tpu_strategies_graph())
   def test_cnn_with_batch_norm_correctness_and_partial_last_batch_eval(
       self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(
         distribution,
         use_numpy,
         use_validation_data,
-        with_batch_norm=True,
+        with_batch_norm='regular',
         partial_last_batch=True)
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

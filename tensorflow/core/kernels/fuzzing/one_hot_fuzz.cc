@@ -20,6 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace fuzzing {
 
+// Don't generate tensors that are too large as we don't test that branch here
+constexpr size_t kMaxSize = 1024;
+
 class FuzzOneHot : public FuzzSession {
   void BuildGraph(const Scope& scope) override {
     auto input =
@@ -39,6 +42,11 @@ class FuzzOneHot : public FuzzSession {
     const uint8_t* input_data;
 
     if (size > 3) {
+      // Since we only care about the one hot decoding and not about the size of
+      // the tensor, limit `size` to at most `kMaxSize`.
+      if (size > kMaxSize) {
+        size = kMaxSize;
+      }
       depth = static_cast<int32>(data[0]);
       on = data[1];
       off = data[2];

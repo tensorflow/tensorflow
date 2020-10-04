@@ -1,13 +1,14 @@
 # Description:
 #   OpKernels for boosted trees ops.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
 
@@ -18,6 +19,8 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["quantile_ops.cc"])
 
 tf_proto_library(
     name = "boosted_trees_proto",
@@ -32,12 +35,12 @@ tf_kernel_library(
     name = "prediction_ops",
     srcs = ["prediction_ops.cc"],
     deps = [
+        ":boosted_trees_proto_cc",
         ":resource_ops",
         ":resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )
 
@@ -81,11 +84,11 @@ tf_kernel_library(
     name = "resource_ops",
     srcs = ["resource_ops.cc"],
     deps = [
+        ":boosted_trees_proto_cc",
         ":resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )
 
@@ -93,10 +96,10 @@ tf_kernel_library(
     name = "stats_ops",
     srcs = ["stats_ops.cc"],
     deps = [
+        ":boosted_trees_proto_cc",
         ":tree_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
         "//third_party/eigen3",
     ],
 )
@@ -105,12 +108,12 @@ tf_kernel_library(
     name = "training_ops",
     srcs = ["training_ops.cc"],
     deps = [
+        ":boosted_trees_proto_cc",
         ":resources",
         ":tree_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
         "//third_party/eigen3",
     ],
 )

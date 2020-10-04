@@ -35,7 +35,7 @@ END
   in_arg {
     name: "min_node_weight"
     description: <<END
-mininum avg of hessians in a node before required for the node to be considered for splitting.
+minimum avg of hessians in a node before required for the node to be considered for splitting.
 END
   }
   out_arg {

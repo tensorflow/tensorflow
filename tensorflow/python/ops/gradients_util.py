@@ -306,7 +306,7 @@ def _IsPartitionedCall(op):
 def _SymGrad(op, out_grads):
   """Backprop through a function call node op given its outputs' gradients."""
   f_in = [x for x in op.inputs] + out_grads
-  f_types = [x.dtype for x in op.inputs]
+  f_types = [default_gradient.get_zeros_dtype(x) for x in op.inputs]
   f = attr_value_pb2.NameAttrList()
   if _IsPartitionedCall(op):
     f.name = op.get_attr("f").name
@@ -314,11 +314,7 @@ def _SymGrad(op, out_grads):
     f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  # TODO(apassos) use a better dtype here
-  in_grads = functional_ops.symbolic_gradient(
-      input=f_in,
-      Tout=[x if x != dtypes.resource else dtypes.float32 for x in f_types],
-      f=f)
+  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   return in_grads
 
 
@@ -393,7 +389,7 @@ def _Captures(func_graph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph._captured.items()  # pylint: disable=protected-access
+    return func_graph.captures
 
 
 def _MaybeCaptured(t):
@@ -612,8 +608,22 @@ def _GradientsHelper(ys,
           except LookupError:
             if is_func_call:
               if is_partitioned_call:
+                func_name = compat.as_bytes(op.get_attr("f").name)
                 func_call = src_graph._get_function(  # pylint: disable=protected-access
-                    compat.as_bytes(op.get_attr("f").name))
+                    func_name)
+                # When a graph is imported, the FunctionDefs are not copied over
+                # to each sub-graph so we recursively search the outer graphs
+                # for the FunctionDef.
+                if not func_call and hasattr(src_graph, "outer_graph"):
+                  graph = src_graph.outer_graph
+                  while graph is not None:
+                    func_call = graph._get_function(func_name)  # pylint: disable=protected-access
+                    if func_call  is not None:
+                      break
+                    if hasattr(graph, "outer_graph"):
+                      graph = graph.outer_graph
+                    else:
+                      break
               else:
                 func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
               # Note that __defun is not set if the graph is
@@ -656,9 +666,12 @@ def _GradientsHelper(ys,
               # TODO(apassos) gradients of resource handles might be an
               # issue here because of zeros.
               if loop_state:
-                out_grads[i] = loop_state.ZerosLike(op, i)
-              else:
-                out_grads[i] = control_flow_state.ZerosLikeOutsideLoop(op, i)
+                out_grads[i] = loop_state.ZerosLikeV1WhileLoop(op, i)
+              elif default_gradient.supports_default_grad(op.outputs[i]):
+                # TODO(b/143286622): The supports_default_grad check is needed
+                # because While op emits non-differentiable resource tensors
+                # as outputs. Remove this check when that is not the case.
+                out_grads[i] = control_flow_state.ZerosLike(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
             with src_graph._original_op(op):
@@ -782,18 +795,22 @@ def _SetGrad(grads, t, grad):
     op_grads[t.value_index] = grad
 
 
+def _ZerosLike(t):
+  t_dtype = default_gradient.get_zeros_dtype(t)
+  if t.dtype == dtypes.resource:
+    return array_ops.zeros(
+        resource_variable_ops.variable_shape(t), dtype=t_dtype)
+  else:
+    return array_ops.zeros_like(t, dtype=t_dtype)
+
+
 def _GetGrad(grads, t, unconnected_gradients):
   """Gets gradient for tensor "t"."""
   op = t.op
   op_grads = grads.get(op)
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
-      t_dtype = default_gradient.get_zeros_dtype(t)
-      if t.dtype == dtypes.resource:
-        return array_ops.zeros(
-            resource_variable_ops.variable_shape(t), dtype=t_dtype)
-      else:
-        return array_ops.zeros_like(t, dtype=t_dtype)
+      return _ZerosLike(t)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None
     else:
@@ -801,6 +818,10 @@ def _GetGrad(grads, t, unconnected_gradients):
           "Unknown value for unconnected_gradients: %r" % unconnected_gradients)
 
   t_grad = op_grads[t.value_index]
+  # This can happen if some other output of `t.op` has non-None grad.
+  if unconnected_gradients == UnconnectedGradients.ZERO and t_grad is None:
+    return _ZerosLike(t)
+
   assert not isinstance(
       t_grad, list), ("gradients list should have been aggregated by now.")
   return t_grad
@@ -835,9 +856,9 @@ def _LogOpGradients(op, out_grads, in_grads):
       return True
 
   logging.vlog(1, "  in  --> %s",
-               ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
+               ", ".join(x.name for x in out_grads if _FilterGrad(x)))
   logging.vlog(1, "  out --> %s",
-               ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
+               ", ".join(x.name for x in in_grads if _FilterGrad(x)))
 
 
 def _MultiDeviceAddN(tensor_list, gradient_uid):

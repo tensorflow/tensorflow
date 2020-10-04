@@ -114,7 +114,6 @@ bool GrpcMaybeParseProto(grpc::ByteBuffer* src, string* dst) {
   return true;
 }
 
-#ifdef USE_TSTRING
 // GrpcMaybeParseProto simply copies bytes into the tstring.
 bool GrpcMaybeParseProto(grpc::ByteBuffer* src, tstring* dst) {
   dst->clear();
@@ -128,6 +127,5 @@ bool GrpcMaybeParseProto(grpc::ByteBuffer* src, tstring* dst) {
   }
   return true;
 }
-#endif  // USE_TSTRING
 
 }  // namespace tensorflow

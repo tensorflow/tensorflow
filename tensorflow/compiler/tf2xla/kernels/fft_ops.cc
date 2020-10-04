@@ -138,10 +138,20 @@ class RFFTOp : public GenericFftOp {
   explicit RFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::RFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("RFFT").CompileTimeConstantInput("fft_length"), RFFTOp<1>);
-REGISTER_XLA_OP(Name("RFFT2D").CompileTimeConstantInput("fft_length"),
+REGISTER_XLA_OP(Name("RFFT")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
+                RFFTOp<1>);
+REGISTER_XLA_OP(Name("RFFT2D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
                 RFFTOp<2>);
-REGISTER_XLA_OP(Name("RFFT3D").CompileTimeConstantInput("fft_length"),
+REGISTER_XLA_OP(Name("RFFT3D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
                 RFFTOp<3>);
 
 template <int FFTRank>
@@ -150,11 +160,20 @@ class IRFFTOp : public GenericFftOp {
   explicit IRFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::IRFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("IRFFT").CompileTimeConstantInput("fft_length"),
+REGISTER_XLA_OP(Name("IRFFT")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<1>);
-REGISTER_XLA_OP(Name("IRFFT2D").CompileTimeConstantInput("fft_length"),
+REGISTER_XLA_OP(Name("IRFFT2D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<2>);
-REGISTER_XLA_OP(Name("IRFFT3D").CompileTimeConstantInput("fft_length"),
+REGISTER_XLA_OP(Name("IRFFT3D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<3>);
 
 }  // namespace

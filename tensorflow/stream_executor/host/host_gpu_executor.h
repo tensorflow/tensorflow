@@ -46,9 +46,9 @@ class HostExecutor : public internal::StreamExecutorInterface {
   explicit HostExecutor(const PluginConfig &plugin_config);
   ~HostExecutor() override;
 
-  port::Status Init(int device_ordinal, DeviceOptions device_options) override {
-    return port::Status::OK();
-  }
+  // The stack size used for host streams can be set via
+  // device_options.non_portable_tags["host_stack_size"].
+  port::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
   port::Status GetKernel(const MultiKernelLoaderSpec &spec,
                          KernelBase *kernel) override {
@@ -60,7 +60,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return port::UnimplementedError("Not Implemented");
   }
 
-  void *Allocate(uint64 size) override;
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
   void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                      uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
@@ -80,19 +80,20 @@ class HostExecutor : public internal::StreamExecutorInterface {
                             const DeviceMemoryBase &gpu_src,
                             uint64 size) override;
 
-  bool MemZero(Stream *stream, DeviceMemoryBase *location,
-               uint64 size) override;
-  bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-              uint64 size) override;
-  bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
-                uint64 size) override;
+  port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                       uint64 size) override;
+  port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) override;
+  port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                        uint32 pattern, uint64 size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override;
+  port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                  uint64 size) override;
 
-  bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                         uint64 size) override;
+  port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                 uint64 size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                  const void *host_src, uint64 size) override;
@@ -129,9 +130,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   int PlatformDeviceCount() override { return 1; }
 
-  bool DeviceMemoryUsage(int64 *free, int64 *total) const override {
-    return false;
-  }
+  bool DeviceMemoryUsage(int64 *free, int64 *total) const override;
 
   port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
@@ -147,20 +146,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {
     return true;
-  }
-
-  SharedMemoryConfig GetDeviceSharedMemoryConfig() override {
-    LOG(INFO) << "Shared memory configuration is unsupported for host "
-              << "executors.";
-    return SharedMemoryConfig::kDefault;
-  }
-
-  port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config) override {
-    string error_msg{
-        "Shared memory configuration is unsupported for host "
-        "executors."};
-    LOG(INFO) << error_msg;
-    return port::Status(port::error::UNIMPLEMENTED, error_msg);
   }
 
   bool SupportsBlas() const override;
@@ -183,10 +168,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return nullptr;
   }
 
-  std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
-      override {
-    return std::unique_ptr<internal::StreamInterface>(new HostStream());
-  }
+  std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
     return std::unique_ptr<internal::TimerInterface>(new HostTimer());
@@ -196,6 +178,8 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
  private:
   const PluginConfig plugin_config_;
+  // Size of thread stacks for streams in bytes. '0' means "the default size".
+  size_t thread_stack_size_in_bytes_ = 0;
 };
 
 }  // namespace host

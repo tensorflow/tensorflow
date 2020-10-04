@@ -39,6 +39,10 @@ from tensorflow.python.util import tf_inspect
 DISPATCH_ATTR = "_tf_dispatchers"
 
 
+# OpDispatchers which should be used for all operations.
+_GLOBAL_DISPATCHERS = []
+
+
 class OpDispatcher(object):
   """Abstract base class for TensorFlow operator dispatchers.
 
@@ -82,7 +86,20 @@ class OpDispatcher(object):
     getattr(op, DISPATCH_ATTR).append(self)
 
 
-def dispatch(op, *args, **kwargs):
+class GlobalOpDispatcher(object):
+  """Abstract base class for TensorFlow global operator dispatchers."""
+
+  NOT_SUPPORTED = OpDispatcher.NOT_SUPPORTED
+
+  def handle(self, op, args, kwargs):
+    """Handle the specified operation with the specified arguments."""
+
+  def register(self):
+    """Register this dispatcher as a handler for all ops."""
+    _GLOBAL_DISPATCHERS.append(self)
+
+
+def dispatch(op, args, kwargs):
   """Returns the result from the first successful dispatcher for a given op.
 
   Calls the `handle` method of each `OpDispatcher` that has been registered
@@ -90,8 +107,8 @@ def dispatch(op, *args, **kwargs):
 
   Args:
     op: Python function: the operation to dispatch for.
-    *args: The arguments to the operation.
-    **kwargs: They keyword arguments to the operation.
+    args: The arguments to the operation.
+    kwargs: They keyword arguments to the operation.
 
   Returns:
     The result of the operation, or `NOT_SUPPORTED` if no registered
@@ -99,6 +116,10 @@ def dispatch(op, *args, **kwargs):
   """
   for dispatcher in getattr(op, DISPATCH_ATTR):
     result = dispatcher.handle(args, kwargs)
+    if result is not OpDispatcher.NOT_SUPPORTED:
+      return result
+  for dispatcher in _GLOBAL_DISPATCHERS:
+    result = dispatcher.handle(op, args, kwargs)
     if result is not OpDispatcher.NOT_SUPPORTED:
       return result
   return OpDispatcher.NOT_SUPPORTED
@@ -181,7 +202,7 @@ def add_dispatch_support(target):
     except (TypeError, ValueError):
       # Note: convert_to_eager_tensor currently raises a ValueError, not a
       # TypeError, when given unexpected types.  So we need to catch both.
-      result = dispatch(wrapper, *args, **kwargs)
+      result = dispatch(wrapper, args, kwargs)
       if result is not OpDispatcher.NOT_SUPPORTED:
         return result
       else:

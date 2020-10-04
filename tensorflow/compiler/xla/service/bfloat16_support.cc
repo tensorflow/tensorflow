@@ -79,6 +79,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     const HloInstruction& hlo, int64 operand_index) {
   switch (hlo.opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:
     case HloOpcode::kBroadcast:
     case HloOpcode::kClamp:

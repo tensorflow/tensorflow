@@ -886,7 +886,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
 
   // To figure out the broadcast dimensions for the (constant) source for the
   // scalar-indexed node, we "simulate" the index transformation done by the
-  // existing broadcsat:
+  // existing broadcast:
   enum class IndexComponent { Broadcasted, NotBroadcasted };
   std::vector<IndexComponent> simulated_index(
       broadcast_instr->shape().dimensions_size(), IndexComponent::Broadcasted);

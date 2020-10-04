@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -49,6 +52,12 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "ProximalAdagrad";
     case OptimizationAlgorithm::kOnlineYogi:
       return "OnlineYogi";
+    case OptimizationAlgorithm::kProximalYogi:
+      return "ProximalYogi";
+    case OptimizationAlgorithm::kFrequencyEstimator:
+      return "FrequencyEstimator";
+    case OptimizationAlgorithm::kUserDefinedProgram:
+      return "UserDefinedProgram";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "*** Not set ***";
   }
@@ -81,6 +90,12 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "proximal Adagrad";
     case OptimizationAlgorithm::kOnlineYogi:
       return "online Yogi";
+    case OptimizationAlgorithm::kProximalYogi:
+      return "proximal Yogi";
+    case OptimizationAlgorithm::kFrequencyEstimator:
+      return "frequency estimator";
+    case OptimizationAlgorithm::kUserDefinedProgram:
+      return "UserDefinedProgram";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "unknown (not specified)";
   }
@@ -90,8 +105,9 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
 // Returns the number of optimization parameter vectors used by the optimization
 // algorithm, excluding the weights themselves and assuming no gradient
 // accumulation.
-Status GetBaseAuxiliaryParameterCount(OptimizationAlgorithm alg, int* count) {
-  switch (alg) {
+Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
+                                      int* count) {
+  switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad:
       *count = 1;
       return Status::OK();
@@ -128,32 +144,49 @@ Status GetBaseAuxiliaryParameterCount(OptimizationAlgorithm alg, int* count) {
     case OptimizationAlgorithm::kOnlineYogi:
       *count = 2;
       return Status::OK();
+    case OptimizationAlgorithm::kProximalYogi:
+      *count = 2;
+      return Status::OK();
+    case OptimizationAlgorithm::kFrequencyEstimator:
+      *count = 1;
+      return Status::OK();
+    case OptimizationAlgorithm::kUserDefinedProgram: {
+      const xla::ProgramShapeProto& program_shape =
+          params.user_defined_program().program().host_program_shape();
+
+      const int num_inputs = program_shape.parameters_size();
+      const int num_outputs = program_shape.result().tuple_shapes_size();
+
+      if ((num_inputs < 2) || ((num_inputs != num_outputs + 1) &&
+                               (num_inputs != num_outputs + 2))) {
+        return errors::InvalidArgument(
+            "User-defined TPU embedding optimizer program must have at least "
+            "two inputs and the number of outputs must be 1 or 2 less than the "
+            "number of inputs. Received ",
+            num_inputs, " input(s) and ", num_outputs, "output(s).");
+      }
+
+      *count = num_outputs - 1;
+
+      return Status::OK();
+    }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
   }
   return errors::InvalidArgument("No optimization algorithm specified");
 }
 
-Status GetGradientAccumulationSupport(OptimizationAlgorithm alg,
+Status GetGradientAccumulationSupport(const OptimizationParameters& params,
                                       GradientAccumulationSupport* support) {
-  switch (alg) {
-    case OptimizationAlgorithm::kAdagrad:
-      *support = GradientAccumulationSupport::kSupported;
-      return Status::OK();
-    case OptimizationAlgorithm::kStochasticGradientDescent:
-      *support = GradientAccumulationSupport::kUnnecessary;
-      return Status::OK();
-    default: {
-      int auxiliary_parameter_count;
-      TF_RETURN_IF_ERROR(
-          GetBaseAuxiliaryParameterCount(alg, &auxiliary_parameter_count));
-      *support = auxiliary_parameter_count + 1 <= kMaxAuxiliaryParameterCount
-                     ? GradientAccumulationSupport::kSupported
-                     : GradientAccumulationSupport::kNotSupported;
-      return Status::OK();
-    }
-  }
+  int auxiliary_parameter_count;
+  TF_RETURN_IF_ERROR(
+      GetBaseAuxiliaryParameterCount(params, &auxiliary_parameter_count));
+  *support = auxiliary_parameter_count + 1 <= kMaxAuxiliaryParameterCount
+                 ? GradientAccumulationSupport::kSupported
+                 : GradientAccumulationSupport::kNotSupported;
+  return Status::OK();
 }
+
 namespace {
 // Make a normal state variable specification. Please refer to
 // //tensorflow/core/protobuf/tpu/optimization_parameters.proto
@@ -170,90 +203,111 @@ StateVariableSpecification MakeStandardStateVariableSpecification(
 }  // namespace
 
 Status GetOptimizationAlgorithmStateVariables(
-    OptimizationAlgorithm alg, bool use_gradient_accumulation,
+    const OptimizationParameters& params, bool use_gradient_accumulation,
     std::vector<StateVariableSpecification>* state_variables) {
-  // The first parameter set is always the weights themselves.
-  state_variables->push_back(
-      MakeStandardStateVariableSpecification("parameters", 0.0));
   // The order of the returned parameters needs to match the offsets used by
   // the algorithm implementations in test_util.cc and
   // address_handler_program_creator.cc.
-  switch (alg) {
+  // The first parameter set is always the weights themselves.
+  auto add_state_variable = [&](const std::string& name, float value) {
+    state_variables->push_back(
+        MakeStandardStateVariableSpecification(name, value));
+  };
+  switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators", 0.1));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("accumulators", 0.1);
       break;
     }
     case OptimizationAlgorithm::kBoundedAdagrad: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators", 0.1));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("accumulators", 0.1);
       break;
     }
     case OptimizationAlgorithm::kStochasticGradientDescent: {
-      // None.
+      add_state_variable("parameters", 0.0);
       break;
     }
     case OptimizationAlgorithm::kFtrl: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators", 0.1));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("linears", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("accumulators", 0.1);
+      add_state_variable("linears", 0.0);
       break;
     }
     case OptimizationAlgorithm::kAdam: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("momenta", 0.0));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("velocities", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("momenta", 0.0);
+      add_state_variable("velocities", 0.0);
       break;
     }
     case OptimizationAlgorithm::kMomentum: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("momenta", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("momenta", 0.0);
       break;
     }
     case OptimizationAlgorithm::kRmsProp: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("ms", 1.0));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("mom", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("ms", 1.0);
+      add_state_variable("mom", 0.0);
       break;
     }
     case OptimizationAlgorithm::kCenteredRmsProp: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("ms", 1.0));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("mom", 0.0));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("mg", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("ms", 1.0);
+      add_state_variable("mom", 0.0);
+      add_state_variable("mg", 0.0);
       break;
     }
     case OptimizationAlgorithm::kMdlAdagradLight: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators", 0.1));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("weights", 0.0));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("benefits", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("accumulators", 0.1);
+      add_state_variable("weights", 0.0);
+      add_state_variable("benefits", 0.0);
       break;
     }
     case OptimizationAlgorithm::kAdadelta: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators", 0.0));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("updates", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("accumulators", 0.0);
+      add_state_variable("updates", 0.0);
       break;
     }
     case OptimizationAlgorithm::kProximalAdagrad: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators", 0.1));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("accumulators", 0.1);
       break;
     }
     case OptimizationAlgorithm::kOnlineYogi: {
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("vs", 0.0));
-      state_variables->push_back(
-          MakeStandardStateVariableSpecification("linears", 0.0));
+      add_state_variable("parameters", 0.0);
+      add_state_variable("vs", 0.1);
+      add_state_variable("linears", 0.0);
+      break;
+    }
+    case OptimizationAlgorithm::kProximalYogi: {
+      add_state_variable("parameters", 0.0);
+      add_state_variable("v", 0.1);
+      add_state_variable("m", 0.0);
+      break;
+    }
+    case OptimizationAlgorithm::kFrequencyEstimator: {
+      add_state_variable("parameters", 0.0);
+      add_state_variable("last_hit_step", 0);
+      break;
+    }
+    case OptimizationAlgorithm::kUserDefinedProgram: {
+      add_state_variable("parameters",
+                         params.user_defined_program().padding_values(0));
+      int num_slots = -1;
+      TF_RETURN_IF_ERROR(GetBaseAuxiliaryParameterCount(params, &num_slots));
+      if (num_slots + 1 !=
+          params.user_defined_program().padding_values_size()) {
+        return errors::InvalidArgument(
+            "Number of slots does not agree with the number of padding values "
+            "specified.");
+      }
+      for (int i = 0; i < num_slots; ++i) {
+        add_state_variable(absl::StrCat("Slot_", i),
+                           params.user_defined_program().padding_values(i + 1));
+      }
       break;
     }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {
@@ -271,7 +325,8 @@ Status GetOptimizationAlgorithmStateVariables(
   }
   if (state_variables->size() > kMaxAuxiliaryParameterCount + 1) {
     return errors::InvalidArgument(
-        "Optimization algorithm", GetOptimizationAlgorithmName(alg),
+        "Optimization algorithm",
+        GetOptimizationAlgorithmName(params.parameters_case()),
         "does not support gradient accumulation because it "
         "already has too many other accumulators");
   }
@@ -292,257 +347,62 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kAdadelta,
       OptimizationAlgorithm::kProximalAdagrad,
       OptimizationAlgorithm::kOnlineYogi,
+      OptimizationAlgorithm::kProximalYogi,
+      OptimizationAlgorithm::kFrequencyEstimator,
+      OptimizationAlgorithm::kUserDefinedProgram,
   };
 }
 
-Status RegisterPerTableLoadOpsForAlgorithmBody(
-    OptimizationAlgorithm alg, bool is_debug_op,
-    OpRegistrationData* op_reg_data) {
-  GradientAccumulationSupport grad_accum_support;
-  TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
+Status LoadOpShapeFunction::operator()(
+    shape_inference::InferenceContext* c) const {
+  int table_id;
+  TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
+  string table_name;
+  TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
+  // Exactly one must be non-default.
+  if ((table_id >= 0) == (!table_name.empty())) {
+    return errors::InvalidArgument(
+        "exactly one of table_id or table_name must be non-default");
+  }
+  int num_shards;
+  TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
+  int shard_id;
+  TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
 
-  std::vector<StateVariableSpecification> state_variable_specs;
-  TF_CHECK_OK(GetOptimizationAlgorithmStateVariables(
-      alg,
-      grad_accum_support == GradientAccumulationSupport::kSupported &&
-          is_debug_op,
-      &state_variable_specs));
-  auto* op_def = &op_reg_data->op_def;
-  op_def->set_name(
-      strings::StrCat("LoadTPUEmbedding", GetOptimizationAlgorithmName(alg),
-                      "Parameters", (is_debug_op ? "GradAccumDebug" : "")));
-  // It is important for the order of the inputs to the op defined here
-  // to match the order in input_names because the indexes are used in
-  // the combining transformation.
-  for (const auto& parameter : state_variable_specs) {
-    if (parameter.has_user_defined() || is_debug_op) {
-      auto* arg = op_def->add_input_arg();
-      arg->set_name(parameter.name());
-      arg->set_type(DT_FLOAT);
-    }
+  // Verify shapes have rank 2 and are compatible when they are
+  // required to be valid.
+  shape_inference::ShapeHandle parameter_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &parameter_shape));
+  for (int j = 1; j < c->num_inputs(); ++j) {
+    shape_inference::ShapeHandle accumulator_j_shape;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(j), 2, &accumulator_j_shape));
+    shape_inference::ShapeHandle merged;
+    TF_RETURN_IF_ERROR(c->Merge(parameter_shape, accumulator_j_shape, &merged));
   }
-  {
-    auto* table_id_attr = op_def->add_attr();
-    table_id_attr->set_name("table_id");
-    table_id_attr->set_type("int");
-    table_id_attr->set_has_minimum(true);
-    table_id_attr->set_minimum(-1);
-    table_id_attr->mutable_default_value()->set_i(-1);
-  }
-  {
-    auto* table_name_attr = op_def->add_attr();
-    table_name_attr->set_name("table_name");
-    table_name_attr->set_type("string");
-    table_name_attr->mutable_default_value()->set_s("");
-  }
-  {
-    auto* num_shards_attr = op_def->add_attr();
-    num_shards_attr->set_name("num_shards");
-    num_shards_attr->set_type("int");
-  }
-  {
-    auto* shard_id_attr = op_def->add_attr();
-    shard_id_attr->set_name("shard_id");
-    shard_id_attr->set_type("int");
-  }
-  {
-    auto* embedding_config_attr = op_def->add_attr();
-    embedding_config_attr->set_name("config");
-    embedding_config_attr->set_type("string");
-    embedding_config_attr->mutable_default_value()->set_s("");
-  }
-  string parameter_descriptions;
-  for (const auto& parameter : state_variable_specs) {
-    if (parameter.has_user_defined() || is_debug_op) {
-      strings::Appendf(&parameter_descriptions,
-                       R"(
-%s: A tensor containing the initial embedding table %s to use in embedding
-lookups using the %s optimization algorithm.)",
-                       parameter.name().c_str(), parameter.name().c_str(),
-                       GetOptimizationAlgorithmFriendlyName(alg).c_str());
-    }
-  }
-  op_def->set_is_commutative(false);
-  op_def->set_is_aggregate(false);
-  op_def->set_is_stateful(true);
-  auto shape_inference_function =
-      [state_variable_specs,
-       is_debug_op](shape_inference::InferenceContext* c) -> Status {
-    int table_id;
-    TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
-    string table_name;
-    TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
-    // Exactly one must be non-default.
-    if ((table_id >= 0) == (!table_name.empty())) {
-      return errors::InvalidArgument(
-          "exactly one of table_id or table_name must be non-default");
-    }
-    int num_shards;
-    TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
-    int shard_id;
-    TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
-    const int user_param_count =
-        std::count_if(state_variable_specs.begin(), state_variable_specs.end(),
-                      [&](const StateVariableSpecification& sv) {
-                        return sv.has_user_defined() || is_debug_op;
-                      });
-    std::vector<shape_inference::ShapeHandle> inputs(user_param_count);
-    int input_index = 0;
-    for (int i = 0; i < state_variable_specs.size(); ++i) {
-      if (state_variable_specs[i].has_user_defined() || is_debug_op) {
-        std::vector<shape_inference::ShapeHandle> input_temp;
-        TF_RETURN_IF_ERROR(
-            c->input(state_variable_specs[i].name(), &input_temp));
-        if (input_temp.size() != 1) {
-          return errors::InvalidArgument("each input to be rank 1");
-        }
-        inputs[input_index] = input_temp[0];
-        ++input_index;
-      }
-    }
-    // Verify shapes have rank 2 and are compatible when they are
-    // required to be valid.
-    shape_inference::ShapeHandle parameter_shape;
-    TF_RETURN_IF_ERROR(c->WithRank(inputs[0], 2, &parameter_shape));
-    for (int j = 1; j < user_param_count; ++j) {
-      shape_inference::ShapeHandle accumulator_j_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(inputs[j], 2, &accumulator_j_shape));
-      shape_inference::ShapeHandle merged;
-      TF_RETURN_IF_ERROR(
-          c->Merge(parameter_shape, accumulator_j_shape, &merged));
-    }
-    return Status::OK();
-  };
-  op_reg_data->shape_inference_fn = shape_inference_function;
+
   return Status::OK();
 }
 
-Status RegisterPerTableRetrieveOpsForAlgorithmBody(
-    OptimizationAlgorithm alg, bool is_debug_op,
-    OpRegistrationData* op_reg_data) {
-  GradientAccumulationSupport grad_accum_support;
-  TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
-
-  std::vector<StateVariableSpecification> state_variable_specs;
-  TF_CHECK_OK(GetOptimizationAlgorithmStateVariables(
-      alg,
-      grad_accum_support == GradientAccumulationSupport::kSupported &&
-          is_debug_op,
-      &state_variable_specs));
-
-  auto* op_def = &op_reg_data->op_def;
-  op_def->set_name(
-      strings::StrCat("RetrieveTPUEmbedding", GetOptimizationAlgorithmName(alg),
-                      "Parameters", (is_debug_op ? "GradAccumDebug" : "")));
-  // It is important for the order of the outputs of the op defined here
-  // to match the order in output_names because the indexes are used in
-  // the combining transformation.
-  for (const auto& parameter : state_variable_specs) {
-    if (parameter.has_user_defined() || is_debug_op) {
-      auto* arg = op_def->add_output_arg();
-      arg->set_name(parameter.name());
-      arg->set_type(DT_FLOAT);
-    }
+Status RetrieveOpShapeFunction::operator()(
+    shape_inference::InferenceContext* c) const {
+  int table_id;
+  TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
+  string table_name;
+  TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
+  // Exactly one must be non-default.
+  if ((table_id >= 0) == (!table_name.empty())) {
+    return errors::InvalidArgument(
+        "exactly one of table_id or table_name must be non-default");
   }
-  {
-    auto* table_id_attr = op_def->add_attr();
-    table_id_attr->set_name("table_id");
-    table_id_attr->set_type("int");
-    table_id_attr->set_has_minimum(true);
-    table_id_attr->set_minimum(-1);
-    table_id_attr->mutable_default_value()->set_i(-1);
+  int num_shards;
+  TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
+  int shard_id;
+  TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
+  for (int j = 0; j < c->num_outputs(); ++j) {
+    c->set_output(j, c->MakeShape(std::vector<shape_inference::DimensionHandle>(
+                         2, c->UnknownDim())));
   }
-  {
-    auto* table_name_attr = op_def->add_attr();
-    table_name_attr->set_name("table_name");
-    table_name_attr->set_type("string");
-    table_name_attr->mutable_default_value()->set_s("");
-  }
-  {
-    auto* num_shards_attr = op_def->add_attr();
-    num_shards_attr->set_name("num_shards");
-    num_shards_attr->set_type("int");
-  }
-  {
-    auto* shard_id_attr = op_def->add_attr();
-    shard_id_attr->set_name("shard_id");
-    shard_id_attr->set_type("int");
-  }
-  {
-    auto* embedding_config_attr = op_def->add_attr();
-    embedding_config_attr->set_name("config");
-    embedding_config_attr->set_type("string");
-    embedding_config_attr->mutable_default_value()->set_s("");
-  }
-  string parameter_descriptions;
-  for (const auto& param : state_variable_specs) {
-    if (param.has_user_defined() || is_debug_op) {
-      strings::Appendf(&parameter_descriptions,
-                       R"(
-%s: A tensor containing the embedding table %s to store with the
-parameters from embedding updates using the %s optimization algorithm.)",
-                       param.name().c_str(), param.name().c_str(),
-                       GetOptimizationAlgorithmFriendlyName(alg).c_str());
-    }
-  }
-  op_def->set_is_commutative(false);
-  op_def->set_is_aggregate(false);
-  op_def->set_is_stateful(true);
-  auto shape_inference_function =
-      [state_variable_specs,
-       is_debug_op](shape_inference::InferenceContext* c) -> Status {
-    int table_id;
-    TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
-    string table_name;
-    TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
-    // Exactly one must be non-default.
-    if ((table_id >= 0) == (!table_name.empty())) {
-      return errors::InvalidArgument(
-          "exactly one of table_id or table_name must be non-default");
-    }
-    int num_shards;
-    TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
-    int shard_id;
-    TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
-    for (int j = 0; j < state_variable_specs.size(); ++j) {
-      if (state_variable_specs[j].has_user_defined() || is_debug_op) {
-        auto shape = c->MakeShape(
-            std::vector<shape_inference::DimensionHandle>(2, c->UnknownDim()));
-        TF_RETURN_IF_ERROR(
-            c->set_output(state_variable_specs[j].name(),
-                          std::vector<shape_inference::ShapeHandle>(1, shape)));
-      }
-    }
-    return Status::OK();
-  };
-  op_reg_data->shape_inference_fn = shape_inference_function;
   return Status::OK();
-}
-
-Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
-                                       bool* internal) {
-  switch (alg) {
-    case OptimizationAlgorithm::kAdagrad:
-    case OptimizationAlgorithm::kStochasticGradientDescent:
-    case OptimizationAlgorithm::kFtrl:
-    case OptimizationAlgorithm::kAdam:
-    case OptimizationAlgorithm::kMomentum:
-    case OptimizationAlgorithm::kRmsProp:
-    case OptimizationAlgorithm::kCenteredRmsProp:
-    case OptimizationAlgorithm::kMdlAdagradLight:
-    case OptimizationAlgorithm::kAdadelta:
-    case OptimizationAlgorithm::kProximalAdagrad: {
-      *internal = false;
-      return Status::OK();
-    }
-    case OptimizationAlgorithm::kBoundedAdagrad:
-    case OptimizationAlgorithm::kOnlineYogi: {
-      *internal = true;
-      return Status::OK();
-    }
-    case OptimizationAlgorithm::PARAMETERS_NOT_SET:
-      return errors::InvalidArgument("No optimization algorithm specified");
-  }
 }
 
 }  // namespace tpu

@@ -1,5 +1,5 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s --check-prefix=STRIP
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck %s --check-prefix=STRIP
 
 func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
   attributes {tf.entry_function = {inputs = "input", outputs = "SameNameAsOutput"}} {
@@ -7,9 +7,10 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: SUB
+// CHECK-NEXT:     builtin_code: SUB,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-EMPTY:
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {
@@ -96,13 +97,18 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:     data: [ 10, 0, 0, 0 ]
 // CHECK-NEXT:   }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:   }, {
+// CHECK-NEXT:     data: [ 49, 46, 54, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:   } ],
+// CHECK-NEXT:   metadata: [ {
+// CHECK-NEXT:   name: "min_runtime_version",
+// CHECK-NEXT:   buffer: 6
 // CHECK-NEXT:   } ]
 // CHECK-NEXT: }
 
-  %0 = "tfl.pseudo_input" (%arg0) : (tensor<3x2xi32>) -> tensor<3x2xi32> loc("Input")
-  %1 = "tfl.pseudo_const" () {value = dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32> loc("Const")
-  %2 = "tfl.sub" (%0, %1) {fused_activation_function = "RELU6"} : (tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("sub")
-  %3 = "std.constant" () {value = dense<10> : tensor<i32>} : () -> tensor<i32> loc("SameNameAsOutput")
-  %4 = "tfl.add" (%3, %2) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("add")
-  return %4 : tensor<3x2xi32>
+  %0 = "tfl.pseudo_const" () {value = dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32> loc("Const")
+  %1 = "tfl.sub" (%arg0, %0) {fused_activation_function = "RELU6"} : (tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("sub")
+  %2 = "std.constant" () {value = dense<10> : tensor<i32>} : () -> tensor<i32> loc("SameNameAsOutput")
+  %3 = "tfl.add" (%2, %1) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("add")
+  return %3 : tensor<3x2xi32>
 }

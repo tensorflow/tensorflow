@@ -24,23 +24,91 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("data.experimental.dense_to_ragged_batch")
+def dense_to_ragged_batch(batch_size,
+                          drop_remainder=False,
+                          row_splits_dtype=dtypes.int64):
+  """A transformation that batches ragged elements into `tf.RaggedTensor`s.
+
+  This transformation combines multiple consecutive elements of the input
+  dataset into a single element.
+
+  Like `tf.data.Dataset.batch`, the components of the resulting element will
+  have an additional outer dimension, which will be `batch_size` (or
+  `N % batch_size` for the last element if `batch_size` does not divide the
+  number of input elements `N` evenly and `drop_remainder` is `False`). If
+  your program depends on the batches having the same outer dimension, you
+  should set the `drop_remainder` argument to `True` to prevent the smaller
+  batch from being produced.
+
+  Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
+  different shapes:
+
+  *  If an input element is a `tf.Tensor` whose static `tf.TensorShape` is
+     fully defined, then it is batched as normal.
+  *  If an input element is a `tf.Tensor` whose static `tf.TensorShape` contains
+     one or more axes with unknown size (i.e., `shape[i]=None`), then the output
+     will contain a `tf.RaggedTensor` that is ragged up to any of such
+     dimensions.
+  *  If an input element is a `tf.RaggedTensor` or any other type, then it is
+     batched as normal.
+
+  Example:
+
+  >>> dataset = tf.data.Dataset.from_tensor_slices(np.arange(6))
+  >>> dataset = dataset.map(lambda x: tf.range(x))
+  >>> dataset.element_spec.shape
+  TensorShape([None])
+  >>> dataset = dataset.apply(
+  ...     tf.data.experimental.dense_to_ragged_batch(batch_size=2))
+  >>> for batch in dataset:
+  ...   print(batch)
+  <tf.RaggedTensor [[], [0]]>
+  <tf.RaggedTensor [[0, 1], [0, 1, 2]]>
+  <tf.RaggedTensor [[0, 1, 2, 3], [0, 1, 2, 3, 4]]>
+
+  Args:
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements of this dataset to combine in a single batch.
+    drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+      whether the last batch should be dropped in the case it has fewer than
+      `batch_size` elements; the default behavior is not to drop the smaller
+      batch.
+    row_splits_dtype: The dtype that should be used for the `row_splits` of any
+      new ragged tensors.  Existing `tf.RaggedTensor` elements do not have their
+      row_splits dtype changed.
+
+  Returns:
+    Dataset: A `Dataset`.
+  """
+
+  def _apply_fn(dataset):
+    ragged_dataset = _DenseToRaggedDataset(dataset, row_splits_dtype)
+    return dataset_ops.BatchDataset(
+        ragged_dataset, batch_size=batch_size, drop_remainder=drop_remainder)
+
+  return _apply_fn
+
+
 @tf_export("data.experimental.dense_to_sparse_batch")
 def dense_to_sparse_batch(batch_size, row_shape):
-  """A transformation that batches ragged elements into `tf.SparseTensor`s.
+  """A transformation that batches ragged elements into `tf.sparse.SparseTensor`s.
 
   Like `Dataset.padded_batch()`, this transformation combines multiple
   consecutive elements of the dataset, which might have different
   shapes, into a single element. The resulting element has three
   components (`indices`, `values`, and `dense_shape`), which
-  comprise a `tf.SparseTensor` that represents the same data. The
+  comprise a `tf.sparse.SparseTensor` that represents the same data. The
   `row_shape` represents the dense shape of each row in the
-  resulting `tf.SparseTensor`, to which the effective batch size is
+  resulting `tf.sparse.SparseTensor`, to which the effective batch size is
   prepended. For example:
 
   ```python
@@ -65,9 +133,9 @@ def dense_to_sparse_batch(batch_size, row_shape):
       consecutive elements of this dataset to combine in a single batch.
     row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like object
       representing the equivalent dense shape of a row in the resulting
-      `tf.SparseTensor`. Each element of this dataset must have the same rank as
-      `row_shape`, and must have size less than or equal to `row_shape` in each
-      dimension.
+      `tf.sparse.SparseTensor`. Each element of this dataset must have the same
+      rank as `row_shape`, and must have size less than or equal to `row_shape`
+      in each dimension.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -108,7 +176,7 @@ def map_and_batch_with_legacy_function(map_func,
     num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
       representing the number of elements to process in parallel. If not
       specified, `batch_size * num_parallel_batches` elements will be processed
-      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      in parallel. If the value `tf.data.AUTOTUNE` is used, then
       the number of parallel calls is set dynamically based on available CPU.
 
   Returns:
@@ -151,11 +219,8 @@ def map_and_batch(map_func,
 
   Maps `map_func` across `batch_size` consecutive elements of this dataset
   and then combines them into a batch. Functionally, it is equivalent to `map`
-  followed by `batch`. However, by fusing the two transformations together, the
-  implementation can be more efficient. Surfacing this transformation in the API
-  is temporary. Once automatic input pipeline optimization is implemented,
-  the fusing of `map` and `batch` will happen automatically and this API will be
-  deprecated.
+  followed by `batch`. This API is temporary and deprecated since input pipeline
+  optimization now fuses consecutive `map` and `batch` operations automatically.
 
   Args:
     map_func: A function mapping a nested structure of tensors to another
@@ -172,7 +237,7 @@ def map_and_batch(map_func,
     num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
       representing the number of elements to process in parallel. If not
       specified, `batch_size * num_parallel_batches` elements will be processed
-      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      in parallel. If the value `tf.data.AUTOTUNE` is used, then
       the number of parallel calls is set dynamically based on available CPU.
 
   Returns:
@@ -214,7 +279,7 @@ def unbatch():
   # of a dataset.
   a = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
 
-  a.apply(tf.data.experimental.unbatch()) == {
+  a.unbatch() == {
       'a', 'b', 'c', 'a', 'b', 'a', 'b', 'c', 'd'}
   ```
 
@@ -230,7 +295,7 @@ def unbatch():
 
 
 class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that batches ragged dense elements into `tf.SparseTensor`s."""
+  """A `Dataset` that batches ragged dense elements into `tf.sparse.SparseTensor`s."""
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
@@ -264,7 +329,6 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_calls,
                drop_remainder, use_legacy_function=False):
-    """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
 
     self._map_func = dataset_ops.StructuredFunctionWrapper(
@@ -311,3 +375,78 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
   @property
   def element_spec(self):
     return self._element_spec
+
+
+class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that encodes dense inputs as ragged (w/ ragged_rank=0).
+
+  In particular:
+
+  * Any tf.Tensor elements with rank>0 are encoded as ragged tensors with
+    ragged_rank=0.  This allows tensors with varying shape to be batched
+    together.
+  * Any other elements are left as-is.
+  """
+
+  def __init__(self, input_dataset, row_splits_dtype):
+    """Constructs a new _DenseToRaggedDataset.
+
+    Args:
+      input_dataset: The dataset whose tf.Tensor elements should be made ragged.
+      row_splits_dtype: The dtype that should be used for the `row_splits` of
+        any new ragged tensors.  Existing `tf.RaggedTensor` elements do *not*
+        have their row_splits dtype changed.
+    """
+    # Replace each TensorSpec in the input dataset's structure with a
+    # corresponding RaggedTensorSpec.
+    def to_ragged_spec(spec):
+      """Returns the new spec based on RaggedTensors."""
+      if (not isinstance(spec, tensor_spec.TensorSpec) or
+          spec.shape.rank is None or
+          spec.shape.is_fully_defined()):
+        return spec
+      else:
+        ragged_rank = max([
+            axis for (axis, size) in enumerate(spec.shape.as_list())
+            if size is None
+        ])
+        return ragged_tensor.RaggedTensorSpec(
+            shape=spec.shape,
+            dtype=spec.dtype,
+            ragged_rank=ragged_rank,
+            row_splits_dtype=row_splits_dtype)
+
+    self._structure = nest.map_structure(to_ragged_spec,
+                                         input_dataset.element_spec)
+
+    # Replace each tf.Tensor value in the input dataset with a variant-encoded
+    # RaggedTensor. Since we're updating the corresponding structure to be
+    # a RaggedTensorSpec, this variant-encoded tensor will be decoded with
+    # RaggedTensorSpec._from_tensor_list.
+    def to_ragged_variant(value):
+      """Re-encode Tensors as RaggedTensors."""
+      if (not isinstance(value, ops.Tensor) or
+          value.shape.rank is None or
+          value.shape.is_fully_defined()):
+        return value
+      else:
+        spec = to_ragged_spec(tensor_spec.TensorSpec.from_tensor(value))
+        if spec._ragged_rank > 0:  # pylint: disable=protected-access
+          value = ragged_tensor.RaggedTensor.from_tensor(
+              value, ragged_rank=spec._ragged_rank)  # pylint: disable=protected-access
+        return spec._to_tensor_list(value)[0]  # pylint: disable=protected-access
+
+    # Tuples are automatically unpacked by `dataset.map` so we repack them.
+    if dataset_ops._should_unpack_args(input_dataset.element_spec):  # pylint: disable=protected-access
+      map_fn = lambda *value: nest.map_structure(to_ragged_variant, value)
+    else:
+      map_fn = lambda value: nest.map_structure(to_ragged_variant, value)
+
+    self._mapped_dataset = input_dataset.map(map_fn)
+
+    variant = self._mapped_dataset._variant_tensor  # pylint: disable=protected-access
+    super(_DenseToRaggedDataset, self).__init__(input_dataset, variant)
+
+  @property
+  def element_spec(self):
+    return self._structure

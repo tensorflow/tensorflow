@@ -29,21 +29,11 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
+        "//tensorflow/lite/experimental/tflite_api_dispatcher:tflite_api_dispatcher_with_kernels",
         "//tensorflow/lite/java/jni",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "init_tensorflow",
-    srcs = [
-        "init_tensorflow_jni.cc",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/java/jni",
-        "//tensorflow/lite/testing:init_tensorflow",
     ],
     alwayslink = 1,
 )
@@ -56,17 +46,31 @@ cc_library(
     srcs = [
         "builtin_ops_jni.cc",
     ],
+    hdrs = ["op_resolver.h"],
     copts = tflite_copts(),
     deps = [
         ":native_framework_only",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
     alwayslink = 1,
+)
+
+# TODO(b/153652701): Generate this target to give CreateOpResolver a custom namespace.
+cc_library(
+    name = "selected_ops_jni",
+    srcs = ["selected_ops_jni.cc"],
+    hdrs = ["op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:framework",
+    ],
 )
 
 exports_files(
     [
         "exported_symbols.lds",
         "version_script.lds",
+        "op_resolver.h",
     ],
 )

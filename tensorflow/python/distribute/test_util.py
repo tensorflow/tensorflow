@@ -1,0 +1,58 @@
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+"""Test utilities."""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import functools
+
+from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import values
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.util import nest
+
+
+def gather(strategy, value):
+  """Gathers value from all workers.
+
+  This is intended for tests before we implement an official all-gather API.
+
+  Args:
+    strategy: a `tf.distribute.Strategy`.
+    value: a nested structure of n-dim `tf.distribute.DistributedValue` of
+      `tf.Tensor`, or of a `tf.Tensor` if the strategy only has one replica.
+      Cannot contain tf.sparse.SparseTensor.
+
+  Returns:
+    a (n+1)-dim `tf.Tensor`.
+  """
+  return nest.map_structure(functools.partial(_gather, strategy), value)
+
+
+def _gather(strategy, value):
+  """Gathers a single value."""
+  # pylint: disable=protected-access
+  if not isinstance(value, values.DistributedValues):
+    value = values.PerReplica([ops.convert_to_tensor(value)])
+  if not isinstance(strategy.extended,
+                    collective_all_reduce_strategy.CollectiveAllReduceExtended):
+    return array_ops.stack(value._values)
+  assert len(strategy.extended.worker_devices) == len(value._values)
+  inputs = [array_ops.expand_dims_v2(v, axis=0) for v in value._values]
+  return strategy._gather(values.PerReplica(inputs), axis=0)
+  # pylint: enable=protected-access

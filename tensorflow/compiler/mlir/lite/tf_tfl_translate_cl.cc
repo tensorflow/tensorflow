@@ -22,6 +22,33 @@ using llvm::cl::opt;
 opt<std::string> input_file_name(llvm::cl::Positional,
                                  llvm::cl::desc("<input file>"),
                                  llvm::cl::init("-"));
+
+// NOLINTNEXTLINE
+opt<bool> import_saved_model_object_graph(
+    "savedmodel-objectgraph-to-mlir",
+    llvm::cl::desc("Import a saved model to its MLIR representation"),
+    llvm::cl::value_desc("dir"));
+
+// NOLINTNEXTLINE
+opt<bool> import_saved_model_signature_defs(
+    "savedmodel-signaturedefs-to-mlir",
+    llvm::cl::desc("Import a saved model V1 to its MLIR representation"),
+    llvm::cl::value_desc("dir"));
+
+// NOLINTNEXTLINE
+opt<std::string> saved_model_tags(
+    "tf-savedmodel-tags",
+    llvm::cl::desc("Tags used to indicate which MetaGraphDef to import, "
+                   "separated by ','"),
+    llvm::cl::init("serve"));
+
+// NOLINTNEXTLINE
+opt<std::string> saved_model_exported_names(
+    "tf-savedmodel-exported-names",
+    llvm::cl::desc("Names to export from SavedModel, separated by ','. Empty "
+                   "(the default) means export all."),
+    llvm::cl::init(""));
+
 // NOLINTNEXTLINE
 opt<std::string> output_file_name("o", llvm::cl::desc("<output file>"),
                                   llvm::cl::value_desc("filename"),
@@ -30,7 +57,7 @@ opt<std::string> output_file_name("o", llvm::cl::desc("<output file>"),
 opt<bool> use_splatted_constant(
     "use-splatted-constant",
     llvm::cl::desc(
-        "Replace constants with randonmly generated splatted tensors"),
+        "Replace constants with randomly generated splatted tensors"),
     llvm::cl::init(false), llvm::cl::Hidden);
 // NOLINTNEXTLINE
 opt<bool> input_mlir(
@@ -45,15 +72,18 @@ opt<bool> output_mlir(
         "Output MLIR rather than FlatBuffer for the generated TFLite model"),
     llvm::cl::init(false));
 
-// The following is a temporary approach to allow injecting opdefs in addition
-// to those that are already part of the global TF registry linked in. The
-// primary goal is testing. This is not intended to be a general solution for
-// unregistered ops. More appropriate mechanisms, such as op hints, should be
-// used instead.
+// The following approach allows injecting opdefs in addition
+// to those that are already part of the global TF registry  to be linked in
+// prior to importing the graph. The primary goal is for support of custom ops.
+// This is not intended to be a general solution for custom ops for the future
+// but mainly for supporting older models like mobilenet_ssd. More appropriate
+// mechanisms, such as op hints or using functions to represent composable ops
+// like https://github.com/tensorflow/community/pull/113 should be encouraged
+// going forward.
 // NOLINTNEXTLINE
-llvm::cl::list<std::string> extra_opdefs(
-    "tf-extra-opdefs", llvm::cl::desc("List of extra opdefs when importing "
-                                      "graphdef (testing purposes only)"));
+llvm::cl::list<std::string> custom_opdefs(
+    "tf-custom-opdefs", llvm::cl::desc("List of custom opdefs when importing "
+                                       "graphdef"));
 
 // Quantize and Dequantize ops pair can be optionally emitted before and after
 // the quantized model as the adaptors to receive and produce floating point
@@ -65,3 +95,17 @@ opt<bool> emit_quant_adaptor_ops(
     llvm::cl::desc(
         "Emit Quantize/Dequantize before and after the generated TFLite model"),
     llvm::cl::init(false));
+
+// The path to a quantization stats file to specify value ranges for some of the
+// tensors with known names.
+// NOLINTNEXTLINE
+opt<std::string> quant_stats_file_name("quant-stats",
+                                       llvm::cl::desc("<stats file>"),
+                                       llvm::cl::value_desc("filename"),
+                                       llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<bool> convert_tf_while_to_tfl_while(
+    "convert_tf_while_to_tfl_while",
+    llvm::cl::desc("Whether to legalize TF While to TFL While."),
+    llvm::cl::init(true));

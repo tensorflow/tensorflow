@@ -58,7 +58,7 @@ class XlaDeviceContext : public DeviceContext {
       std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
       xla::LocalClient* client,
       XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      thread::ThreadPool* thread_pool);
+      thread::ThreadPool* thread_pool, bool use_fast_mem = false);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done,
@@ -85,6 +85,9 @@ class XlaDeviceContext : public DeviceContext {
 
   // Returns a device-to-device stream, in round-robin fashion.
   se::Stream* GetDeviceToDeviceStream();
+
+  Status ThenExecute(Device* device, stream_executor::Stream* stream,
+                     std::function<void()> func) override;
 
  private:
   bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
@@ -113,8 +116,11 @@ class XlaDeviceContext : public DeviceContext {
   // Thread pool used for running closures
   thread::ThreadPool* thread_pool_;
 
+  // Whether uses TPU fast mem or not.
+  bool use_fast_mem_;
+
   absl::Mutex mu_;
-  int next_stream_ GUARDED_BY(mu_) = 0;
+  int next_stream_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

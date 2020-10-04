@@ -29,7 +29,7 @@ namespace {
 // Also throws in some trailing whitespace on the original to show it is
 // removed.
 TEST(UtilTest, ReindentsDifferentNumberOfLeadingSpacesUniformly) {
-  string original = R"(   hello there  
+  string original = R"(   hello there
       world)";
   string got = Reindent(original, "  ");
   string want = R"(  hello there
@@ -69,17 +69,30 @@ TEST(UtilTest, LogLines) {
 TEST(UtilTest, CommonFactors) {
   struct {
     std::vector<int64> a, b;
-    std::vector<std::pair<int64, int64>> expected;
+    absl::InlinedVector<std::pair<int64, int64>, 8> expected;
   } test_cases[] = {
       {/*.a =*/{0}, /*.b =*/{0}, /*.expected =*/{{0, 0}, {1, 1}}},
       {/*.a =*/{}, /*.b =*/{}, /*.expected =*/{{0, 0}}},
       {/*.a =*/{2, 5, 1, 3},
        /*.b =*/{1, 10, 3, 1},
        /*.expected =*/{{0, 0}, {0, 1}, {2, 2}, {3, 2}, {4, 3}, {4, 4}}},
-  };
+      {/*.a =*/{1, 1, 3},
+       /*.b =*/{1, 1, 3},
+       /*.expected =*/{{0, 0}, {1, 1}, {2, 2}, {3, 3}}},
+      // Splitting and combining dimensions.
+      {/*.a =*/{2, 6},
+       /*.b =*/{4, 3},
+       /*.expected =*/{{0, 0}, {2, 2}}},
+      {/*.a =*/{1, 2, 6},
+       /*.b =*/{4, 1, 3, 1},
+       /*.expected =*/{{0, 0}, {1, 0}, {3, 3}, {3, 4}}},
+      // Extra degenerated dimension (second and third dims in the output) forms
+      // single common factor group.
+      {/*.a =*/{1, 2, 1},
+       /*.b =*/{1, 1, 1, 2},
+       /*.expected =*/{{0, 0}, {1, 1}, {1, 2}, {1, 3}, {2, 4}, {3, 4}}}};
   for (const auto& test_case : test_cases) {
-    EXPECT_TRUE(absl::c_equal(test_case.expected,
-                              CommonFactors(test_case.a, test_case.b)));
+    EXPECT_EQ(test_case.expected, CommonFactors(test_case.a, test_case.b));
   }
 }
 

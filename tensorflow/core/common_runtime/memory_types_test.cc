@@ -30,13 +30,10 @@ TEST(MemoryTypeChecker, Int32OK) {
   auto in1 = test::graph::Constant(g, v);
   test::graph::Add(g, in0, in1);
   TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_CPU, g));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // There is a kernel for adding two int32s on host memory.
   TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_GPU, g));
-#endif  // GOOGLE_CUDA
-#ifdef TENSORFLOW_USE_SYCL
-  TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_SYCL, g));
-#endif  // TENSORFLOW_USE_SYCL
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   delete g;
 }
 
@@ -47,7 +44,7 @@ TEST(MemoryTypeChecker, Int32NotOk) {
   auto x = test::graph::Constant(g, v);
   test::graph::Cast(g, x, DT_FLOAT);
   TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_CPU, g));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // There is no kernel for casting int32/host memory to float/device
   // memory.
   EXPECT_TRUE(errors::IsInternal(ValidateMemoryTypes(DEVICE_GPU, g)));
@@ -55,16 +52,7 @@ TEST(MemoryTypeChecker, Int32NotOk) {
   // But we can insert _HostSend/_HostRecv to ensure the invariant.
   TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_GPU, "/device:GPU:0", g));
   TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_GPU, g));
-#endif  // GOOGLE_CUDA
-#ifdef TENSORFLOW_USE_SYCL
-  // There is no kernel for casting int32/host memory to float/device
-  // memory.
-  EXPECT_TRUE(errors::IsInternal(ValidateMemoryTypes(DEVICE_SYCL, g)));
-
-  // But we can insert _HostSend/_HostRecv to ensure the invariant.
-  TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_SYCL, "/device:SYCL:0", g));
-  TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_SYCL, g));
-#endif  // TENSORFLOW_USE_SYCL
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   delete g;
 }
 
@@ -80,18 +68,12 @@ TEST(MemoryTypeChecker, MemoryTypeForOutput) {
   TF_EXPECT_OK(MemoryTypeForOutput(DEVICE_CPU, g, sf, 0, &memory_type));
   // float Switch's output on CPU doesn't have HOST_MEMORY constraint.
   EXPECT_EQ(memory_type, DEVICE_MEMORY);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   auto si = test::graph::Switch(g, test::graph::Constant(g, vi), pred);
   TF_EXPECT_OK(MemoryTypeForOutput(DEVICE_GPU, g, si, 0, &memory_type));
   // int Switch's output on GPU has HOST_MEMORY constraint.
   EXPECT_EQ(memory_type, HOST_MEMORY);
-#endif  // GOOGLE_CUDA
-#ifdef TENSORFLOW_USE_SYCL
-  auto si = test::graph::Switch(g, test::graph::Constant(g, vi), pred);
-  TF_EXPECT_OK(MemoryTypeForOutput(DEVICE_SYCL, g, si, 0, &memory_type));
-  // int Switch's output on GPU has HOST_MEMORY constraint.
-  EXPECT_EQ(memory_type, HOST_MEMORY);
-#endif  // TENSORFLOW_USE_SYCL
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   delete g;
 }
 

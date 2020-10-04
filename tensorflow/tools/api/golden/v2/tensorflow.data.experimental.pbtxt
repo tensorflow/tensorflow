@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "AutoShardPolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
@@ -64,9 +68,17 @@ tf_module {
     name: "UNKNOWN_CARDINALITY"
     mtype: "<type \'int\'>"
   }
+  member {
+    name: "service"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Counter"
     argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
+    name: "assert_cardinality"
+    argspec: "args=[\'expected_cardinality\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "bucket_by_sequence_length"
@@ -87,6 +99,10 @@ tf_module {
   member_method {
     name: "copy_to_device"
     argspec: "args=[\'target_device\', \'source_device\'], varargs=None, keywords=None, defaults=[\'/cpu:0\'], "
+  }
+  member_method {
+    name: "dense_to_ragged_batch"
+    argspec: "args=[\'batch_size\', \'drop_remainder\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'False\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "dense_to_sparse_batch"
@@ -122,15 +138,19 @@ tf_module {
   }
   member_method {
     name: "ignore_errors"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'log_warning\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "latency_stats"
     argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load"
+    argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "make_batched_features_dataset"
-    argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\"<class \'tensorflow.python.data.ops.readers.TFRecordDatasetV1\'>\", \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\'], "
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "make_csv_dataset"
@@ -138,7 +158,7 @@ tf_module {
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
   }
   member_method {
     name: "map_and_batch"
@@ -150,7 +170,7 @@ tf_module {
   }
   member_method {
     name: "parse_example_dataset"
-    argspec: "args=[\'features\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\'], "
+    argspec: "args=[\'features\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "prefetch_to_device"
@@ -165,12 +185,20 @@ tf_module {
     argspec: "args=[\'datasets\', \'weights\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "save"
+    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "scan"
     argspec: "args=[\'initial_state\', \'scan_func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "shuffle_and_repeat"
     argspec: "args=[\'buffer_size\', \'count\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "snapshot"
+    argspec: "args=[\'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
   }
   member_method {
     name: "take_while"

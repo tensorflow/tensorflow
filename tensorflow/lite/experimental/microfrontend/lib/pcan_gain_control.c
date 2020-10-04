@@ -29,7 +29,7 @@ int16_t WideDynamicFunction(const uint32_t x, const int16_t* lut) {
       0x3FF;
 
   int32_t result = ((int32_t)lut[2] * frac) >> 5;
-  result += ((int32_t)lut[1]) << 5;
+  result += (int32_t)((uint32_t)lut[1] << 5);
   result *= frac;
   result = (result + (1 << 14)) >> 15;
   result += lut[0];

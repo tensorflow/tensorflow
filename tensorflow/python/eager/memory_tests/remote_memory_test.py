@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
@@ -36,7 +34,6 @@ class RemoteWorkerMemoryTest(test.TestCase):
     super(RemoteWorkerMemoryTest, self).__init__(method)
 
     # used for remote worker tests
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
     self._cached_server = server_lib.Server.create_local_server()
     self._cached_server_target = self._cached_server.target[len("grpc://"):]
 

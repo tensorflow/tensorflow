@@ -32,6 +32,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -39,7 +40,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -62,7 +62,8 @@ class VariableHolder(object):
     v = None
 
     # Get expected variable name.
-    with ops.name_scope(kwargs.get("name", None), "Variable") as name:
+    with ops.name_scope(
+        kwargs.get("name", None), "Variable", skip_on_eager=False) as name:
       variable_name = ops.name_from_scope_name(name)
       kwargs["name"] = name
 
@@ -162,29 +163,28 @@ def _lift_unlifted_variables(graph, variable_holder):
         ops.GraphKeys.GLOBAL_VARIABLES)
     local_collection_variables = ops.get_collection(
         ops.GraphKeys.LOCAL_VARIABLES)
-    existing_captures = object_identity.ObjectIdentitySet(
-        graph.internal_captures)
-    lifted_variables = object_identity.ObjectIdentityDictionary()
+    existing_captures = {id(c) for c in graph.internal_captures}
+    lifted_variables = {}
 
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
                and v.graph.building_function)
               and isinstance(v, resource_variable_ops.BaseResourceVariable)
-              and v.handle not in existing_captures)
+              and id(v.handle) not in existing_captures)
 
     for old_variable in global_collection_variables:
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
-        existing_captures.add(old_variable.handle)
+        lifted_variables[id(old_variable)] = new_variable
+        existing_captures.add(id(old_variable.handle))
 
     for old_variable in local_collection_variables:
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
-        existing_captures.add(old_variable.handle)
+        lifted_variables[id(old_variable)] = new_variable
+        existing_captures.add(id(old_variable.handle))
         if new_variable._in_graph_mode:  # pylint: disable=protected-access
           outer_graph = new_variable.graph
           # Variables are added to the global collection by default. In this
@@ -203,15 +203,17 @@ def _lift_unlifted_variables(graph, variable_holder):
     ]:
       mutable_collection = ops.get_collection_ref(collection_name)
       for index, current in enumerate(mutable_collection):
-        mutable_collection[index] = lifted_variables.get(current, current)
+        mutable_collection[index] = lifted_variables.get(id(current), current)
         if not resource_variable_ops.is_resource_variable(
             mutable_collection[index]):
-          logging.warning(
+          logging.log_first_n(
+              logging.WARN,
               "Unable to create a python object for variable {} because it is "
               "a reference variable. It may not be visible to training APIs. "
               "If this is a problem, consider rebuilding the SavedModel after "
               "running tf.compat.v1.enable_resource_variables().".format(
-                  mutable_collection[index]))
+                  mutable_collection[index]),
+              5)
 
 
 # TODO(allenl): make this trackable
@@ -225,8 +227,24 @@ class WrappedFunction(function.ConcreteFunction):
     # properly reflects the new captured inputs.
     for f in fn_graph.as_graph_def().library.function:
       context.context().add_function_def(f)
-    super(WrappedFunction, self).__init__(
-        fn_graph, attrs=attrs, signature=signature)
+    self._signature = signature
+    super(WrappedFunction, self).__init__(fn_graph, attrs=attrs)
+
+  def _call_impl(self, args, kwargs, cancellation_manager=None):
+    if self._arg_keywords is None:
+      if kwargs:
+        raise NotImplementedError(
+            "Keyword arguments not supported when calling a "
+            "wrap_function-decorated function.")
+      if self._signature is not None:
+        args = list(args)
+        for i, arg in enumerate(args):
+          if isinstance(self._signature[i], tensor_spec.DenseSpec):
+            args[i] = ops.convert_to_tensor(arg, self._signature[i].dtype)
+      return self._call_flat(args, self.captured_inputs)
+    else:
+      return super(WrappedFunction, self)._call_impl(
+          args, kwargs, cancellation_manager)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
     """Extract a subgraph of this function's underlying graph.
@@ -262,15 +280,14 @@ class WrappedFunction(function.ConcreteFunction):
 
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
-    internal_captures = object_identity.ObjectIdentitySet(
-        self.graph.internal_captures)
-    flat_feeds = [f for f in flat_feeds if f not in internal_captures]
+    internal_captures = {id(c) for c in self.graph.internal_captures}
+    flat_feeds = [f for f in flat_feeds if id(f) not in internal_captures]
 
     operation_fetches = []
     tensor_fetches = []
     tensor_infos = []
 
-    def _fetch_preprocesing_callback(fetch):
+    def _fetch_preprocessing_callback(fetch):
       """Extract out lists of ops, tensors, and tensor type info.
 
       Turns TensorInfos into Tensors in the original `fetches` structure.
@@ -300,9 +317,9 @@ class WrappedFunction(function.ConcreteFunction):
         return fetch
       else:
         graph_element = self.graph.as_graph_element(fetch)
-        return _fetch_preprocesing_callback(graph_element)
+        return _fetch_preprocessing_callback(graph_element)
 
-    fetches = nest.map_structure(_fetch_preprocesing_callback, fetches)
+    fetches = nest.map_structure(_fetch_preprocessing_callback, fetches)
 
     # Expand composite tensors into their component dense Tensors.
     tensor_fetches = nest.flatten(tensor_fetches, expand_composites=True)
@@ -317,7 +334,8 @@ class WrappedFunction(function.ConcreteFunction):
     lift_map = lift_to_graph.lift_to_graph(
         operation_fetches + tensor_fetches,
         pruned_graph,
-        sources=flat_feeds + self.graph.internal_captures)
+        sources=flat_feeds + self.graph.internal_captures,
+        base_graph=self._func_graph)
 
     # Note that we add the component tensors of any composite tensors to the
     # returned function's outputs list; the list must contain these component

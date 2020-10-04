@@ -4,34 +4,35 @@ func @main(tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>) -
 // CHECK:      {
 // CHECK-NEXT:     version: 3,
 // CHECK-NEXT:     operator_codes: [ {
-// CHECK-NEXT:       builtin_code: SVDF
+// CHECK-NEXT:       builtin_code: SVDF,
+// CHECK-NEXT:       version: 1
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     subgraphs: [ {
 // CHECK-NEXT:       tensors: [ {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 1,
-// CHECK-NEXT:         name: "tfl.pseudo_input",
+// CHECK-NEXT:         name: "arg0",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 2,
-// CHECK-NEXT:         name: "tfl.pseudo_input1",
+// CHECK-NEXT:         name: "arg1",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 3,
-// CHECK-NEXT:         name: "tfl.pseudo_input2",
+// CHECK-NEXT:         name: "arg2",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 4,
-// CHECK-NEXT:         name: "tfl.pseudo_input3",
+// CHECK-NEXT:         name: "arg3",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:         }
@@ -78,16 +79,18 @@ func @main(tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>) -
 // CHECK-NEXT:      data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 // CHECK-NEXT:     }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:     }, {
+// CHECK-NEXT:      data: [ 49, 46, 53, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:     } ],
+// CHECK-NEXT:     metadata: [ {
+// CHECK-NEXT:     name: "min_runtime_version",
+// CHECK-NEXT:     buffer: 7
 // CHECK-NEXT:     } ]
 // CHECK-NEXT:   }
 // CHECK-EMPTY:
 
 ^bb0(%arg0: tensor<4 x f32>, %arg1: tensor<4 x f32>, %arg2: tensor<4 x f32>, %arg3: tensor<4 x f32>):
-  %0 = "tfl.pseudo_input" (%arg0) : (tensor<4 x f32>) -> tensor<4 x f32>
-  %1 = "tfl.pseudo_input" (%arg1) : (tensor<4 x f32>) -> tensor<4 x f32>
-  %2 = "tfl.pseudo_input" (%arg2) : (tensor<4 x f32>) -> tensor<4 x f32>
-  %3 = "tfl.pseudo_input" (%arg3) : (tensor<4 x f32>) -> tensor<4 x f32>
-  %4 = "tfl.pseudo_const" () {value = dense<0.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")
-  %5 = "tfl.svdf"(%0, %1, %2, %3, %4) {fused_activation_function = "RELU", rank = 2 : i32} : (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %5 : tensor<4xf32>
+  %0 = "tfl.pseudo_const" () {value = dense<0.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")
+  %1 = "tfl.svdf"(%arg0, %arg1, %arg2, %arg3, %0) {fused_activation_function = "RELU", rank = 2 : i32} : (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
 }

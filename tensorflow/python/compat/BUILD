@@ -4,8 +4,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
@@ -15,6 +13,7 @@ py_library(
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:monitoring",
     ],
 )
 
@@ -32,20 +31,22 @@ tf_py_test(
     name = "compat_test",
     size = "small",
     srcs = ["compat_test.py"],
-    additional_deps = [
+    tags = ["nofwdcompat"],
+    tfrt_enabled = True,
+    deps = [
         ":compat",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["nofwdcompat"],
 )
 
 tf_py_test(
     name = "disable_v2_behavior_test",
     size = "small",
     srcs = ["disable_v2_behavior_test.py"],
-    additional_deps = [
+    tfrt_enabled = True,
+    deps = [
         ":v2_compat",
-        "//tensorflow/python:framework",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
     ],
 )

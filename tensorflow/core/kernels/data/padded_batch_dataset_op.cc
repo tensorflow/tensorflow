@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -58,7 +59,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         padded_shapes_(std::move(padded_shapes)),
         padding_values_(std::move(padding_values)),
         input_(input),
-        op_version_(op_version) {
+        op_version_(op_version),
+        traceme_metadata_(
+            {{"batch_size",
+              strings::Printf("%lld", static_cast<long long>(batch_size))},
+             {"drop_remainder", drop_remainder ? "true" : "false"}}) {
     input_->Ref();
 
     // NOTE(mrry): Currently we implement "batch up to" semantics. If we could
@@ -71,7 +76,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     const auto& input_shapes = input_->output_shapes();
     output_shapes_.reserve(input_shapes.size());
     for (size_t i = 0; i < input_shapes.size(); ++i) {
-      if (drop_remainder_) {
+      if (drop_remainder_ || input_->Cardinality() == kInfiniteCardinality) {
         output_shapes_.push_back(
             PartialTensorShape({batch_size_}).Concatenate(padded_shapes_[i]));
       } else {
@@ -112,6 +117,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       return n;
     }
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -176,7 +186,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -338,10 +348,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (input_impl_)
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       else
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
       return Status::OK();
@@ -354,15 +365,19 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         input_impl_.reset();
       } else {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
+    }
+
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   const int64 batch_size_;
@@ -373,6 +388,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* const input_;
   const int op_version_;
   std::vector<PartialTensorShape> output_shapes_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 PaddedBatchDatasetOp::PaddedBatchDatasetOp(OpKernelConstruction* ctx)

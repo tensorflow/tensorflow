@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -45,6 +46,9 @@ namespace runtime {
 extern const char* const kEigenMatMulF16SymbolName;
 extern const char* const kEigenMatMulF32SymbolName;
 extern const char* const kEigenMatMulF64SymbolName;
+extern const char* const kEigenMatMulC64SymbolName;
+extern const char* const kEigenMatMulC128SymbolName;
+extern const char* const kEigenMatMulS32SymbolName;
 extern const char* const kMKLConvF32SymbolName;
 extern const char* const kMKLMatMulF32SymbolName;
 extern const char* const kMKLMatMulF64SymbolName;
@@ -57,6 +61,9 @@ extern const char* const kEigenSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
+extern const char* const kEigenSingleThreadedMatMulC64SymbolName;
+extern const char* const kEigenSingleThreadedMatMulC128SymbolName;
+extern const char* const kEigenSingleThreadedMatMulS32SymbolName;
 extern const char* const kEigenSingleThreadedConvF16SymbolName;
 extern const char* const kEigenSingleThreadedConvF32SymbolName;
 extern const char* const kAcquireInfeedBufferForDequeueSymbolName;
@@ -65,9 +72,13 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
 extern const char* const kKeyValueSortSymbolName;
-
+extern const char* const kTopKF32SymbolName;
+extern const char* const kAllReduceSymbolName;
+extern const char* const kCollectivePermuteSymbolName;
+extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
+extern const char* const kAllToAllSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
@@ -151,6 +162,36 @@ extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
 extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
     void* buffer_ptr, const void* shape_ptr, xla::int32 shape_length);
+
+// Perform all reduce on a CPU.
+//
+// participating_replicas: array of replica IDs participating in the reduction,
+// cf. GetParticipatingReplicas.
+// channel_id_present, op_id: whether op_id is a channel ID or a module ID.
+// reduction_kind: operator used for a reduction, cf. ReductionKind.
+// shape_ptr: shape of all input/output buffers.
+extern void __xla_cpu_runtime_AllReduce(
+    const xla::ExecutableRunOptions* run_options,
+    const void* replica_groups_str, xla::int32 replica_groups_str_size,
+    xla::int32 channel_id_present, xla::int64 op_id, xla::int32 reduction_kind,
+    const void* shape_ptr, xla::int32 shape_length, xla::int32 num_buffers,
+    void** input_buffers, void** output_buffers);
+
+extern void __xla_cpu_runtime_CollectivePermute(
+    const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
+    xla::int64 op_id, xla::int32 byte_size, void* input_buffer,
+    void* output_buffer, const void* source_target_pairs,
+    xla::int32 source_target_pairs_size);
+
+extern void __xla_cpu_runtime_AllToAll(
+    const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
+    xla::int64 op_id, const void* replica_groups_str,
+    xla::int32 replica_groups_str_size, xla::int32 num_buffers,
+    xla::int64 buffer_size, void** source_buffers, void** destination_buffers);
+
+// Write the replica ID into the output buffer.
+extern void __xla_cpu_runtime_ReplicaId(
+    const xla::ExecutableRunOptions* run_options, void* output_buffer);
 
 }  // extern "C"
 

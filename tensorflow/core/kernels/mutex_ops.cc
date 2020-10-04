@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/shared_ptr_variant.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -71,52 +72,7 @@ class Mutex : public ResourceBase {
     Mutex* mutex_;
   };
 
-  struct SharedLockReleaser {
-    std::shared_ptr<LockReleaser> shared_lock;
-
-    SharedLockReleaser() : shared_lock() {}
-
-    explicit SharedLockReleaser(std::shared_ptr<LockReleaser>&& lock)
-        : shared_lock(std::forward<decltype(lock)>(lock)) {
-      VLOG(3) << "Creating shared_ptr of " << shared_lock.get()
-              << " count is: " << shared_lock.use_count();
-    }
-
-    SharedLockReleaser(SharedLockReleaser&& rhs)
-        : shared_lock(std::move(rhs.shared_lock)) {
-      VLOG(3) << "Moving SharedLockReleaser of " << shared_lock.get()
-              << " count is: " << shared_lock.use_count();
-    }
-
-    SharedLockReleaser& operator=(const SharedLockReleaser& rhs) = delete;
-
-    SharedLockReleaser& operator=(SharedLockReleaser&& rhs) {
-      if (&rhs == this) return *this;
-      std::swap(shared_lock, rhs.shared_lock);
-      VLOG(3) << "Move-assign of SharedLockReleaser of " << shared_lock.get()
-              << " count is: " << shared_lock.use_count();
-      return *this;
-    }
-
-    SharedLockReleaser(const SharedLockReleaser& rhs)
-        : shared_lock(rhs.shared_lock) {
-      VLOG(3) << "Copying SharedLockReleaser of " << shared_lock.get()
-              << " count is: " << shared_lock.use_count();
-    }
-
-    ~SharedLockReleaser() {
-      VLOG(3) << "Destroying SharedLockReleaser of " << shared_lock.get()
-              << " count is: " << shared_lock.use_count();
-    }
-
-    void Encode(VariantTensorData*) const {
-      // Not supported.
-    }
-
-    bool Decode(const VariantTensorData&) {
-      return false;  // Not supported.
-    }
-  };
+  typedef SharedPtrVariant<LockReleaser> SharedLockReleaser;
 
   void AcquireAsync(
       OpKernelContext* c,
@@ -125,7 +81,7 @@ class Mutex : public ResourceBase {
     CancellationToken token{};
     bool* cancelled = nullptr;
     if (cm) {
-      cancelled = new bool(false);  // GUARDED_BY(mu_);
+      cancelled = new bool(false);  // TF_GUARDED_BY(mu_);
       token = cm->get_cancellation_token();
       const bool already_cancelled =
           !cm->RegisterCallback(token, [this, cancelled]() {
@@ -169,8 +125,8 @@ class Mutex : public ResourceBase {
 
  private:
   mutex mu_;
-  condition_variable cv_ GUARDED_BY(mu_);
-  bool locked_ GUARDED_BY(mu_);
+  condition_variable cv_ TF_GUARDED_BY(mu_);
+  bool locked_ TF_GUARDED_BY(mu_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   string name_;
 };
@@ -205,7 +161,7 @@ class MutexLockOp : public AsyncOpKernel {
                                    const Status& s,
                                    Mutex::SharedLockReleaser&& lock) {
                  VLOG(2) << "Finished locking mutex " << mutex
-                         << " with lock: " << lock.shared_lock.get()
+                         << " with lock: " << lock.shared_ptr.get()
                          << " status: " << s.ToString();
                  if (s.ok()) {
                    variant->scalar<Variant>()() = std::move(lock);
@@ -242,7 +198,7 @@ class ConsumeMutexLockOp : public OpKernel {
                     "Expected input to contain a SharedLockReleaser "
                     "object, but saw variant: '",
                     lock_t.scalar<Variant>()().DebugString(), "'"));
-    const int use_count = lock->shared_lock.use_count();
+    const int use_count = lock->shared_ptr.use_count();
     OP_REQUIRES(
         c, use_count == 1,
         errors::InvalidArgument("Expected use count of lock to be 1, but saw: ",

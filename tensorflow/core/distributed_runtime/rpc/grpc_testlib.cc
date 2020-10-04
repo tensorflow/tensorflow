@@ -80,7 +80,6 @@ Status TestCluster::MakeTestCluster(const string& binary_path,
 
   std::unique_ptr<GrpcSession> session;
   TF_RETURN_IF_ERROR(GrpcSession::Create(options_copy, &session));
-  std::vector<DeviceAttributes> device_attributes;
   TF_RETURN_IF_ERROR(session->ListDevices(&ret->devices_));
 
   *out_cluster = std::move(ret);

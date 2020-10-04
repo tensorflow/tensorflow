@@ -62,16 +62,51 @@ Status SessionMgr::CreateSession(
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state) {
+  return CreateSession(session, server_def, cluster_device_attributes,
+                       isolate_session_state, /*master_task=*/"",
+                       /*master_incarnation=*/0);
+}
+
+Status SessionMgr::CreateSession(
+    const string& session, const ServerDef& server_def,
+    const protobuf::RepeatedPtrField<DeviceAttributes>&
+        cluster_device_attributes,
+    bool isolate_session_state, string master_task, int64 master_incarnation) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
+  }
+
+  // For given master task name, check if one or more `WorkerSession`s have been
+  // created previously on this worker, and if so garbage collect the expired
+  // `WorkerSession`s. This happens when the master fails before sending
+  // `DeleteSession` requests, which can cause `WorkerSession`s to be leaked.
+  if (!master_task.empty()) {
+    auto it_range = master_to_associated_sessions_.equal_range(master_task);
+    if (it_range.first != it_range.second &&
+        it_range.first->second.master_incarnation != master_incarnation) {
+      LOG(INFO) << "When creating WorkerSession for master task " << master_task
+                << ", found old WorkerSessions created by the same master task "
+                << "with a different incarnation. These sessions will "
+                << "be garbage collected. Current WorkerSession count: "
+                << sessions_.size();
+
+      auto it = it_range.first;
+      while (it != it_range.second) {
+        auto session_it = sessions_.find(it->second.session_handle);
+        if (session_it != sessions_.end()) {
+          sessions_.erase(session_it);
+        }
+        it = master_to_associated_sessions_.erase(it);
+      }
+    }
   }
 
   WorkerCacheInterface* worker_cache = nullptr;
   string worker_name;
   if (server_def.cluster().job().empty()) {
     worker_cache = new WorkerCacheWrapper(default_worker_cache_.get());
-    worker_name = legacy_session_->worker_name;
+    worker_name = legacy_session_->worker_name();
   } else {
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
     worker_name = WorkerNameFromServerDef(server_def);
@@ -141,6 +176,78 @@ Status SessionMgr::CreateSession(
   }
 
   sessions_.insert(std::make_pair(session, std::move(worker_session)));
+  if (!master_task.empty()) {
+    MasterAssociatedSession s{master_incarnation, session};
+    master_to_associated_sessions_.emplace(master_task, s);
+  }
+  return Status::OK();
+}
+
+void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
+  default_worker_cache_.reset(worker_cache);
+}
+
+Status SessionMgr::UpdateSession(
+    const string& session, const ServerDef& server_def,
+    const protobuf::RepeatedPtrField<DeviceAttributes>&
+        cluster_device_attributes,
+    bool isolate_session_state) {
+  mutex_lock l(mu_);
+  if (session.empty()) {
+    return errors::InvalidArgument("Session must be non-empty.");
+  }
+  auto it = sessions_.find(session);
+  if (it == sessions_.end()) {
+    return errors::InvalidArgument("Cannot update session ", session,
+                                   " because it does not exist.");
+  }
+  std::shared_ptr<WorkerSession> worker_session = it->second;
+
+  WorkerCacheInterface* worker_cache = nullptr;
+  if (server_def.cluster().job().empty()) {
+    worker_cache = new WorkerCacheWrapper(default_worker_cache_.get());
+  } else {
+    TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
+  }
+  std::vector<string> updated_remote_workers;
+  worker_cache->ListWorkers(&updated_remote_workers);
+
+  std::vector<std::unique_ptr<Device>> cluster_devices;
+
+  const DeviceMgr* local_device_mgr = worker_session->device_mgr();
+  DeviceMgr* remote_device_mgr = worker_session->remote_device_mgr();
+  std::vector<Device*> curr_remote_devices = remote_device_mgr->ListDevices();
+  std::vector<std::unique_ptr<Device>> added_remote_devices;
+  std::vector<Device*> removed_remote_devices;
+
+  std::vector<DeviceAttributes> added_cluster_device_attrs;
+  for (const auto& da : cluster_device_attributes) {
+    Device* device;
+    if (!local_device_mgr->LookupDevice(da.name(), &device).ok() &&
+        !remote_device_mgr->LookupDevice(da.name(), &device).ok()) {
+      added_cluster_device_attrs.emplace_back(da);
+    } else if (device != nullptr &&
+               device->attributes().incarnation() != da.incarnation()) {
+      removed_remote_devices.emplace_back(device);
+      added_cluster_device_attrs.emplace_back(da);
+    }
+  }
+  for (Device* device : curr_remote_devices) {
+    string task_name;
+    DeviceNameUtils::GetTaskName(device->parsed_name(), &task_name);
+    if (std::find(updated_remote_workers.begin(), updated_remote_workers.end(),
+                  task_name) == updated_remote_workers.end()) {
+      removed_remote_devices.emplace_back(device);
+    }
+  }
+  protobuf::RepeatedPtrField<DeviceAttributes> added_cluster_device_attrs_pb(
+      added_cluster_device_attrs.begin(), added_cluster_device_attrs.end());
+  AsRemoteDevices(worker_env_->env, added_cluster_device_attrs_pb, nullptr,
+                  &added_remote_devices);
+
+  TF_RETURN_IF_ERROR(worker_session->UpdateWorkerCacheAndDevices(
+      std::unique_ptr<WorkerCacheInterface>(worker_cache),
+      std::move(added_remote_devices), removed_remote_devices));
   return Status::OK();
 }
 
@@ -162,7 +269,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
     if (it == sessions_.end()) {
       return errors::Aborted("Session handle is not found: ", session_handle,
                              ". Possibly this worker (\"",
-                             legacy_session_->worker_name,
+                             legacy_session_->worker_name(),
                              "\") just restarted.");
     } else {
       *out_session = it->second;
@@ -186,7 +293,7 @@ void SessionMgr::SetLogging(bool active) {
   this->is_logging_active_ = active;
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       worker_cache->SetLogging(active);
     }
@@ -195,7 +302,7 @@ void SessionMgr::SetLogging(bool active) {
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         worker_cache->SetLogging(active);
       }
@@ -208,7 +315,7 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
   mutex_lock l(mu_);
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       auto step_stats = StepStats();
       if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
@@ -221,7 +328,7 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         auto step_stats = StepStats();
         if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
@@ -238,7 +345,7 @@ void SessionMgr::ClearLogs() {
   mutex_lock l(mu_);
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       worker_cache->ClearLogs();
     }
@@ -247,7 +354,7 @@ void SessionMgr::ClearLogs() {
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         worker_cache->ClearLogs();
       }

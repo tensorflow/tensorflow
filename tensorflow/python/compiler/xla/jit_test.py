@@ -34,17 +34,14 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-# pylint: enable=g-import-not-at-top
-
-
-_REGISTERED_OPS = op_def_registry.get_registered_ops()
 
 
 def enable_jit_nonstateful(node_def):
-  try:
-    return not _REGISTERED_OPS[node_def.op].is_stateful
-  except KeyError:
+  op_def = op_def_registry.get(node_def.op)
+  if op_def is None:
     raise ValueError("Unregistered op being created: %s" % node_def)
+
+  return not op_def.is_stateful
 
 
 class JITTest(test.TestCase, parameterized.TestCase):
@@ -60,7 +57,7 @@ class JITTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testJITInEager(self):
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         RuntimeError, "xla.experimental.jit_scope is not supported when eager "
         "execution is enabled. Try use it inside tf.function."):
       with jit.experimental_jit_scope(True):
@@ -74,7 +71,7 @@ class JITTest(test.TestCase, parameterized.TestCase):
           "root",
           initializer=init_ops.random_uniform_initializer(
               -0.1, 0.1, seed=2)):
-        inputs = random_ops.random_uniform((1,), seed=1)
+        inputs = random_ops.random_uniform((1,), minval=-10, maxval=10, seed=1)
         return inputs
     v_false_1_t, v_false_1 = self.compute(False, create_ops)
     _, v_false_2 = self.compute(False, create_ops)
@@ -207,11 +204,11 @@ class CompilationEnabledInGradientTest(test.TestCase, parameterized.TestCase):
       for cg in c_grad_ops:
         self.assertTrue(cg.get_attr("_XlaCompile"))
       for ncg in nc_grad_ops:
-        with self.assertRaisesRegexp(ValueError, "[Nn]o attr named"):
+        with self.assertRaisesRegex(ValueError, "[Nn]o attr named"):
           ncg.get_attr("_XlaCompile")
 
       # d/dx (x ** 4) = 4 * (x ** 3)
-      self.assertAllClose([[108]], x_grads.eval())
+      self.assertAllClose([[108]], x_grads)
 
   @test_util.build_as_function_and_v1_graph
   def testCompilationGradientScopeNames(self):

@@ -31,7 +31,7 @@ function cp_external() {
 
   pushd .
   cd "$src_dir"
-  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*'`; do
+  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*'`; do
     mkdir -p "${dest_dir}/$(dirname ${f})"
     cp "${f}" "${dest_dir}/$(dirname ${f})/"
   done
@@ -39,6 +39,38 @@ function cp_external() {
 
   mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
+}
+
+function copy_xla_aot_runtime_sources() {
+  local src_dir=$1
+  local dst_dir=$2
+
+  local srcs_txt="tensorflow/tools/pip_package/xla_compiled_cpu_runtime_srcs.txt"
+
+  if [ ! -f "${src_dir}/${srcs_txt}" ]; then
+    echo Could not find source list file "${src_dir}/${srcs_txt}". 1>&2
+    return 0
+  fi
+
+  pushd $src_dir
+  for file in $(cat "${srcs_txt}")
+  do
+    # Sometimes $file has a prefix bazel-out/host/ we want to remove.
+    prefix=${file%%tensorflow/*}  # Find the location of "tensorflow/*"
+    candidate_file=${file#$prefix}  # Remove the prefix
+    if [ ! -z "$candidate_file" ]; then
+      file=$candidate_file
+    fi
+    dn=$(dirname $file)
+    if test -f "$file"; then
+      mkdir -p "${dst_dir}/${dn}"
+      cp $file "${dst_dir}/${file}"
+    else
+      echo "Missing xla source file: ${file}" 1>&2
+    fi
+  done
+  cp tensorflow/tools/pip_package/xla_build/CMakeLists.txt "${dst_dir}"
+  popd
 }
 
 function move_to_root_if_exists () {
@@ -84,6 +116,7 @@ function prepare_src() {
   TMPDIR="${1%/}"
   mkdir -p "$TMPDIR"
   EXTERNAL_INCLUDES="${TMPDIR}/tensorflow/include/external"
+  XLA_AOT_RUNTIME_SOURCES="${TMPDIR}/tensorflow/xla_aot_runtime_src"
 
   echo $(date) : "=== Preparing sources in dir: ${TMPDIR}"
 
@@ -99,23 +132,35 @@ function prepare_src() {
     unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     echo "Unzip finished."
     # runfiles structure after unzip the python binary
+    cp \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
+      "${TMPDIR}"
     cp -R \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${EXTERNAL_INCLUDES}/"
+    copy_xla_aot_runtime_sources \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow \
+      "${XLA_AOT_RUNTIME_SOURCES}/"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
+      copy_xla_aot_runtime_sources \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
+        "${XLA_AOT_RUNTIME_SOURCES}"
       # Copy MKL libs over so they can be loaded at runtime
       so_lib_dir=$(ls $RUNFILES | grep solib) || true
       if [ -n "${so_lib_dir}" ]; then
@@ -127,12 +172,18 @@ function prepare_src() {
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
+      copy_xla_aot_runtime_sources \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
+        "${XLA_AOT_RUNTIME_SOURCES}"
       # Copy MKL libs over so they can be loaded at runtime
       so_lib_dir=$(ls $RUNFILES | grep solib) || true
       if [ -n "${so_lib_dir}" ]; then
@@ -151,40 +202,25 @@ function prepare_src() {
   reorganize_includes "${TMPDIR}"
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
-  cp tensorflow/tools/pip_package/README ${TMPDIR}
+  cp tensorflow/tools/pip_package/README ${TMPDIR}/README.md
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
 
-  # In order to break the circular dependency between tensorflow and
-  # tensorflow_estimator which forces us to do a multi-step release, we are
-  # creating a virtual python package called tensorflow and moving all the tf
-  # code into another python package called tensorflow_core:
-  #
-  #   * move code from tensorflow to tensorflow_core
-  #   * create the virtual pip package: create folder and __init__.py file with
-  #     needed code for transparent forwarding
-  #
-  # This is transparent to internal code or to code not using the pip packages.
-  mv "${TMPDIR}/tensorflow" "${TMPDIR}/tensorflow_core"
-  mkdir "${TMPDIR}/tensorflow"
-  mv "${TMPDIR}/tensorflow_core/virtual_root.__init__.py" "${TMPDIR}/tensorflow/__init__.py"
+  # TODO(annarev): copy over API files from tensorflow/api/_vN to tensorflow/
+  #   except tensorflow/api/_vN/lite/.
 
-  # In V1 API, we need to remove deprecation warnings from
-  # ${TMPDIR}/tensorflow_core/__init__.py as those exists in
-  # ${TMPDIR}/tensorflow/__init__.py which does an import* and if these don't
-  # get removed users get 6 deprecation warning just on
-  #
-  #   import tensorflow as tf
-  #
-  # which is not ok. We disable deprecation by using sed to toggle the flag
-  # TODO(mihaimaruseac): When we move the API to root, remove this hack
-  # Note: Can't do in place sed that works on all OS, so use a temp file instead
-  sed \
-    "s/deprecation=True/deprecation=False/g" \
-    "${TMPDIR}/tensorflow_core/__init__.py" > "${TMPDIR}/tensorflow_core/__init__.out"
-  mv "${TMPDIR}/tensorflow_core/__init__.out" "${TMPDIR}/tensorflow_core/__init__.py"
+  # Copy over keras API folder to the root directory
+  # so that autocomplete works as expected for all keras subimports.
+  if [ -d "${TMPDIR}/tensorflow/_api/v1/" ]
+  then
+    cp -r ${TMPDIR}/tensorflow/python/keras/api/_v1/keras/ ${TMPDIR}/tensorflow/keras/
+    sed -i'.original' -e 's/.python.keras.api._v1/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py
+  else
+    cp -r ${TMPDIR}/tensorflow/python/keras/api/_v2/keras/ ${TMPDIR}/tensorflow/keras/
+    sed -i'.original' -e 's/.python.keras.api._v2/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py
+  fi
 }
 
 function build_wheel() {
@@ -239,8 +275,9 @@ function usage() {
 function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
+  CPU_BUILD=0
   GPU_BUILD=0
-  PROJECT_NAME_CPU=0
+  GPUDIRECT_BUILD=0
   ROCM_BUILD=0
   NIGHTLY_BUILD=0
   SRCDIR=""
@@ -255,16 +292,9 @@ function main() {
     elif [[ "$1" == "--gpu" ]]; then
       GPU_BUILD=1
     elif [[ "$1" == "--cpu" ]]; then
-      # Check that --gpu has not been passed.
-      if [[ ${GPU_BUILD} == "1" ]]; then
-        echo "Specifying both --cpu and --gpu to build_pip_package is not allowed."
-        usage
-        exit 1
-      fi
-
-      PROJECT_NAME_CPU=1
+      CPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
-      PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
+      GPUDIRECT_BUILD=1
     elif [[ "$1" == "--rocm" ]]; then
       ROCM_BUILD=1
     elif [[ "$1" == "--project_name" ]]; then
@@ -290,6 +320,12 @@ function main() {
     fi
   done
 
+  if [[ $(( GPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
+    echo "Only one of [--gpu, --cpu, --gpudirect, --rocm] may be provided."
+    usage
+    exit 1
+  fi
+
   if [[ -z "$DSTDIR" ]] && [[ -z "$SRCDIR" ]]; then
     echo "No destination dir provided"
     usage
@@ -312,17 +348,21 @@ function main() {
     PKG_NAME_FLAG="--project_name ${PROJECT_NAME}"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_gpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${GPUDIRECT_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_gpudirect"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${ROCM_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_rocm"
-  elif [[ ${NIGHTLY_BUILD} == "1" && ${PROJECT_NAME_CPU} == "1" ]]; then
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_cpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
   elif [[ ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_gpu"
+  elif [[ ${GPUDIRECT_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
   elif [[ ${ROCM_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_rocm"
-  elif [[ ${PROJECT_NAME_CPU} == "1" ]]; then
+  elif [[ ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_cpu"
   fi
 

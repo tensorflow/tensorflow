@@ -73,7 +73,7 @@ class DecodeCSVOpTest(test.TestCase):
     if context.executing_eagerly():
       err_spec = errors.InvalidArgumentError, (
           "Each record default should be at "
-          "most rank 1.")
+          "most rank 1")
     else:
       err_spec = ValueError, "Shape must be at most rank 1 but is rank 2"
     with self.assertRaisesWithPredicateMatch(*err_spec):

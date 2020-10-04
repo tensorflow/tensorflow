@@ -29,7 +29,9 @@ opt<std::string> input_arrays(
 // NOLINTNEXTLINE
 opt<std::string> input_dtypes(
     "tf-input-data-types",
-    llvm::cl::desc("Input tensor data types, separated by ','"),
+    llvm::cl::desc("(Optional) Input tensor data types, separated by ','. Use "
+                   "'' if a single data type is skipped. The data type from "
+                   "the import graph is used if it is skipped."),
     llvm::cl::init(""));
 
 // NOLINTNEXTLINE
@@ -43,6 +45,12 @@ opt<std::string> input_shapes(
 // NOLINTNEXTLINE
 opt<std::string> output_arrays(
     "tf-output-arrays", llvm::cl::desc("Output tensor names, separated by ','"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> control_output_arrays(
+    "tf-control-output-arrays",
+    llvm::cl::desc("Control output node names, separated by ','"),
     llvm::cl::init(""));
 
 // NOLINTNEXTLINE
@@ -74,7 +82,7 @@ opt<std::string> max_values(
 // NOLINTNEXTLINE
 opt<std::string> debug_info_file(
     "tf-debug-info",
-    llvm::cl::desc("Path to the debug info file of the input graph def."),
+    llvm::cl::desc("Path to the debug info file of the input graph def"),
     llvm::cl::init(""));
 
 // TODO(b/134792656): If pruning is moved into TF dialect as a pass
@@ -82,23 +90,28 @@ opt<std::string> debug_info_file(
 // NOLINTNEXTLINE
 opt<bool> prune_unused_nodes(
     "tf-prune-unused-nodes",
-    llvm::cl::desc("Prune unused nodes in the input graphdef "),
+    llvm::cl::desc("Prune unused nodes in the input graphdef"),
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 opt<bool> convert_legacy_fed_inputs(
     "tf-convert-legacy-fed-inputs",
     llvm::cl::desc(
-        "Eliminate LegacyFedInput nodes by replacing them with Placeholder "),
+        "Eliminate LegacyFedInput nodes by replacing them with Placeholder"),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
 opt<bool> graph_as_function("tf-graph-as-function",
-                            llvm::cl::desc("Treat main graph as a function "),
+                            llvm::cl::desc("Treat main graph as a function"),
                             llvm::cl::init(false));
 
 // NOLINTNEXTLINE
-opt<std::string> saved_model_tags(
-    "tf-savedmodel-tags",
-    llvm::cl::desc("Tags used to indicate which MeataGraphDef to import, "
-                   "separated by ','"),
-    llvm::cl::init("serve"));
+opt<bool> upgrade_legacy("tf-upgrade-legacy",
+                         llvm::cl::desc("Upgrade legacy TF graph behavior"),
+                         llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_shape_inference(
+    "tf-enable-shape-inference-on-import",
+    llvm::cl::desc("Enable shape inference on import (temporary)"),
+    llvm::cl::init(false));

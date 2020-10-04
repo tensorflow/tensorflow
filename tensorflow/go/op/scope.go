@@ -25,12 +25,12 @@ import (
 
 // Scope encapsulates common operation properties when building a Graph.
 //
-// A Scope object (and its derivates, e.g., obtained from Scope.SubScope)
+// A Scope object (and its derivatives, e.g., obtained from Scope.SubScope)
 // act as a builder for graphs. They allow common properties (such as
 // a name prefix) to be specified for multiple operations being added
 // to the graph.
 //
-// A Scope object and all its derivates (e.g., obtained from Scope.SubScope)
+// A Scope object and all its derivatives (e.g., obtained from Scope.SubScope)
 // are not safe for concurrent use by multiple goroutines.
 type Scope struct {
 	graph               *tf.Graph

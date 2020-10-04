@@ -51,6 +51,10 @@ class Member {
 
   Status FillPossibleDevices(PossibleDevices* possible_device) const;
 
+  // Returns whether `src_root` is assigned to a CompositeDevice and `this` is
+  // assigned to a physical device.
+  bool IsEdgeFromCompositeDeviceToPhysicalDevice(const Member& src_root) const;
+
   Status EnsureCompatibilityAcrossResourceEdge(
       const Node& src, const Member& src_root,
       const Node& dst, /*dst_root is this*/
@@ -82,6 +86,10 @@ class Member {
   bool MergeSupportedDevices(const Member& other);
 
   Status AssignDevice(const Node& node);
+
+  // If user does not explicitly request XLA device and non-XLA device is
+  // supported for this node, use only the non-XLA device. See b/140896502.
+  void MaybeExcludeXlaDevices();
 
   // Limit the possible devices of this (should be a root) to the device
   // specifications in `devices`.
@@ -278,6 +286,14 @@ class ColocationGraph {
   // deems as requiring deep inspection by placer. This is an optimization.
   Status ColocateResourceAndRefEdges(
       std::unordered_set<Node*>* inspection_required);
+
+  // Updates this ColocationGraph by making sure that all nodes having inputs of
+  // a DT_VARIANT data type with a host-only underlying types (e.g. strings) can
+  // be placed only on CPU device. We do that by reverse-DFS traversal from all
+  // nodes that take variant inputs to the node that produces that variant.
+  // TODO(ezhulenev): This function does not yet support "deep op" inspection,
+  // that we have for DT_RESOURCE edges.
+  Status AddHostOnlyDataTypesConstraints();
 
   Status AddInspectionConstraints(
       const std::unordered_set<Node*>& inspection_required);

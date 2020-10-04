@@ -17,9 +17,19 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/ADT/Twine.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
+
+StatusOr<std::unique_ptr<HloModuleConfig>>
+CompileOnlyClient::CreateModuleConfig(
+    const ProgramShape& program_shape,
+    absl::Span<const Shape* const> argument_shapes,
+    const ExecutionOptions* execution_options) {
+  return compiler_service_->CreateModuleConfig(program_shape, argument_shapes,
+                                               execution_options);
+}
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyClient::CompileAheadOfTime(

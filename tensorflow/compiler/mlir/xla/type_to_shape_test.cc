@@ -17,16 +17,21 @@ limitations under the License.
 
 #include <iostream>
 
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 using mlir::Builder;
+using mlir::MemRefType;
 using mlir::MLIRContext;
+using mlir::RankedTensorType;
+using mlir::UnrankedTensorType;
+using mlir::VectorType;
 
 namespace xla {
 namespace {
@@ -74,17 +79,17 @@ TEST(TypeToShapeTest, ConvertBasicTypesToTypes) {
   EXPECT_TRUE(
       ShapeUtil::IsScalarWithElementType(TypeToShape(b.getF32Type()), F32));
   EXPECT_THAT(
-      TypeToShape(b.getVectorType({8, 128}, b.getIntegerType(32))).ToProto(),
+      TypeToShape(VectorType::get({8, 128}, b.getIntegerType(32))).ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128}).ToProto()));
   EXPECT_THAT(
-      TypeToShape(b.getVectorType({8, 128}, b.getF32Type())).ToProto(),
+      TypeToShape(VectorType::get({8, 128}, b.getF32Type())).ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
 
   // MLIR Type that is not representable as XLA Shape.
   EXPECT_THAT(
-      TypeToShape(b.getVectorType({8, 128}, b.getIntegerType(17))).ToProto(),
+      TypeToShape(VectorType::get({8, 128}, b.getIntegerType(17))).ToProto(),
       EqualsProto(Shape().ToProto()));
 }
 
@@ -94,18 +99,18 @@ TEST(TypeToShapeTest, ConvertMemRefTypeToTypes) {
 
   // Memref without any affine map. Note: memory space is ignored for shape.
   EXPECT_THAT(
-      TypeToShape(b.getMemRefType({8, 128}, b.getF32Type())).ToProto(),
+      TypeToShape(MemRefType::get({8, 128}, b.getF32Type())).ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
   EXPECT_THAT(
-      TypeToShape(b.getMemRefType({100, 13, 210}, b.getF32Type())).ToProto(),
+      TypeToShape(MemRefType::get({100, 13, 210}, b.getF32Type())).ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {100, 13, 210}).ToProto()));
 
   // Vector types are "flattened" into the end of the shape.
   EXPECT_THAT(
-      TypeToShape(b.getMemRefType({100, 13, 210},
-                                  b.getVectorType({8, 128}, b.getF32Type())))
+      TypeToShape(MemRefType::get({100, 13, 210},
+                                  VectorType::get({8, 128}, b.getF32Type())))
           .ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {100, 13, 210, 8, 128})
@@ -117,19 +122,19 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
   Builder b(&context);
 
   EXPECT_THAT(
-      TypeToShape(b.getTensorType({8, 128}, b.getF32Type())).ToProto(),
+      TypeToShape(RankedTensorType::get({8, 128}, b.getF32Type())).ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
 
   // Shape cannot represent dynamic shapes.
   // TODO(b/115638799): Update once Shape can support dynamic shapes.
-  EXPECT_THAT(TypeToShape(b.getTensorType(b.getF32Type())).ToProto(),
+  EXPECT_THAT(TypeToShape(UnrankedTensorType::get(b.getF32Type())).ToProto(),
               EqualsProto(Shape().ToProto()));
 
   // TODO(jpienaar): Expand to handle more complicated tensor types.
   EXPECT_THAT(
-      TypeToShape(
-          b.getTensorType({8, 128}, b.getVectorType({16, 16}, b.getF32Type())))
+      TypeToShape(RankedTensorType::get(
+                      {8, 128}, VectorType::get({16, 16}, b.getF32Type())))
           .ToProto(),
       EqualsProto(Shape().ToProto()));
 }
@@ -152,8 +157,9 @@ TEST(TypeToShapeTest, ConvertWithShapeRepresentationFn) {
   StatusOr<Shape> status_or_shape;
 
   // Non-fully-defined shape.
-  status_or_shape = TypeToShape(b.getTensorType({-1, 2, 3}, b.getF32Type()),
-                                test_shape_representation_fn);
+  status_or_shape =
+      TypeToShape(RankedTensorType::get({-1, 2, 3}, b.getF32Type()),
+                  test_shape_representation_fn);
   EXPECT_EQ(status_or_shape.status().code(),
             tensorflow::errors::Code::INVALID_ARGUMENT);
 
@@ -165,11 +171,29 @@ TEST(TypeToShapeTest, ConvertWithShapeRepresentationFn) {
   EXPECT_EQ(captured_tensor_shape, tensorflow::TensorShape());
 
   // Ranked Float32 Tensor, not using fast memory.
-  status_or_shape = TypeToShape(b.getTensorType({1, 2, 3}, b.getF32Type()),
-                                test_shape_representation_fn);
+  status_or_shape =
+      TypeToShape(RankedTensorType::get({1, 2, 3}, b.getF32Type()),
+                  test_shape_representation_fn);
   EXPECT_TRUE(status_or_shape.ok());
   EXPECT_EQ(captured_dtype, tensorflow::DataType::DT_FLOAT);
   EXPECT_EQ(captured_tensor_shape, tensorflow::TensorShape({1, 2, 3}));
+}
+
+TEST(TypeToShapeTest, ConvertMemRefToShape) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32, {10, 20, 30},
+                                               {2, 0, 1});
+  MLIRContext context;
+  mlir::Builder builder(&context);
+
+  StatusOr<mlir::Type> mlir_type =
+      ConvertShapeToType<MemRefType>(shape, builder);
+  ASSERT_TRUE(mlir_type.ok());
+  mlir::Type type = mlir_type.ConsumeValueOrDie();
+  Shape converted = TypeToShape(type);
+  EXPECT_TRUE(ShapeUtil::Equal(
+      converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32,
+                                                {10, 20, 30}, {2, 0, 1})));
+  EXPECT_TRUE(ShapeUtil::Equal(converted, shape));
 }
 
 }  // namespace

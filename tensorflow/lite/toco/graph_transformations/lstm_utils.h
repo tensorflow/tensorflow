@@ -62,12 +62,12 @@ enum ExtendedLstmCellOutputs {
 };
 
 // Create optional array used for optional tensor in ExtendedLstmCell inputs.
-void CreateOptionalArray(Model* model, string* input_array_buffer,
-                         const string& array_name);
+void CreateOptionalArray(Model* model, std::string* input_array_buffer,
+                         const std::string& array_name);
 
 // Create float array and get its buffer.
 Buffer<ArrayDataType::kFloat>* CreateFloatArrayBuffer(Model* model,
-                                                      string* array_name,
+                                                      std::string* array_name,
                                                       const Shape& shape);
 
 // Copy data from one array to the other one (supports 1D and 2D array),
@@ -91,8 +91,8 @@ void CopyArrayData(const Buffer<ArrayDataType::kFloat>& src_buffer,
 
 // Copy a subset of array data and create a smaller array,
 // mostly used for spliting weights and bias for Lstm cell.
-void CopySubArrayToArray(Model* model, string* array_name,
-                         const string& tensor_name, int dim1_size,
+void CopySubArrayToArray(Model* model, std::string* array_name,
+                         const std::string& tensor_name, int dim1_size,
                          int dim2_size, const Array& original_array,
                          int start_idx1, int start_idx2);
 
@@ -103,8 +103,9 @@ void CopyArrayToSubArray(Buffer<ArrayDataType::kFloat>& tensor_buffer,
                          int start_idx1, int start_idx2);
 
 // Get mating rnn array inputs using rnn_states flag.
-bool GetMatchingRnnArray(Model* model, const string& back_edge_source_array,
-                         string* rnn_array);
+bool GetMatchingRnnArray(Model* model,
+                         const std::string& back_edge_source_array,
+                         std::string* rnn_array);
 
 }  // namespace toco
 

@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Generates and prints out imports and constants for new TensorFlow python api.
-"""
+"""Generates and prints out imports and constants for new TensorFlow python api."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,6 +33,7 @@ API_ATTRS_V1 = tf_export.API_ATTRS_V1
 _LAZY_LOADING = False
 _API_VERSIONS = [1, 2]
 _COMPAT_MODULE_TEMPLATE = 'compat.v%d'
+_SUBCOMPAT_MODULE_TEMPLATE = 'compat.v%d.compat.v%d'
 _COMPAT_MODULE_PREFIX = 'compat.v'
 _DEFAULT_PACKAGE = 'tensorflow.python'
 _GENFILES_DIR_SUFFIX = 'genfiles/'
@@ -84,9 +84,9 @@ def get_canonical_import(import_set):
   ordering.
 
   Args:
-    import_set: (set) Imports providing the same symbol. This is a set of
-      tuples in the form (import, priority). We want to pick an import
-      with highest priority.
+    import_set: (set) Imports providing the same symbol. This is a set of tuples
+      in the form (import, priority). We want to pick an import with highest
+      priority.
 
   Returns:
     A module name to import
@@ -105,7 +105,11 @@ def get_canonical_import(import_set):
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
-  def __init__(self, output_package, api_version, lazy_loading=_LAZY_LOADING):
+  def __init__(self,
+               output_package,
+               api_version,
+               lazy_loading=_LAZY_LOADING,
+               use_relative_imports=False):
     self._output_package = output_package
     # Maps API module to API symbol name to set of tuples of the form
     # (module name, priority).
@@ -120,19 +124,17 @@ class _ModuleInitCodeBuilder(object):
     # Controls whether or not exported symbols are lazily loaded or statically
     # imported.
     self._lazy_loading = lazy_loading
+    self._use_relative_imports = use_relative_imports
 
   def _check_already_imported(self, symbol_id, api_name):
     if (api_name in self._dest_import_to_id and
-        symbol_id != self._dest_import_to_id[api_name] and
-        symbol_id != -1):
+        symbol_id != self._dest_import_to_id[api_name] and symbol_id != -1):
       raise SymbolExposedTwiceError(
-          'Trying to export multiple symbols with same name: %s.' %
-          api_name)
+          'Trying to export multiple symbols with same name: %s.' % api_name)
     self._dest_import_to_id[api_name] = symbol_id
 
-  def add_import(
-      self, symbol, source_module_name, source_name, dest_module_name,
-      dest_name):
+  def add_import(self, symbol, source_module_name, source_name,
+                 dest_module_name, dest_name):
     """Adds this import to module_imports.
 
     Args:
@@ -146,6 +148,10 @@ class _ModuleInitCodeBuilder(object):
       SymbolExposedTwiceError: Raised when an import with the same
         dest_name has already been added to dest_module_name.
     """
+    # modules_with_exports.py is only used during API generation and
+    # won't be available when actually importing tensorflow.
+    if source_module_name.endswith('python.modules_with_exports'):
+      source_module_name = symbol.__module__
     import_str = self.format_import(source_module_name, source_name, dest_name)
 
     # Check if we are trying to expose two different symbols with same name.
@@ -187,7 +193,7 @@ class _ModuleInitCodeBuilder(object):
 
       for submodule_index in range(len(module_split)):
         if submodule_index > 0:
-          submodule = module_split[submodule_index-1]
+          submodule = module_split[submodule_index - 1]
           parent_module += '.' + submodule if parent_module else submodule
         import_from = self._output_package
         if self._lazy_loading:
@@ -199,7 +205,10 @@ class _ModuleInitCodeBuilder(object):
               dest_module_name=parent_module,
               dest_name=module_split[submodule_index])
         else:
-          import_from = '.'
+          if self._use_relative_imports:
+            import_from = '.'
+          elif submodule_index > 0:
+            import_from += '.' + '.'.join(module_split[:submodule_index])
           self.add_import(
               symbol=None,
               source_module_name=import_from,
@@ -236,15 +245,16 @@ class _ModuleInitCodeBuilder(object):
     # from it using * import. Don't need this for lazy_loading because the
     # underscore symbols are already included in __all__ when passed in and
     # handled by TFModuleWrapper.
+    root_module_footer = ''
     if not self._lazy_loading:
       underscore_names_str = ', '.join(
           '\'%s\'' % name for name in self._underscore_names_in_root)
 
-      module_text_map[''] = module_text_map.get('', '') + '''
+      root_module_footer = """
 _names_with_underscore = [%s]
 __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
-''' % underscore_names_str
+""" % underscore_names_str
 
     # Add module wrapper if we need to print deprecation messages
     # or if we use lazy loading.
@@ -256,8 +266,8 @@ __all__.extend([_s for _s in _names_with_underscore])
           if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
             deprecation = 'True'
         # Workaround to make sure not load lite from lite/__init__.py
-        if (not dest_module and 'lite' in self._module_imports
-            and self._lazy_loading):
+        if (not dest_module and 'lite' in self._module_imports and
+            self._lazy_loading):
           has_lite = 'True'
         if self._lazy_loading:
           public_apis_name = '_PUBLIC_APIS'
@@ -266,7 +276,7 @@ __all__.extend([_s for _s in _names_with_underscore])
         footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
             dest_module, public_apis_name, deprecation, has_lite)
 
-    return module_text_map, footer_text_map
+    return module_text_map, footer_text_map, root_module_footer
 
   def format_import(self, source_module_name, source_name, dest_name):
     """Formats import statement.
@@ -294,6 +304,71 @@ __all__.extend([_s for _s in _names_with_underscore])
           return 'import %s' % source_name
         else:
           return 'import %s as %s' % (source_name, dest_name)
+
+  def get_destination_modules(self):
+    return set(self._module_imports.keys())
+
+  def copy_imports(self, from_dest_module, to_dest_module):
+    self._module_imports[to_dest_module] = (
+        self._module_imports[from_dest_module].copy())
+
+
+def add_nested_compat_imports(module_builder, compat_api_versions,
+                              output_package):
+  """Adds compat.vN.compat.vK modules to module builder.
+
+  To avoid circular imports, we want to add __init__.py files under
+  compat.vN.compat.vK and under compat.vN.compat.vK.compat. For all other
+  imports, we point to corresponding modules under compat.vK.
+
+  Args:
+    module_builder: `_ModuleInitCodeBuilder` instance.
+    compat_api_versions: Supported compatibility versions.
+    output_package: Base output python package where generated API will be
+      added.
+  """
+  imported_modules = module_builder.get_destination_modules()
+
+  # Copy over all imports in compat.vK to compat.vN.compat.vK and
+  # all imports in compat.vK.compat to compat.vN.compat.vK.compat.
+  for v in compat_api_versions:
+    for sv in compat_api_versions:
+      subcompat_module = _SUBCOMPAT_MODULE_TEMPLATE % (v, sv)
+      compat_module = _COMPAT_MODULE_TEMPLATE % sv
+      module_builder.copy_imports(compat_module, subcompat_module)
+      module_builder.copy_imports('%s.compat' % compat_module,
+                                  '%s.compat' % subcompat_module)
+
+  # Prefixes of modules under compatibility packages, for e.g. "compat.v1.".
+  compat_prefixes = tuple(
+      _COMPAT_MODULE_TEMPLATE % v + '.' for v in compat_api_versions)
+
+  # Above, we only copied function, class and constant imports. Here
+  # we also add imports for child modules.
+  for imported_module in imported_modules:
+    if not imported_module.startswith(compat_prefixes):
+      continue
+    module_split = imported_module.split('.')
+
+    # Handle compat.vN.compat.vK.compat.foo case. That is,
+    # import compat.vK.compat.foo in compat.vN.compat.vK.compat.
+    if len(module_split) > 3 and module_split[2] == 'compat':
+      src_module = '.'.join(module_split[:3])
+      src_name = module_split[3]
+      assert src_name != 'v1' and src_name != 'v2', imported_module
+    else:  # Handle compat.vN.compat.vK.foo case.
+      src_module = '.'.join(module_split[:2])
+      src_name = module_split[2]
+      if src_name == 'compat':
+        continue  # compat.vN.compat.vK.compat is handled separately
+
+    for compat_api_version in compat_api_versions:
+      module_builder.add_import(
+          symbol=None,
+          source_module_name='%s.%s' % (output_package, src_module),
+          source_name=src_name,
+          dest_module_name='compat.v%d.%s' % (compat_api_version, src_module),
+          dest_name=src_name)
 
 
 def _get_name_and_module(full_name):
@@ -327,14 +402,13 @@ def _join_modules(module1, module2):
   return '%s.%s' % (module1, module2)
 
 
-def add_imports_for_symbol(
-    module_code_builder,
-    symbol,
-    source_module_name,
-    source_name,
-    api_name,
-    api_version,
-    output_module_prefix=''):
+def add_imports_for_symbol(module_code_builder,
+                           symbol,
+                           source_module_name,
+                           source_name,
+                           api_name,
+                           api_version,
+                           output_module_prefix=''):
   """Add imports for the given symbol to `module_code_builder`.
 
   Args:
@@ -359,8 +433,8 @@ def add_imports_for_symbol(
       for export in exports:
         dest_module, dest_name = _get_name_and_module(export)
         dest_module = _join_modules(output_module_prefix, dest_module)
-        module_code_builder.add_import(
-            None, source_module_name, name, dest_module, dest_name)
+        module_code_builder.add_import(None, source_module_name, name,
+                                       dest_module, dest_name)
 
   # If symbol has _tf_api_names attribute, then add import for it.
   if (hasattr(symbol, '__dict__') and names_attr in symbol.__dict__):
@@ -369,8 +443,8 @@ def add_imports_for_symbol(
     for export in getattr(symbol, names_attr):  # pylint: disable=protected-access
       dest_module, dest_name = _get_name_and_module(export)
       dest_module = _join_modules(output_module_prefix, dest_module)
-      module_code_builder.add_import(
-          symbol, source_module_name, source_name, dest_module, dest_name)
+      module_code_builder.add_import(symbol, source_module_name, source_name,
+                                     dest_module, dest_name)
 
 
 def get_api_init_text(packages,
@@ -378,7 +452,8 @@ def get_api_init_text(packages,
                       api_name,
                       api_version,
                       compat_api_versions=None,
-                      lazy_loading=_LAZY_LOADING):
+                      lazy_loading=_LAZY_LOADING,
+                      use_relative_imports=False):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
@@ -392,6 +467,8 @@ def get_api_init_text(packages,
       directory.
     lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
       produced and if `False`, static imports are used.
+    use_relative_imports: True if we should use relative imports when importing
+      submodules.
 
   Returns:
     A dictionary where
@@ -401,8 +478,10 @@ def get_api_init_text(packages,
   """
   if compat_api_versions is None:
     compat_api_versions = []
-  module_code_builder = _ModuleInitCodeBuilder(
-      output_package, api_version, lazy_loading)
+  module_code_builder = _ModuleInitCodeBuilder(output_package, api_version,
+                                               lazy_loading,
+                                               use_relative_imports)
+
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
 
@@ -420,33 +499,23 @@ def get_api_init_text(packages,
       continue
 
     for module_contents_name in dir(module):
-      if (module.__name__ + '.' + module_contents_name
-          in _SYMBOLS_TO_SKIP_EXPLICITLY):
+      if (module.__name__ + '.' +
+          module_contents_name in _SYMBOLS_TO_SKIP_EXPLICITLY):
         continue
       attr = getattr(module, module_contents_name)
       _, attr = tf_decorator.unwrap(attr)
 
-      add_imports_for_symbol(
-          module_code_builder, attr, module.__name__, module_contents_name,
-          api_name, api_version)
+      add_imports_for_symbol(module_code_builder, attr, module.__name__,
+                             module_contents_name, api_name, api_version)
       for compat_api_version in compat_api_versions:
-        add_imports_for_symbol(
-            module_code_builder, attr, module.__name__, module_contents_name,
-            api_name, compat_api_version,
-            _COMPAT_MODULE_TEMPLATE % compat_api_version)
+        add_imports_for_symbol(module_code_builder, attr, module.__name__,
+                               module_contents_name, api_name,
+                               compat_api_version,
+                               _COMPAT_MODULE_TEMPLATE % compat_api_version)
 
-  # Include compat.vN-1 under compat.vN.
-  # For e.g. import compat.v1 under compat.v2.compat
-  for version in compat_api_versions:
-    if version - 1 in compat_api_versions:
-      prev_version = 'v%d' % (version - 1)
-      module_code_builder.add_import(
-          symbol=None,
-          source_module_name='%s.compat' % output_package,
-          source_name=prev_version,
-          dest_module_name='compat.v%d.compat' % version,
-          dest_name=prev_version)
-
+  if compat_api_versions:
+    add_nested_compat_imports(module_code_builder, compat_api_versions,
+                              output_package)
   return module_code_builder.build()
 
 
@@ -478,8 +547,8 @@ def get_module_docstring(module_name, package, api_name):
   4. Returns a default docstring.
 
   Args:
-    module_name: module name relative to tensorflow
-      (excluding 'tensorflow.' prefix) to get a docstring for.
+    module_name: module name relative to tensorflow (excluding 'tensorflow.'
+      prefix) to get a docstring for.
     package: Base python package containing python with target tf_export
       decorators.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
@@ -514,29 +583,37 @@ def get_module_docstring(module_name, package, api_name):
   return 'Public API for tf.%s namespace.' % module_name
 
 
-def create_api_files(output_files, packages, root_init_template, output_dir,
-                     output_package, api_name, api_version,
-                     compat_api_versions, compat_init_templates,
-                     lazy_loading=_LAZY_LOADING):
+def create_api_files(output_files,
+                     packages,
+                     root_init_template,
+                     output_dir,
+                     output_package,
+                     api_name,
+                     api_version,
+                     compat_api_versions,
+                     compat_init_templates,
+                     lazy_loading=_LAZY_LOADING,
+                     use_relative_imports=False):
   """Creates __init__.py files for the Python API.
 
   Args:
     output_files: List of __init__.py file paths to create.
     packages: Base python packages containing python with target tf_export
       decorators.
-    root_init_template: Template for top-level __init__.py file.
-      "# API IMPORTS PLACEHOLDER" comment in the template file will be replaced
-      with imports.
+    root_init_template: Template for top-level __init__.py file. "# API IMPORTS
+      PLACEHOLDER" comment in the template file will be replaced with imports.
     output_dir: output API root directory.
     output_package: Base output package where generated API will be added.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
     api_version: API version to generate (`v1` or `v2`).
     compat_api_versions: Additional API versions to generate in compat/
       subdirectory.
-    compat_init_templates: List of templates for top level compat init files
-      in the same order as compat_api_versions.
+    compat_init_templates: List of templates for top level compat init files in
+      the same order as compat_api_versions.
     lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
       produced and if `False`, static imports are used.
+    use_relative_imports: True if we should use relative imports when import
+      submodules.
 
   Raises:
     ValueError: if output_files list is missing a required file.
@@ -552,9 +629,12 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_text_map, deprecation_footer_map = get_api_init_text(
-      packages, output_package, api_name,
-      api_version, compat_api_versions, lazy_loading)
+  (
+      module_text_map,
+      deprecation_footer_map,
+      root_module_footer,
+  ) = get_api_init_text(packages, output_package, api_name, api_version,
+                        compat_api_versions, lazy_loading, use_relative_imports)
 
   # Add imports to output files.
   missing_output_files = []
@@ -564,12 +644,16 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       _COMPAT_MODULE_TEMPLATE % v: t
       for v, t in zip(compat_api_versions, compat_init_templates)
   }
+  for v in compat_api_versions:
+    compat_module_to_template.update({
+        _SUBCOMPAT_MODULE_TEMPLATE % (v, vs): t
+        for vs, t in zip(compat_api_versions, compat_init_templates)
+    })
 
   for module, text in module_text_map.items():
     # Make sure genrule output file list is in sync with API exports.
     if module not in module_name_to_file_path:
-      module_file_path = '"%s/__init__.py"' %  (
-          module.replace('.', '/'))
+      module_file_path = '"%s/__init__.py"' % (module.replace('.', '/'))
       missing_output_files.append(module_file_path)
       continue
 
@@ -579,6 +663,7 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       with open(root_init_template, 'r') as root_init_template_file:
         contents = root_init_template_file.read()
         contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
+        contents = contents.replace('# __all__ PLACEHOLDER', root_module_footer)
     elif module in compat_module_to_template:
       # Read base init file for compat module
       with open(compat_module_to_template[module], 'r') as init_template_file:
@@ -586,8 +671,9 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
         contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
     else:
       contents = (
-          _GENERATED_FILE_HEADER % get_module_docstring(
-              module, packages[0], api_name) + text + _GENERATED_FILE_FOOTER)
+          _GENERATED_FILE_HEADER %
+          get_module_docstring(module, packages[0], api_name) + text +
+          _GENERATED_FILE_FOOTER)
     if module in deprecation_footer_map:
       if '# WRAPPER_PLACEHOLDER' in contents:
         contents = contents.replace('# WRAPPER_PLACEHOLDER',
@@ -602,14 +688,17 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
         """Missing outputs for genrule:\n%s. Be sure to add these targets to
 tensorflow/python/tools/api/generator/api_init_files_v1.bzl and
 tensorflow/python/tools/api/generator/api_init_files.bzl (tensorflow repo), or
-tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator repo)"""
-        % ',\n'.join(sorted(missing_output_files)))
+tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator repo)""" %
+        ',\n'.join(sorted(missing_output_files)))
 
 
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument(
-      'outputs', metavar='O', type=str, nargs='+',
+      'outputs',
+      metavar='O',
+      type=str,
+      nargs='+',
       help='If a single file is passed in, then we we assume it contains a '
       'semicolon-separated list of Python files that we expect this script to '
       'output. If multiple files are passed in, then we assume output files '
@@ -621,42 +710,66 @@ def main():
       help='Base packages that import modules containing the target tf_export '
       'decorators.')
   parser.add_argument(
-      '--root_init_template', default='', type=str,
+      '--root_init_template',
+      default='',
+      type=str,
       help='Template for top level __init__.py file. '
-           '"#API IMPORTS PLACEHOLDER" comment will be replaced with imports.')
+      '"#API IMPORTS PLACEHOLDER" comment will be replaced with imports.')
   parser.add_argument(
-      '--apidir', type=str, required=True,
+      '--apidir',
+      type=str,
+      required=True,
       help='Directory where generated output files are placed. '
-           'gendir should be a prefix of apidir. Also, apidir '
-           'should be a prefix of every directory in outputs.')
+      'gendir should be a prefix of apidir. Also, apidir '
+      'should be a prefix of every directory in outputs.')
   parser.add_argument(
-      '--apiname', required=True, type=str,
+      '--apiname',
+      required=True,
+      type=str,
       choices=API_ATTRS.keys(),
       help='The API you want to generate.')
   parser.add_argument(
-      '--apiversion', default=2, type=int,
+      '--apiversion',
+      default=2,
+      type=int,
       choices=_API_VERSIONS,
       help='The API version you want to generate.')
   parser.add_argument(
-      '--compat_apiversions', default=[], type=int, action='append',
+      '--compat_apiversions',
+      default=[],
+      type=int,
+      action='append',
       help='Additional versions to generate in compat/ subdirectory. '
-           'If set to 0, then no additional version would be generated.')
+      'If set to 0, then no additional version would be generated.')
   parser.add_argument(
-      '--compat_init_templates', default=[], type=str, action='append',
+      '--compat_init_templates',
+      default=[],
+      type=str,
+      action='append',
       help='Templates for top-level __init__ files under compat modules. '
-           'The list of init file templates must be in the same order as '
-           'list of versions passed with compat_apiversions.')
+      'The list of init file templates must be in the same order as '
+      'list of versions passed with compat_apiversions.')
   parser.add_argument(
-      '--output_package', default='tensorflow', type=str,
+      '--output_package',
+      default='tensorflow',
+      type=str,
       help='Root output package.')
   parser.add_argument(
-      '--loading', default='default', type=str,
+      '--loading',
+      default='default',
+      type=str,
       choices=['lazy', 'static', 'default'],
       help='Controls how the generated __init__.py file loads the exported '
-           'symbols. \'lazy\' means the symbols are loaded when first used. '
-           '\'static\' means all exported symbols are loaded in the '
-           '__init__.py file. \'default\' uses the value of the '
-           '_LAZY_LOADING constant in create_python_api.py.')
+      'symbols. \'lazy\' means the symbols are loaded when first used. '
+      '\'static\' means all exported symbols are loaded in the '
+      '__init__.py file. \'default\' uses the value of the '
+      '_LAZY_LOADING constant in create_python_api.py.')
+  parser.add_argument(
+      '--use_relative_imports',
+      default=False,
+      type=bool,
+      help='Whether to import submodules using relative imports or absolute '
+      'imports')
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -687,7 +800,7 @@ def main():
   create_api_files(outputs, packages, args.root_init_template, args.apidir,
                    args.output_package, args.apiname, args.apiversion,
                    args.compat_apiversions, args.compat_init_templates,
-                   lazy_loading)
+                   lazy_loading, args.use_relative_imports)
 
 
 if __name__ == '__main__':

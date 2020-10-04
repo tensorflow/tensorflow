@@ -446,7 +446,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
     sp_input = self._SparseTensor_2x5x6()
     new_shape = np.array([3, 7, 5], dtype=np.int64)
 
-    with self.assertRaisesRegexp(ValueError, "should have dimension sizes"):
+    with self.assertRaisesRegex(ValueError, "should have dimension sizes"):
       sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
   @test_util.run_deprecated_v1
@@ -585,6 +585,23 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.dense_shape, [2, 6])
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
 
+  def testNoEmptyRowsAndUnordered(self):
+    with test_util.force_cpu():
+      sp_input = sparse_tensor.SparseTensor(
+          indices=np.array([[1, 2], [1, 3], [0, 1], [0, 3]]),
+          values=np.array([1, 3, 2, 4]),
+          dense_shape=np.array([2, 5]))
+      sp_output, empty_row_indicator = (
+          sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
+      output, empty_row_indicator_out = self.evaluate(
+          [sp_output, empty_row_indicator])
+
+      self.assertAllEqual(output.indices, [[0, 1], [0, 3], [1, 2], [1, 3]])
+      self.assertAllEqual(output.values, [2, 4, 1, 3])
+      self.assertAllEqual(output.dense_shape, [2, 5])
+      self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
+
 
 class SparseAddTest(test_util.TensorFlowTestCase):
 
@@ -705,9 +722,6 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
-    if np.__version__ == "1.13.0":
-      self.skipTest("numpy 1.13.0 bug")
-
     np.random.seed(8161)
     test_dims = [(11, 1, 5, 7, 1), (2, 2)]
     with self.session(use_gpu=False):
@@ -778,12 +792,14 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
   def _check(self, result_tensor, result_np, input_sp_t):
     self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
     self.assertTrue(isinstance(input_sp_t, sparse_tensor.SparseTensor))
-    self.assertAllEqual(input_sp_t.indices, result_tensor.indices)
-    self.assertAllEqual(input_sp_t.dense_shape, result_tensor.dense_shape)
+    self.assertAllCloseAccordingToType(input_sp_t.indices,
+                                       result_tensor.indices)
+    self.assertAllCloseAccordingToType(input_sp_t.dense_shape,
+                                       result_tensor.dense_shape)
 
     res_densified = sparse_ops.sparse_to_dense(
         result_tensor.indices, result_tensor.dense_shape, result_tensor.values)
-    self.assertAllEqual(result_np, res_densified)
+    self.assertAllCloseAccordingToType(result_np, res_densified)
 
   @test_util.run_deprecated_v1
   def testCwiseShapeValidation(self):
@@ -793,7 +809,7 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
       b = sparse_tensor.SparseTensor([[0, 0, 1, 0], [0, 0, 3, 0]], [10, 20],
                                      [1, 1, 4, 2])
       c = a * b
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "broadcasts dense to sparse only; got incompatible shapes"):
         self.evaluate(c)
@@ -1035,7 +1051,7 @@ class SparsePlaceholderTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testPartialShapePlaceholder(self):
     foo = array_ops.sparse_placeholder(dtypes.float32, shape=(None, 47))
-    self.assertAllEqual([None, None], foo.get_shape().as_list())
+    self.assertAllEqual([None, 47], foo.get_shape().as_list())
     self.assertAllEqual([None, 2], foo.indices.get_shape().as_list())
 
   @test_util.run_deprecated_v1

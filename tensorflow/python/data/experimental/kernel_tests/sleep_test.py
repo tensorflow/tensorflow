@@ -19,22 +19,24 @@ from __future__ import print_function
 
 import time
 
-from tensorflow.python.data.experimental.ops import sleep
+from absl.testing import parameterized
+
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class SleepTest(test_base.DatasetTestBase):
+class SleepTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSleep(self):
     self.skipTest("b/123597912")
     sleep_microseconds = 100
     dataset = dataset_ops.Dataset.range(10).apply(
-        sleep.sleep(sleep_microseconds))
+        testing.sleep(sleep_microseconds))
     next_element = self.getNext(dataset)
     start_time = time.time()
     for i in range(10):
@@ -43,6 +45,37 @@ class SleepTest(test_base.DatasetTestBase):
     self.assertGreater(end_time - start_time, (10 * sleep_microseconds) / 1e6)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
+
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="graph"))
+  def testSleepCancellation(self):
+    sleep_microseconds = int(1e6) * 1000
+    ds = dataset_ops.Dataset.range(1)
+    ds = ds.apply(testing.sleep(sleep_microseconds))
+    ds = ds.prefetch(1)
+    get_next = self.getNext(ds, requires_initialization=True)
+
+    with self.cached_session() as sess:
+      thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
+      thread.start()
+      time.sleep(0.2)
+      sess.close()
+      thread.join()
+
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="graph"))
+  def testSleepBackgroundCancellation(self):
+    ds = dataset_ops.Dataset.range(1)
+
+    sleep_microseconds = int(1e6) * 1000
+    ds_sleep = dataset_ops.Dataset.range(1)
+    ds_sleep = ds.apply(testing.sleep(sleep_microseconds))
+
+    ds = ds.concatenate(ds_sleep)
+    ds = ds.prefetch(1)
+
+    get_next = self.getNext(ds, requires_initialization=True)
+
+    with self.cached_session():
+      self.assertEqual(self.evaluate(get_next()), 0)
 
 
 if __name__ == "__main__":

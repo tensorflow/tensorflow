@@ -31,29 +31,20 @@ struct ArrayInfo {
   // specified when passing arbitrary nodes (some node attributes are removed).
   DataType imported_dtype;
 
-  // The node type when the model is exported. By default, this type is as same
-  // as imported type, but transformations, such as quantization, can change
-  // the node type, so user has to specify it.
-  DataType final_dtype;
-
-  // A pair of floating point values which defines the min and max of a value
-  // range for quantization. Both values should be defined at the same time.
-  double min_value, max_value;
-
   // Node "shape" attribute value.
   TensorShapeProto shape;
 };
 
-struct NodeSpecs {
+struct GraphImportConfig {
   using InputArrays =
       llvm::MapVector<string, ArrayInfo, llvm::StringMap<unsigned>>;
   // Maps input node names to node data types and shapes.
   InputArrays inputs;
-  // Output node names.
-  absl::flat_hash_set<string> output_arrays;
-  // nodes:index strings for the output as specified on the command line.
-  std::vector<string> output_arrays_order;
-  // setting prune_unused_nodes to true, would prune unreachable nodes if
+  // name:index strings for the data outputs.
+  std::vector<string> outputs;
+  // name strings for the control outputs.
+  std::vector<string> control_outputs;
+  // Setting prune_unused_nodes to true, would prune unreachable nodes if
   // output_arrays is specified.
   bool prune_unused_nodes = false;
   // If true, inputs of type LegacyFedInput are replaced with Placeholder ops.
@@ -63,9 +54,21 @@ struct NodeSpecs {
   bool convert_legacy_fed_inputs = false;
   // If true, the main graph will be treated as a function.
   bool graph_as_function = false;
+  // If true, upgrade legacy features of the graph (for instance, functionalize
+  // control-flow).
+  bool upgrade_legacy = false;
+  // If true, functionalization is restricted to TPU nodes. This is only needed
+  // if upgrade_legacy is true and if upgrading legacy features of the graph
+  // (which includes functionalization) runs before TPU cluster extraction, as
+  // for example in the MLIR-based TPU bridge. Otherwise, this parameter should
+  // stay false.
+  bool restrict_functionalization_to_tpu_nodes = false;
+  // If true, enables shape inference on input.
+  // TODO(jpienaar): This will be removed shortly.
+  bool enable_shape_inference = true;
 };
 
-struct ExporterConfigs {
+struct GraphExportConfig {
   // Whether to export shape attribute for the NodeDefs in the GraphDef.
   bool export_shapes = true;
   // Whether to export library field in the GraphDef.
@@ -74,40 +77,41 @@ struct ExporterConfigs {
   bool export_debug_info = true;
 };
 
-// Is this dtype a quantization type from TensorFlow.
-bool IsQuantizationType(DataType dtype);
-
-// Gets the width of this quantization type. Returns 0 if it isn't a
-// quantization type.
-int64_t GetQuantizationTypeWidth(DataType dtype);
-
 // Parses the command line flag strings to the specification of nodes in
 // the Graph.
 Status ParseOutputArrayInfo(absl::string_view array_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order);
+                            std::vector<string>* outputs);
 
 Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order);
+                            std::vector<string>* outputs);
 
 // Parses the command line flag strings to the specification of nodes in
-// the Graph.
+// the Graph. `data_types` input string can be empty since the flag is optional.
 Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view data_types,
                            absl::string_view shapes,
-                           absl::string_view inference_type,
-                           absl::string_view min_values,
-                           absl::string_view max_values,
-                           NodeSpecs::InputArrays* inputs);
+                           GraphImportConfig::InputArrays* inputs);
 
 Status ParseInputArrayInfo(const std::vector<string>& node_names,
                            const std::vector<string>& node_dtypes,
                            const std::vector<std::vector<int>>& node_shapes,
-                           DataType inference_type,
-                           const std::vector<float>& node_mins,
-                           const std::vector<float>& node_maxs,
-                           NodeSpecs::InputArrays* inputs);
+                           GraphImportConfig::InputArrays* inputs);
+
+// Parses shapes from the given string into shapes_vector which is a structured
+// format.
+// NOTE: If shapes_str is empty, shapes_vector will also be empty.
+Status ParseNodeShapes(absl::string_view shapes_str,
+                       std::vector<std::vector<int>>& shapes_vector);
+
+// Parses names from the given string into the names_vector.
+// NOTE: If names_str is empty, names_vector will also be empty.
+Status ParseNodeNames(absl::string_view names_str,
+                      std::vector<std::string>& names_vector);
+
+// Parses data types from the given string into the data_type_vector.
+// NOTE: If data_types_str is empty, data_type_vector will also be empty.
+Status ParseNodeDataTypes(absl::string_view data_types_str,
+                          std::vector<std::string>& data_type_vector);
 
 }  // namespace tensorflow
 

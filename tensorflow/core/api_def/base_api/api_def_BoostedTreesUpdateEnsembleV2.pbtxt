@@ -93,6 +93,14 @@ END
 scalar, dimension of the logits
 END
   }
+  attr {
+    name: "num_groups"
+    description: <<END
+Number of groups of split information to process, where a group contains feature
+ids that are processed together in BoostedTreesCalculateBestFeatureSplitOpV2.
+INFERRED.
+END
+  }
   summary: "Updates the tree ensemble by adding a layer to the last tree being grown"
   description: <<END
 or by starting a new tree.

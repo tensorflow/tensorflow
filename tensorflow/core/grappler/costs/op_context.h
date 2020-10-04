@@ -25,8 +25,8 @@ namespace grappler {
 // A structure to keep the context of op execution, including its shape,
 // execution context, and other relevant information.
 struct OpContext {
-  string name;
-  string device_name;
+  std::string name;
+  std::string device_name;
   OpInfo op_info;
   const FunctionDefLibrary* function_library;  // Not owned.
 

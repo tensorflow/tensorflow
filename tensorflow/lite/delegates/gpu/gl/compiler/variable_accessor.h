@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_VARIABLE_ACCESSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_VARIABLE_ACCESSOR_H_
 
-#include <string>
-#include <unordered_map>
 #include <set>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
@@ -46,8 +46,8 @@ namespace gl {
 // uniforms. Uniform declarations are returned by GetUniformDeclarations.
 class VariableAccessor : public InlineRewrite {
  public:
-  explicit VariableAccessor(bool inline_values)
-      : inline_values_(inline_values) {}
+  explicit VariableAccessor(bool inline_values, bool vulkan_support = false)
+      : inline_values_(inline_values), vulkan_support_(vulkan_support) {}
 
   RewriteStatus Rewrite(absl::string_view input, std::string* output) final;
 
@@ -57,10 +57,13 @@ class VariableAccessor : public InlineRewrite {
   // Returns true if variable was successfully added.
   bool AddUniformParameter(Variable&& variable);
 
+  // Returns true if variable value is an empty vector.
+  bool IsEmptyVariableLength(const Variable& variable) const;
+
   // Returns const variables that need to be inlined in the a shader's code.
   std::string GetConstDeclarations() const;
 
-  // Returns shared varaible declarations that need to be inlined.
+  // Returns shared variable declarations that need to be inlined.
   std::string GetSharedVariableDeclarations() const;
 
   // Returns uniform parameter declarations that need to be inlined.
@@ -71,7 +74,8 @@ class VariableAccessor : public InlineRewrite {
 
  private:
   const bool inline_values_;
-  std::unordered_map<std::string, Variable> name_to_variable_;
+  const bool vulkan_support_;
+  absl::flat_hash_map<std::string, Variable> name_to_variable_;
   std::set<std::string> shared_variables_;
   std::set<std::string> uniform_parameters_;
 };

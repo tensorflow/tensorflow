@@ -206,7 +206,7 @@ class SplitVOpCPUImpl {
     const int num_split = split_start_points.size();
     const bool use_parallelism_between_outputs =
         (num_split >= 4 &&
-         input_element_count >= std::max(num_threads, num_split) * 4096 &&
+         input_element_count >= std::min(num_threads, num_split) * 4096 &&
          input_element_count < num_split * 180 * 1024);
 
     auto range_output_func = [&indices, context, &input_shape, split_dim,
@@ -471,10 +471,9 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
   REGISTER_GPU(type, int32);   \
   REGISTER_GPU(type, int64);
 
+TF_CALL_bfloat16(REGISTER_GPU_LEN);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_LEN);
-TF_CALL_complex64(REGISTER_GPU_LEN);
-TF_CALL_complex128(REGISTER_GPU_LEN);
-REGISTER_GPU_LEN(bfloat16);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU_LEN);
 #undef REGISTER_GPU_LEN
 #undef REGISTER_GPU
 

@@ -30,6 +30,7 @@ from tensorflow.python.platform import test
 class TemplateMirroredStrategyTest(test.TestCase):
 
   @test_util.run_deprecated_v1
+  @test_util.disable_tfrt("Strategy not supported yet.")
   def test_merge_call(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")
@@ -46,7 +47,7 @@ class TemplateMirroredStrategyTest(test.TestCase):
 
     strategy = mirrored_strategy.MirroredStrategy(["/cpu:0", "/gpu:0"])
     out = strategy.experimental_local_results(
-        strategy.experimental_run_v2(temp))
+        strategy.run(temp))
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual([42., 42.], self.evaluate(out))

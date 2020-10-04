@@ -33,8 +33,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -45,9 +48,9 @@ class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.cache_prefix = path.join(self.tmp_dir, "cache")
 
   def tearDown(self):
-    super(FileCacheTest, self).tearDown()
     if self.tmp_dir:
       shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(FileCacheTest, self).tearDown()
 
   @combinations.generate(test_base.default_test_combinations())
   def testCacheDatasetPassthrough(self):
@@ -244,8 +247,6 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_ops.Dataset.from_tensor_slices(components).repeat(0))
     cache_dataset = repeat_dataset.cache()
 
-    # Create initialization ops for iterators without and with
-    # caching, respectively.
     self.assertDatasetProduces(cache_dataset, expected_output=[])
 
   @combinations.generate(test_base.default_test_combinations())
@@ -351,6 +352,54 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       results.append(elem.numpy())
 
     self.assertAllEqual(results, range(10))
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testCacheV2ConcurrentIterators(self):
+
+    dataset = dataset_ops.Dataset.range(10).cache()
+
+    it1 = iter(dataset)
+    it2 = iter(dataset)
+
+    for i in range(10):
+      self.assertEqual(next(it1), i)
+      self.assertEqual(next(it2), i)
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testCacheKnownCardinality(self):
+
+    # Check that a dataset which produces random permutation of range(10) ends
+    # up being cached when we read all of its element but do not reach EOF.
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.shuffle(10, reshuffle_each_iteration=True).cache()
+
+    it = iter(dataset)
+
+    results = []
+    for _ in range(10):
+      results.append(next(it))
+
+    it = iter(dataset)
+    for i in range(10):
+      self.assertEqual(next(it), results[i])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeCache(self):
+    # Tensor of size 100M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
+    # Repeat 25 times to exceed the 2G proto limit
+    dataset = dataset.repeat(25)
+    dataset = dataset.cache()
+
+    # Iterate to fill the cache.
+    iterator = iter(dataset)
+    for _ in range(23):
+      next(iterator)
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
 
 
 if __name__ == "__main__":

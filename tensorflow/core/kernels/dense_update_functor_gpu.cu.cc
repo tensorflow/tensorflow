@@ -68,7 +68,29 @@ TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_int32(DEFINE_GPU_KERNELS);
 TF_CALL_int64(DEFINE_GPU_KERNELS);
 TF_CALL_int8(DEFINE_GPU_KERNELS);
+TF_CALL_uint32(DEFINE_GPU_KERNELS);
 #undef DEFINE_GPU_KERNELS
+
+#if defined(_MSC_VER)
+
+template <>
+struct functor::DenseUpdate<GPUDevice, tensorflow::Variant, ASSIGN> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<tensorflow::Variant>::Flat params,
+                  typename TTypes<tensorflow::Variant>::ConstFlat update) {
+    LOG(FATAL) << "Not handling type tensorflow::Variant";
+  }
+};
+
+// The function is required to force above template specialization. Without it
+// msvc compiler doesn't include the functor in the object file
+void _force_instantiation(
+    const GPUDevice& d, typename TTypes<tensorflow::Variant>::Flat params,
+    typename TTypes<tensorflow::Variant>::ConstFlat update) {
+  functor::DenseUpdate<GPUDevice, tensorflow::Variant, ASSIGN> x;
+  x(d, params, update);
+}
+#endif  // _MSC_VER
 
 }  // end namespace tensorflow
 

@@ -2,25 +2,20 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/profiler/op_profile.proto";
-import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/profiler/profiler_options.proto";
+import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
 
 // The ProfilerService service retrieves performance information about
 // the programs running on connected devices over a period of time.
 service ProfilerService {
   // Starts a profiling session, blocks until it completes, and returns data.
   rpc Profile(ProfileRequest) returns (ProfileResponse) {}
+  // Signal to terminate the Profile rpc for a on-going profiling session,
+  // The Profile rpc will return successfully and prematurely without timeout.
+  // This is used by programmatic mode to end the session in workers.
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {}
   // Collects profiling data and returns user-friendly metrics.
   rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
-}
-
-message ProfileOptions {
-  // We don't collect the dataset ops by default for better trace-viewer
-  // scalability. The caller can mannually set this field to include the ops.
-  bool include_dataset_ops = 1;
-
-  // next-field: 2
 }
 
 message ToolRequestOptions {
@@ -53,7 +48,7 @@ message ProfileRequest {
   ProfileOptions opts = 4;
 
   // The place where we will dump profile data. We will normally use
-  // MODEL_DIR/plugin/profile/ as our repository root.
+  // MODEL_DIR/plugins/profile/ as the repository root.
   string repository_root = 5;
 
   // The user provided profile session identifier.
@@ -79,33 +74,23 @@ message ProfileToolData {
 }
 
 message ProfileResponse {
-  reserved 1;  // was uint64 placeholder for returning something meaningful.
-  // Graphs of programs executed on devices during the profiling period.
-  repeated GraphDef computation_graph = 2;
-
-  // Performance profile that can be used to annotate HLO operations in the
-  // computation graph.
-  RunMetadata hlo_metadata = 5;
-
-  // Encoded Trace proto message that contains metadata about the trace captured
-  // during the profiling period. Describes the devices and resources that
-  // 'trace_events' refers to.
-  bytes encoded_trace = 3;
-
-  // Assembles a hierarchical performance profile based on HLOs in trace events.
-  // If the trace covers multiple programs, the longest-running one is analyzed.
-  // See op_profile.proto for the detailed semantics of the returned profile.
-  profiler.op_profile.Profile op_profile = 4;
-
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
 
   // When we write profiling data directly to repository directory, we need a
-  // way to figure out whether the captured trace is empty (due to idle TPU).
+  // way to figure out whether the captured trace is empty.
   bool empty_trace = 7;
 
+  reserved 1, 2, 3, 4, 5;
   // next-field: 8
 }
+
+message TerminateRequest {
+  // Which session id to terminate.
+  string session_id = 1;
+}
+
+message TerminateResponse {}
 
 message MonitorRequest {
   // Duration for which to profile between each update.
@@ -128,23 +113,11 @@ message MonitorRequest {
 message MonitorResponse {
   // Properly formatted string data that can be directly returned back to user.
   string data = 1;
-  // The following are the raw components used to construct field data.
-  // Percentage of time when device is idle.
-  double device_idle_time_percent = 2;
-  // TPU matrix unit utilization percentage.
-  double matrix_unit_utilization_percent = 3;
-  // Average step time in millisecond.
-  double step_time_ms_avg = 4;
-  // Minimum step time in millisecond.
-  double step_time_ms_min = 5;
-  // Maximum step time in millisecond.
-  double step_time_ms_max = 6;
-  // Average infeed percentage.
-  double infeed_percent_avg = 7;
-  // Minimum infeed percentage.
-  double infeed_percent_min = 8;
-  // Maximum infeed percentage.
-  double infeed_percent_max = 9;
 
-  // next-field: 10
+  // A collection of monitoring results for each field show in data.
+  ProfilerServiceMonitorResult monitor_result = 10;
+
+  reserved 2, 3, 4, 5, 6, 7, 8, 9;
+
+  // next-field: 11
 }

@@ -45,8 +45,8 @@ TEST_F(DynamicIndexSplitterTest, DynamicSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(kDynamicSlice, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kDynamicSlice, config));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           DynamicIndexSplitter().Run(module.get()));
   EXPECT_TRUE(changed);
@@ -84,7 +84,7 @@ TEST_F(DynamicIndexSplitterTest, DynamicUpdateSlice) {
   config.set_debug_options(debug_options);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(kDynamicUpdateSlice, config));
+      auto module, ParseAndReturnVerifiedModule(kDynamicUpdateSlice, config));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           DynamicIndexSplitter().Run(module.get()));
   EXPECT_TRUE(changed);
@@ -122,8 +122,8 @@ TEST_F(DynamicIndexSplitterTest, AlreadyScalar) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(kDynamicSlice, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kDynamicSlice, config));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           DynamicIndexSplitter().Run(module.get()));
   EXPECT_FALSE(changed);

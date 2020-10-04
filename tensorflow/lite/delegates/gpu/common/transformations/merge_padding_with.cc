@@ -15,16 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 
+#include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/matching.h"
 
 namespace tflite {
@@ -55,17 +61,18 @@ class MergePaddingWith2DOperation : public SequenceTransformation {
     if (pad_attr.type != PaddingContentType::ZEROS) {
       return {TransformStatus::DECLINED, "Only Zero padding is supported."};
     }
-    if (pad_attr.appended.c != 0 || pad_attr.prepended.c != 0) {
+    if (pad_attr.appended.c != 0 || pad_attr.prepended.c != 0 ||
+        pad_attr.appended.b != 0 || pad_attr.prepended.b != 0) {
       return {TransformStatus::DECLINED,
               "Pad has non-zero padding on non HW axis."};
     }
 
     Attr* node_attr = absl::any_cast<Attr>(&op_node->operation.attributes);
-    Status status = RemovePrecedingNode(graph, pad_node, op_node);
+    absl::Status status = RemovePrecedingNode(graph, pad_node, op_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove Pad node with Operation node: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
 
     node_attr->padding.appended.h += pad_attr.appended.h;
@@ -126,8 +133,8 @@ class MergePaddingWithAddOperation : public NodeTransformation {
     if (pad_attr.type != PaddingContentType::ZEROS) {
       return {TransformStatus::DECLINED, "Only Zero padding is supported."};
     }
-    if (pad_attr.prepended != HWC(0, 0, 0) || pad_attr.appended.h != 0 ||
-        pad_attr.appended.w != 0) {
+    if (pad_attr.prepended != BHWC(0, 0, 0, 0) || pad_attr.appended.h != 0 ||
+        pad_attr.appended.w != 0 || pad_attr.appended.b != 0) {
       return {TransformStatus::DECLINED,
               "Pad has padding not only in appended channels axis."};
     }
@@ -143,19 +150,23 @@ class MergePaddingWithAddOperation : public NodeTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    AddAttributes add_attr =
-        absl::any_cast<AddAttributes>(add_node->operation.attributes);
-    auto add_broadcated_vector =
-        absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&add_attr.param);
-    if (add_broadcated_vector) {
+    ElementwiseAttributes add_attr =
+        absl::any_cast<ElementwiseAttributes>(add_node->operation.attributes);
+    const bool is_add_hwc =
+        absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(add_attr.param);
+    const bool is_add_linear =
+        absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            add_attr.param);
+    const bool is_add_scalar = absl::holds_alternative<float>(add_attr.param);
+    if (is_add_hwc || is_add_linear || is_add_scalar) {
       return {TransformStatus::SKIPPED,
-              "Can not remove padding when this broadcasted ADD"};
+              "Cannot remove padding when ADD has constant argument."};
     }
 
-    Status status = RemovePrecedingNode(graph, node, add_node);
+    absl::Status status = RemovePrecedingNode(graph, node, add_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
-              "Unable to remove Pad node " + status.error_message()};
+              "Unable to remove Pad node " + std::string(status.message())};
     }
 
     return {TransformStatus::APPLIED,

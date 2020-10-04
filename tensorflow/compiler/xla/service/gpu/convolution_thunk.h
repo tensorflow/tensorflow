@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -43,7 +43,7 @@ class ConvolutionThunk : public Thunk {
   // write a tuple (result, scratch_memory) into `tuple_result_buffer`.
   //
   // operand_slices should be in the same order as cudnn_call->operands().
-  ConvolutionThunk(const HloCustomCallInstruction* cudnn_call,
+  ConvolutionThunk(ThunkInfo thunk_info, GpuConvConfig&& config,
                    std::vector<BufferAllocation::Slice> operand_slices,
                    BufferAllocation::Slice result_slice,
                    BufferAllocation::Slice scratch_slice,
@@ -55,11 +55,13 @@ class ConvolutionThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const HloCustomCallInstruction* cudnn_call_;
   std::vector<BufferAllocation::Slice> operand_buffers_;
   BufferAllocation::Slice result_buffer_;
   BufferAllocation::Slice scratch_buffer_;
   BufferAllocation::Slice tuple_result_buffer_;
+
+  // Convolution config
+  GpuConvConfig config_;
 };
 
 }  // namespace gpu

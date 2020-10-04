@@ -20,18 +20,38 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "parameterized_truncated_normal_op_test",
+    size = "medium",
+    srcs = ["parameterized_truncated_normal_op_test.py"],
+    tfrt_enabled = True,
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "random_shuffle_queue_test",
     size = "small",
     srcs = ["random_shuffle_queue_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tfrt_enabled = True,
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -39,8 +59,8 @@ cuda_py_test(
     name = "multinomial_op_test",
     size = "small",
     srcs = ["multinomial_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tfrt_enabled = True,
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -50,16 +70,17 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "multinomial_op_big_test",
     size = "medium",
     srcs = ["multinomial_op_big_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 3,
+    tfrt_enabled = True,
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -69,78 +90,77 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
-    shard_count = 3,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "random_crop_test",
     size = "small",
     srcs = ["random_crop_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tfrt_enabled = True,
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "random_ops_test",
     size = "medium",
     srcs = ["random_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tfrt_enabled = True,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "stateless_random_ops_test",
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 10,
+    tfrt_enabled = True,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:stateless_random_ops",
+        "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "random_gamma_test",
     size = "medium",
     srcs = ["random_gamma_test.py"],
-    additional_deps = [
+    shard_count = 4,
+    tags = ["nozapfhahn"],
+    deps = [
         ":util",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
-    shard_count = 4,
-    tags = ["nozapfhahn"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "random_grad_test",
     size = "small",
     srcs = ["random_grad_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tfrt_enabled = True,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -149,8 +169,8 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_grad",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 # TODO(b/130359919): Reenable test when it becomes stable
@@ -158,32 +178,34 @@ tf_py_test(
     name = "random_binomial_test",
     size = "medium",
     srcs = ["random_binomial_test.py"],
-    additional_deps = [
+    shard_count = 3,
+    tags = ["no_oss"],
+    tfrt_enabled = True,
+    deps = [
         ":util",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:stateful_random_ops",
+        "//third_party/py/numpy",
     ],
-    tags = ["no_oss"],
 )
 
 cuda_py_test(
     name = "random_poisson_test",
     size = "medium",
     srcs = ["random_poisson_test.py"],
-    additional_deps = [
+    tfrt_enabled = True,
+    deps = [
         ":util",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
 )

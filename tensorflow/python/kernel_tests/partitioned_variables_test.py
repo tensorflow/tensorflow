@@ -321,7 +321,7 @@ class PartitionedVariablesTestCase(test.TestCase):
   def _TestSaveSpec(self, slices, expected_specs):
     self.assertEqual(len(expected_specs), len(slices))
     for i in xrange(len(expected_specs)):
-      self.assertEquals(expected_specs[i], slices[i]._save_slice_info.spec)
+      self.assertEqual(expected_specs[i], slices[i]._save_slice_info.spec)
 
   def testVecConstantInit(self):
     with self.cached_session():

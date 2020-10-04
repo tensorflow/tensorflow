@@ -37,14 +37,15 @@ class DataFormatDimMapOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context, src_format.size() == 4,
+    OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
                 errors::InvalidArgument(strings::StrCat(
-                    "Source format must of length 4, received src_format = ",
+                    "Source format must of length 4 or 5, received "
+                    "src_format = ",
                     src_format)));
     OP_REQUIRES(
-        context, dst_format.size() == 4,
+        context, dst_format.size() == 4 || dst_format.size() == 5,
         errors::InvalidArgument(strings::StrCat(
-            "Destination format must of length 4, received dst_format = ",
+            "Destination format must of length 4 or 5, received dst_format = ",
             dst_format)));
     dst_idx_ = Tensor(DT_INT32, {static_cast<int64>(src_format.size())});
     for (int i = 0; i < src_format.size(); ++i) {
@@ -90,16 +91,17 @@ class DataFormatVecPermuteOp : public OpKernel {
                     "input must be a vector or 2D tensor, but got shape ",
                     input.shape().DebugString()));
     if (input.dims() == 1) {
-      OP_REQUIRES(
-          context, input.NumElements() == 4,
-          errors::InvalidArgument("1D input must be of size 4, but got shape ",
-                                  input.shape().DebugString()));
+      OP_REQUIRES(context,
+                  input.NumElements() == 2 || input.NumElements() == 4 ||
+                      input.NumElements() == 5,
+                  errors::InvalidArgument(
+                      "1D input must be of size 2, 4 or 5, but got shape ",
+                      input.shape().DebugString()));
     } else if (input.dims() == 2) {
-      OP_REQUIRES(
-          context, input.dim_size(0) == 4,
-          errors::InvalidArgument(
-              "First dimension of 2D input must be of size 4, but got shape ",
-              input.shape().DebugString()));
+      OP_REQUIRES(context, input.dim_size(0) == 2 || input.dim_size(0) == 4,
+                  errors::InvalidArgument("First dimension of 2D input must be "
+                                          "of size 2 or 4, but got shape ",
+                                          input.shape().DebugString()));
       OP_REQUIRES(
           context, input.dim_size(1) == 2,
           errors::InvalidArgument(
@@ -112,7 +114,21 @@ class DataFormatVecPermuteOp : public OpKernel {
                    context->allocate_output(0, input.shape(), &output));
     // Support 1D and 2D cases.
     Eigen::DSizes<Eigen::DenseIndex, 8> dst_idx;
-    ComputeDstIndex(input.dims(), &dst_idx);
+    string src_format_str = src_format_;
+    string dst_format_str = dst_format_;
+    if (input.dim_size(0) == 2) {
+      // If the input is a vector of size 2, treat the two elements as spatial
+      // dimensions.
+      auto keep_only_spatial_dimensions = [](string* format_str) -> void {
+        auto new_end = std::remove_if(
+            format_str->begin(), format_str->end(),
+            [](const char dim) { return dim != 'H' && dim != 'W'; });
+        format_str->erase(new_end, format_str->end());
+      };
+      keep_only_spatial_dimensions(&src_format_str);
+      keep_only_spatial_dimensions(&dst_format_str);
+    }
+    ComputeDstIndex(src_format_str, dst_format_str, input.dims(), &dst_idx);
 
     functor::DataFormatVecPermute<Device, T>()(context->eigen_device<Device>(),
                                                input.flat<T>(),
@@ -124,10 +140,12 @@ class DataFormatVecPermuteOp : public OpKernel {
   // Example: HWNC --> NHWC
   // 1D: dst = [1, 2, 0, 3],
   // 2D: dst = [2, 3, 4, 5, 0, 1, 6, 7]
-  void ComputeDstIndex(int num_dim, Eigen::DSizes<Eigen::DenseIndex, 8>* dst) {
-    for (int i = 0; i < src_format_.size(); ++i) {
-      for (int j = 0; j < dst_format_.size(); ++j) {
-        if (dst_format_[j] != src_format_[i]) continue;
+  static void ComputeDstIndex(const string& src_format_str,
+                              const string& dst_format_str, int num_dim,
+                              Eigen::DSizes<Eigen::DenseIndex, 8>* dst) {
+    for (int i = 0; i < src_format_str.size(); ++i) {
+      for (int j = 0; j < dst_format_str.size(); ++j) {
+        if (dst_format_str[j] != src_format_str[i]) continue;
         // Found the dst index. Set output based on the number of dims.
         for (int k = 0; k < num_dim; ++k) {
           (*dst)[i * num_dim + k] = j * num_dim + k;

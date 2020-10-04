@@ -22,6 +22,10 @@ namespace gpu {
   return false;  // Skylark selects this source file if NCCL is disabled.
 }
 
+/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
+  return false;
+}
+
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
@@ -30,7 +34,7 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 NcclAllReduceThunk::~NcclAllReduceThunk() = default;
 
-/*static*/ absl::flat_hash_set<int>
+/*static*/ absl::flat_hash_set<GlobalDeviceId>
 NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
   return {};
 }
@@ -38,15 +42,11 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
 struct NcclAllReduceThunk::AuxData {};
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, int64 element_count,
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
+    ThunkInfo thunk_info, int64 replica_count,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : Thunk(Thunk::kNcclAllReduce, thunk_info),
       replica_count_(replica_count),
-      element_count_(element_count),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer) {}
+      buffers_(std::move(buffers)) {}
 
 }  // namespace gpu
 }  // namespace xla

@@ -30,17 +30,20 @@ TFLite on GPU supports the following ops in 16-bit and 32-bit float precision:
 * `CONCATENATION v1`
 * `CONV_2D v1`
 * `DEPTHWISE_CONV_2D v1-2`
+* `EXP v1`
 * `FULLY_CONNECTED v1`
 * `LOGISTIC v1`
 * `LSTM v2 (Basic LSTM only)`
 * `MAX_POOL_2D v1`
+* `MAXIMUM v1`
+* `MINIMUM v1`
 * `MUL v1`
 * `PAD v1`
 * `PRELU v1`
 * `RELU v1`
 * `RELU6 v1`
 * `RESHAPE v1`
-* `RESIZE_BILINEAR v1`
+* `RESIZE_BILINEAR v1-3`
 * `SOFTMAX v1`
 * `STRIDED_SLICE v1`
 * `SUB v1`
@@ -48,8 +51,12 @@ TFLite on GPU supports the following ops in 16-bit and 32-bit float precision:
 
 ## Basic Usage
 
+**Note:** Following section describes the example usage for Android GPU delegate
+with C++. For other languages and platforms, please see
+[the documentation](https://www.tensorflow.org/lite/performance/gpu).
+
 Using TFLite on GPU is as simple as getting the GPU delegate via
-`TfLiteGpuDelegateCreate()` and then passing it to
+`TfLiteGpuDelegateV2Create()` and then passing it to
 `Interpreter::ModifyGraphWithDelegate()` instead of calling
 `Interpreter::AllocateTensors()`:
 
@@ -63,7 +70,7 @@ InterpreterBuilder(*model, op_resolver)(&interpreter);
 
 ////////
 // NEW: Prepare GPU delegate.
-auto* delegate = TfLiteGpuDelegateCreate(/*options=*/nullptr);
+auto* delegate = TfLiteGpuDelegateV2Create(/*default options=*/nullptr);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return;
 
 ////////
@@ -74,7 +81,7 @@ ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
 
 ////////
 // Clean up.
-TfLiteGpuDelegateDelete(delegate);
+TfLiteGpuDelegateV2Delete(delegate);
 ```
 
 *IMPORTANT:* When calling `Interpreter::ModifyGraphWithDelegate()` or
@@ -86,8 +93,7 @@ from the same thread `Interpreter::ModifyGraphWithDelegate()` was called.
 
 ## Building and Runtime
 
-TFLite GPU backend uses OpenGL compute shaders and thus requires OpenGL ES 3.1
-or higher.
+TFLite GPU backend uses OpenGL ES 3.1 compute shaders or OpenCL.
 
 ```sh
 bazel build --config android_arm64 //path/to/your:project
@@ -97,26 +103,27 @@ Metal shaders are used for iOS, which were introduced with iOS 8.  Thus,
 compilation flags should look like:
 
 ```sh
-bazel build --config ios_arm64 //path/to/your:project
+bazel build --config ios_fat //path/to/your:project
 ```
 
 ## Advanced Usage: Delegate Options
 
 There are GPU options that can be set and passed on to
-`TfLiteGpuDelegateCreate()`. When option is set to `nullptr` as shown in the
+`TfLiteGpuDelegateV2Create()`. When option is set to `nullptr` as shown in the
 Basic Usage, it translates to:
 
 ```c++
-const TfLiteGpuDelegateOptions kDefaultOptions =
-    TfLiteGpuDelegateOptionsDefault();
+const TfLiteGpuDelegateOptionsV2 kDefaultOptions =
+    TfLiteGpuDelegateOptionsV2Default();
 ```
 
-Similar for `NewTfLiteMetalDelgate()`:
+Similar for `TFLGpuDelegateCreate()`:
 
 ```c++
-const TfLiteMetalDelegateOptions kDefaultOptions = {
-  .precision_loss_allowed = 0,  // false
-  .wait_type = TFLITE_METAL_WAIT_TYPE_SLEEP,
+const TFLGpuDelegateOptions kDefaultOptions = {
+  .allow_precision_loss = false,
+  .wait_type = TFLGpuDelegateWaitTypePassive,
+  .enable_quantization = false,
 };
 ```
 
@@ -124,63 +131,10 @@ While it is convenient to just supply `nullptr`, it is recommended to explicitly
 set the options to avoid any unexpected artifacts in case default values are
 changed.
 
-*IMPORTANT:* Note that the default option does not allow precision loss, and
-thus may not be the fastest.  For faster execution, you may want to set
-`precision_loss_allowed` to `1` for FP16 execution.
-
-## Advanced Usage: Input/Output Buffers (C++)
-
-To do computation on the GPU, data must be made available to the GPU which often
-translates to performing a memory copy.  It is desirable not to cross the
-CPU/GPU memory boundary if possible, as this can take up a significant amount of
-time.  Usually, such crossing is inevitable, but in some special cases, one or
-the other can be omitted.
-
-If the network's input is an image already loaded in the GPU memory, e.g. a GPU
-texture containing the camera feed, it can stay in the GPU memory without ever
-entering the CPU memory.  Similarly, if the network's output is in the form of a
-renderable image, e.g.
-[image style transfer](https://www.cv-foundation.org/openaccess/content_cvpr_2016/papers/Gatys_Image_Style_Transfer_CVPR_2016_paper.pdf),
-it can be directly displayed on the screen.
-
-To let users achieve best performance, TFLite makes it possible for them to
-directly read from/write to the delegate's hardware buffer and bypass avoidable
-memory copies.
-
-Assuming the camera input is in the GPU memory as `GL_TEXTURE_2D`, it must be
-first converted to a shader storage buffer object (SSBO) for OpenGL or to a
-`MTLBuffer` object for Metal. One can associate a TfLiteTensor with a
-user-prepared SSBO or `MTLBuffer` with `TfLiteGpuDelegateBindBufferToTensor()`
-or `TfLiteMetalDelegateBindBufferToTensor()`, respectively.
-
-*IMPORTANT:* These must be called before
-`Interpreter::ModifyGraphWithDelegate()`.
-
-*IMPORTANT:* By default, the inference output is copied from GPU memory to CPU
-memory implicitly by the framework.  This behavior can be turned off by calling
-`Interpreter::SetAllowBufferHandleOutput(true)` during initialization.  To copy
-the inference output from GPU memory to CPU memory, explicit
-`Interpreter::EnsureTensorDataIsReadable()` calls are required for each output
-tensor.
-
-```c++
-////////
-// Prepare GPU delegate.
-auto* delegate = TfLiteGpuDelegateCreate(nullptr);
-interpreter->SetAllowBufferHandleOutput(true);  // disable default gpu->cpu copy
-#if defined(__ANDROID__)
-if (TfLiteGpuDelegateBindBufferToTensor(delegate, user_provided_input_buffer, interpreter->inputs()[0]) != kTfLiteOk) return;
-if (TfLiteGpuDelegateBindBufferToTensor(delegate, user_provided_output_buffer, interpreter->outputs()[0]) != kTfLiteOk) return;
-#elif defined(__APPLE__)
-if (TfLiteMetalDelegateBindBufferToTensor(delegate, user_provided_input_buffer, interpreter->inputs()[0]) != kTfLiteOk) return;
-if (TfLiteMetalDelegateBindBufferToTensor(delegate, user_provided_output_buffer, interpreter->outputs()[0]) != kTfLiteOk) return;
-#endif
-if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return;
-
-////////
-// Run inference.
-if (interpreter->Invoke() != kTfLiteOk) return;
-```
+*IMPORTANT:* Note that the default option may not be the fastest. For faster
+execution, you may want to set `allow_precision_loss` to `true` so that the GPU
+performs FP16 calculation internally, and set `wait_type` to
+`TFLGpuDelegateWaitTypeAggressive` to avoid GPU sleep mode.
 
 ## Tips and Tricks
 

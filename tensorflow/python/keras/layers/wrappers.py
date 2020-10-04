@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -28,10 +29,11 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -50,15 +52,12 @@ class Wrapper(Layer):
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
-    # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
-    # the inner layer has update ops that depend on its inputs (as opposed
-    # to the inputs to the Wrapper layer).
-    self._input_map = {}
     super(Wrapper, self).__init__(**kwargs)
 
   def build(self, input_shape=None):
     if not self.layer.built:
       self.layer.build(input_shape)
+      self.layer.built = True
     self.built = True
 
   @property
@@ -69,18 +68,15 @@ class Wrapper(Layer):
       return None
 
   def get_config(self):
-    config = {
-        'layer': {
-            'class_name': self.layer.__class__.__name__,
-            'config': self.layer.get_config()
-        }
-    }
+    config = {'layer': generic_utils.serialize_keras_object(self.layer)}
     base_config = super(Wrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+    # Avoid mutating the input dict
+    config = copy.deepcopy(config)
     layer = deserialize_layer(
         config.pop('layer'), custom_objects=custom_objects)
     return cls(layer, **config)
@@ -93,43 +89,21 @@ class TimeDistributed(Wrapper):
   The input should be at least 3D, and the dimension of index one
   will be considered to be the temporal dimension.
 
-  Consider a batch of 32 samples,
-  where each sample is a sequence of 10 vectors of 16 dimensions.
-  The batch input shape of the layer is then `(32, 10, 16)`,
-  and the `input_shape`, not including the samples dimension, is `(10, 16)`.
+  Consider a batch of 32 video samples, where each sample is a 128x128 RGB image
+  with `channels_last` data format, across 10 timesteps.
+  The batch input shape is `(32, 10, 128, 128, 3)`.
 
-  You can then use `TimeDistributed` to apply a `Dense` layer
-  to each of the 10 timesteps, independently:
+  You can then use `TimeDistributed` to apply a `Conv2D` layer to each of the
+  10 timesteps, independently:
 
-  ```python
-  # as the first layer in a model
-  model = Sequential()
-  model.add(TimeDistributed(Dense(8), input_shape=(10, 16)))
-  # now model.output_shape == (None, 10, 8)
-  ```
-
-  The output will then have shape `(32, 10, 8)`.
-
-  In subsequent layers, there is no need for the `input_shape`:
-
-  ```python
-  model.add(TimeDistributed(Dense(32)))
-  # now model.output_shape == (None, 10, 32)
-  ```
-
-  The output will then have shape `(32, 10, 32)`.
-
-  `TimeDistributed` can be used with arbitrary layers, not just `Dense`,
-  for instance with a `Conv2D` layer:
-
-  ```python
-  model = Sequential()
-  model.add(TimeDistributed(Conv2D(64, (3, 3)),
-                            input_shape=(10, 299, 299, 3)))
-  ```
+  >>> inputs = tf.keras.Input(shape=(10, 128, 128, 3))
+  >>> conv_2d_layer = tf.keras.layers.Conv2D(64, (3, 3))
+  >>> outputs = tf.keras.layers.TimeDistributed(conv_2d_layer)(inputs)
+  >>> outputs.shape
+  TensorShape([None, 10, 126, 126, 64])
 
   Arguments:
-    layer: a layer instance.
+    layer: a `tf.keras.layers.Layer` instance.
 
   Call arguments:
     inputs: Input tensor.
@@ -141,14 +115,15 @@ class TimeDistributed(Wrapper):
       wrapped layer (only if the layer supports this argument).
 
   Raises:
-    ValueError: If not initialized with a `Layer` instance.
+    ValueError: If not initialized with a `tf.keras.layers.Layer` instance.
   """
 
   def __init__(self, layer, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
           'Please initialize `TimeDistributed` layer with a '
-          '`Layer` instance. You passed: {input}'.format(input=layer))
+          '`tf.keras.layers.Layer` instance. You passed: {input}'.format(
+              input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
 
@@ -222,6 +197,9 @@ class TimeDistributed(Wrapper):
 
     input_shape = K.int_shape(inputs)
     if input_shape[0] and not self._always_use_reshape:
+      inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
+      is_ragged_input = row_lengths is not None
+
       # batch size matters, use rnn-based implementation
       def step(x, _):
         output = self.layer(x, **kwargs)
@@ -231,32 +209,44 @@ class TimeDistributed(Wrapper):
           step,
           inputs,
           initial_states=[],
-          input_length=input_shape[1],
+          input_length=row_lengths[0] if is_ragged_input else input_shape[1],
+          mask=mask,
           unroll=False)
-      y = outputs
+      y = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       # No batch size specified, therefore the layer will be able
       # to process batches of any size.
       # We can go with reshape-based implementation for performance.
-      input_length = input_shape[1]
-      if not input_length:
-        input_length = array_ops.shape(inputs)[1]
-      inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
-      # Shape: (num_samples * timesteps, ...). And track the
-      # transformation in self._input_map.
-      input_uid = generic_utils.object_list_uid(inputs)
-      inputs = array_ops.reshape(inputs, inner_input_shape)
-      self._input_map[input_uid] = inputs
-      # (num_samples * timesteps, ...)
-      if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
-        inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
-        kwargs['mask'] = K.reshape(mask, inner_mask_shape)
-      y = self.layer(inputs, **kwargs)
-      # Shape: (num_samples, timesteps, ...)
-      output_shape = self.compute_output_shape(input_shape).as_list()
-      output_shape = self._get_shape_tuple(
-          (-1, input_length), y, 1, output_shape[2:])
-      y = array_ops.reshape(y, output_shape)
+      if isinstance(inputs, ragged_tensor.RaggedTensor):
+        y = self.layer(inputs.values, **kwargs)
+        y = ragged_tensor.RaggedTensor.from_row_lengths(
+            y,
+            inputs.nested_row_lengths()[0])
+      else:
+        input_length = input_shape[1]
+        if not input_length:
+          input_length = array_ops.shape(inputs)[1]
+        inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
+        # Shape: (num_samples * timesteps, ...). And track the
+        # transformation in self._input_map.
+        inputs = array_ops.reshape(inputs, inner_input_shape)
+        # (num_samples * timesteps, ...)
+        if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
+          inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
+          kwargs['mask'] = K.reshape(mask, inner_mask_shape)
+
+        y = self.layer(inputs, **kwargs)
+
+        # Shape: (num_samples, timesteps, ...)
+        output_shape = self.compute_output_shape(input_shape).as_list()
+        output_shape = self._get_shape_tuple((-1, input_length), y, 1,
+                                             output_shape[2:])
+        y = array_ops.reshape(y, output_shape)
+        if not context.executing_eagerly():
+          # Set the static shape for the result since it might be lost during
+          # array_ops reshape, eg, some `None` dim in the result could be
+          # inferred.
+          y.set_shape(self.compute_output_shape(input_shape))
 
     return y
 
@@ -298,15 +288,17 @@ class TimeDistributed(Wrapper):
     # cases need to call the layer.compute_mask when input_mask is None:
     # Masking layer and Embedding layer with mask_zero
     input_shape = K.int_shape(inputs)
-    if input_shape[0]:
-      # batch size matters, we currently do not handle mask explicitly
+    if input_shape[0] and not self._always_use_reshape or isinstance(
+        inputs, ragged_tensor.RaggedTensor):
+      # batch size matters, we currently do not handle mask explicitly, or if
+      # the layer always uses reshape approach, or the input is a ragged tensor.
       return mask
     inner_mask = mask
     if inner_mask is not None:
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
-    input_uid = generic_utils.object_list_uid(inputs)
-    inner_inputs = self._input_map.get(input_uid, inputs)
+    inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
+    inner_inputs = array_ops.reshape(inputs, inner_input_shape)
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:
@@ -340,26 +332,40 @@ class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
   Arguments:
-    layer: `Recurrent` instance.
-    merge_mode: Mode by which outputs of the
-      forward and backward RNNs will be combined.
-      One of {'sum', 'mul', 'concat', 'ave', None}.
-      If None, the outputs will not be combined,
-      they will be returned as a list.
-    backward_layer: Optional `Recurrent` instance to be used to handle
-      backwards input processing. If `backward_layer` is not provided,
-      the layer instance passed as the `layer` argument will be used to
-      generate the backward layer automatically.
+    layer: `keras.layers.RNN` instance, such as `keras.layers.LSTM` or
+      `keras.layers.GRU`. It could also be a `keras.layers.Layer` instance
+      that meets the following criteria:
+      1. Be a sequence-processing layer (accepts 3D+ inputs).
+      2. Have a `go_backwards`, `return_sequences` and `return_state`
+        attribute (with the same semantics as for the `RNN` class).
+      3. Have an `input_spec` attribute.
+      4. Implement serialization via `get_config()` and `from_config()`.
+      Note that the recommended way to create new RNN layers is to write a
+      custom RNN cell and use it with `keras.layers.RNN`, instead of
+      subclassing `keras.layers.Layer` directly.
+    merge_mode: Mode by which outputs of the forward and backward RNNs will be
+      combined. One of {'sum', 'mul', 'concat', 'ave', None}. If None, the
+      outputs will not be combined, they will be returned as a list. Default
+      value is 'concat'.
+    backward_layer: Optional `keras.layers.RNN`, or `keras.layers.Layer`
+      instance to be used to handle backwards input processing.
+      If `backward_layer` is not provided, the layer instance passed as the
+      `layer` argument will be used to generate the backward layer
+      automatically.
       Note that the provided `backward_layer` layer should have properties
       matching those of the `layer` argument, in particular it should have the
       same values for `stateful`, `return_states`, `return_sequence`, etc.
-      In addition, `backward_layer` and `layer` should have
-      different `go_backwards` argument values.
+      In addition, `backward_layer` and `layer` should have different
+      `go_backwards` argument values.
       A `ValueError` will be raised if these requirements are not met.
 
   Call arguments:
     The call arguments for this layer are the same as those of the wrapped RNN
       layer.
+    Beware that when passing the `initial_state` argument during the call of
+    this layer, the first half in the list of elements in the `initial_state`
+    list will be passed to the forward RNN call and the last half in the list
+    of elements will be passed to the backward RNN call.
 
   Raises:
     ValueError:
@@ -380,8 +386,8 @@ class Bidirectional(Wrapper):
    # With custom backward layer
    model = Sequential()
    forward_layer = LSTM(10, return_sequences=True)
-   backard_layer = LSTM(10, activation='relu', return_sequences=True,
-                        go_backwards=True)
+   backward_layer = LSTM(10, activation='relu', return_sequences=True,
+                         go_backwards=True)
    model.add(Bidirectional(forward_layer, backward_layer=backward_layer,
                            input_shape=(5, 10)))
    model.add(Dense(5))
@@ -407,6 +413,12 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    # We don't want to track `layer` since we're already tracking the two copies
+    # of it we actually run.
+    self._setattr_tracking = False
+    super(Bidirectional, self).__init__(layer, **kwargs)
+    self._setattr_tracking = True
+
     # Recreate the forward layer from the original layer config, so that it will
     # not carry over any state from the layer.
     self.forward_layer = self._recreate_layer_from_config(layer)
@@ -419,7 +431,8 @@ class Bidirectional(Wrapper):
       # Keep the custom backward layer config, so that we can save it later. The
       # layer's name might be updated below with prefix 'backward_', and we want
       # to preserve the original config.
-      self._backward_layer_config = backward_layer.get_config()
+      self._backward_layer_config = generic_utils.serialize_keras_object(
+          backward_layer)
 
     self.forward_layer._name = 'forward_' + self.forward_layer.name
     self.backward_layer._name = 'backward_' + self.backward_layer.name
@@ -445,11 +458,6 @@ class Bidirectional(Wrapper):
     self.supports_masking = True
     self._trainable = True
     self._num_constants = 0
-    # We don't want to track `layer` since we're already tracking the two copies
-    # of it we actually run.
-    self._setattr_tracking = False
-    super(Bidirectional, self).__init__(layer, **kwargs)
-    self._setattr_tracking = True
     self.input_spec = layer.input_spec
 
   def _verify_layer_config(self):
@@ -652,7 +660,8 @@ class Bidirectional(Wrapper):
       y_rev = y_rev[0]
 
     if self.return_sequences:
-      y_rev = K.reverse(y_rev, 1)
+      time_dim = 0 if getattr(self.forward_layer, 'time_major', False) else 1
+      y_rev = K.reverse(y_rev, time_dim)
     if self.merge_mode == 'concat':
       output = K.concatenate([y, y_rev])
     elif self.merge_mode == 'sum':
@@ -717,26 +726,26 @@ class Bidirectional(Wrapper):
       config['num_constants'] = self._num_constants
 
     if hasattr(self, '_backward_layer_config'):
-      config['backward_layer'] = {
-          'class_name': self.backward_layer.__class__.__name__,
-          'config': self._backward_layer_config,
-      }
+      config['backward_layer'] = self._backward_layer_config
     base_config = super(Bidirectional, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
     # Instead of updating the input, create a copy and use that.
-    config = config.copy()
+    config = copy.deepcopy(config)
     num_constants = config.pop('num_constants', 0)
+    # Handle forward layer instantiation (as would parent class).
+    from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+    config['layer'] = deserialize_layer(
+        config['layer'], custom_objects=custom_objects)
+    # Handle (optional) backward layer instantiation.
     backward_layer_config = config.pop('backward_layer', None)
     if backward_layer_config is not None:
-      from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
       backward_layer = deserialize_layer(
           backward_layer_config, custom_objects=custom_objects)
       config['backward_layer'] = backward_layer
-
-    layer = super(Bidirectional, cls).from_config(config,
-                                                  custom_objects=custom_objects)
+    # Instantiate the wrapper, adjust it and return it.
+    layer = cls(**config)
     layer._num_constants = num_constants
     return layer

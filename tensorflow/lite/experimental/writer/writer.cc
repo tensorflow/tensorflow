@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::ops::builtin::BuiltinOpResolver builtin_op_resolver;
   tflite::InterpreterBuilder(*model, builtin_op_resolver)(&interpreter);
-  tflite::InterpreterWriter writer(interpreter.get());
+  tflite::SubgraphWriter writer(&interpreter->primary_subgraph());
   writer.Write(argv[2]);
 
   return 0;

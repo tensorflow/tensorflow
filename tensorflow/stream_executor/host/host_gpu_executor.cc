@@ -17,9 +17,13 @@ limitations under the License.
 // class declaration].
 #include "tensorflow/stream_executor/host/host_gpu_executor.h"
 
+#include <stdint.h>
 #include <string.h>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
@@ -41,7 +45,35 @@ HostExecutor::HostExecutor(const PluginConfig &plugin_config)
 
 HostExecutor::~HostExecutor() {}
 
-void *HostExecutor::Allocate(uint64 size) { return new char[size]; }
+port::Status HostExecutor::Init(int device_ordinal,
+                                DeviceOptions device_options) {
+  auto it =
+      device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
+  if (it != device_options.non_portable_tags.end()) {
+    if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
+      return port::InvalidArgumentError(absl::StrCat(
+          "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
+          it->second));
+    }
+  }
+  return port::Status::OK();
+}
+
+bool HostExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
+  tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
+  *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
+  *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
+  return true;
+}
+
+DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
+  // This should probably be kept in sync with
+  // tensorflow::Allocator::kAllocatorAlignment.
+  return DeviceMemoryBase(
+      tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+}
 
 void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                                  uint64 size_bytes) {
@@ -49,18 +81,19 @@ void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
 }
 
 void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
-  delete[] static_cast<char *>(mem->opaque());
+  tensorflow::port::AlignedFree(mem->opaque());
 }
 
-bool HostExecutor::SynchronousMemZero(DeviceMemoryBase *location, uint64 size) {
+port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+                                              uint64 size) {
   memset(location->opaque(), 0, size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                     uint64 size) {
+port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+                                             int value, uint64 size) {
   memset(location->opaque(), value, size);
-  return true;
+  return port::Status::OK();
 }
 
 bool HostExecutor::Memcpy(Stream *stream, void *host_dst,
@@ -97,34 +130,34 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
   return true;
 }
 
-bool HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                           uint64 size) {
+port::Status HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+                                   uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size]() { memset(gpu_mem, 0, size); });
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
-                          uint8 pattern, uint64 size) {
+port::Status HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
+                                  uint8 pattern, uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                            uint32 pattern, uint64 size) {
+port::Status HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
+                                    uint32 pattern, uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return true;
+  return port::Status::OK();
 }
 
 port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
@@ -321,6 +354,12 @@ rng::RngSupport *HostExecutor::CreateRng() {
   }
 
   return status.ValueOrDie()(this);
+}
+
+std::unique_ptr<internal::StreamInterface>
+HostExecutor::GetStreamImplementation() {
+  return std::unique_ptr<internal::StreamInterface>(
+      new HostStream(thread_stack_size_in_bytes_));
 }
 
 }  // namespace host
