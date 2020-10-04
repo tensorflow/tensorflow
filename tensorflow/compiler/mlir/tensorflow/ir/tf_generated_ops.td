@@ -29,6 +29,7 @@ limitations under the License.
 // Ops in this file are sorted alphabetically.
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 
 def TF_AbsOp : TF_Op<"Abs", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the absolute value of a tensor.";
@@ -10829,7 +10830,7 @@ block size.
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
+def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
   let description = [{
@@ -10858,6 +10859,12 @@ precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_SpaceToDepthOp : TF_Op<"SpaceToDepth", [NoSideEffect]> {
