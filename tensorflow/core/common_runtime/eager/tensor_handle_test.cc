@@ -39,7 +39,7 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &device_mgr, false, nullptr, nullptr, nullptr);
+      false, &device_mgr, false, nullptr, nullptr);
   TensorHandle* sync_th =
       TensorHandle::CreateLocalHandle(std::move(t), nullptr, nullptr, ctx);
   TensorHandle* async_th = TensorHandle::CreateEmptyLocalHandle(
@@ -108,7 +108,6 @@ class PackedTensorHandleTest : public ::testing::Test {
         /* async= */ false,
         /* lazy_copy_function_remote_inputs= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-        /* custom_kernel_creator= */ nullptr,
         /* cluster_flr= */ nullptr);
   }
 
@@ -257,7 +256,7 @@ TEST(TensorHandle_ResourceDeviceTest, OnLocalDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &local_device_mgr, false, nullptr, nullptr, nullptr);
+      false, &local_device_mgr, false, nullptr, nullptr);
 
   tensorflow::DataType dtype = DT_RESOURCE;
   TensorShape shape = {2};
@@ -289,7 +288,7 @@ TEST(TensorHandle_ResourceDeviceTest, OnRemoteDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &local_device_mgr, false, nullptr, nullptr, nullptr);
+      false, &local_device_mgr, false, nullptr, nullptr);
 
   std::unique_ptr<Device> d0(
       CreateDevice("CPU", "/job:worker/task:0/device:CPU:0", false));
@@ -346,7 +345,6 @@ class RemoteTensorHandleTest : public ::testing::Test {
         /* async= */ false,
         /* lazy_copy_function_remote_inputs= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-        /* custom_kernel_creator= */ nullptr,
         /* cluster_flr= */ nullptr);
   }
 
@@ -387,7 +385,6 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
       /* async= */ false,
       /* lazy_copy_function_remote_inputs= */ false, &device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-      /* custom_kernel_creator= */ nullptr,
       /* cluster_flr= */ nullptr);
 
   tensorflow::DataType dtype = DT_FLOAT;

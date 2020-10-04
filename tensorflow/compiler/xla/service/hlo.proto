@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 74
+// Next ID: 75
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -231,6 +231,11 @@ message HloInstructionProto {
   // Whether the kCustomCall instruction has side-effects, only present for
   // kCustomCall.
   bool custom_call_has_side_effect = 65;
+
+  // A list of CustomCallOutputOperandAliasing pairs that specifies aliasing
+  // buffers between output and operands for kCustomCall.
+  repeated xla.CustomCallOutputOperandAliasing
+      custom_call_output_operand_aliasing = 74;
 
   // The delta value for kRngGetAndUpdateState.
   int64 delta = 66;

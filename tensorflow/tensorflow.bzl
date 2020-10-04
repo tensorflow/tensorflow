@@ -261,6 +261,13 @@ def if_nccl(if_true, if_false = []):
         "//conditions:default": if_true,
     })
 
+def if_libtpu(if_true, if_false = []):
+    """Shorthand for select()ing whether to build support for using TPUs via libtpu.so"""
+    return select({
+        str(Label("//tensorflow:with_tpu_support")): if_true,
+        "//conditions:default": if_false,
+    })
+
 # Linux systems may required -lrt linker flag for e.g. clock_gettime
 # see https://github.com/tensorflow/tensorflow/issues/15129
 def lrt_if_needed():
@@ -321,6 +328,7 @@ def tf_copts(
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
         if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
+        if_libtpu(["-DLIBTPU_ON_GCE"], []) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
@@ -926,7 +934,8 @@ def tf_gen_op_wrapper_py(
         generated_target_name = None,
         op_whitelist = [],
         cc_linkopts = lrt_if_needed(),
-        api_def_srcs = []):
+        api_def_srcs = [],
+        compatible_with = []):
     _ = require_shape_functions  # Unused.
 
     if (hidden or hidden_file) and op_whitelist:
@@ -987,6 +996,7 @@ def tf_gen_op_wrapper_py(
             exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
+            compatible_with = compatible_with,
         )
     else:
         native.genrule(
@@ -997,6 +1007,7 @@ def tf_gen_op_wrapper_py(
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
+            compatible_with = compatible_with,
         )
 
     # Make a py_library out of the generated python file.
@@ -1014,6 +1025,7 @@ def tf_gen_op_wrapper_py(
         # creators will provide their own tf_custom_op_py_library based target
         # that wraps this one.
         tags = ["avoid_dep"],
+        compatible_with = compatible_with,
     )
 
 # Define a bazel macro that creates cc_test for tensorflow.
@@ -1478,6 +1490,7 @@ def tf_kernel_library(
         copts = None,
         gpu_copts = None,
         is_external = False,
+        compatible_with = None,
         **kwargs):
     """A rule to build a TensorFlow OpKernel.
 
@@ -1565,6 +1578,7 @@ def tf_kernel_library(
         linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
         alwayslink = alwayslink,
         deps = deps,
+        compatible_with = compatible_with,
         **kwargs
     )
 
@@ -2775,7 +2789,7 @@ def tf_python_pybind_extension(
         testonly = testonly,
     )
 
-def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
+def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
     """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
 
     This wrapper ensures that cc libraries' and protos' headers are made
@@ -2783,7 +2797,7 @@ def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
     linked case.  The symbols in these deps symbols should be linked to, and
     exported by, the core pywrap_tensorflow_internal.so
     """
-    cc_header_only_library(name = name, deps = deps, visibility = visibility)
+    cc_header_only_library(name = name, deps = deps, visibility = visibility, **kwargs)
 
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.
@@ -2860,14 +2874,10 @@ def tf_enable_mlir_bridge():
         str(Label("//tensorflow:enable_mlir_bridge")): [
             "//tensorflow/python:is_mlir_bridge_test_true",
         ],
+        str(Label("//tensorflow:disable_mlir_bridge")): [
+            "//tensorflow/python:is_mlir_bridge_test_false",
+        ],
         "//conditions:default": [],
-    })
-
-def if_tpu(if_true, if_false = []):
-    """Shorthand for select()ing whether to build for TPUs."""
-    return select({
-        str(Label("//tensorflow:with_tpu_support")): if_true,
-        "//conditions:default": if_false,
     })
 
 def tfcompile_target_cpu():
@@ -2918,3 +2928,12 @@ def filegroup(**kwargs):
 
 def genrule(**kwargs):
     native.genrule(**kwargs)
+
+def internal_hlo_deps():
+    return []
+
+def internal_tfrt_deps():
+    return []
+
+def internal_cuda_deps():
+    return []

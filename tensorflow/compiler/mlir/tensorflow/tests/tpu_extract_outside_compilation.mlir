@@ -164,6 +164,32 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return %1 : tensor<?xi32>
   }
 
+  // Tests value is added as operand to XlaHostCompute op only if defining op is
+  // in TPU cluster.
+
+  // CHECK-LABEL: func @single_outside_compiled_input_from_outside_device_cluster
+  func @single_outside_compiled_input_from_outside_device_cluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK-NEXT:   %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-NEXT:       "tf.B"(%[[A_OUTPUT]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK-NEXT:       "tf.C"()
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+      %3 = "tf.A"() : () -> (tensor<?xi32>)
+      %2 = "tf_device.cluster"() ( {
+        "tf.B"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> ()
+        %4 = "tf.C"() : () -> tensor<?xi32>
+        tf_device.return %4 : tensor<?xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<?xi32>
+      tf_device.return %2 : tensor<?xi32>
+    }
+
+    return %1 : tensor<?xi32>
+  }
+
   // Tests extraction of a single outside compiled cluster with single host->device output.
 
   // CHECK-LABEL: func @single_outside_compiled_output_single_outside_compilation
@@ -258,6 +284,42 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     return %1 : tensor<?xi32>
   }
+
+  // Tests host to device communcation is added only if value is used for ops
+  // that are not outside compiled.
+
+  // CHECK-LABEL: func @single_outside_compiled_output_used_for_another_host_op
+  func @single_outside_compiled_output_used_for_another_host_op(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK:        %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-NEXT:       %[[B_OUTPUT:[0-9]*]] = "tf.B"()
+    // CHECK-NEXT:       "tf.IfRegion"(%[[A_OUTPUT]])
+    // CHECK-NEXT:         "tf.D"(%[[B_OUTPUT]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK-NEXT:       "tf.C"()
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+      %3 = "tf.A"() : () -> (tensor<i1>)
+      %2 = "tf_device.cluster"() ( {
+        %4 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<?xi32>)
+        "tf.IfRegion"(%3) ({
+          "tf.D"(%4) : (tensor<?xi32>) -> ()
+          "tf.Yield"() : () -> ()
+        }, {
+          "tf.Yield"() : () -> ()
+        }) { _xla_outside_compilation = "cluster1", is_stateless = false} : (tensor<i1>) -> ()
+
+        %5 = "tf.C"() : () -> (tensor<?xi32>)
+        tf_device.return %5 : tensor<?xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<?xi32>
+      tf_device.return %2 : tensor<?xi32>
+    }
+
+    return %1 : tensor<?xi32>
+  }
+
 
   // Tests extraction of a single outside compiled cluster with multiple input/output.
 

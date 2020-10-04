@@ -125,7 +125,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   `strategy.run` is called inside a `tf.function` if eager
   behavior is enabled. See more details in https://www.tensorflow.org/guide/tpu.
 
-  `experimental_distribute_datasets_from_function` and
+  `distribute_datasets_from_function` and
   `experimental_distribute_dataset` APIs can be used to distribute the dataset
   across the TPU workers when writing your own training loop. If you are using
   `fit` and `compile` methods available in `tf.keras.Model`, then Keras will
@@ -144,7 +144,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   ...   y = np.random.randint(2, size=(2, 1))
   ...   dataset = tf.data.Dataset.from_tensor_slices((x, y))
   ...   return dataset.repeat().batch(1, drop_remainder=True)
-  >>> dist_dataset = strategy.experimental_distribute_datasets_from_function(
+  >>> dist_dataset = strategy.distribute_datasets_from_function(
   ...     dataset_fn)
   >>> iterator = iter(dist_dataset)
 
@@ -190,7 +190,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   ...   # Add operation will be executed on logical device 0.
   ...   output = strategy.experimental_assign_to_logical_device(output, 0)
   ...   return output
-  >>> dist_dataset = strategy.experimental_distribute_datasets_from_function(
+  >>> dist_dataset = strategy.distribute_datasets_from_function(
   ...     dataset_fn)
   >>> iterator = iter(dist_dataset)
   >>> strategy.run(step_fn, args=(next(iterator),))
@@ -229,7 +229,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     `tf.distribute.DistributedValues`, such as those produced by a
     `tf.distribute.DistributedDataset` from
     `tf.distribute.Strategy.experimental_distribute_dataset` or
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function`,
+    `tf.distribute.Strategy.distribute_datasets_from_function`,
     when `fn` is executed on a particular replica, it will be executed with the
     component of `tf.distribute.DistributedValues` that correspond to that
     replica.
@@ -752,7 +752,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -809,10 +809,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_workers = self._get_input_workers(options)
     input_contexts = []
     num_workers = input_workers.num_workers

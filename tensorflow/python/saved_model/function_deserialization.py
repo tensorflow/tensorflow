@@ -145,9 +145,9 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
 
   # See `tf.function` and the ExperimentalCompile proto for details.
   experimental_compile = {
-      saved_object_graph_pb2.ExperimentalCompile.NONE: None,
-      saved_object_graph_pb2.ExperimentalCompile.TRUE: True,
-      saved_object_graph_pb2.ExperimentalCompile.FALSE: False,
+      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.DEFAULT: None,
+      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.ON: True,
+      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.OFF: False,
   }.get(function_spec_proto.experimental_compile)
 
   return function_lib.FunctionSpec(fullargspec=fullargspec,

@@ -51,10 +51,13 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateBufferizePass();
 // Pass to materialize broadcasts.
 std::unique_ptr<FunctionPass> CreateMaterializeBroadcastsPass();
 
+// Pass to convert scf::ParallelOp to scf::ForOp.
+std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
+
 // Pass to propagate TF ABI knowledge, e.g. offsets, alignment.
 std::unique_ptr<OperationPass<LLVM::LLVMFuncOp>>
 CreatePropagateTensorFlowABIKnowledgePass(
-    mlir::FunctionType type = {}, llvm::ArrayRef<uint32_t> same_shape = {});
+    llvm::ArrayRef<uint32_t> same_shape = {});
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(

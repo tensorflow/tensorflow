@@ -67,7 +67,7 @@ using tensorflow::shape_inference::ShapeHandle;
 namespace mlir {
 namespace TF {
 namespace {
-Optional<SmallVector<Type, 4>> InferShapeForFunctionReturnType(FuncOp func) {
+Optional<TypeRange> InferShapeForFunctionReturnType(FuncOp func) {
   // Find any return ops.
   SmallVector<ReturnOp, 4> return_ops;
   for (Block& block : func) {
@@ -110,7 +110,7 @@ Optional<SmallVector<Type, 4>> InferShapeForFunctionReturnType(FuncOp func) {
     }
   }
 
-  return llvm::to_vector<4>(return_op.getOperandTypes());
+  return TypeRange(return_op.getOperandTypes());
 }
 
 // Returns if the shape inference pass supports an op outside the TF dialect.
@@ -805,7 +805,6 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
     ModuleOp module, Operation::operand_type_range input_types,
     ArrayRef<FuncOp> functions, int64_t max_iteration) {
   bool all_succeeded = true;
-  auto types = llvm::to_vector<4>(input_types);
   // If shape propagation fails for one function, return failure, but do not
   // early exit and attempt to propagate shapes for all provided functions to
   // have a best-effort propagation.
@@ -822,8 +821,8 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
     }
 
     FunctionType func_type = func.getType();
-    func.setType(
-        FunctionType::get(types, func_type.getResults(), func.getContext()));
+    func.setType(FunctionType::get(input_types, func_type.getResults(),
+                                   func.getContext()));
 
     auto res =
         PropagateShapeToRegions(input_types, {&func.getBody()}, max_iteration);
@@ -834,7 +833,7 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
 
     auto new_return_types = InferShapeForFunctionReturnType(func);
     if (new_return_types)
-      func.setType(FunctionType::get(types, new_return_types.getValue(),
+      func.setType(FunctionType::get(input_types, new_return_types.getValue(),
                                      func.getContext()));
   }
   return success(all_succeeded);
@@ -844,16 +843,17 @@ LogicalResult ShapeInference::PropagateShapeToRegions(
     Operation::operand_type_range input_types, ArrayRef<Region*> regions,
     int64_t max_iteration) {
   bool all_succeeded = true;
-  auto types = llvm::to_vector<4>(input_types);
   // If shape propagation fails for one region, return failure, but do not
   // early exit and attempt to propagate shapes for all provided regions to
   // have a best-effort propagation.
   for (auto region : regions) {
     // Refine region arguments.
     Block& entry = region->front();
-    assert(types.size() == entry.getNumArguments());
-    for (auto arg_and_idx : llvm::enumerate(entry.getArguments())) {
-      arg_and_idx.value().setType(types[arg_and_idx.index()]);
+    assert(llvm::size(input_types) == entry.getNumArguments());
+    for (auto it : llvm::zip(entry.getArguments(), input_types)) {
+      BlockArgument arg = std::get<0>(it);
+      Type type = std::get<1>(it);
+      arg.setType(type);
     }
 
     // Propagate shapes into the region.

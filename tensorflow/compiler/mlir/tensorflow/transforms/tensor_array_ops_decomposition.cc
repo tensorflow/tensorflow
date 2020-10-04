@@ -132,6 +132,15 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
             return llvm::None;
           }
           return t;
+        } else if (auto scatter =
+                       llvm::dyn_cast<TF::TensorArrayScatterV3Op>(user)) {
+          // TensorArrayScatter writes vector of tensors to TensorArray. We can
+          // deduce the shape of TensorArray by dropping the 0th dim of
+          // TensorArrayScatter `value`.
+          auto t = scatter.value().getType().dyn_cast<RankedTensorType>();
+          if (!t || t.getShape().empty()) return llvm::None;
+          return RankedTensorType::get(t.getShape().drop_front(),
+                                       t.getElementType());
         }
         return llvm::None;
       });
@@ -570,6 +579,7 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }
@@ -636,6 +646,7 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }

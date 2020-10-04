@@ -125,6 +125,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   DCHECK_EQ(task, nullptr);
   task = std::make_shared<Task>(task_id, create_task.job_id(),
                                 create_task.dataset_id(),
+                                ProcessingMode(create_task.processing_mode()),
                                 create_task.worker_address());
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;

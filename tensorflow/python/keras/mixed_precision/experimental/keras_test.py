@@ -37,7 +37,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -128,10 +128,11 @@ class KerasLayerTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   def test_mixed_policies_(self, strategy_fn):
+    strategy = strategy_fn()
     for dtype in 'float16', 'bfloat16':
       x = constant_op.constant([1.])
       policy_name = 'mixed_' + dtype
-      with strategy_fn().scope(), policy.policy_scope(policy_name):
+      with strategy.scope(), policy.policy_scope(policy_name):
         layer = mp_test_util.MultiplyLayer(assert_type=dtype)
         self.assertEqual(layer.dtype, dtypes.float32)
         self.assertEqual(get_layer_policy.get_layer_policy(layer).name,
@@ -854,7 +855,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       else:
         error_msg = 'optimizer" must be an instance of '
       with self.assertRaisesRegex(ValueError, error_msg):
-        model.compile(optimizers.SGD(1.), 'mse')
+        model.compile(optimizer_v1.SGD(1.), 'mse')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_functional_model_loss_dtype(self):

@@ -5,7 +5,10 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -85,6 +88,7 @@ tf_py_test(
     srcs = ["base_test.py"],
     main = "base_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":core",
         ":layers_base",
@@ -115,6 +119,7 @@ tf_py_test(
     srcs = ["core_test.py"],
     main = "core_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":core",
         "//tensorflow/python:array_ops",
@@ -166,6 +171,7 @@ tf_py_test(
     main = "pooling_test.py",
     python_version = "PY3",
     tags = ["no_rocm"],
+    tfrt_enabled = True,
     deps = [
         ":pooling",
         "//tensorflow/python:array_ops",
@@ -183,6 +189,7 @@ cuda_py_test(
     main = "normalization_test.py",
     python_version = "PY3",
     shard_count = 10,
+    tfrt_enabled = True,
     deps = [
         ":convolutional",
         ":normalization",

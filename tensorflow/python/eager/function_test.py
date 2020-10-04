@@ -3364,8 +3364,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
-  # TODO(b/162544929): Enable this test.
-  def DISABLE_testCancelBlockedFunctionExecution(self):
+  def testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
 
@@ -3551,6 +3550,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     cf = f.get_concrete_function(a, b)
     for output in [cf(), cf(a), cf(y=b)]:
       self.assertAllEqual(output[0] + output[1], 5555)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionMethodWithVarargs(self):
+    float32_scalar = tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+
+    class MyModel(module.Module):
+
+      @def_function.function(input_signature=[float32_scalar, float32_scalar])
+      def add(self, *arg):
+        return math_ops.add(*arg)
+
+    m = MyModel()
+    cf = m.add.get_concrete_function()
+    cf(-12.0, 3.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionStructuredSignatureKeywordOrder(self):

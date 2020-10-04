@@ -1,6 +1,10 @@
 path: "tensorflow.__internal__"
 tf_module {
   member {
+    name: "CompositeTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "decorator"
     mtype: "<type \'module\'>"
   }

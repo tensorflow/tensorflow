@@ -900,8 +900,9 @@ class _TapeGradientFunctions(object):
       for output in trainable_outputs:
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
-        gradients_wrt_outputs.append(
-            graph_placeholder(gradient_dtype, gradient_shape))
+        gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
+        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
             trainable_outputs,
@@ -909,6 +910,13 @@ class _TapeGradientFunctions(object):
             grad_ys=gradients_wrt_outputs,
             src_graph=self._func_graph)
 
+      if input_tangents:
+        # Convert IndexedSlices to dense tensors (as we do elsewhere for
+        # function gradients). Our C++ bindings don't know how to handle them
+        # currently.
+        gradients_wrt_inputs = nest.map_structure(
+            lambda x: ops.convert_to_tensor(x) if x is not None else None,
+            gradients_wrt_inputs)
       captures_from_forward = [
           c for c in backwards_graph.external_captures
           if not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph
@@ -1590,9 +1598,9 @@ class ConcreteFunction(object):
     function_spec = self._pre_initialized_function_spec
     args = function_spec.fullargspec.args
     arg_specs, kwarg_specs = self.structured_input_signature
+    vararg_indices = range(len(function_spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(
-        args=list(args) +
-        ["<arg{}>".format(i + 1) for i in range(len(args), len(arg_specs))],
+        args=list(args) + ["<arg{}>".format(i + 1) for i in vararg_indices],
         varargs=None,
         varkw=None,
         defaults=[_BOUND_VALUE] * len(arg_specs),
@@ -2167,6 +2175,7 @@ class ConcreteFunction(object):
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
+        custom_gradient.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,

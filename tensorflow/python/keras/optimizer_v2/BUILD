@@ -14,8 +14,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -94,6 +92,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adagrad_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -135,6 +134,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adamax_test.py"],
     shard_count = 4,
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -155,6 +155,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["adadelta_test.py"],
     shard_count = 4,
+    tags = ["no_rocm"],
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -175,6 +177,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ftrl_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -214,6 +217,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["nadam_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -260,6 +264,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -274,6 +279,7 @@ cuda_py_test(
     name = "legacy_learning_rate_decay_test",
     size = "medium",
     srcs = ["legacy_learning_rate_decay_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":legacy_learning_rate_decay",
         "//tensorflow/python:framework_test_lib",
@@ -291,6 +297,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["rmsprop_test.py"],
     shard_count = 2,
+    tags = ["no_rocm"],
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:array_ops",

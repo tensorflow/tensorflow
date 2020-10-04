@@ -185,8 +185,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
       return failure();
 
     const auto& dnums = gather.dimension_numbers();
-    if (dnums.collapsed_slice_dims().getNumElements() != 0 ||
-        dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
+    if (dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
       return failure();
 
     // TODO(tberghammer): Remove when the verifier catches this case what is
@@ -206,11 +205,35 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     }
 
     llvm::SmallVector<int64_t, 8> slice_stride(slice_end.size(), 1);
-    rewriter.replaceOpWithNewOp<SliceOp>(
-        gather, gather.getType(), gather.getOperand(0),
+    llvm::SmallVector<int64_t, 8> slice_shape(slice_end.size());
+    for (int64_t i = 0; i < slice_end.size(); ++i) {
+      slice_shape[i] = slice_end[i] - slice_start[i];
+    }
+    Type element_type = gather.getType().cast<TensorType>().getElementType();
+    auto slice_type = RankedTensorType::get(slice_shape, element_type);
+    Value result = rewriter.create<SliceOp>(
+        gather.getLoc(), slice_type, gather.getOperand(0),
         GetI64ElementsAttr(slice_start, &rewriter),
         GetI64ElementsAttr(slice_end, &rewriter),
         GetI64ElementsAttr(slice_stride, &rewriter));
+
+    if (dnums.collapsed_slice_dims().getNumElements() > 0) {
+      auto collapsed_slice_dims = llvm::to_vector<8>(llvm::map_range(
+          dnums.collapsed_slice_dims().getIntValues(),
+          [](const llvm::APInt& i) { return i.getSExtValue(); }));
+      llvm::SmallVector<int64_t, 8> reshape_shape;
+      for (int64_t i = 0; i < slice_shape.size(); ++i) {
+        if (llvm::count(collapsed_slice_dims, i) == 0) {
+          reshape_shape.push_back(slice_shape[i]);
+        }
+      }
+      auto reshape_type = RankedTensorType::get(reshape_shape, element_type);
+      result =
+          rewriter.create<ReshapeOp>(gather.getLoc(), reshape_type, result);
+    }
+
+    result.setType(gather.getType());
+    rewriter.replaceOp(gather, result);
     return success();
   }
 };
@@ -889,9 +912,10 @@ static LogicalResult Verify(ClampOp op) {
 // ComplexOp
 //===----------------------------------------------------------------------===//
 
-void ComplexOp::build(OpBuilder& builder, OperationState& state, Value lhs,
-                      Value rhs) {
-  auto type = lhs.getType();
+LogicalResult ComplexOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto type = operands[0].getType();
   auto element_ty = ComplexType::get(getElementTypeOrSelf(type));
   Type result_ty;
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
@@ -901,8 +925,8 @@ void ComplexOp::build(OpBuilder& builder, OperationState& state, Value lhs,
   } else {
     result_ty = element_ty;
   }
-
-  build(builder, state, result_ty, lhs, rhs);
+  inferredReturnTypes.push_back(result_ty);
+  return success();
 }
 
 OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
@@ -932,8 +956,11 @@ Type CreateRealType(Type type) {
 }
 }  // namespace
 
-void ImagOp::build(OpBuilder& builder, OperationState& state, Value val) {
-  build(builder, state, CreateRealType(val.getType()), val);
+LogicalResult ImagOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(CreateRealType(operands[0].getType()));
+  return success();
 }
 
 OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
@@ -945,8 +972,11 @@ OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-void RealOp::build(OpBuilder& builder, OperationState& state, Value val) {
-  build(builder, state, CreateRealType(val.getType()), val);
+LogicalResult RealOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(CreateRealType(operands[0].getType()));
+  return success();
 }
 
 OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
@@ -2261,10 +2291,7 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
   state.addAttribute("dimension", builder.getI64IntegerAttr(dimension));
   state.addAttribute("is_stable", builder.getBoolAttr(dimension));
 
-  SmallVector<Type, 2> element_types;
-  element_types.reserve(operands.size());
-  for (Value operand : operands) element_types.push_back(operand.getType());
-  state.addTypes(builder.getTupleType(element_types));
+  for (Value operand : operands) state.addTypes(operand.getType());
 
   state.addRegion();
 }
@@ -2501,8 +2528,108 @@ LogicalResult CompareOp::reifyReturnTypeShapes(
                                      &reifiedReturnShapes);
 }
 
+template <typename T>
+struct less : std::less<T> {};
+
+template <>
+struct less<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.slt(b); }
+};
+
+template <typename T>
+struct less_equal : std::less_equal<T> {};
+
+template <>
+struct less_equal<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.sle(b); }
+};
+
+template <typename T>
+struct greater : std::greater<T> {};
+
+template <>
+struct greater<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.sgt(b); }
+};
+
+template <typename T>
+struct greater_equal : std::greater_equal<T> {};
+
+template <>
+struct greater_equal<APInt> {
+  bool operator()(const APInt& a, const APInt& b) const { return a.sge(b); }
+};
+
+template <typename Op, typename ElementType, typename SrcType, typename Convert>
+static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
+  if (!attrs[0] || !attrs[1]) return {};
+
+  DenseElementsAttr lhs = attrs[0].dyn_cast<DenseElementsAttr>();
+  DenseElementsAttr rhs = attrs[1].dyn_cast<DenseElementsAttr>();
+  if (!lhs || !rhs) return {};
+
+  ShapedType operand_type =
+      op.getOperand(0).getType().template cast<ShapedType>();
+  if (!operand_type.hasStaticShape()) {
+    return {};
+  }
+
+  if (!operand_type.getElementType().isa<ElementType>()) {
+    return {};
+  }
+
+  SmallVector<bool, 6> values;
+  values.reserve(lhs.getNumElements());
+  for (const auto zip :
+       llvm::zip(lhs.getValues<SrcType>(), rhs.getValues<SrcType>())) {
+    values.push_back(Convert()(std::get<0>(zip), std::get<1>(zip)));
+  }
+
+  auto result_ty = op.getType().cast<ShapedType>();
+  return DenseElementsAttr::get(result_ty, values);
+}
+
+OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
+  auto result_ty = getType().cast<ShapedType>();
+  if (!result_ty.hasStaticShape()) return {};
+
+  auto direction = comparison_direction();
+  if (lhs() == rhs()) {
+    if (direction == "LE" || direction == "EQ" || direction == "GE") {
+      return DenseIntElementsAttr::get(result_ty, {true});
+    }
+
+    return DenseIntElementsAttr::get(result_ty, {false});
+  }
+
+  if (!operands[0] || !operands[1]) {
+    return {};
+  }
+
+#define COMPARE_FOLDER(Op, comparison, Func)                                \
+  if (direction == comparison) {                                            \
+    if (auto folded = CompareFolder<Op, FloatType, APFloat, Func<APFloat>>( \
+            *this, operands))                                               \
+      return folded;                                                        \
+    if (auto folded = CompareFolder<Op, IntegerType, APInt, Func<APInt>>(   \
+            *this, operands))                                               \
+      return folded;                                                        \
+  }
+
+  COMPARE_FOLDER(CompareOp, "EQ", std::equal_to);
+  COMPARE_FOLDER(CompareOp, "NE", std::not_equal_to);
+  COMPARE_FOLDER(CompareOp, "LT", less);
+  COMPARE_FOLDER(CompareOp, "LE", less_equal);
+  COMPARE_FOLDER(CompareOp, "GT", greater);
+  COMPARE_FOLDER(CompareOp, "GE", greater_equal);
+#undef COMPARE_FOLDER
+
+  return {};
+}
+
 }  // namespace mhlo
 }  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
 

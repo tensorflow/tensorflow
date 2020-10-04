@@ -520,7 +520,11 @@ def TFL_AddOp : TFL_Op<"add", [
   let hasOptions = 1;
 }
 
-def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResultsScale]> {
+def TFL_AddNOp : TFL_Op<"add_n", [
+    Commutative,
+    NoSideEffect,
+    SameOperandsAndResultsScale,
+    NoQuantizableResult]> {
   let summary = "add_n operator";
 
   let description = [{
@@ -536,7 +540,9 @@ def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResu
   );
 }
 
-def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [NoSideEffect]> {
+def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = [{
 Computes the "logical or" of elements across dimensions of a tensor.
   }];
@@ -693,7 +699,8 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
 def TFL_CeilOp: TFL_Op<"ceil", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    SameOperandsAndResultType,
+    NoQuantizableResult]> {
   let summary = "Ceil operator";
 
   let description = [{
@@ -720,14 +727,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$output
   );
 
   let hasOptions = 1;
@@ -1093,7 +1100,8 @@ def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization", [
     TFL_OperandHasRank<0, 4>,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoSideEffect]> {
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Local Response Normalization.";
 
   let description = [{
@@ -1220,7 +1228,8 @@ def TFL_NonMaxSuppressionV4Op : TFL_Op<"non_max_suppression_v4", [
   TFL_OperandHasRank<1, 1>,
   // Other operands are scalar params.
   TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
-  TFL_OperandHasRank<4, 0>]> {
+  TFL_OperandHasRank<4, 0>,
+  NoQuantizableResult]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
   }];
@@ -1269,7 +1278,8 @@ def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
   TFL_OperandHasRank<1, 1>,
   // Other operands are scalar params.
   TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
-  TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>]> {
+  TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>,
+  NoQuantizableResult]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
   }];
@@ -1383,7 +1393,8 @@ def TFL_DivOp : TFL_Op<"div", [
 def TFL_EluOp: TFL_Op<"elu", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    SameOperandsAndResultType,
+    NoQuantizableResult]> {
   let summary = "Exponential Linear Unit operator";
   let description = [{
     Computes the exponential linear
@@ -1441,8 +1452,10 @@ def TFL_EqualOp: TFL_Op<"equal", [
   let builders = [TFL_ComparisonBinaryBuilder];
 }
 
-def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect,
-                              SameOperandsAndResultType]> {
+def TFL_ExpOp: TFL_Op<"exp", [
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1546,7 +1559,8 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 def TFL_FillOp: TFL_Op<"fill", [
     NoSideEffect,
     PredOpTrait<"input and result must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 1>>,
+    NoQuantizableResult]> {
   let summary = "Fill the tensor with given value.";
   let description = [{
     Fill the tensor with given value.
@@ -1563,7 +1577,8 @@ def TFL_FillOp: TFL_Op<"fill", [
 def TFL_FloorOp: TFL_Op<"floor", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    SameOperandsAndResultType,
+    NoQuantizableResult]> {
   let summary = "Floor operator";
 
   let description = [{
@@ -1581,7 +1596,8 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"lhs and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>]> {
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
+    NoQuantizableResult]> {
   let summary = "Floor div operator";
 
   let description = [{
@@ -1606,7 +1622,8 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"lhs and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>]> {
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
+    NoQuantizableResult]> {
   let summary = "Division reminder";
 
   let description = [{
@@ -1745,7 +1762,9 @@ def TFL_LessOp : TFL_Op<"less", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
+def TFL_LogicalAndOp : TFL_Op<"logical_and", [
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Logical AND operator";
 
   let description = [{
@@ -1778,7 +1797,9 @@ def TFL_LogicalNotOp : TFL_Op<"logical_not", [
   let results = (outs TFL_BoolTensor:$output);
 }
 
-def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
+def TFL_LogicalOrOp : TFL_Op<"logical_or", [
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Logical OR operator";
 
   let description = [{
@@ -2005,7 +2026,8 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [NoSideEffect]> {
 def TFL_RoundOp: TFL_Op<"round", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    SameOperandsAndResultType,
+    NoQuantizableResult]> {
   let summary = "Round operator";
 
   let description = [{
@@ -2213,7 +2235,8 @@ def TFL_MulOp : TFL_Op<"mul", [
 def TFL_NegOp: TFL_Op<"neg", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    SameOperandsAndResultType,
+    NoQuantizableResult]> {
   let summary = "Negation operator";
 
   let description = [{
@@ -2622,7 +2645,8 @@ def TFL_RangeOp: TFL_Op<"range", [
     TFL_OperandHasRank<2, 0>,
     PredOpTrait<"operands and output must have same element type",
       And<[TCresVTEtIsSameAsOp<0, 0>, TCresVTEtIsSameAsOp<0, 1>,
-           TCresVTEtIsSameAsOp<0, 2>]>>]> {
+           TCresVTEtIsSameAsOp<0, 2>]>>,
+    NoQuantizableResult]> {
   let summary = "Range operator";
 
   let description = [{
@@ -3066,7 +3090,8 @@ def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultType,
     SameOperandsAndResultShape,
-    NoSideEffect]> {
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "ZerosLike operator";
 
   let description = [{
@@ -4240,7 +4265,8 @@ def TFL_SVDFOp :
 def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
     NoSideEffect,
     PredOpTrait<"input and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoQuantizableResult]> {
   let summary = "SegmentSum operator";
 
   let description = [{

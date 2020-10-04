@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -42,6 +44,9 @@ class ShapeAttr : public Attribute::AttrBase<ShapeAttr, Attribute,
   // dynamic. Otherwise, the dimension is static.
   static ShapeAttr get(mlir::MLIRContext* context,
                        llvm::Optional<ArrayRef<int64_t>> shape);
+
+  // Get or create a shape attribute from a ShapedType type.
+  static ShapeAttr get(mlir::MLIRContext* context, ShapedType shaped_type);
 
   llvm::Optional<ArrayRef<int64_t>> getValue() const;
 

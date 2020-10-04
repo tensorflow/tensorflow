@@ -147,6 +147,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
 }
 
 ProfilerSession::~ProfilerSession() {
+  VLOG(1) << "Profiler session stopping.";
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
   }

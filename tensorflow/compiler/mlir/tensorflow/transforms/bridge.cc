@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -57,6 +58,7 @@ tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
+  ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging) EnableLogging(&bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -104,6 +106,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
+  pm.addPass(CreateTPUOutsideCompilationClusterPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
 
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());

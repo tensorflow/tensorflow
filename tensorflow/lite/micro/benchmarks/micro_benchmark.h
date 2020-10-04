@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <climits>
 
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_time.h"
 
 namespace micro_benchmark {
@@ -63,11 +63,14 @@ extern tflite::ErrorReporter* reporter;
 template <typename inputT>
 class MicroBenchmarkRunner {
  public:
-  MicroBenchmarkRunner(const uint8_t* model, uint8_t* tensor_arena,
-                       int tensor_arena_size)
+  // The lifetimes of model, op_resolver and tensor_arena must exceed that of
+  // the created MicroBenchmarkRunner object.
+  MicroBenchmarkRunner(const uint8_t* model,
+                       const tflite::MicroOpResolver* op_resolver,
+                       uint8_t* tensor_arena, int tensor_arena_size)
       : model_(tflite::GetModel(model)),
         reporter_(&micro_reporter_),
-        interpreter_(model_, resolver_, tensor_arena, tensor_arena_size,
+        interpreter_(model_, *op_resolver, tensor_arena, tensor_arena_size,
                      reporter_) {
     interpreter_.AllocateTensors();
   }
@@ -109,7 +112,6 @@ class MicroBenchmarkRunner {
   const tflite::Model* model_;
   tflite::MicroErrorReporter micro_reporter_;
   tflite::ErrorReporter* reporter_;
-  tflite::AllOpsResolver resolver_;
   tflite::MicroInterpreter interpreter_;
 };
 

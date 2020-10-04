@@ -691,3 +691,11 @@ message WhileLoopBackendConfig {
   // unknown-trip-count.
   KnownTripCount known_trip_count = 1;
 }
+
+// Specifies a pair of output/operand buffers for kCustomCall that alias each
+// other.
+message CustomCallOutputOperandAliasing {
+  repeated int64 output_shape_index = 1;
+  int64 operand_index = 2;
+  repeated int64 operand_shape_index = 3;
+}

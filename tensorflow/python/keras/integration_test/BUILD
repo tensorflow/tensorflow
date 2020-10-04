@@ -11,8 +11,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 tf_py_test(
     name = "forwardprop_test",
     srcs = ["forwardprop_test.py"],

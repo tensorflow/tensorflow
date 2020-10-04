@@ -39,6 +39,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import base_layer
@@ -328,13 +329,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     never throw unexpected errors in an unrelated workflow).
 
     Args:
-     input_shape: Single tuple, TensorShape, or list of shapes, where shapes
-         are tuples, integers, or TensorShapes.
+     input_shape: Single tuple, TensorShape, or list/dict of shapes, where
+         shapes are tuples, integers, or TensorShapes.
 
     Raises:
       ValueError:
         1. In case of invalid user-provided data (not of type tuple,
-           list, or TensorShape).
+           list, TensorShape, or dict).
         2. If the model requires call arguments that are agnostic
            to the input shapes (positional or kwarg in call signature).
         3. If not all layers were properly built.
@@ -350,7 +351,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if input_shape is None:
       raise ValueError('Input shape must be defined when calling build on a '
                        'model subclass network.')
-    valid_types = (tuple, list, tensor_shape.TensorShape)
+    valid_types = (tuple, list, tensor_shape.TensorShape, dict)
     if not isinstance(input_shape, valid_types):
       raise ValueError('Specified input shape is not one of the valid types. '
                        'Please specify a batch input shape of type tuple or '
@@ -706,7 +707,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom training logic.
     This method is called by `Model.make_train_function`.
 
-    This method should contain the mathemetical logic for one step of training.
+    This method should contain the mathematical logic for one step of training.
     This typically includes the forward pass, loss calculation, backpropagation,
     and metric updates.
 
@@ -878,7 +879,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             The model will not be trained on this data. Thus, note the fact
             that the validation loss of data provided using `validation_split`
             or `validation_data` is not affected by regularization layers like
-            noise and dropuout.
+            noise and dropout.
             `validation_data` will override `validation_split`.
             `validation_data` could be:
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
@@ -1078,6 +1079,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_train_batch_end(end_step, logs)
+              if self.stop_training:
+                break
 
         if logs is None:
           raise ValueError('Expect x to be a non-empty array or dataset.')
@@ -1131,7 +1134,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom evaluation logic.
     This method is called by `Model.make_test_function`.
 
-    This function should contain the mathemetical logic for one step of
+    This function should contain the mathematical logic for one step of
     evaluation.
     This typically includes the forward pass, loss calculation, and metrics
     updates.
@@ -1383,7 +1386,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom inference logic.
     This method is called by `Model.make_predict_function`.
 
-    This method should contain the mathemetical logic for one step of inference.
+    This method should contain the mathematical logic for one step of inference.
     This typically includes the forward pass.
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
@@ -1921,7 +1924,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This allows you to save the entirety of the state of a model
     in a single file.
 
-    Saved models can be reinstantiated via `keras.models.load_model`.
+    Saved models can be re-instantiated via `keras.models.load_model`.
     The model returned by `load_model` is a compiled model ready to be used
     (unless the saved model was never compiled in the first place).
 
@@ -2461,7 +2464,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _validate_compile(self, optimizer, metrics, **kwargs):
     """Performs validation checks for the default `compile`."""
     if any(
-        isinstance(opt, optimizers.Optimizer)
+        isinstance(opt, optimizer_v1.Optimizer)
         for opt in nest.flatten(optimizer)):
       raise ValueError(
           '`tf.compat.v1.keras` Optimizer (', optimizer, ') is '

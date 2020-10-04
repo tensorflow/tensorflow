@@ -182,11 +182,23 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(Compile(creation_context));
   RETURN_IF_ERROR(UpdateParams());
 
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
+
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
   tuning_parameters.info = &env->device().info_;
   if (create_info.hints.Check(ModelHints::kFastTuning)) {
     tuning_parameters.tuning_type = TuningType::FAST;
+  }
+  if (tuning_parameters.info->IsMali()) {
+    const MaliInfo& info = tuning_parameters.info->mali_info;
+    if (info.IsMaliT6xx()) {
+      // Mali T628 hangs forever in clFinish when used profiling queue
+      // TuningType::FAST does not use profiling queue.
+      tuning_parameters.tuning_type = TuningType::FAST;
+    }
   }
   RETURN_IF_ERROR(Tune(tuning_parameters));
   return absl::OkStatus();
@@ -266,10 +278,12 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
     if (consumed_nodes.find(node.id) != consumed_nodes.end()) {
       continue;
     }
+    std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
         GPUSubgraphFromGraph(device_info, precision_, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+                             tensor_descriptors, &consumed_nodes, &gpu_subgraph,
+                             &op_name)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -338,7 +352,7 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
           cl_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      cl_node.name = node.operation.type + " " + std::to_string(node.id);
+      cl_node.name = op_name;
       nodes_.push_back(std::move(cl_node));
     }
   }

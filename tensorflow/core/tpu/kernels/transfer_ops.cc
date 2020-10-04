@@ -27,27 +27,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-TpuTransferAsyncOpKernel::TpuTransferAsyncOpKernel(OpKernelConstruction* ctx,
-                                                   const string& transfer_type,
-                                                   int number_of_threads)
+TpuTransferAsyncOpKernelBase::TpuTransferAsyncOpKernelBase(
+    OpKernelConstruction* ctx, const string& transfer_type,
+    int number_of_threads)
     : AsyncOpKernel(ctx),
+      transfer_type_(transfer_type),
       thread_pool_(new thread::ThreadPool(
           ctx->env(),
           strings::StrCat(transfer_type, "_thread_",
                           SanitizeThreadSuffix(def().name())),
-          /*num_threads=*/8)) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
-  if (ctx->device_type() == DeviceType(DEVICE_CPU)) {
-    OP_REQUIRES(
-        ctx, device_ordinal_ >= 0,
-        errors::InvalidArgument(transfer_type,
-                                " ops must specify a device_ordinal when "
-                                "placed on CPU."));
-  }
-}
+          /*num_threads=*/8)) {}
 
-void TpuTransferAsyncOpKernel::ComputeAsync(OpKernelContext* ctx,
-                                            DoneCallback done) {
+void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
+                                                DoneCallback done) {
   CancellationToken token =
       ctx->cancellation_manager()->get_cancellation_token();
   bool already_cancelled;
@@ -68,11 +60,12 @@ void TpuTransferAsyncOpKernel::ComputeAsync(OpKernelContext* ctx,
   });
 }
 
-Status TpuTransferAsyncOpKernel::RunTransfer(OpKernelContext* ctx) {
+Status TpuTransferAsyncOpKernelBase::RunTransferWithOrdinal(
+    OpKernelContext* ctx, int device_ordinal) {
   auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform(
       /*initialize_platform=*/false);
 
-  int real_device_ordinal = device_ordinal_;
+  int real_device_ordinal = device_ordinal;
   if (real_device_ordinal < 0) {
     const XlaDevice::Metadata* metadata;
     TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
@@ -91,9 +84,47 @@ Status TpuTransferAsyncOpKernel::RunTransfer(OpKernelContext* ctx) {
       stream_executor);
 }
 
-void TpuTransferAsyncOpKernel::Cancel() {
+void TpuTransferAsyncOpKernelBase::Cancel() {
   mutex_lock lock(mu_);
   TF_CHECK_OK(tpu::TpuNodeContext::CloseTpuHost());
+}
+
+TpuTransferAsyncOpKernel::TpuTransferAsyncOpKernel(OpKernelConstruction* ctx,
+                                                   const string& transfer_type,
+                                                   int number_of_threads)
+    : TpuTransferAsyncOpKernelBase(ctx, transfer_type, number_of_threads) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
+  if (ctx->device_type() == DeviceType(DEVICE_CPU)) {
+    OP_REQUIRES(
+        ctx, device_ordinal_ >= 0,
+        errors::InvalidArgument(transfer_type,
+                                " ops must specify a device_ordinal when "
+                                "placed on CPU."));
+  }
+}
+
+Status TpuTransferAsyncOpKernel::RunTransfer(OpKernelContext* ctx) {
+  return RunTransferWithOrdinal(ctx, device_ordinal_);
+}
+
+TpuTransferAsyncDynamicOrdinalOpKernel::TpuTransferAsyncDynamicOrdinalOpKernel(
+    OpKernelConstruction* ctx, const string& transfer_type,
+    int number_of_threads)
+    : TpuTransferAsyncOpKernelBase(ctx, transfer_type, number_of_threads) {}
+
+Status TpuTransferAsyncDynamicOrdinalOpKernel::RunTransfer(
+    OpKernelContext* ctx) {
+  const Tensor& device_ordinal_tensor = ctx->input(0);
+  const int device_ordinal = device_ordinal_tensor.scalar<int32>()();
+  XlaDevice* xla_device =
+      dynamic_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
+  if (((xla_device == nullptr) || (xla_device->device_type() == DEVICE_CPU)) &&
+      (device_ordinal < 0)) {
+    return errors::InvalidArgument(transfer_type_,
+                                   " ops must specify a device_ordinal when "
+                                   "placed on CPU.");
+  }
+  return RunTransferWithOrdinal(ctx, device_ordinal);
 }
 
 }  // namespace tensorflow
