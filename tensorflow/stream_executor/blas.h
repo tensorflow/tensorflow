@@ -107,8 +107,8 @@ enum class ComputationType {
   // The below values are only supported for BlasLt routines (both real and
   // complex). They use float32 for accumulation but round the input mantissas
   // to a smaller number of bits.
-  kF32FastTF32, // 32-bit floating-point with reduced (>=10-bit) mantissa
-  kF32FastBF16, // 32-bit floating-point with reduced (7-bit) mantissa
+  kTF32AsF32,  // 32-bit floating-point with reduced (>=10-bit) mantissa
+  kBF16AsF32,  // 32-bit floating-point with reduced (7-bit) mantissa
 };
 
 enum class Epilogue {

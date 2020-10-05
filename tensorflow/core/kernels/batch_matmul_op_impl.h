@@ -378,7 +378,7 @@ bool GetBlasComputationType(const DataType& dtype, bool allow_tf32,
   using se::blas::ComputationType;
   static bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
   ComputationType f32_type =
-      allow_tf32 ? ComputationType::kF32FastTF32 : ComputationType::kF32;
+      allow_tf32 ? ComputationType::kTF32AsF32 : ComputationType::kF32;
   switch (dtype) {
     case DT_HALF:
     case DT_BFLOAT16:

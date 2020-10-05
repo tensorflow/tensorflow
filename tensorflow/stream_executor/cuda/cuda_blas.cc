@@ -410,8 +410,8 @@ cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
       return CUDA_C_32F;
     case blas::ComputationType::kComplexF64:
       return CUDA_C_64F;
-    case blas::ComputationType::kF32FastTF32:  // fall-through
-    case blas::ComputationType::kF32FastBF16:
+    case blas::ComputationType::kTF32AsF32:  // fall-through
+    case blas::ComputationType::kBF16AsF32:
       // These cases are currently only supported in the blasLt routines, which
       // use CUBLASComputationType() instead.
       LOG(FATAL) << "Invalid value of blas::ComputationType.";
@@ -431,9 +431,9 @@ cublasComputeType_t CUBLASComputationType(blas::ComputationType ty) {
       return CUBLAS_COMPUTE_64F;
     case blas::ComputationType::kI32:
       return CUBLAS_COMPUTE_32I;
-    case blas::ComputationType::kF32FastTF32:
+    case blas::ComputationType::kTF32AsF32:
       return CUBLAS_COMPUTE_32F_FAST_TF32;
-    case blas::ComputationType::kF32FastBF16:
+    case blas::ComputationType::kBF16AsF32:
       return CUBLAS_COMPUTE_32F_FAST_16BF;
   }
 }
@@ -446,14 +446,16 @@ blas::DataType GetScaleType(blas::DataType data_type,
   switch (compute_type) {
     case blas::ComputationType::kF16:
       return blas::DataType::kHalf;
-    case blas::ComputationType::kF32:          // fall-through
-    case blas::ComputationType::kComplexF32:   // fall-through
-    case blas::ComputationType::kF32FastTF32:  // fall-through
-    case blas::ComputationType::kF32FastBF16:
-      return is_complex ? blas::DataType::kComplexFloat : blas::DataType::kFloat;
+    case blas::ComputationType::kF32:         // fall-through
+    case blas::ComputationType::kComplexF32:  // fall-through
+    case blas::ComputationType::kTF32AsF32:   // fall-through
+    case blas::ComputationType::kBF16AsF32:
+      return is_complex ? blas::DataType::kComplexFloat
+                        : blas::DataType::kFloat;
     case blas::ComputationType::kF64:  // fall-through
     case blas::ComputationType::kComplexF64:
-      return is_complex ? blas::DataType::kComplexDouble : blas::DataType::kDouble;
+      return is_complex ? blas::DataType::kComplexDouble
+                        : blas::DataType::kDouble;
     case blas::ComputationType::kI32:
       return blas::DataType::kInt32;
   }
