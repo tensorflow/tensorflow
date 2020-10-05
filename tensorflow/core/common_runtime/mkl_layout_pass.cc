@@ -1496,14 +1496,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
     return false;
   }
-  // For NKL-DNN only int32 supported for axis data type
+  // For oneDNN, only int32 is supported for axis data type
   static bool ConcatV2Rewrite(const Node *n) {
     DataType T;
     GetNodeAttr(n->def(),"Tidx", &T);
-    if (T != DT_INT32) {
-      return false;
-    }
-    return true;
+    return (T == DT_INT32);
   }
 
   static bool DequantizeRewrite(const Node* n) {

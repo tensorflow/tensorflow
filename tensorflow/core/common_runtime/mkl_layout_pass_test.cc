@@ -4259,7 +4259,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_DeviceTest) {
 }
 
 
-TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_idxtest) {
+TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_IndexTest) {
   InitGraph(
       "node { name: 'A' op: 'Const' "
       " attr { key: 'dtype' value { type: DT_INT64 } }"
