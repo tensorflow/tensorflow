@@ -41,7 +41,7 @@ ifeq ($(TARGET), xtensa_hifimini)
   CCFLAGS += $(PLATFORM_FLAGS)
 
   # TODO(b/150240249): Do not remove -fno-rtti once that works for the Xtensa toolchain.
-	CXXFLAGS := $(filter-out -fno-rtti, $(CXXFLAGS))
+  CXXFLAGS := $(filter-out -fno-rtti, $(CXXFLAGS))
 
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_hifimini_binary.sh
 
