@@ -3243,8 +3243,8 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
   cublasLtMatrixLayout_t d_desc() const { return d_desc_.get(); }
   bool ok() { return op_desc_ && a_desc_ && b_desc_ && c_desc_ && d_desc_; }
 
-  blas::DataType ab_type() const { return ab_type_; }
-  blas::DataType cd_type() const { return cd_type_; }
+  blas::DataType ab_type() const override { return ab_type_; }
+  blas::DataType c_type() const override { return c_type_; }
   blas::DataType scale_type() const { return scale_type_; }
   blas::PointerMode pointer_mode() const { return pointer_mode_; }
   blas::Epilogue epilogue() const { return epilogue_; }
@@ -3265,7 +3265,7 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
   UniqueLayoutDesc c_desc_;
   UniqueLayoutDesc d_desc_;
   blas::DataType ab_type_;
-  blas::DataType cd_type_;
+  blas::DataType c_type_;
   blas::DataType scale_type_;
   blas::PointerMode pointer_mode_;
   blas::Epilogue epilogue_;
@@ -3458,7 +3458,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
       beta.data_type() != cuda_plan.scale_type()) {
     VLOG(2) << "DoBlasLtMatmul returning false because alpha and beta types do "
                "not match plan: expected "
-            << cuda_plan.cd_type() << ", got alpha=" << alpha.data_type()
+            << cuda_plan.c_type() << ", got alpha=" << alpha.data_type()
             << " beta=" << beta.data_type();
     return false;
   }
@@ -3542,7 +3542,7 @@ bool CUDABlas::DoBlasLtMatmul(
   const auto& cuda_plan = *static_cast<const CUDABlasLtMatmulPlan*>(plan);
   HostOrDeviceScalar<void> alpha_cast = alpha;
   HostOrDeviceScalar<void> beta_cast = beta;
-  if (cuda_plan.cd_type() == blas::DataType::kHalf &&
+  if (cuda_plan.c_type() == blas::DataType::kHalf &&
       cuda_plan.scale_type() == blas::DataType::kFloat) {
     // The given alpha and beta types are F16 (they always match c), but F32*
     // computation type requires that they be F32, so we must cast them.

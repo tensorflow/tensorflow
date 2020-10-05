@@ -194,6 +194,10 @@ class AlgorithmConfig {
 };
 
 struct IBlasLtMatmulPlan {
+  // Returns the data type of the A and B (input) matrices.
+  virtual DataType ab_type() const = 0;
+  // Returns the data type of the C (input/output) matrix.
+  virtual DataType c_type() const = 0;
   virtual ~IBlasLtMatmulPlan() {}
 };
 
@@ -1494,6 +1498,20 @@ class BlasSupport {
                       const blas::IBlasLtMatmulAlgorithm* algorithm,
                       const DeviceMemory<CType>& bias = {},
                       blas::ProfileResult* output_profile_result = nullptr) {
+    constexpr blas::DataType ab_type = blas::ToDataType<ABType>::value;
+    if (ab_type != plan->ab_type()) {
+      VLOG(2) << "DoBlasLtMatmul returning false because a and b type does "
+                 "not match plan: expected "
+              << plan->ab_type() << ", got " << ab_type;
+      return false;
+    }
+    constexpr blas::DataType c_type = blas::ToDataType<CType>::value;
+    if (c_type != plan->c_type()) {
+      VLOG(2) << "DoBlasLtMatmul returning false because c type does "
+                 "not match plan: expected "
+              << plan->c_type() << ", got " << c_type;
+      return false;
+    }
     return DoBlasLtMatmul(stream, plan, alpha, a, b, beta, *c,
                           scratch_allocator, algorithm, bias,
                           output_profile_result);
