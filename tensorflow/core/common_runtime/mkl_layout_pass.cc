@@ -527,7 +527,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          CopyAttrsAll, NonDepthBatchWisePoolRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.max_pool3d_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool3d_grad),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, Maxpool3DGradRewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.maximum, mkl_op_registry::GetMklOpName(csinfo_.maximum),
          CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
@@ -1686,6 +1686,24 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
           e->dst_input() == 1 &&
           e->src()->type_string() ==
               mkl_op_registry::GetMklOpName(csinfo_.max_pool) &&
+          e->src_output() == 0) {
+        do_rewrite = true;
+        break;
+      }
+    }
+    return do_rewrite;
+  }
+
+  static bool Maxpool3DGradRewrite(const Node* n) {
+    CHECK_NOTNULL(n);
+    bool do_rewrite = false;
+    for (const Edge* e : n->in_edges()) {
+      // Rewrite only if there is corresponding Maxpool3D, i.e., workspace is
+      // available
+      if (e->dst()->type_string() == csinfo_.max_pool3d_grad &&
+          e->dst_input() == 1 &&
+          e->src()->type_string() ==
+              mkl_op_registry::GetMklOpName(csinfo_.max_pool3d) &&
           e->src_output() == 0) {
         do_rewrite = true;
         break;
