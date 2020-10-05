@@ -30,6 +30,11 @@ ifeq ($(TARGET),$(filter $(TARGET),\
 $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
   endif
 
+  ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
+    # sparkfun boards all share a common implementation of debug_log.cc and micro_time.cc
+    ALL_TAGS+= sfe
+  endif
+
   ifeq ($(TARGET),$(filter $(TARGET),\
     sparkfun_edge2\
     sparkfun_redboard_artemis_atp\
@@ -38,11 +43,19 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     sparkfun_artemis_thing_plus\
     sparkfun_artemis_dk\
     ))
-
-    ALL_TAGS+= sfe
+    # these boards have pdm mics w/ a common implementation
     ALL_TAGS+= apollo3-pdm
-    ALL_TAGS+= sfe-unary-led
+  endif
 
+  ifeq ($(TARGET),$(filter $(TARGET),\
+    sparkfun_redboard_artemis_atp\
+    sparkfun_redboard_artemis_nano\
+    sparkfun_redboard_artemis\
+    sparkfun_artemis_thing_plus\
+    sparkfun_artemis_dk\
+    ))
+    # these boards all have a single status LED
+    ALL_TAGS+= sfe-unary-led
   endif
 
   ifeq ($(TARGET),$(filter $(TARGET),\
@@ -50,6 +63,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     sparkfun_edge2\
     sparkfun_artemis_dk\
     ))
+    # these boards all have an hm01b0 camera with a common driver
     ALL_TAGS+= sfe-apollo3-hm01b0
   endif
 
