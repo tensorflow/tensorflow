@@ -180,22 +180,12 @@ def InvokeHipcc(argv, log=False):
   hipccopts += std_options
   hipccopts += m_options
 
-  # When the underlying hip compiler is hipclang, all sources files are
-  # treated as C++ source fiels by default. (previous default was that
-  # hipclang would treat all source files as HIP files)
-  # So now when using hipclang, hipcc needs to be passed the "-x hip" option
-  # when compiling HIP source files
-  #
-  # Since this path (i.e. the InvokeHipcc) function is only invoked for HIP
-  # source files, we can pass the "-x hip" option unconditionally
-  dash_x_hip = ' -x hip '
-
   if depfiles:
     # Generate the dependency file
     depfile = depfiles[0]
     cmd = (HIPCC_PATH + ' ' + hipccopts +
            host_compiler_options +
-           ' -I .' + includes + ' ' + dash_x_hip + srcs + ' -M -o ' + depfile)
+           ' -I .' + includes + ' ' + srcs + ' -M -o ' + depfile)
     cmd = HIPCC_ENV.replace(';', ' ') + ' ' + cmd
     if log: Log(cmd)
     if VERBOSE: print(cmd)
@@ -205,7 +195,7 @@ def InvokeHipcc(argv, log=False):
 
   cmd = (HIPCC_PATH + ' ' + hipccopts +
          host_compiler_options + ' -fPIC' +
-         ' -I .' + opt + includes + ' -c ' + dash_x_hip + srcs + out)
+         ' -I .' + opt + includes + ' -c ' + srcs + out)
 
   cmd = HIPCC_ENV.replace(';', ' ') + ' '\
         + cmd
