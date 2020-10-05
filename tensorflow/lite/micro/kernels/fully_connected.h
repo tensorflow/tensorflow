@@ -27,8 +27,8 @@ TfLiteRegistration Register_FULLY_CONNECTED();
 #if defined(CMSIS_NN) || defined(ARDUINO)
 // The Arduino is a special case where we use the CMSIS kernels, but because of
 // the current approach to building for Arduino, we do not support -DCMSIS_NN as
-// part of the Arduino build. As a result, we use defined(ARDUINO) as a way to
-// proxy for defined(CMSIS_NN) for this one special case.
+// part of the build. As a result, we use defined(ARDUINO) as proxy for the
+// CMSIS kernels for this one special case.
 
 // Returns a TfLiteRegistration struct for cmsis-nn kernel variant that only
 // supports int8.
