@@ -1962,6 +1962,7 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":export_tf_dialect_op",
         ":export_utils",
         ":tensorflow",
         ":tensorflow_attributes",

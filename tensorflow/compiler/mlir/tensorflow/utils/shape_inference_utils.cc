@@ -37,10 +37,10 @@ limitations under the License.
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
@@ -78,33 +78,6 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
   }
 
   return attr_list;
-}
-
-struct Attributes {
-  NamedAttrList concrete;
-  NamedAttrList derived;
-};
-
-// Extracts attributes from a MLIR operation, including derived attributes, into
-// separate NamedAttrLists. Concrete attributes that are defined with the same
-// names as derived attributes are excluded.
-Attributes GetAttributesFromOperation(Operation* op) {
-  Attributes attributes;
-  DictionaryAttr derived_attrs = nullptr;
-  if (auto derived = dyn_cast<DerivedAttributeOpInterface>(op)) {
-    derived_attrs = derived.materializeDerivedAttributes();
-    attributes.derived.append(derived_attrs.getValue());
-  }
-
-  if (derived_attrs) {
-    for (const auto& attr : op->getAttrs())
-      if (!derived_attrs.get(attr.first.strref()))
-        attributes.concrete.push_back(attr);
-  } else {
-    attributes.concrete.append(op->getAttrs());
-  }
-
-  return attributes;
 }
 
 // Extracts a PartialTensorShape from the MLIR type.
@@ -202,30 +175,30 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
   return ShapedTypeComponents(element_type);
 }
 
-// Runs TensorFlow shape inference associated to the op type registered in the
-// TensorFlow op registry based on Graph version, operands, and attributes.
-// Invoking this shape function will invoke conversions of parameters to the
-// TensorFlow Graph equivalent data structures and back to MLIR equivalent data
-// structures. This does not use a natively implemented shape inference in MLIR,
-// and instead is temporary until shape functions are reimplemented/migrated to
-// being in MLIR instead of the TensorFlow op registry.
-LogicalResult InferReturnTypeComponentsFallback(
-    MLIRContext* context, StringRef op_name, int64_t graph_version,
-    Optional<Location> location, ValueRange operands,
-    const Attributes& attributes, OperandAsConstantFn operand_as_constant_fn,
+}  // namespace
+
+LogicalResult InferReturnTypeComponentsForTFOp(
+    Optional<Location> location, Operation* op, int64_t graph_version,
+    OperandAsConstantFn operand_as_constant_fn,
     OpResultAsShapeFn op_result_as_shape_fn,
     ResultElementTypeFn result_element_type_fn,
     SmallVectorImpl<ShapedTypeComponents>& inferred_return_shapes) {
-  assert(op_name.startswith(TensorFlowDialect::getDialectNamespace()));
-  // Drop the `tf.` prefix to query TF registry.
-  std::string op_type =
-      op_name.drop_front(TensorFlowDialect::getDialectNamespace().size() + 1)
-          .str();
+  assert(op->getName().getDialect() ==
+         TensorFlowDialect::getDialectNamespace());
+
+  auto op_name_or =
+      tensorflow::GetTensorFlowOpName(op->getName().getStringRef());
+  if (!op_name_or.ok()) {
+    LLVM_DEBUG(llvm::dbgs() << "Skipping inference for unregistered op '"
+                            << op->getName().getStringRef() << "'.\n");
+    return emitOptionalError(location, "op is unregistered");
+  }
+  llvm::StringRef op_name = op_name_or.ConsumeValueOrDie();
 
   // Get information from the registry and check if we have a shape function for
   // this op.
   const tensorflow::OpRegistrationData* op_reg_data =
-      tensorflow::OpRegistry::Global()->LookUp(op_type);
+      tensorflow::OpRegistry::Global()->LookUp(op_name.str());
   if (!op_reg_data) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for unregistered op '"
                             << op_name << "'.\n");
@@ -240,44 +213,26 @@ LogicalResult InferReturnTypeComponentsFallback(
 
   // Convert the operation attributes to be able to use the InferenceContext
   // and the TensorFlow shape function.
-  tensorflow::AttrValueMap converted_attributes;
-
-  auto convert_attrs = [&](const NamedAttrList& attributes_to_convert,
-                           bool remove_ref_type) {
-    NamedAttrList registered_attributes;
-
-    // Filter out unregistered attributes.
-    for (const auto& attr_def : op_reg_data->op_def.attr())
-      if (auto registered_attr = attributes_to_convert.get(attr_def.name()))
-        registered_attributes.set(attr_def.name(), registered_attr);
-
-    auto attrs_status = tensorflow::ConvertAttributes(
-        registered_attributes, /*attrs_to_ignore=*/{}, remove_ref_type,
-        &converted_attributes);
-    if (!attrs_status.ok()) {
-      LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << op_name
-                              << "': " << attrs_status.error_message() << "\n");
-      return emitOptionalError(
-          location,
-          "failed to convert attributes to proto map<string, AttrValue>");
-    }
-
-    return success();
-  };
-
-  if (failed(convert_attrs(attributes.concrete, /*remove_ref_type=*/false)) ||
-      failed(convert_attrs(attributes.derived, /*remove_ref_type=*/true)))
-    return failure();
+  tensorflow::AttrValueMap attributes;
+  auto attr_status = tensorflow::GetAttrValuesFromOperation(
+      op, op_name, op_reg_data, /*ignore_unregistered_attrs=*/true,
+      &attributes);
+  if (!attr_status.ok()) {
+    LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << op_name
+                            << "': " << attr_status.error_message() << "\n");
+    return emitOptionalError(location, attr_status.error_message());
+  }
 
   // Collect an array with input values for constant operands and input shapes
   // for all the operands.
-  std::vector<const tensorflow::Tensor*> input_tensors(operands.size());
-  std::vector<tensorflow::PartialTensorShape> input_shapes(operands.size());
-  std::vector<tensorflow::Tensor> tensors(operands.size());
+  const int num_operands = op->getNumOperands();
+  std::vector<const tensorflow::Tensor*> input_tensors(num_operands);
+  std::vector<tensorflow::PartialTensorShape> input_shapes(num_operands);
+  std::vector<tensorflow::Tensor> tensors(num_operands);
   std::vector<std::unique_ptr<std::vector<
       std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>>
-      handle_shapes_and_types(operands.size());
-  for (auto it : llvm::enumerate(operands)) {
+      handle_shapes_and_types(num_operands);
+  for (auto it : llvm::enumerate(op->getOperands())) {
     Value operand = it.value();
     size_t index = it.index();
 
@@ -306,8 +261,7 @@ LogicalResult InferReturnTypeComponentsFallback(
   // Perform the shape inference using an InferenceContext with the input
   // shapes. This object is abstracting the information that the ShapeInference
   // function operates on.
-  InferenceContext c(graph_version,
-                     tensorflow::AttrSlice(&converted_attributes),
+  InferenceContext c(graph_version, tensorflow::AttrSlice(&attributes),
                      op_reg_data->op_def, input_shapes, input_tensors,
                      /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
   auto status = c.Run(op_reg_data->shape_inference_fn);
@@ -329,7 +283,7 @@ LogicalResult InferReturnTypeComponentsFallback(
       if (c.requested_input_tensor_as_partial_shape(input) &&
           !input_tensors[input]) {
         LLVM_DEBUG(llvm::dbgs() << "Requesting " << input << " as shape\n");
-        auto op_result = operands[input].dyn_cast<OpResult>();
+        auto op_result = op->getOperand(input).dyn_cast<OpResult>();
         if (!op_result) continue;
         // Resize on first valid shape computed.
         input_tensors_as_shapes.resize(c.num_inputs());
@@ -366,7 +320,7 @@ LogicalResult InferReturnTypeComponentsFallback(
       auto handle_shapes_types = c.output_handle_shapes_and_types(output);
       if (handle_shapes_types) {
         SmallVector<TensorType, 1> subtypes;
-        Builder b(context);
+        Builder b(op->getContext());
         for (const auto& shape_n_type : *handle_shapes_types) {
           Type element_type;
           auto status =
@@ -376,9 +330,9 @@ LogicalResult InferReturnTypeComponentsFallback(
               CreateTensorType(c, shape_n_type.shape, element_type));
         }
         if (new_element_type.isa<TF::ResourceType>()) {
-          new_element_type = TF::ResourceType::get(subtypes, context);
+          new_element_type = TF::ResourceType::get(subtypes, op->getContext());
         } else {
-          new_element_type = TF::VariantType::get(subtypes, context);
+          new_element_type = TF::VariantType::get(subtypes, op->getContext());
         }
       }
     }
@@ -387,21 +341,6 @@ LogicalResult InferReturnTypeComponentsFallback(
   }
 
   return success();
-}
-
-}  // namespace
-
-LogicalResult InferReturnTypeComponentsForTFOp(
-    Optional<Location> location, Operation* op, int64_t graph_version,
-    OperandAsConstantFn operand_as_constant_fn,
-    OpResultAsShapeFn op_result_as_shape_fn,
-    ResultElementTypeFn result_element_type_fn,
-    SmallVectorImpl<ShapedTypeComponents>& inferred_return_shapes) {
-  auto attributes = GetAttributesFromOperation(op);
-  return InferReturnTypeComponentsFallback(
-      op->getContext(), op->getName().getStringRef(), graph_version, location,
-      op->getOperands(), attributes, operand_as_constant_fn,
-      op_result_as_shape_fn, result_element_type_fn, inferred_return_shapes);
 }
 
 LogicalResult InferReturnTypeComponentsForTFOp(
