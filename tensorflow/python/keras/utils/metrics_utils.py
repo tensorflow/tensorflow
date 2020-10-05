@@ -343,14 +343,7 @@ def update_confusion_matrix_variables(variables_to_update,
           math_ops.cast(1.0, dtype=y_pred.dtype),
           message='predictions must be <= 1')
   ]):
-    if sample_weight is None:
-      y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
-          y_pred, y_true)
-    else:
-      sample_weight = math_ops.cast(sample_weight, dtype=variable_dtype)
-      y_pred, y_true, sample_weight = (
-          losses_utils.squeeze_or_expand_dimensions(
-              y_pred, y_true, sample_weight=sample_weight))
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(y_pred, y_true)
   y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if top_k is not None:
@@ -358,6 +351,12 @@ def update_confusion_matrix_variables(variables_to_update,
   if class_id is not None:
     y_true = y_true[..., class_id]
     y_pred = y_pred[..., class_id]
+
+  if sample_weight is not None:
+    sample_weight = math_ops.cast(sample_weight, dtype=variable_dtype)
+    y_pred, y_true, sample_weight = (
+        losses_utils.squeeze_or_expand_dimensions(
+            y_pred, y_true, sample_weight=sample_weight))
 
   pred_shape = array_ops.shape(y_pred)
   num_predictions = pred_shape[0]
