@@ -1494,7 +1494,7 @@ class TensorTracer(object):
 
       flush_op = tpu.outside_compilation(
           _flush_fun, cache_val, self._replica_id,
-          training_util.get_or_create_global_step())
+          array_ops.identity(training_util.get_or_create_global_step()))
     else:
       flush_op = _flush_fun(cache_val, self._replica_id,
                             training_util.get_or_create_global_step())
