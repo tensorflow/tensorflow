@@ -1,5 +1,10 @@
 ifneq ($(filter ethos-u,$(ALL_TAGS)),)
-    # Do not link Math library
+    # Arm Compiler will not link the Math library (see below), therefore we're filtering it out.
+    # See Fatal error: L6450U: Cannot find library m:
+    # "Arm Compiler is designed to run in a bare metal environment,
+    # and automatically includes implementations of these functions,
+    # and so no such flag is necessary."
+    # https://developer.arm.com/documentation/100891/0611/troubleshooting/general-troubleshooting-advice
     MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
 
     ifneq (,$(filter $(TARGET_ARCH), x86_64))
