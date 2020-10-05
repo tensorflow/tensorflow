@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
 
-#include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"
 
 namespace {
 
 int32_t g_latest_audio_timestamp = 0;
-
 
 constexpr int kNoOfSamples = 512;
 bool g_is_audio_initialized = false;
@@ -38,7 +37,7 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
                              int start_ms, int duration_ms,
                              int* audio_samples_size, int16_t** audio_samples) {
   if (!g_is_audio_initialized) {
-       g_is_audio_initialized = true;
+    g_is_audio_initialized = true;
   }
   // This should only be called when the main thread notices that the latest
   // audio sample data timestamp has changed, so that there's new data in the
@@ -60,48 +59,39 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
 int32_t LatestAudioTimestamp() { return g_latest_audio_timestamp; }
 
 char filename[50] = "input.wav";
-FILE *infile;
-void init_audio()
-{
-	uint8_t mem[3];
-	printf("Using filename %s\n", filename);
+FILE* infile;
+void init_audio() {
+  uint8_t mem[3];
+  printf("Using filename %s\n", filename);
 
-	
-	infile = fopen(filename,"rb");
-	if (!infile)
-	{
-		printf("Can't open file\n");
-		exit(1);
-	}
+  infile = fopen(filename, "rb");
+  if (!infile) {
+    printf("Can't open file\n");
+    exit(1);
+  }
 
-	//skip wav header
-	for (int i = 0; i < 44; i++)
-	{
-		fread(mem,1,1,infile);
-	}
+  // skip wav header
+  for (int i = 0; i < 44; i++) {
+    fread(mem, 1, 1, infile);
+  }
 }
 
+void read_samples() {
+  int i = 0;
+  uint8_t mem[3];
+  bool done;
+  for (int i = 0; i < kNoOfSamples; i++) {
+    if (fread((char*)mem, 1, 2, infile) == 2) {
+      audio[i] = (int16_t)mem[0] + (((int16_t)mem[1]) << 8);
+    } else {
+      done = true;
+      fclose(infile);
+      infile = fopen(filename, "rb");
+      printf("EOF reached\n");
 
-void read_samples()
-{
-	int i =0;
-	uint8_t mem[3];
-	bool done;
-	for (int i = 0; i < kNoOfSamples; i++)
-	{
-		if (fread( (char*)mem,1,2,infile ) == 2 )
-		{
-			audio[i] = (int16_t)mem[0] + (((int16_t)mem[1]) << 8);
-		}
-		else {
-			done = true;
-			fclose(infile);
-			infile = fopen(filename,"rb");
-			printf("EOF reached\n");
-
-			break;
-			}
-		}
+      break;
+    }
+  }
 }
 
 void CaptureSamples(const int16_t* sample_data) {
@@ -121,9 +111,7 @@ void CaptureSamples(const int16_t* sample_data) {
   g_latest_audio_timestamp = time_in_ms;
 }
 
-void GetAudio()
-{
-	read_samples();
-	CaptureSamples(audio);
-	
+void GetAudio() {
+  read_samples();
+  CaptureSamples(audio);
 }
