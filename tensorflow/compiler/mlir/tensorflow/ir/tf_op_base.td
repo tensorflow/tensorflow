@@ -73,6 +73,9 @@ def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 // certain state around within their implementations.
 def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
 
+// Trait to indicate an operation cannot be constant folded.
+def TF_NoConstantFold : NativeOpTrait<"TF::NoConstantFold">;
+
 // Coefficient wise binary operation with implicit broadcasting support, for
 // example tf.Sub operation.
 def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
