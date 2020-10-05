@@ -2194,7 +2194,7 @@ py_library(
 )
 
 # Including this as a dependency will result in tests to use TFRT.
-# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
+# TODO(b/170139514): Add a curated list of TFRT native ops.
 py_library(
     name = "is_tfrt_test_true",
     srcs = ["framework/is_tfrt_test_true.py"],
@@ -5066,6 +5066,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/gradient_checker_v2_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
