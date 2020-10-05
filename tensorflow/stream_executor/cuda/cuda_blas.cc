@@ -3422,7 +3422,9 @@ CUDABlas::CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams& p) {
           p.pointer_mode, p.epilogue, p.batch_count, p.stride_a, p.stride_b,
           p.stride_c, p.stride_c));
 #else
-  return nullptr;
+  return port::Status(
+      port::error::UNIMPLEMENTED,
+      "CreateBlasLtMatmulPlan is not supported with this version of CUDA");
 #endif
 }
 
