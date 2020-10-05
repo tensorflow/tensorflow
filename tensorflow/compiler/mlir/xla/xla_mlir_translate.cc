@@ -129,8 +129,11 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunctionImpl(
   if (!module) return mlir::failure();
 
   HloProto hloProto;
+  mlir::MlirToHloConversionOptions options;
+  options.propagate_layouts = with_layouts;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
+      module, &hloProto, emit_use_tuple_arg, emit_return_tuple,
+      /*shape_representation_fn=*/nullptr, options);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();

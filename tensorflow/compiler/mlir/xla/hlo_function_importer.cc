@@ -681,6 +681,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
+      NoAttributeCase(kCbrt, CbrtOp);
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kCeil, CeilOp);
       NoAttributeCase(kClamp, ClampOp);
@@ -738,6 +739,20 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                          &fusion.fused_computation()));
       return fusion.getOperation();
     }
+    case HloOpcode::kBitcast:
+      return func_builder
+          ->create<mlir::mhlo::BitcastOp>(loc, result_type, operands,
+                                          attributes)
+          .getOperation();
+    case HloOpcode::kReducePrecision: {
+      auto op = func_builder->create<mlir::mhlo::ReducePrecisionOp>(
+          loc, result_type, operands[0], attributes);
+      op.exponent_bitsAttr(func_builder->getIntegerAttr(
+          func_builder->getI32Type(), instruction->exponent_bits()));
+      op.mantissa_bitsAttr(func_builder->getIntegerAttr(
+          func_builder->getI32Type(), instruction->mantissa_bits()));
+      return op.getOperation();
+    }
     case HloOpcode::kAddDependency:
       // Arbitrary op code that I suspect we will not implement for quite a
       // while and allows testing handling of unknown ops. Selected because it
@@ -762,17 +777,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                       ImportInstructionImpl(instruction, func_builder));
   if (op == nullptr) return op;
 
-  // Best-effort propagation of the layouts. These layouts serve as performance
-  // hints to the backend.
+  // See MlirToHloConversionOptions for more about layouts.
   //
   // Minor-to-major is a permutation of [0, rank), presenting tensor dimensions
   // in physical minor-to-major order.
-  //
-  // Note that non-array shapes are not carrying layouts, and users have to
-  // figure out the proper layouts of them through context. This is one of the
-  // reasons why the attribute-based solution is temporary.
-  //
-  // TODO(timshen): Investigate the necessity of having layouts in MHLO.
   if (instruction->shape().IsArray() &&
       instruction->shape().layout() !=
           LayoutUtil::MakeDescendingLayout(

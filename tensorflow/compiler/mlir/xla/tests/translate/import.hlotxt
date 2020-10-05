@@ -1014,3 +1014,26 @@ add {
   ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
 }
 
+// CHECK-LABEL:  func @cbrt
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>)
+%cbrt (Arg_0.1: f32[3,4]) -> f32[3,4] {
+  %Arg_0.1 = f32[3,4] parameter(0)
+  // CHECK: "mhlo.cbrt"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  ROOT %cbrt = f32[3,4] cbrt(f32[3,4] %Arg_0.1)
+}
+
+// CHECK-LABEL:  func @bitcast
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>) -> tensor<3x4x1xf32>
+%bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1] {
+  %Arg_0.1 = f32[3,4] parameter(0)
+  // CHECK: "mhlo.bitcast"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+  ROOT %bitcast = f32[3,4,1] bitcast(f32[3,4] %Arg_0.1)
+}
+
+// CHECK-LABEL:  func @reduce_precision
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>)
+%reduce_precision (Arg_0.1: f32[3,4]) -> f32[3,4] {
+  %Arg_0.1 = f32[3,4] parameter(0)
+  // CHECK: "mhlo.reduce_precision"(%[[ARG0]]) {exponent_bits = 8 : i32, mantissa_bits = 10 : i32} : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  ROOT %reduce_precision = f32[3,4] reduce-precision(f32[3,4] %Arg_0.1), exponent_bits=8, mantissa_bits=10
+}

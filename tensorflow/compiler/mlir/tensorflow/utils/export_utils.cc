@@ -127,11 +127,12 @@ Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-Status ConvertAttribute(const mlir::TF::FuncAttr& attr, AttrValue* value) {
+Status ConvertAttribute(const mlir::TF::FuncAttr& attr, bool remove_ref_type,
+                        AttrValue* value) {
   TF_RETURN_IF_ERROR(
       ConvertAttribute(attr.GetName().cast<mlir::FlatSymbolRefAttr>(), value));
   TF_RETURN_IF_ERROR(ConvertAttributes(attr.GetAttrs().getValue(),
-                                       /*attrs_to_ignore=*/{},
+                                       /*attrs_to_ignore=*/{}, remove_ref_type,
                                        value->mutable_func()->mutable_attr()));
   return Status::OK();
 }
@@ -159,15 +160,18 @@ Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-Status ConvertAttribute(mlir::Type type, AttrValue* value) {
+Status ConvertAttribute(mlir::Type type, bool remove_ref_type,
+                        AttrValue* value) {
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
+  if (tensorflow::IsRefType(dtype)) dtype = tensorflow::RemoveRefType(dtype);
   value->set_type(dtype);
   return Status::OK();
 }
 
-Status ConvertAttribute(const mlir::TypeAttr& type, AttrValue* value) {
-  return ConvertAttribute(type.getValue(), value);
+Status ConvertAttribute(const mlir::TypeAttr& type, bool remove_ref_type,
+                        AttrValue* value) {
+  return ConvertAttribute(type.getValue(), remove_ref_type, value);
 }
 
 Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
@@ -175,7 +179,8 @@ Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
+Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
+                        AttrValue* value) {
   auto* list = value->mutable_list();
   for (mlir::Attribute a : attr.getValue()) {
     if (auto attr = a.dyn_cast<mlir::BoolAttr>()) {
@@ -215,7 +220,8 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       if (auto shaped_type = elt_type.dyn_cast<mlir::ShapedType>()) {
         elt_type = shaped_type.getElementType();
       }
-      TF_RETURN_IF_ERROR(ConvertAttribute(elt_type, &attr_val));
+      TF_RETURN_IF_ERROR(
+          ConvertAttribute(elt_type, remove_ref_type, &attr_val));
       list->add_type(attr_val.type());
     } else if (auto attr = a.dyn_cast<mlir::TF::ShapeAttr>()) {
       AttrValue attr_val;
@@ -334,7 +340,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   // Add the node attributes.
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertAttributes(inst->getAttrs(), attrs_to_ignore,
-                        node_def->mutable_attr()),
+                        /*remove_ref_type=*/false, node_def->mutable_attr()),
       "while converting attributes for node: ", name.str());
 
   // Add the node debug info.
@@ -351,7 +357,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 Status ConvertAttributes(
     const llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    AttrValueMap* values) {
+    bool remove_ref_type, AttrValueMap* values) {
   AttrValueMap func_call_attrs;
   for (const mlir::NamedAttribute& named_attr : attrs) {
     auto name_strref = named_attr.first.str();
@@ -376,7 +382,7 @@ Status ConvertAttributes(
       continue;
     }
     if (auto func_attr = attr.dyn_cast<mlir::TF::FuncAttr>()) {
-      TF_RETURN_IF_ERROR(ConvertAttribute(func_attr, &value));
+      TF_RETURN_IF_ERROR(ConvertAttribute(func_attr, remove_ref_type, &value));
       func_call_attrs[string(name)] = value;
       continue;
     }
@@ -388,11 +394,13 @@ Status ConvertAttributes(
     TF_RETURN_IF_ERROR(
         llvm::TypeSwitch<mlir::Attribute, Status>(attr)
             .Case<mlir::BoolAttr, mlir::IntegerAttr, mlir::FloatAttr,
-                  mlir::StringAttr, mlir::ArrayAttr, mlir::ElementsAttr,
-                  mlir::TypeAttr, mlir::UnitAttr, mlir::TF::ShapeAttr>(
-                [&](auto derived_attr) {
-                  return ConvertAttribute(derived_attr, &value);
-                })
+                  mlir::StringAttr, mlir::ElementsAttr, mlir::UnitAttr,
+                  mlir::TF::ShapeAttr>([&](auto derived_attr) {
+              return ConvertAttribute(derived_attr, &value);
+            })
+            .Case<mlir::ArrayAttr, mlir::TypeAttr>([&](auto derived_attr) {
+              return ConvertAttribute(derived_attr, remove_ref_type, &value);
+            })
             .Default([&](mlir::Attribute) {
               return errors::Unimplemented(
                   "Unhandled attribute kind for attribute '", name_strref,
@@ -415,28 +423,6 @@ Status ConvertAttributes(
   }
   for (const auto& it : func_call_attrs) {
     (*values)[it.first] = it.second;
-  }
-  return Status::OK();
-}
-
-// Sets type attribute with the given name. If the attribute already exists with
-// a different value, returns an error.
-Status SetTypeAttribute(absl::string_view name, mlir::Type type,
-                        AttrValueMap* values) {
-  DataType dtype;
-  TF_RETURN_IF_ERROR(ConvertScalarTypeToDataType(type, &dtype));
-  if (tensorflow::IsRefType(dtype)) dtype = tensorflow::RemoveRefType(dtype);
-  AttrValue value;
-  value.set_type(dtype);
-
-  auto result = values->insert({string(name), value});
-  if (!result.second) {
-    DataType actual_dtype = result.first->second.type();
-    if (actual_dtype != dtype) {
-      return errors::InvalidArgument("Expected ", DataType_Name(dtype), " '",
-                                     name, "' attribute but found ",
-                                     DataType_Name(actual_dtype));
-    }
   }
   return Status::OK();
 }
@@ -465,26 +451,6 @@ Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
                                      " '", name, "' attribute but found ",
                                      actual_shape.ShortDebugString());
     }
-  }
-  return Status::OK();
-}
-
-Status SetSizeAttribute(absl::string_view name, size_t size,
-                        AttrValueMap* values) {
-  AttrValue value;
-  value.set_i(size);
-
-  auto result = values->insert({string(name), value});
-  if (!result.second) {
-    // This should be extremely rare as it means we are adding the same
-    // attribute multiple times/have some redundancy in representing this
-    // attribute.
-    size_t actual_size = result.first->second.i();
-    // Just check via string output as we shouldn't get here and if we do they
-    // should be trivially the same, else fail.
-    if (actual_size != size)
-      return errors::InvalidArgument("Expected '", name, "' attribute to be ",
-                                     size, " but found ", actual_size);
   }
   return Status::OK();
 }

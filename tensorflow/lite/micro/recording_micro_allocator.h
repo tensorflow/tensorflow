@@ -24,6 +24,7 @@ namespace tflite {
 
 // List of buckets currently recorded by this class. Each type keeps a list of
 // allocated information during model initialization.
+// TODO(b/169834511): Add tracking for scratch buffer allocations.
 enum class RecordedAllocationType {
   kTfLiteEvalTensorData,
   kPersistentTfLiteTensorData,

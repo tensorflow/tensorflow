@@ -149,6 +149,16 @@ XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
+                                     const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kBitcast,
+                                   {operand});
+  });
+}
+
 HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
   return &op.builder()
               ->instructions_[op.builder()->handle_to_index_[op.handle_]];

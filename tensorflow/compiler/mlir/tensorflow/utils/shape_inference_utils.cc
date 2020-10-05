@@ -219,7 +219,8 @@ LogicalResult InferReturnTypeComponentsFallback(
       attributes_to_convert.set(attr_def.name(), registered_attr);
 
   auto attrs_status = tensorflow::ConvertAttributes(
-      attributes_to_convert, /*attrs_to_ignore=*/{}, &converted_attributes);
+      attributes_to_convert, /*attrs_to_ignore=*/{}, /*remove_ref_type=*/false,
+      &converted_attributes);
   if (!attrs_status.ok()) {
     LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << op_name
                             << "': " << attrs_status.error_message() << "\n");

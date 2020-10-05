@@ -199,11 +199,14 @@ class PodTpuDriver : public TpuDriver {
     for (const auto& worker : workers) {
       TpuDriverConfig worker_config(config_);
       *(worker_config.mutable_worker()) = absl::StrCat("grpc://", worker);
-      drivers_.push_back(
-          CreateGrpcTpuDriver(worker_config, creds_).ConsumeValueOrDie());
+      auto tpu_driver =
+          CreateGrpcTpuDriver(worker_config, creds_).ConsumeValueOrDie();
+
+      SystemInfo driver_info;
+      tpu_driver->QuerySystemInfo(&driver_info);
+      drivers_.insert({driver_info.host_id(), std::move(tpu_driver)});
     }
 
-    int cumulative_core_id = 0;
     absl::flat_hash_set<std::tuple<int, int, int>> processed_chips;
 
     for (int driver_num = 0; driver_num < workers.size(); ++driver_num) {
@@ -230,11 +233,12 @@ class PodTpuDriver : public TpuDriver {
     // Process all the unique chips that we have seen.
     for (auto& tpu_chip : *pod_info_.mutable_tpu_chip()) {
       for (auto& tpu_core : *tpu_chip.mutable_core()) {
-        int current_core = cumulative_core_id++;
+        int current_core = tpu_core.id();
 
-        core_to_driver_.push_back(drivers_[tpu_chip.host_id()].get());
-        core_to_driver_id_.push_back(tpu_chip.host_id());
-        core_to_driver_core_.push_back(tpu_core.id());
+        core_to_driver_.insert(
+            {current_core, drivers_[tpu_chip.host_id()].get()});
+        core_to_driver_id_.insert({current_core, tpu_chip.host_id()});
+        core_to_driver_core_.insert({current_core, tpu_core.id()});
 
         tpu_core.set_id(current_core);
         tpu_core.set_core_on_host_index(current_core);
@@ -264,7 +268,7 @@ class PodTpuDriver : public TpuDriver {
 
   xla::Status Reset() override {
     for (auto& driver : drivers_) {
-      TF_RETURN_IF_ERROR(driver->Reset());
+      TF_RETURN_IF_ERROR(driver.second->Reset());
     }
     return xla::Status::OK();
   }
@@ -564,18 +568,6 @@ class PodTpuDriver : public TpuDriver {
       absl::Span<Event* const> wait_for) override {
     int64_t operation_id = GetOperationId();
 
-    if (device_assignment.replica_count() != 1 &&
-        device_assignment.replica_count() != core_to_driver_id_.size()) {
-      // TODO(frankchn): Remove restriction once we figure out what's wrong.
-      std::string error_msg =
-          absl::StrCat("Programs must be replicated across all ",
-                       core_to_driver_id_.size(), " cores. Program specified ",
-                       device_assignment.replica_count(), " replicas.");
-      LOG(WARNING) << error_msg;
-      return std::make_shared<ErrorEvent>(
-          this, operation_id, tensorflow::errors::InvalidArgument(error_msg));
-    }
-
     auto deps = GetDependencyOperationIds(wait_for);
     deps.insert(static_cast<PodLoadedProgramHandle*>(program)->operation_id());
 
@@ -705,10 +697,10 @@ class PodTpuDriver : public TpuDriver {
   const TpuDriverConfig& config_;
   std::shared_ptr<::grpc::ChannelCredentials> creds_;
 
-  std::vector<std::unique_ptr<TpuDriver>> drivers_;
-  std::vector<int32_t> core_to_driver_id_;
-  std::vector<TpuDriver*> core_to_driver_;
-  std::vector<int32_t> core_to_driver_core_;
+  absl::flat_hash_map<int32_t, std::unique_ptr<TpuDriver>> drivers_;
+  absl::flat_hash_map<int32_t, int32_t> core_to_driver_id_;
+  absl::flat_hash_map<int32_t, TpuDriver*> core_to_driver_;
+  absl::flat_hash_map<int32_t, int32_t> core_to_driver_core_;
   SystemInfo pod_info_;
 
   absl::Mutex mu_;

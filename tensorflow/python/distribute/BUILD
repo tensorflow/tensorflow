@@ -1335,23 +1335,6 @@ distribute_py_test(
     ],
 )
 
-distribute_py_test(
-    name = "strategy_reduce_test",
-    srcs = ["strategy_reduce_test.py"],
-    main = "strategy_reduce_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:test",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 py_library(
     name = "single_loss_example",
     srcs = ["single_loss_example.py"],
@@ -1768,6 +1751,7 @@ py_library(
 distribute_py_test(
     name = "test_util_test",
     srcs = ["test_util_test.py"],
+    disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
     ],
