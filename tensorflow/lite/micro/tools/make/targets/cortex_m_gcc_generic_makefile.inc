@@ -8,6 +8,7 @@ ifeq ($(TARGET), cortex_m_gcc_generic)
 
   PLATFORM_FLAGS = \
     -DTF_LITE_MCU_DEBUG_LOG \
+    -Wno-type-limits \
     -funsigned-char \
     -mcpu=cortex-m4 \
     -mfpu=fpv4-sp-d16 \
