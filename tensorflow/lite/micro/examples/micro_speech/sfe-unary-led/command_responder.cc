@@ -22,7 +22,10 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   static bool is_initialized = false;
   if (!is_initialized) {
     // Setup LED's as outputs
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12); // todo: determine why initializing the LED twice fixes the runtime word detection - and why only initializing the pin once causes only "unknown" detections
+    // todo: identify runtime "unknown only" detection bug
+    // - probably based on code location in memory
+    // - aggravated by number of times that pin config is called 
+    //   (used to be that twice was needed, now once works and twice does not)
     am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12);
     is_initialized = true;
   }
