@@ -1,0 +1,13 @@
+on:
+  workflow_dispatch:  # Allow manual triggers
+  schedule:
+    - cron: 0 4 * * *  # 4am UTC is 9pm PDT and 8pm PST
+name: Set nightly branch to master HEAD
+jobs:
+  master-to-nightly:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: zofrex/mirror-branch@v1
+      name: Set nightly branch to master HEAD
+      with:
+        target-branch: 'nightly'
