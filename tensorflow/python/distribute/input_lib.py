@@ -1155,7 +1155,8 @@ class DistributedDatasetsFromFunction(_IterableInput):
     self._datasets, element_spec = (
         _create_datasets_per_worker_with_input_context(self._input_contexts,
                                                        self._input_workers,
-                                                       dataset_fn))
+                                                       dataset_fn,
+                                                       self._replication_mode))
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, element_spec)
     self._element_spec = _create_distributed_tensor_spec(
@@ -1777,11 +1778,16 @@ def _create_iterators_per_worker(worker_datasets, input_workers,
 
 
 def _create_datasets_per_worker_with_input_context(input_contexts,
-                                                   input_workers, dataset_fn):
+                                                   input_workers,
+                                                   dataset_fn,
+                                                   replication_mode):
   """Create device datasets per worker given a dataset function."""
   datasets = []
   for i, ctx in enumerate(input_contexts):
-    worker = input_workers.worker_devices[i]
+    if replication_mode == InputReplicationMode.PER_WORKER:
+      worker = input_workers.worker_devices[i]
+    else:
+      worker = input_workers._worker_device_pairs[i][1][0]
     with ops.device(worker):
       dataset = dataset_fn(ctx)
       datasets.append(dataset)
