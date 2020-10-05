@@ -180,10 +180,6 @@ int64 ToId(AbstractTensorHandle* t);
 // allow us to trace the data dependencies between operations and hence compute
 // gradients.
 //
-// This also implements `OnesLike` to create the default
-// incoming gradients for tensors which do not already have an incoming
-// gradient.
-//
 // `ZerosLike` is not expected to be called and returns a nullptr. The creation
 // of default zeros grads is handled by the `DefaultGradientFunction` registered
 // for each op.
@@ -233,7 +229,7 @@ class TapeVSpace
       std::vector<AbstractTensorHandle*>* result) const override;
 
   // Builds a tensor filled with ones with the same shape and dtype as `t`.
-  Status BuildOnesLike(TapeTensor t,
+  Status BuildOnesLike(const TapeTensor& t,
                        AbstractTensorHandle** result) const override;
 
   // Looks up the ID of a Gradient.

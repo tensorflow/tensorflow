@@ -22,6 +22,7 @@ py_library(
         ":gradients",
         ":test_util",
         "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",

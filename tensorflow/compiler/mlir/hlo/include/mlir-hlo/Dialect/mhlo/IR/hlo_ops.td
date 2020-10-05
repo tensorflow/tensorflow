@@ -157,6 +157,9 @@ def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
   >];
 }
 
+def HLO_CbrtOp: HLO_UnaryElementwiseOp<"cbrt",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_CbrtOp;
+
 def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_CeilOp;
 
@@ -194,7 +197,8 @@ def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
 def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    [NoSideEffect, SameOperandsAndResultShape,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>],
     HLO_ComplexTensor>, BASE_HLO_ImagOp {
   let results = (outs HLO_FpTensor);
   let hasFolder = 1;
@@ -235,7 +239,8 @@ def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     BASE_HLO_PopulationCountOp;
 
 def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    [NoSideEffect, SameOperandsAndResultShape,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>],
     HLO_ComplexTensor>, BASE_HLO_RealOp {
   let results = (outs HLO_FpTensor);
   let hasFolder = 1;
@@ -315,12 +320,10 @@ def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_Atan2Op;
 
-def HLO_ComplexOp: HLO_Op<"complex",
-    [NoSideEffect, SameOperandsAndResultShape]>,
+def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
+    [NoSideEffect, SameOperandsAndResultShape,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
     BASE_HLO_ComplexOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value lhs, Value rhs">];
-
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
   let results = (outs HLO_ComplexTensor);
   let hasFolder = 1;
@@ -350,7 +353,9 @@ def HLO_PowOp : HLO_BinaryElementwiseOp<"power",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_PowOp;
 
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
-      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RemOp;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RemOp {
+  let hasFolder = 1;
+}
 
 def HLO_ShiftLeftOp : HLO_BinaryElementwiseOp<"shift_left",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ShiftLeftOp;
@@ -1421,6 +1426,23 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
 
   // FusionOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+}
+
+// This is an op for purposes internal to XLA/GPU.
+def HLO_BitcastOp : HLO_Op<"bitcast", [NoSideEffect]>, BASE_HLO_BitcastOp {
+  let arguments = (ins HLO_Tensor:$operand);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_ReducePrecisionOp: HLO_Op<"reduce_precision", [SameOperandsAndResultShape]>,
+                           BASE_HLO_ReducePrecisionOp {
+  let arguments = (ins
+    HLO_FpTensor:$operand,
+    I32Attr:$exponent_bits,
+    I32Attr:$mantissa_bits
+  );
+  let results = (outs HLO_FpTensor:$output);
 }
 
 #endif // HLO_OPS

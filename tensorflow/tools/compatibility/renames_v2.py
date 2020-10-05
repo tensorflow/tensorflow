@@ -282,6 +282,8 @@ renames = {
         'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape':
         'tf.compat.v1.disable_v2_tensorshape',
+    'tf.distribute.experimental.ParameterServerStrategy':
+        'tf.compat.v1.distribute.experimental.ParameterServerStrategy',
     'tf.distribute.get_loss_reduction':
         'tf.compat.v1.distribute.get_loss_reduction',
     'tf.distributions.Bernoulli':

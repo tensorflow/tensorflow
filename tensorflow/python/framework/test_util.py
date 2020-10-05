@@ -290,7 +290,8 @@ def _strip_checkpoint_v2_randomized(graph_def):
       if attr_tensor_value and len(attr_tensor_value.string_val) == 1:
         attr_tensor_string_value = attr_tensor_value.string_val[0]
         if (attr_tensor_string_value and
-            re.match(_SHARDED_SAVE_OP_PATTERN, str(attr_tensor_string_value))):
+            re.match(compat.as_bytes(_SHARDED_SAVE_OP_PATTERN),
+                     attr_tensor_string_value)):
           delete_keys.append(attr_key)
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -303,7 +304,8 @@ def _strip_hash_table_shared_name(graph_def):
   for node in graph_def.node:
     delete_keys = []
     if node.op == "HashTableV2" and "shared_name" in node.attr:
-      if re.match(_TABLE_SHARED_NAME_PATTERN, str(node.attr["shared_name"].s)):
+      if re.match(compat.as_bytes(_TABLE_SHARED_NAME_PATTERN),
+                  node.attr["shared_name"].s):
         delete_keys.append("shared_name")
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -2904,6 +2906,8 @@ class TensorFlowTestCase(googletest.TestCase):
     lines = []
     subscripts = np.transpose(subscripts)
     prefix = " " * indent
+    if np.ndim(value) == 0:
+      return [prefix + "[0] : " + str(value)]
     for subscript in itertools.islice(subscripts, limit):
       lines.append(prefix + str(subscript) + " : " +
                    str(value[tuple(subscript)]))

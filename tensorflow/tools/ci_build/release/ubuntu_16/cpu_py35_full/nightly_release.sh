@@ -25,12 +25,22 @@ install_bazelisk
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Remove need to run configure to set TF_NEED_CUDA=0, TF_NEED_ROCM=0, and
-# CC_OPT_FLAGS='-mavx'.
+# CC_OPT_FLAGS='-mavx' and create .tf_configure.bazelrc with touch and echo.
+touch .tf_configure.bazelrc
+echo "build --action_env PYTHON_BIN_PATH=\"/usr/local/bin/python3.5\"" >> .tf_configure.bazelrc
+echo "build --action_env PYTHON_LIB_PATH=\"/usr/local/lib/python3.5/site-packages\"" >> .tf_configure.bazelrc
+echo "build --python_path=\"/usr/local/bin/python3.5\"" >> .tf_configure.bazelrc
+echo "build --config=xla" >> .tf_configure.bazelrc
 echo "build:opt --copt=-mavx" >> .tf_configure.bazelrc
-sed "/build:opt --copt=-Wno-sign-compare/d".tf_configure.bazelrc
-echo "build --action_env PYTHON_BIN_PATH=\"/usr/local/bin/python3.5\""
-echo "build --action_env PYTHON_LIB_PATH=\"/usr/local/lib/python3.5/site-packages\""
-echo "build --python_path=\"/usr/local/bin/python3.5\""
+echo "build:opt --host_copt=-march=native" >> .tf_configure.bazelrc
+echo "build:opt --define with_default_optimizations=true" >> .tf_configure.bazelrc
+echo "test --flaky_test_attempts=3" >> .tf_configure.bazelrc
+echo "test --test_size_filters=small,medium" >> .tf_configure.bazelrc
+echo "test:v1 --test_tag_filters=-benchmark-test,-no_oss,-gpu,-oss_serial" >> .tf_configure.bazelrc
+echo "test:v1 --build_tag_filters=-benchmark-test,-no_oss,-gpu" >> .tf_configure.bazelrc
+echo "test:v2 --test_tag_filters=-benchmark-test,-no_oss,-gpu,-oss_serial,-v1only" >> .tf_configure.bazelrc
+echo "test:v2 --build_tag_filters=-benchmark-test,-no_oss,-gpu,-v1only" >> .tf_configure.bazelrc
+echo "build --action_env TF_CONFIGURE_IOS=\"0\"" >> .tf_configure.bazelrc
 
 
 # Build the pip package

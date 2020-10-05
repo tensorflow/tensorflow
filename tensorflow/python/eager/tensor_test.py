@@ -348,7 +348,6 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.run_in_graph_and_eager_modes
-  @test_util.disable_tfrt("b/169372865: support CreateTensor for half.")
   def testConvertToTensorNumpyZeroDim(self):
     for np_type, dtype in [(np.int32, dtypes.int32),
                            (np.half, dtypes.half),
@@ -417,6 +416,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         np.array(memoryview(t)), np.array([0.0], dtype=np.float32))
 
+  @test_util.disable_tfrt("b/169877776: ResourceVariable is not initialized "
+                          "properly in TFRT")
   def testResourceTensorCopy(self):
     if not test_util.is_gpu_available():
       self.skipTest("GPU only")
@@ -543,7 +544,6 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
       constant_op.constant(l)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
-  @test_util.disable_tfrt("b/169372865: support CreateTensor for complex128.")
   def testFloatAndIntAreConvertibleToComplex(self):
     a = [[1., 1], [1j, 2j]]
     np_value = np.array(a, dtype=np.complex128)

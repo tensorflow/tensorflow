@@ -639,24 +639,15 @@ TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     static const double kBeta = 1.0;
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 255);
-      data->params.table = data->f_table;
-      optimized_ops::PopulateSoftmaxLookupTable(&data->params,
-                                                input->params.scale, kBeta);
-      data->params.zero_point = output->params.zero_point;
-      data->params.scale = output->params.scale;
     }
     if (input->type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 127);
-      static const int kScaledDiffIntegerBits = 5;
-      tflite::PreprocessLogSoftmaxScalingExp(
-          kBeta, input->params.scale, kScaledDiffIntegerBits,
-          &data->input_multiplier, &data->input_left_shift,
-          &data->reverse_scaling_divisor, &data->reverse_scaling_right_shift);
-      data->reverse_scaling_right_shift *= -1;
-      data->diff_min =
-          -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
-                                              data->input_left_shift);
     }
+    data->params.table = data->f_table;
+    optimized_ops::PopulateSoftmaxLookupTable(&data->params,
+                                              input->params.scale, kBeta);
+    data->params.zero_point = output->params.zero_point;
+    data->params.scale = output->params.scale;
   }
 
   return context->ResizeTensor(context, output,
@@ -1188,18 +1179,26 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      const auto input_shape = GetTensorShape(input);
-      const auto output_shape = GetTensorShape(output);
-      const int trailing_dim = input_shape.DimensionsCount() - 1;
-      const int outer_size =
-          MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-      const int depth =
-          MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-      reference_integer_ops::LogSoftmax(
-          data->input_multiplier, data->input_left_shift,
-          data->reverse_scaling_divisor, data->reverse_scaling_right_shift,
-          data->diff_min, outer_size, depth, GetTensorData<int8_t>(input),
-          GetTensorData<int8_t>(output));
+      if (kernel_type == kGenericOptimized) {
+        SoftmaxParams op_params = data->params;
+        optimized_ops::LogSoftmax(
+            op_params, input->params.scale, GetTensorShape(input),
+            GetTensorData<int8_t>(input), GetTensorShape(output),
+            GetTensorData<int8_t>(output));
+      } else {
+        const auto input_shape = GetTensorShape(input);
+        const auto output_shape = GetTensorShape(output);
+        const int trailing_dim = input_shape.DimensionsCount() - 1;
+        const int outer_size =
+            MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+        const int depth =
+            MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+        reference_integer_ops::LogSoftmax(
+            data->input_multiplier, data->input_left_shift,
+            data->reverse_scaling_divisor, data->reverse_scaling_right_shift,
+            data->diff_min, outer_size, depth, GetTensorData<int8_t>(input),
+            GetTensorData<int8_t>(output));
+      }
       return kTfLiteOk;
     }
     default:

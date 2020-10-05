@@ -13,14 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/debug_log.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_param_list.h"
 
-#ifndef TF_LITE_STRIP_ERROR_STRINGS
-#include <cstdio>
-#endif
+#include "tensorflow/c/experimental/saved_model/internal/signature_def_param_list_type.h"
+#include "tensorflow/c/experimental/saved_model/internal/signature_def_param_type.h"
 
-extern "C" void DebugLog(const char* s) {
-#ifndef TF_LITE_STRIP_ERROR_STRINGS
-  fprintf(stderr, "%s", s);
-#endif
+extern "C" {
+
+extern size_t TF_SignatureDefParamListSize(
+    const TF_SignatureDefParamList* list) {
+  return tensorflow::unwrap(list)->size();
 }
+
+extern const TF_SignatureDefParam* TF_SignatureDefParamListGet(
+    const TF_SignatureDefParamList* list, int i) {
+  return tensorflow::wrap(&tensorflow::unwrap(list)->at(i));
+}
+
+}  // end extern "C"

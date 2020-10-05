@@ -75,7 +75,6 @@ endif
 
 ifeq ($(HOST_ARCH),x86_64)
   ifeq ($(HOST_OS),linux)
-    $(warning we got here)
     CXXFLAGS += -DTFLITE_HAVE_CPUINFO
   endif
 endif

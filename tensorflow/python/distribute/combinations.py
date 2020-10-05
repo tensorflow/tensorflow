@@ -40,6 +40,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
@@ -118,13 +119,11 @@ class ClusterParameters(combinations_lib.ParameterModifier):
 class DistributionCombination(combinations_lib.TestCombination):
   """Sets up distribution strategy for tests."""
 
-  XLA_TEST = re.search(r"(test_xla|test_xla_gpu)$", sys.argv[0])
-
   def should_execute_combination(self, kwargs):
     distributions = [
         v for v in kwargs.values() if isinstance(v, NamedDistribution)
     ]
-    if self.XLA_TEST and any(d.no_xla for d in distributions):
+    if test_util.is_xla_enabled() and any(d.no_xla for d in distributions):
       return (
           False,
           "n/a: skipping strategy combination with no_xla=True in XLA tests")

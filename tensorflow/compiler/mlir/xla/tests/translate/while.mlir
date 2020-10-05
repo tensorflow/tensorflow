@@ -10,11 +10,11 @@ module {
     // CHECK:   %[[A0]] = s64[] parameter(0)
     // CHECK:   ROOT %compare.7 = pred[] compare(s64[] %[[A0]], s64[] %[[A0]]), direction=LT
     ^bb0(%arg1: tensor<i64>):
-      %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT", name = "compare.2"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+      %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
       "mhlo.return"(%1) : (tensor<i1>) -> ()
     },  {
     ^bb0(%arg1: tensor<i64>):
-      %1 = mhlo.add %arg1, %arg1 {name = "compare.0"} : tensor<i64>
+      %1 = mhlo.add %arg1, %arg1 : tensor<i64>
       "mhlo.return"(%1) : (tensor<i64>) -> ()
     }) : (tensor<i64>) -> tensor<i64>
 

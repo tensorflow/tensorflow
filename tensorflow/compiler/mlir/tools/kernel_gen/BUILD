@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
         "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
@@ -158,8 +159,9 @@ cc_library(
 
 cc_library(
     name = "tf_cuda_runtime_wrappers",
-    srcs = ["tf_cuda_runtime_wrappers.cpp"],
+    srcs = ["tf_cuda_runtime_wrappers.cc"],
     compatible_with = get_compatible_with_cloud(),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "@llvm-project//llvm:Support",

@@ -94,6 +94,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     # TODO(b/167894802): Make chief, worker, and ps names customizable.
     self._connect_to_cluster(client_name="chief")
     super(ParameterServerStrategyV2, self).__init__(self._extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "ParameterServerStrategy")
 
   def _connect_to_cluster(self, client_name):
     if client_name in ["worker", "ps"]:
@@ -123,6 +125,11 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
         job_name=client_name,
         protocol=self._cluster_resolver.rpc_layer,
         cluster_device_filters=device_filters)
+
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "ps_strategy_num_workers").set(self._num_workers)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "ps_strategy_num_ps").set(self._num_ps)
 
   def _verify_args_and_config(self, cluster_resolver):
     if not cluster_resolver.cluster_spec():
