@@ -229,6 +229,41 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   >>> opt.apply_gradients([(grad, var)])  # Loss scale is updated here
   >>> var.numpy()
   0.25
+
+  Hyperparameters can be accessed and set on the LossScaleOptimizer, which will
+  be delegated to the wrapped optimizer.
+
+  >>> opt = tf.keras.optimizers.Adam(beta_1=0.8, epsilon=1e-5)
+  >>> lso = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt,
+  ...                                                                "dynamic")
+  >>> opt.beta_1
+  0.8
+  >>> lso.beta_1  # Equivalent to `opt.beta_1`
+  0.8
+  >>> lso.beta_1 = 0.7  # Equivalent to `opt.beta_1 = 0.7`
+  >>> opt.beta_1
+  0.7
+  >>> lso.beta_1
+  0.7
+
+  However, accessing or setting non-hyperparameters is not delegated to the
+  LossScaleOptimizer. In an Adam optimizer, `beta_1` is a hyperparameter but
+  `epsilon` is not, as the Adam optimizer only calls `Optimizer._set_hyper` on
+  `beta_1`.
+
+  >>> opt.epsilon
+  1e-5
+  >>> lso.epsilon
+  Traceback (most recent call last):
+  ...
+  AttributeError: 'LossScaleOptimizer' object has no attribute 'epsilon'
+  >>> lso.epsilon = 1e-4
+  >>> opt.epsilon
+  >>> 1e-5
+
+  In the above example, despite epsilon being set on the LossScaleOptimizer, the
+  old epsilon value will still be used when training as epsilon was not set on
+  the Adam optimizer.
   """
 
   _HAS_AGGREGATE_GRAD = True
@@ -267,9 +302,6 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # through the LossScaleOptimizer.
       backend.track_variable(weight)
     self._track_trackable(self._loss_scale, 'loss_scale')
-
-    # Needed because the superclass's __getattribute__ checks this.
-    self._hyper = {}
 
     # To support restoring TensorFlow 2.2 checkpoints.
     self._track_trackable(FakeOptimizerForRestoration(self._optimizer),
@@ -516,26 +548,47 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   def add_slot(self, var, slot_name, initializer='zeros'):
     return self._optimizer.add_slot(var, slot_name, initializer)
 
-  # For the most part, we only expose methods in the base OptimizerV2, not
-  # individual subclasses like Adam. However, although "learning_rate" and "lr"
-  # properties are not part of the base OptimizerV2 class, they are part of most
-  # subclasses, so we expose them here for convenience.
+  def __getattribute__(self, name):
+    try:
+      return object.__getattribute__(self, name)
+    except AttributeError as e:
+      if name == '_optimizer' or name == '_hyper':
+        # Avoid infinite recursion
+        raise e
 
-  @property
-  def learning_rate(self):
-    return self._optimizer.learning_rate
+      # Delegate hyperparameter accesses to inner optimizer.
+      if name == 'lr':
+        name = 'learning_rate'
+      if name in self._optimizer._hyper:
+        return self._optimizer._get_hyper(name)
+      raise e
 
-  @learning_rate.setter
-  def learning_rate(self, lr):
-    self._optimizer.learning_rate = lr
+  def __dir__(self):
+    result = set(super(LossScaleOptimizer, self).__dir__())
+    if '_optimizer' in result:
+      result |= self._optimizer._hyper.keys()
+      if 'learning_rate' in self._optimizer._hyper.keys():
+        result.add('lr')
+    return list(result)
 
-  @property
-  def lr(self):
-    return self._optimizer.lr
-
-  @lr.setter
-  def lr(self, lr):
-    self._optimizer.lr = lr
+  def __setattr__(self, name, value):
+    if name == 'lr':
+      name = 'learning_rate'
+    # Delegate setting hyperparameter to inner optimizer if the attribute does
+    # not exist on the LossScaleOptimizer
+    try:
+      # We cannot check for the 'iterations' attribute as it cannot be set after
+      # it is accessed.
+      if name != 'iterations':
+        object.__getattribute__(self, name)
+      has_attribute = True
+    except AttributeError:
+      has_attribute = False
+    if (name != '_optimizer' and name in self._optimizer._hyper
+        and not has_attribute):
+      self._optimizer._set_hyper(name, value)
+    else:
+      super(LossScaleOptimizer, self).__setattr__(name, value)
 
   # We do not override some OptimizerV2 methods. For each, we describe why we do
   # not delegate them to self._optimizer:

@@ -2791,29 +2791,6 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
   }
 
   {
-    HloInstruction *a, *s1, *s2;
-    // Mul(Mul(a, brodcast(scalar1)), broadcast(scalar2)) =>
-    // Mul(a, broadcast(scalar1*scalar2))
-    if (Match(multiply,
-              m::MultiplyAnyOrder(m::MultiplyAnyOrder(m::NonConstant(&a),
-                                                      m::Broadcast(m::Op(&s1))),
-                                  m::Broadcast(m::Op(&s2))))) {
-      if (ShapeUtil::IsScalar(s1->shape()) &&
-          ShapeUtil::IsScalar(s2->shape())) {
-        TF_ASSIGN_OR_RETURN(auto* product_of_constants,
-                            MakeBinaryHlo(HloOpcode::kMultiply, s1, s2));
-        product_of_constants =
-            computation_->AddInstruction(HloInstruction::CreateBroadcast(
-                multiply->shape(), product_of_constants, {}));
-        return ReplaceWithNewInstruction(
-            multiply, HloInstruction::CreateBinary(multiply->shape(),
-                                                   HloOpcode::kMultiply, a,
-                                                   product_of_constants));
-      }
-    }
-  }
-
-  {
     HloInstruction *a, *b, *constant, *op;
     // Mul(Mul(a, constant1), Broadcast(b)) =>
     // Mul(Broadcast(Mul(b, constant1), a))
@@ -4212,9 +4189,18 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     VLOG(3) << "Sink broadcast through slice";
     VLOG(3) << "Original slice: " << slice->ToString();
     VLOG(3) << "Original broadcast: " << broadcast->ToString();
-    TF_ASSIGN_OR_RETURN(auto new_slice,
-                        MakeSliceHlo(broadcast_operand, new_slice_starts,
-                                     new_slice_limits, new_slice_strides));
+    auto new_slice_shape = broadcast_operand->shape();
+    for (int64 i = 0; i < broadcast_operand->shape().rank(); ++i) {
+      int64 size_i = (new_slice_limits[i] - new_slice_starts[i] +
+                      new_slice_strides[i] - 1) /
+                     new_slice_strides[i];
+      new_slice_shape.set_dimensions(i, size_i);
+    }
+    simplifier_->UpdateLayout(&new_slice_shape);
+    HloComputation* computation = broadcast_operand->parent();
+    auto new_slice = computation->AddInstruction(HloInstruction::CreateSlice(
+        new_slice_shape, broadcast_operand, new_slice_starts, new_slice_limits,
+        new_slice_strides));
     auto new_broadcast = HloInstruction::CreateBroadcast(
         slice->shape(), new_slice, broadcast->dimensions());
     VLOG(3) << "New slice: " << slice->ToString();
@@ -4314,9 +4300,15 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     VLOG(3) << "Original broadcast: " << operand->ToString();
     HloInstruction* new_dynamic_slice = broadcast_operand;
     if (!new_slice_sizes.empty()) {
-      TF_ASSIGN_OR_RETURN(
-          new_dynamic_slice,
-          MakeDynamicSliceHlo(broadcast_operand, new_indices, new_slice_sizes));
+      auto new_ds_shape = broadcast_operand->shape();
+      for (int64 i = 0; i < broadcast_operand->shape().rank(); ++i) {
+        new_ds_shape.set_dimensions(i, new_slice_sizes[i]);
+      }
+      simplifier_->UpdateLayout(&new_ds_shape);
+      HloComputation* computation = broadcast_operand->parent();
+      new_dynamic_slice =
+          computation->AddInstruction(HloInstruction::CreateDynamicSlice(
+              new_ds_shape, broadcast_operand, new_indices, new_slice_sizes));
     }
     auto new_broadcast = HloInstruction::CreateBroadcast(
         dynamic_slice->shape(), new_dynamic_slice, operand->dimensions());

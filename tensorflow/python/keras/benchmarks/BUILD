@@ -77,6 +77,7 @@ cuda_py_test(
     deps = [
         ":profiler_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/utils:tf_inspect",
     ],
 )
 

@@ -69,6 +69,7 @@ FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
 FLAG_NAME_SUMMARY_SIGNATURES = 'signatures'
 FLAG_NAME_SUMMARY_PER_CORE = 'collect_summary_per_core'
 FLAG_NAME_TEMP_CACHE_VAR = 'use_temp_cache'
+FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
 FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
 
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
@@ -125,6 +126,7 @@ class TTParameters(object):
                                                  TRACE_MODE_MAX_ABS,
                                                  TRACE_MODE_SUMMARY)
     self.use_temp_cache_var = self.is_flag_on(FLAG_NAME_TEMP_CACHE_VAR)
+    self.inspect_trace = self.is_flag_on(FLAG_NAME_INSPECT_TRACE)
     self.use_fingerprint_subdir = self.is_flag_on(FLAG_NAME_FINGERPRINT_DIR)
 
     _, self.graph_dump_path = self.get_flag_value(
@@ -250,7 +252,8 @@ class TTParameters(object):
         FLAG_NAME_OP_RANGE,
         FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
         FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
-        FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR
+        FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
+        FLAG_NAME_INSPECT_TRACE
     ]
     tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:

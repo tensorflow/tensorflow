@@ -58,7 +58,7 @@ tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
-  ::tensorflow::SetCrashReproducer(bridge);
+  ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging) EnableLogging(&bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.

@@ -73,7 +73,7 @@ class KPLTest(test.TestCase):
 
     with self.client.strategy.scope():
 
-      # Define KPLs under client's context. Right now, if they have look up
+      # Define KPLs under strategy's scope. Right now, if they have look up
       # tables, they will be created on the client. Their variables will be
       # created on PS. Ideally they should be cached on each worker since they
       # will not be changed in a training step.

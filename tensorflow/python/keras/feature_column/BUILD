@@ -87,6 +87,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
     ],
 )
@@ -111,6 +112,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
     ],
 )
@@ -169,6 +171,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras:metrics",  # Import it here since base_layer didn't import it due to circular dependency.
         "//tensorflow/python/keras/layers:recurrent",
     ],
 )

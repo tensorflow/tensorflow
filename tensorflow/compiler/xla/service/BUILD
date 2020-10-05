@@ -1708,7 +1708,6 @@ cc_library(
     srcs = ["hlo_creation_utils.cc"],
     hdrs = [
         "hlo_creation_utils.h",
-        "//tensorflow/compiler/xla:literal_util",
     ],
     deps = [
         ":hlo",

@@ -149,6 +149,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::AndOp>(Location loc,
       loc, result_types, args, b);
 }
 
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::Atan2Op>(Location loc,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::Atan2Op>{}(
+      loc, result_types, args, b);
+}
+
 template <typename PredicateType>
 inline Optional<PredicateType> getCmpPredicate(StringRef comparison_direction) {
   return llvm::None;

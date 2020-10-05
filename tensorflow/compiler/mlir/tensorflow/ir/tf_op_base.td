@@ -73,6 +73,9 @@ def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 // certain state around within their implementations.
 def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
 
+// Trait to indicate an operation cannot be constant folded.
+def TF_NoConstantFold : NativeOpTrait<"TF::NoConstantFold">;
+
 // Coefficient wise binary operation with implicit broadcasting support, for
 // example tf.Sub operation.
 def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
@@ -524,7 +527,7 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
   "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
-  [{ TypeAttr::get($_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 // A derived attribute that returns the element type of the tensor held by a
 // named resource-type operand or result.
@@ -544,7 +547,7 @@ class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
   "  .cast<TF::ResourceType>();\n"
   "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
   "return resource_type.getSubtypes().begin()->cast<ShapedType>();",
-  [{ TypeAttr::get($_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";

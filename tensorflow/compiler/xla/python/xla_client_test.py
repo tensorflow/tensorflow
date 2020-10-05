@@ -105,7 +105,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
                                 c,
                                 arguments=(),
                                 expected=None,
-                                rtol=1e-7,
+                                rtol=1e-4,
                                 atol=0):
       self._ExecuteAndAssertWith(
           functools.partial(np.testing.assert_allclose, rtol=rtol, atol=atol),

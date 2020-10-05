@@ -303,9 +303,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     try:
       config.set_device_policy('silent')
       config.set_soft_device_placement(True)
-      # Avoid the TensorHandle cache hit.
-      # TODO(b/169790439): include Context to the TensorHandle cache.
-      cpu_tensor = constant_op.constant(1.1)
+      cpu_tensor = constant_op.constant(1.0)
       result = cpu_tensor + cpu_tensor
       self.assertEqual(result.device,
                        '/job:localhost/replica:0/task:0/device:GPU:0')
@@ -504,6 +502,18 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     context.async_clear_error()
     config.set_synchronous_execution(True)
 
+  def testCrossContextTensorCache(self):
+    old_context = context.context()
+    old_x = constant_op.constant(9.5)
+    context._set_context(context.Context())
+
+    try:
+      new_x = constant_op.constant(9.5)
+      self.assertEqual(new_x.numpy(), 9.5)
+    finally:
+      context._set_context(old_context)
+
+    self.assertEqual(old_x.numpy(), 9.5)
 
 if __name__ == '__main__':
   test.main()

@@ -1021,6 +1021,7 @@ cuda_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":collective_util",
         ":combinations",
         ":cross_device_ops",
         ":multi_process_runner",
@@ -1028,6 +1029,10 @@ cuda_py_test(
         ":reduce_util",
         ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
         "//tensorflow/python:util",
@@ -1325,23 +1330,6 @@ distribute_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
-    name = "strategy_reduce_test",
-    srcs = ["strategy_reduce_test.py"],
-    main = "strategy_reduce_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1763,6 +1751,7 @@ py_library(
 distribute_py_test(
     name = "test_util_test",
     srcs = ["test_util_test.py"],
+    disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
     ],

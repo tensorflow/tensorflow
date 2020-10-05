@@ -147,7 +147,6 @@ tf_py_test(
     srcs = ["convolutional_test.py"],
     main = "convolutional_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":convolutional",
         "//tensorflow/python:array_ops",
