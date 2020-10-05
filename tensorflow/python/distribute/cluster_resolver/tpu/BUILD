@@ -20,7 +20,7 @@ py_library(
     deps = [
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_system_metadata",
         "//tensorflow/python/tpu/client",
     ] + tf_additional_rpc_deps(),
 )
@@ -32,6 +32,7 @@ tf_py_test(
     grpc_enabled = True,
     main = "tpu_cluster_resolver_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":tpu_cluster_resolver_py",
         "//tensorflow/python:client_testlib",

@@ -514,11 +514,6 @@ def global_policy():
   return _global_policy
 
 
-def policy_defaults_to_floatx():
-  """Returns True if `global_policy()` will use the current value of floatx."""
-  return _global_policy is None and base_layer_utils.v2_dtype_behavior_enabled()
-
-
 def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
   if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
     raise ValueError(

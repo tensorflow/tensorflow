@@ -56,6 +56,7 @@ from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.saving.saved_model import metric_serialization
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -72,7 +73,6 @@ from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -2824,7 +2824,7 @@ class MeanIoU(Metric):
     sum_over_col = math_ops.cast(
         math_ops.reduce_sum(self.total_cm, axis=1), dtype=self._dtype)
     true_positives = math_ops.cast(
-        array_ops.diag_part(self.total_cm), dtype=self._dtype)
+        array_ops.tensor_diag_part(self.total_cm), dtype=self._dtype)
 
     # sum_over_row + sum_over_col =
     #     2 * true_positives + false_positives + false_negatives.

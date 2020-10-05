@@ -116,6 +116,33 @@ def _is_none_or_undef(value):
           or isinstance(value, variables.Undefined))
 
 
+def _verify_tf_condition(cond, tag):
+  """Ensures that the condition can be used in a TF control flow."""
+  extra_hint = 'to check for None, use `is not None`'
+  cond = ops.convert_to_tensor_v2(cond)
+
+  if cond.dtype != dtypes.bool:
+    raise ValueError(
+        'condition of {} expected to be `tf.bool` scalar, got {}'
+        '; to use as boolean Tensor, use `tf.cast`'
+        '; {}'.format(tag, cond, extra_hint))
+
+  if cond.shape is None or cond.shape.ndims is None:
+    # TODO(mdan): Consider a explicit size check, if not too slow.
+    cond = array_ops.reshape(cond, ())
+
+  elif cond.shape.ndims > 0:
+    known_dims = [d for d in cond.shape.as_list() if d is not None]
+    if np.prod(known_dims) > 1:
+      raise ValueError(
+          'condition of {} expected to be `tf.bool` scalar, got {}'
+          '; {}'.format(tag, cond, extra_hint))
+    else:
+      cond = array_ops.reshape(cond, ())
+
+  return cond
+
+
 def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
   """Ensures that all values in the state are valid to use in a TF loop.
 
@@ -1038,7 +1065,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
       loop_vars = loop_vars[1:]
 
     set_state(loop_vars)
-    return test()
+    return _verify_tf_condition(test(), 'while loop')
 
   def aug_body(*loop_vars):
     if require_one_iteration:
@@ -1141,6 +1168,8 @@ def if_stmt(cond, body, orelse, get_state, set_state, symbol_names, nouts):
 def _tf_if_stmt(
     cond, body, orelse, get_state, set_state, symbol_names, nouts):
   """Overload of if_stmt that stages a TF cond."""
+  cond = _verify_tf_condition(cond, 'if statement')
+
   if not nouts:
     prev_get_state, prev_set_state = get_state, set_state
     # Control flow V1 wants at least one output.

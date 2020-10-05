@@ -1074,7 +1074,8 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
     }
   }
 
-  return std::make_tuple(true, deleted_indices, inserted_indices);
+  return std::make_tuple(!deleted_indices.empty() || !inserted_indices.empty(),
+                         deleted_indices, inserted_indices);
 }
 
 /* static */ std::vector<std::pair<int64, int64>>

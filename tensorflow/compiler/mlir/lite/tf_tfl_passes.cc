@@ -38,6 +38,10 @@ CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
+namespace {
+// Data layout supported by TFLite.
+const char kTFLiteDataLayout[] = "NHWC";
+}  // namespace
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager* pass_manager) {
@@ -170,6 +174,12 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     if (pass_config.shape_inference) {
       pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
     }
+    // Force layout supported by TFLite, this will transpose the data
+    // to match 'kTFLiteDataLayout'
+    mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
+    layout_optimization_options.force_data_format = kTFLiteDataLayout;
+    mlir::TF::CreateLayoutOptimizationPipeline(*pass_manager,
+                                               layout_optimization_options);
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(

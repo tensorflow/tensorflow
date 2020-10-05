@@ -1122,41 +1122,23 @@ class HloInstruction {
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
-    // An instruction is always identical to itself.
-    if (this == &other) {
-      return true;
-    }
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/false);
+  }
 
-    // Identical instruction must have the same opcode, shape, and identical
-    // operands.
-    if (opcode() != other.opcode()) {
-      return false;
-    }
-    if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
-                           : ShapeUtil::Compatible(shape(), other.shape()))) {
-      return false;
-    }
-    if (operands().size() != other.operands().size()) {
-      return false;
-    }
-
-    // Two AllReduces are Identical if they have the same channel_id.
-    // Their operands don't have to be Identical.
-    if (!IsCrossModuleAllReduce()) {
-      // Use an explicit loop rather than ContainerEquals, because copying
-      // around std::functions may be too expensive in some cases.
-      for (size_t i = 0; i < operands().size(); ++i) {
-        if (!eq_operands(operand(i), other.operand(i))) {
-          return false;
-        }
-      }
-    }
-
-    if (backend_config_ != other.backend_config_) {
-      return false;
-    }
-
-    return IdenticalSlowPath(other, eq_computations);
+  // Same as Identical() but ignores channel ID value mismatches, as long as
+  // both have channel IDs or neither has a channel ID.
+  bool IdenticalIgnoringChannelIdValues(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands = std::equal_to<const HloInstruction*>(),
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/true);
   }
 
   // Generates a hash value of an HLO instruction. Hash considers
@@ -1964,6 +1946,14 @@ class HloInstruction {
 
  private:
   friend class HloComputation;
+
+  bool IdenticalInternal(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations,
+      bool layout_sensitive, bool ignore_channel_id_values) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(

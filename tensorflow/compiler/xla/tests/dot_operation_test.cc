@@ -69,12 +69,14 @@ XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
   XlaBuilder builder(TestName());
 
   XlaOp param;
-  auto param_data = CreateParameterAndTransferLiteral(
-      0,
-      LiteralUtil::MakeTupleFromSlices(
-          {LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
-           LiteralUtil::CreateR2<float>({{5, 6}, {7, 8}})}),
-      "arg0", &builder, &param);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param_data,
+      CreateParameterAndTransferLiteral(
+          0,
+          LiteralUtil::MakeTupleFromSlices(
+              {LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
+               LiteralUtil::CreateR2<float>({{5, 6}, {7, 8}})}),
+          "arg0", &builder, &param));
   auto lhs = GetTupleElement(param, 0);
   auto rhs = GetTupleElement(param, 1);
   Dot(lhs, rhs);

@@ -109,8 +109,10 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     return super(OneDeviceStrategy, self).experimental_distribute_dataset(
         dataset, options)
 
-  def experimental_distribute_datasets_from_function(self, dataset_fn,  # pylint: disable=useless-super-delegation
-                                                     options=None):
+  def distribute_datasets_from_function(
+      self,
+      dataset_fn,  # pylint: disable=useless-super-delegation
+      options=None):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
     `dataset_fn` will be called once for each worker in the strategy. In this
@@ -127,7 +129,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
       return d.shard(
           input_context.num_input_pipelines, input_context.input_pipeline_id)
 
-    inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
+    inputs = strategy.distribute_datasets_from_function(dataset_fn)
 
     for batch in inputs:
       replica_results = strategy.run(replica_fn, args=(batch,))
@@ -148,9 +150,8 @@ class OneDeviceStrategy(distribute_lib.Strategy):
       A "distributed `Dataset`", which the caller can iterate over like regular
       datasets.
     """
-    return super(
-        OneDeviceStrategy, self).experimental_distribute_datasets_from_function(
-            dataset_fn, options)
+    return super(OneDeviceStrategy,
+                 self).distribute_datasets_from_function(dataset_fn, options)
 
   def experimental_local_results(self, value):  # pylint: disable=useless-super-delegation
     """Returns the list of all local per-replica values contained in `value`.
@@ -316,8 +317,7 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         self._input_workers_with_options(options),
         self._container_strategy())
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers_with_options(options),

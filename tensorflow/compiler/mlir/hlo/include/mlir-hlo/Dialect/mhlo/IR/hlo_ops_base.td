@@ -45,9 +45,7 @@ def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
 // Any integer tensor type with rank 0 (i.e. representing a single integer).
-def HLO_ScalarIntTensor : ShapedContainerType<
-  [HLO_Int], And<[IsTensorTypePred, HasAnyRankOfPred<[0]>]>,
-  "a 0-dim integer tensor">;
+def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
@@ -67,10 +65,7 @@ def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
-def HLO_DimensionTensor : ShapedContainerType<
-    [HLO_DimensionValue],
-    And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
-    "a 1D tensor of dimensions">;
+def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
@@ -126,6 +121,17 @@ class BASE_HLO_AbsOp {
 
   string description = [{
     Returns `abs(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_CbrtOp {
+  string summary = "Cubic root operator";
+
+  string description = [{
+    Returns element-wise cubic root of the operand.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -1338,6 +1344,19 @@ class BASE_HLO_WhileOp {
     true.
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
+  }];
+}
+
+class BASE_HLO_BitcastOp {
+  string summary = "Bitcast operator";
+
+  string description = [{
+    This op changes the shape of the input in the way that the physical
+    arranggment of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
   }];
 }
 

@@ -10,8 +10,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 # See README.md for details about building and executing this benchmark.
 android_binary(
     name = "benchmark_model",

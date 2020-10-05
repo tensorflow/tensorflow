@@ -218,6 +218,9 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   cem_->GetParamResolver()->StartAbort(s);
   remote_access_->StartAbort(s);
+  if (cem_->GetNcclCommunicator() != nullptr) {
+    cem_->GetNcclCommunicator()->StartAbort(s);
+  }
 }
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
@@ -270,8 +273,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
   core::ScopedUnref unref(col_impl);
   auto col_ctx = std::make_shared<CollectiveContext>(
-      this, dev_mgr_, ctx, CtxParams(ctx), col_params, exec_key, step_id_,
-      input, output);
+      this, cem_->GetNcclCommunicator(), dev_mgr_, ctx, CtxParams(ctx),
+      col_params, exec_key, step_id_, input, output);
   status = col_impl->InitializeCollectiveContext(col_ctx);
   if (!status.ok()) {
     done_safe(status);
@@ -303,7 +306,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 void BaseCollectiveExecutor::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, StatusCallback done) {
-  cp->instance.gpu_ring_order = *gpu_ring_order_;
+  cp->group.gpu_ring_order = *gpu_ring_order_;
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
   auto done_with_timeout = done;
   auto timeout_microseconds =
@@ -399,9 +402,9 @@ void BaseCollectiveExecutor::UnblockDependencies(
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =
-        col_params.instance.task_names[col_params.default_rank];
+        col_params.group.task_names[col_params.default_rank];
     const int32 num_devices =
-        col_params.instance.num_devices_per_task.at(task_name);
+        col_params.group.num_devices_per_task.at(task_name);
     launched_[col_params.instance.instance_key] = num_devices;
   }
   if (--launched_[col_params.instance.instance_key] == 0) {

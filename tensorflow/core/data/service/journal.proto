@@ -57,6 +57,7 @@ message CreateTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
   int64 dataset_id = 3;
+  ProcessingModeDef processing_mode = 5;
   string worker_address = 4;
 }
 

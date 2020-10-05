@@ -294,7 +294,7 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueSlice(instr, *current_shape_index));
   Value alloc = allocations_[slice.allocation()];
-  if (alloc.getType() == out_type) {
+  if (alloc.getType() == out_type && slice.offset() == 0) {
     values->push_back(alloc);
     return Status::OK();
   }
@@ -337,16 +337,16 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
 Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
                                            SmallVectorImpl<Value>* values) {
   // Cache generated ViewOp and StaticMemRefCastOp by instruction. We could have
-  // gone fancier to do the following cacheing:
-  //   %range = ViewOp(%allocation, %offset) : memref<i8xSIZE>
-  //   %typed_range = ViewOp(%range) : memref<f32x...>
+  // gone fancier to do the following caching:
+  //   %slice = ViewOp(%allocation, %offset) : memref<i8xSIZE>
+  //   %typed_slice = ViewOp(%slice) : memref<f32x...>
   //
-  // where %range is cached. This in theory gives easier time for alias
-  // analysis, since the identity of %range defines alias. However,
-  // %typed_range can't be cached, as different buffers with different types and
+  // where %slice is cached. This in theory gives easier time for alias
+  // analysis, since the identity of %slice defines alias. However,
+  // %typed_slice can't be cached, as different buffers with different types and
   // shapes may still alias. Creating two ViewOps doesn't seem to worth the
   // effort for a slightly easier aliasing, so we don't over optimize here.
-  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 4>{});
+  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 1>{});
   llvm::SmallVectorImpl<Value>& new_values = result.first->second;
   if (result.second) {
     ::xla::ShapeIndex shape_index;
@@ -373,7 +373,7 @@ Status LhloDialectEmitter::Initialize() {
 
   if (computation_.IsEntryComputation()) {
     // Sort the rather arbitrarily ordered allocations to match the input/output
-    // parameters. Specifically We want to sort buffer allocations in the
+    // parameters. Specifically we want to sort buffer allocations in the
     // following order:
     // * Parameters always order before non-parameters.
     // * Different parameters order by parameter number.
@@ -436,8 +436,8 @@ Status LhloDialectEmitter::Initialize() {
     }
   }
 
-  FunctionType function_type = builder_.getFunctionType(
-      llvm::to_vector<8>(block->getArgumentTypes()), {});
+  FunctionType function_type =
+      builder_.getFunctionType(block->getArgumentTypes(), {});
   func_op.setType(function_type);
   func_op.setAllArgAttrs(args_attrs);
 

@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 import numpy as np
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -43,7 +45,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
@@ -182,10 +183,7 @@ class StackedRNNCells(Layer):
   def get_config(self):
     cells = []
     for cell in self.cells:
-      cells.append({
-          'class_name': cell.__class__.__name__,
-          'config': cell.get_config()
-      })
+      cells.append(generic_utils.serialize_keras_object(cell))
     config = {'cells': cells}
     base_config = super(StackedRNNCells, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -976,11 +974,7 @@ class RNN(Layer):
     if self.zero_output_for_mask:
       config['zero_output_for_mask'] = self.zero_output_for_mask
 
-    cell_config = self.cell.get_config()
-    config['cell'] = {
-        'class_name': self.cell.__class__.__name__,
-        'config': cell_config
-    }
+    config['cell'] = generic_utils.serialize_keras_object(self.cell)
     base_config = super(RNN, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -2545,8 +2539,6 @@ class PeepholeLSTMCell(LSTMCell):
   ```
   """
 
-  @deprecation.deprecated(
-      None, 'Please use tensorflow_addons.rnn.PeepholeLSTMCell instead')
   def __init__(self,
                units,
                activation='tanh',
@@ -2565,6 +2557,10 @@ class PeepholeLSTMCell(LSTMCell):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
+    warnings.warn('`tf.keras.experimental.PeepholeLSTMCell` is deprecated '
+                  'and will be removed in a future version. '
+                  'Please use tensorflow_addons.rnn.PeepholeLSTMCell '
+                  'instead.')
     super(PeepholeLSTMCell, self).__init__(
         units=units,
         activation=activation,

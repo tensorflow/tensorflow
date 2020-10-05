@@ -67,22 +67,13 @@ def copy_handle_data(source_t, target_t):
         and handle_data.is_set
         and handle_data.shape_and_type):
       # pylint: disable=protected-access
+      if isinstance(target_t, ops.EagerTensor):
+        target_t._handle_data = handle_data
+        return
       pywrap_tf_session.SetHandleShapeAndType(target_t.graph._c_graph,
                                               target_t._as_tf_output(),
                                               handle_data.SerializeToString())
       # pylint: enable=protected-access
-      # Ensure that shapes and dtypes are propagated.
-      shapes, types = zip(*[(pair.shape, pair.dtype)
-                            for pair in handle_data.shape_and_type])
-      ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
-      shapes = [[d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
-                if not s.unknown_rank else None for s in shapes]
-      pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-          target_t._op._graph._c_graph,  # pylint: disable=protected-access
-          target_t._as_tf_output(),  # pylint: disable=protected-access
-          shapes,
-          ranks,
-          types)
 
 
 @tf_export("custom_gradient")

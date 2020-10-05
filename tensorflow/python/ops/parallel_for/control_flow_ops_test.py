@@ -43,7 +43,9 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
@@ -910,6 +912,7 @@ class TensorArrayTest(PForTestCase):
       self.assertAllClose(actual_grad, computed_grad)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TensorListTest(PForTestCase):
 
   def test_create_outside_and_write(self):
@@ -1009,6 +1012,38 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_create_inside_and_concat(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return gen_list_ops.tensor_list_concat_v2(
+          handle,
+          element_dtype=dtypes.int32,
+          element_shape=[2],
+          leading_dims=[])
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([[0, 2, 1, 2], [1, 2, 1, 2]], output[0])
+    self.assertAllClose([[2, 2], [2, 2]], output[1])
+
+  def test_create_outside_and_concat(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=h)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return gen_list_ops.tensor_list_concat_v2(
+          handle,
+          element_dtype=dtypes.int32,
+          element_shape=[2],
+          leading_dims=[])
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([[0, 2, 1, 2], [1, 2, 1, 2]], output[0])
+    self.assertAllClose([[2, 2], [2, 2]], output[1])
+
   def test_tensor_list_from_tensor(self):
     t = random_ops.random_uniform([2, 3, 4])
 
@@ -1038,6 +1073,34 @@ class TensorListTest(PForTestCase):
     self._test_loop_fn(loop_fn, 2)
     if not v2_enabled:
       control_flow_v2_toggles.disable_control_flow_v2()
+
+  def test_tensor_list_addn_already_stacked(self):
+
+    def loop_fn(i):
+      l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l1 = list_ops.tensor_list_set_item(l1, 0, i)
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      return list_ops.tensor_list_stack(math_ops.add_n([l1, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_tensor_list_addn_stacking_required(self):
+    l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    l1 = list_ops.tensor_list_set_item(l1, 1, 1)
+
+    def loop_fn(i):
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      l1_graph = array_ops.identity(l1)
+      # TODO(b/169968286): Typically TensorLists are both created and used in a
+      # graph; creating TensorLists eagerly with handle data doesn't work at the
+      # moment. Copying the handle data manually reproduces the expected case.
+      custom_gradient.copy_handle_data(l2, l1_graph)
+      return list_ops.tensor_list_stack(
+          math_ops.add_n([l1_graph, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 class StackTest(PForTestCase):

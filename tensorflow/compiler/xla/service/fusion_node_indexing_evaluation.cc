@@ -25,22 +25,31 @@ limitations under the License.
 namespace xla {
 
 FusionNodeIndexingEvaluation::FusionNodeIndexingEvaluation(
-    const HloInstruction* fusion)
+    const HloInstruction* fusion, int64 root_usage_count)
     : fusion_(fusion) {
   HloInstruction* root = fusion->fused_expression_root();
   indexing_users_[root].insert(fusion);
-  index_usage_count_[fusion] = 1;
+  index_usage_count_[fusion] = root_usage_count;
   RecomputeCache();
 }
 
+// This constant is arbitrarily chosen. Essentially we don't want to have too
+// much code duplication, because it slows down the compilation time. There is
+// a tradeoff between compilation time and runtime here.
+const int64 FusionNodeIndexingEvaluation::kAllowedCodeDuplication = 15;
+
 bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
     const HloInstruction* producer) const {
-  // This constant is arbitrarily chosen. Essentially we don't want to have too
-  // much code duplication, because it slows down the compilation time. There is
-  // a tradeoff between compilation time and runtime here.
-  const int64 kAllowedCodeDuplication = 15;
-
   return EvaluateEmittedInstructions(producer) > kAllowedCodeDuplication;
+}
+
+bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
+  for (const auto& entry : index_usage_count_) {
+    if (entry.second > kAllowedCodeDuplication) {
+      return true;
+    }
+  }
+  return false;
 }
 
 int64 FusionNodeIndexingEvaluation::EvaluateEmittedInstructions(

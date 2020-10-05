@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -17,6 +19,7 @@ py_library(
         ":saving",
         "//tensorflow/python:_pywrap_parallel_device",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/tpu:tpu_ops",
     ],
 )
 
@@ -27,7 +30,7 @@ py_library(
     deps = ["//tensorflow/python:framework_ops"],
 )
 
-py_test(
+distribute_py_test(
     name = "parallel_device_test",
     srcs = ["parallel_device_test.py"],
     python_version = "PY3",

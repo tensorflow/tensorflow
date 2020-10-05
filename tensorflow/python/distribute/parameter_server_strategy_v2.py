@@ -21,8 +21,9 @@ This is currently under development and the API is subject to change.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import os
-from absl import logging
+
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import parameter_server_strategy
@@ -32,7 +33,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import tf_inspect
 
 
@@ -41,10 +44,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   """An asynchronous multi-worker parameter server tf.distribute strategy.
 
   Currently, `ParameterServerStrategyV2` is not supported to be used as a
-  standalone tf.distribute strategy. It must be used in conjunction with
-  `Client`. The recommended way of using the combination is through a
-  `ParameterServerClient` object. Please see `Client` and
-  `ParameterServerClient` for more information.
+  standalone tf.distribute strategy. It should be used in conjunction with
+  `Client`. Please see `Client` for more information.
 
   This is currently under development, and the API as well as implementation
   is subject to changes.
@@ -93,6 +94,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     # TODO(b/167894802): Make chief, worker, and ps names customizable.
     self._connect_to_cluster(client_name="chief")
     super(ParameterServerStrategyV2, self).__init__(self._extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "ParameterServerStrategy")
 
   def _connect_to_cluster(self, client_name):
     if client_name in ["worker", "ps"]:
@@ -122,6 +125,11 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
         job_name=client_name,
         protocol=self._cluster_resolver.rpc_layer,
         cluster_device_filters=device_filters)
+
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "ps_strategy_num_workers").set(self._num_workers)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "ps_strategy_num_ps").set(self._num_ps)
 
   def _verify_args_and_config(self, cluster_resolver):
     if not cluster_resolver.cluster_spec():
@@ -184,6 +192,11 @@ class ParameterServerStrategyV2Extended(
     initial_value = kwargs.get("initial_value", None)
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
+
+    # Two cases where initial_value can be a callable:
+    #   1. initial_value is passed as a callable, e.g, an `initializer` class.
+    #   2. restoring from checkpoint, initial_value is a
+    #     "CheckpointInitialValueCallable".
     init_from_fn = callable(initial_value)
 
     dtype = kwargs.get("dtype", None)
@@ -232,30 +245,28 @@ class ParameterServerStrategyV2Extended(
     def init_shard_fn(shard_index):
       if not init_from_fn:
         logging.log_if(
-            logging.WARNING, _INEFFICIENT_INIT_WARNING % name,
-            shard_index == 0 and
+            logging.WARN, _INEFFICIENT_INIT_WARNING % name, shard_index == 0 and
             shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS)
         return initial_value[offsets[shard_index]:offsets[shard_index + 1]]
       arg_spec = tf_inspect.getfullargspec(initial_value)
-      if ("partition" not in arg_spec.args and
-          "partition" not in arg_spec.kwonlyargs):
-        # `initial_value` is a callable that doesn't accept `Partition`.
+      if ("shard_info" not in arg_spec.args and
+          "shard_info" not in arg_spec.kwonlyargs):
+        # `initial_value` is a callable that doesn't accept `shard_info`.
         logging.log_if(
-            logging.WARNING, _INEFFICIENT_INIT_WARNING % name,
-            shard_index == 0 and
+            logging.WARN, _INEFFICIENT_INIT_WARNING % name, shard_index == 0 and
             shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS)
         full_value = initial_value()
         return full_value[offsets[shard_index]:offsets[shard_index + 1]]
       else:
         # Memory-efficient way of initializing sharded variable. It requires
-        # the `init_fn` to accept a namedtuple `Partition`.
+        # the `init_fn` to accept a namedtuple `shard_info`.
         component_shape = (offsets[shard_index + 1] -
                            offsets[shard_index],) + shape[1:]
         offsets_all_axes = (offsets[shard_index],) + (0,) * len(shape[1:])
         return initial_value(
-            partition=sharded_variable.Partition(
+            shard_info=trackable.ShardInfo(
                 shape=tensor_shape.as_shape(component_shape),
-                offsets=offsets_all_axes))
+                offset=offsets_all_axes))
 
     var_list = []
     for i in range(num_partitions):

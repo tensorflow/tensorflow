@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -32,6 +33,7 @@ from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.lite.tools.sanitizers import _pywrap_tensorflow_lite_sanitizers as _lite_sanitizers
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
@@ -727,6 +729,18 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
 
+  @test_util.run_v2_only
+  def testFallbackPath(self):
+    """Test a SavedModel fallback path using old converter."""
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.experimental_new_converter = False
+    tflite_model = converter.convert()
+
+    self.assertTrue(tflite_model)
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
@@ -1007,6 +1021,9 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
   @test_util.run_v2_only
+  @unittest.skipIf(
+      _lite_sanitizers.TSan_Enabled or _lite_sanitizers.ASan_Enabled,
+      'Conversion is too slow with sanitizers enabled b/169431195')
   def testKerasBidirectionalRNN(self):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))

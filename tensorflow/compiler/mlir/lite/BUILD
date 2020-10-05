@@ -1,3 +1,9 @@
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load(
     "//third_party/mlir:tblgen.bzl",
@@ -37,6 +43,7 @@ filegroup(
 
 gentbl(
     name = "tensorflow_lite_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -68,6 +75,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_op_interfaces_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-interface-decls",
@@ -87,6 +95,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_prepare_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -105,6 +114,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_lower_static_tensor_list_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -122,6 +132,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_legalize_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -139,6 +150,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_optimize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -157,6 +169,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_quantize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -173,6 +186,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_post_quantize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -407,6 +421,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:unroll_batch_matmul_pass",
@@ -521,6 +536,7 @@ filegroup(
 
 gentbl(
     name = "op_quant_spec_getters_inc",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [("", "utils/generated_op_quant_spec_getters.inc")],
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
@@ -546,6 +562,7 @@ tf_native_cc_binary(
 
 gentbl(
     name = "converter_inc",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "--gen-operator-converters",

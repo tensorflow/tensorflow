@@ -30,6 +30,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -46,6 +47,7 @@ from tensorflow.python.keras.layers.ops import core as core_ops
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -57,10 +59,16 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
 from tensorflow.python.util.tf_export import keras_export
+
+# TODO(b/168039935): track dropout rate to decide whether/how to make a
+# dropout rate fastpath.
+keras_temporary_dropout_rate = monitoring.BoolGauge(
+    '/tensorflow/api/keras/dropout/temp_rate_is_zero',
+    'Temporarily record if Keras dropout layer was created w/'
+    'constant rate = 0')
 
 
 # pylint: disable=g-classes-have-attributes
@@ -186,6 +194,10 @@ class Dropout(Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
     self.rate = rate
+    if isinstance(rate, (int, float)) and not rate:
+      keras_temporary_dropout_rate.get_cell().set(True)
+    else:
+      keras_temporary_dropout_rate.get_cell().set(False)
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True

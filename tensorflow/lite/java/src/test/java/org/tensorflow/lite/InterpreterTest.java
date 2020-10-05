@@ -635,6 +635,47 @@ public final class InterpreterTest {
     }
   }
 
+  @Test
+  public void testCancelInference() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    Interpreter interpreter = new Interpreter(
+        MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
+
+    // Part 1: Should be interrupted when flag is set to true.
+    try {
+      interpreter.setCancelled(true);
+      interpreter.run(inputs, parsedOutputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+    // TODO(b/168266570): Return InterruptedException.
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Internal error: Failed to run on the given Interpreter: Client requested cancel"
+                  + " during Invoke()");
+    }
+
+    // Part 2: Should be resumed when flag is set to false.
+    interpreter.setCancelled(false);
+    interpreter.run(inputs, parsedOutputs);
+  }
+
+  @Test
+  public void testCancelInferenceOnNoncancellableInterpreter() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+
+    try {
+      interpreter.setCancelled(true);
+      fail();
+    } catch (IllegalStateException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+    }
+  }
+
   private static FloatBuffer fill(FloatBuffer buffer, float value) {
     while (buffer.hasRemaining()) {
       buffer.put(value);

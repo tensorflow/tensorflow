@@ -81,13 +81,19 @@ class PendingCounts {
   // Create a new PendingCounts object that can hold the state of
   // all the Handles allocated from "final_allocator".
   explicit PendingCounts(Layout layout)
-      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {}
+      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {
+    if (num_bytes_ >= sizeof(LargeCounts)) {
+      CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    }
+  }
 
   // Create a new PendingCounts object with the same layout and counts
   // as "other".
   explicit PendingCounts(const PendingCounts& other)
       : num_bytes_(other.num_bytes_), bytes_(new char[num_bytes_]) {
-    CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    if (num_bytes_ >= sizeof(LargeCounts)) {
+      CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    }
     memcpy(bytes_, other.bytes_, other.num_bytes_);
   }
 
@@ -329,10 +335,14 @@ class PendingCounts {
     uint8 has_started : 1;
   };
 
-  struct LargeCounts {
+  // NOTE: alignas(8) is critical to implement efficient atomic<LargeCounts>
+  // on MSVC.
+  struct alignas(8) LargeCounts {
     uint32 pending;
     uint32 dead_count : 31;
-    uint8 has_started : 1;
+    // NOTE(tlipcon): MSVC won't pack this struct into 8 bytes unless
+    // all of the member types are uint32.
+    uint32 has_started : 1;
   };
 
   template <typename T>

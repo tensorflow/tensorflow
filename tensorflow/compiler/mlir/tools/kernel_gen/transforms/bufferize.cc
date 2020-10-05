@@ -150,15 +150,33 @@ class ExtractElementOpConversion
   }
 };
 
+class TensorCastOpConverter
+    : public BufferAssignmentOpConversionPattern<TensorCastOp> {
+ public:
+  using BufferAssignmentOpConversionPattern<
+      TensorCastOp>::BufferAssignmentOpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TensorCastOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    Value arg = operands.front();
+    if (!arg.getType().isa<MemRefType>()) return failure();
+
+    auto result_ty = converter->convertType(op.getType());
+    rewriter.replaceOpWithNewOp<MemRefCastOp>(op, arg, result_ty);
+
+    return success();
+  }
+};
+
 }  // namespace
 
 void populateStandardBufferizePattern(MLIRContext *context,
                                       BufferAssignmentTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
-  patterns
-      ->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
-               DynamicTensorFromElementsOpConverter, TensorLoadOpConversion>(
-          context, converter);
+  patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
+                   DynamicTensorFromElementsOpConverter, TensorLoadOpConversion,
+                   TensorCastOpConverter>(context, converter);
 }
 
 }  // namespace transforms

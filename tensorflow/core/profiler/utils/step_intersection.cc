@@ -29,8 +29,10 @@ Timespan StepTimespan(const PerCoreStepInfo& percore_stepinfo) {
   uint64 max_ps = 0;
   for (const auto& core_stepinfo : percore_stepinfo.step_info_per_core()) {
     const auto& stepinfo = core_stepinfo.second;
-    min_ps = std::min(min_ps, stepinfo.begin_ps());
-    max_ps = std::max(max_ps, stepinfo.begin_ps() + stepinfo.duration_ps());
+    uint64 begin_ps = stepinfo.begin_ps();
+    uint64 end_ps = begin_ps + stepinfo.duration_ps();
+    min_ps = std::min(min_ps, begin_ps);
+    max_ps = std::max(max_ps, end_ps);
   }
   return (min_ps < max_ps) ? Timespan::FromEndPoints(min_ps, max_ps)
                            : Timespan();
@@ -42,8 +44,10 @@ Timespan AllStepsTimespan(const StepDatabaseResult& step_db) {
   uint64 max_ps = 0;
   for (const auto& step : step_db.step_sequence()) {
     Timespan timespan = StepTimespan(step);
-    min_ps = std::min(min_ps, timespan.begin_ps());
-    max_ps = std::max(max_ps, timespan.end_ps());
+    uint64 begin_ps = timespan.begin_ps();
+    uint64 end_ps = timespan.end_ps();
+    min_ps = std::min(min_ps, begin_ps);
+    max_ps = std::max(max_ps, end_ps);
   }
   return (min_ps < max_ps) ? Timespan::FromEndPoints(min_ps, max_ps)
                            : Timespan();
@@ -203,11 +207,11 @@ StepIntersection::StepIntersection(
           FindStepsAlignment(*step_db, *chief_step_db);
     }
     // Intersects this host's alignment with other hosts' alignments.
-    max_begin_chief_idx = std::max(max_begin_chief_idx,
-                                   perhost_alignment_[host_id].begin_chief_idx);
-    min_end_chief_idx = std::min(min_end_chief_idx,
-                                 perhost_alignment_[host_id].begin_chief_idx +
-                                     perhost_alignment_[host_id].num_steps);
+    uint32 host_begin_chief_idx = perhost_alignment_[host_id].begin_chief_idx;
+    max_begin_chief_idx = std::max(max_begin_chief_idx, host_begin_chief_idx);
+    uint32 host_end_chief_idx = perhost_alignment_[host_id].begin_chief_idx +
+                                perhost_alignment_[host_id].num_steps;
+    min_end_chief_idx = std::min(min_end_chief_idx, host_end_chief_idx);
   }
   DCHECK(max_begin_chief_idx <= min_end_chief_idx);
 

@@ -304,14 +304,17 @@ Status DotOpEmitter::EmitLinalgMatmul() {
           }
         }
 
-        llvm::SmallVector<mlir::IteratorType, 4> types(
+        llvm::SmallVector<mlir::IteratorType, 4> iteratorTypes(
             parallel_exprs.size(), mlir::IteratorType::Parallel);
-        types.push_back(mlir::IteratorType::Reduction);
+        iteratorTypes.push_back(mlir::IteratorType::Reduction);
 
         mlir::edsc::StructuredIndexed s_a(a), s_b(b), s_c(c);
-        mlir::edsc::makeGenericLinalgOp(types, {s_b(b_exprs), s_c(c_exprs)},
-                                        {s_a(parallel_exprs)},
-                                        mlir::edsc::ops::macRegionBuilder);
+        mlir::edsc::makeGenericLinalgOp(
+            /*iteratorTypes=*/iteratorTypes,
+            /*inputs=*/{s_b(b_exprs), s_c(c_exprs)},
+            /*outputBuffers=*/{s_a(parallel_exprs)},
+            /*initTensors=*/{},
+            /*resultTensorTypes=*/{}, mlir::edsc::ops::macRegionBuilder);
         mlir::edsc::intrinsics::std_ret();
 
         mlir::linalg::LinalgTilingOptions tilingOptions;

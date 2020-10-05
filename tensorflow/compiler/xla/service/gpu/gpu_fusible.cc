@@ -240,28 +240,42 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kTranspose);
 }
 
-bool IsFusible(const HloInstruction& instr) {
-  return IsInputFusible(instr) || IsLoopFusible(instr);
-}
-
 bool IsProducerConsumerFusible(const HloInstruction& producer,
                                const HloInstruction& consumer) {
-  if (!IsLoopFusible(producer) || !IsFusible(consumer)) {
+  if (!IsLoopFusible(producer)) {
+    VLOG(5) << "Producer " << producer.name() << " is not loop-fusible";
     return false;
   }
+
+  if (!IsInputFusible(consumer) && !IsLoopFusible(consumer)) {
+    VLOG(5) << "Consumer " << consumer.name()
+            << "is not input-fusible and not loop-fusible";
+    return false;
+  }
+
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
+    VLOG(5) << "Producer " << producer.name()
+            << " is not fusible as it is a multi-output fusion";
     return false;
   }
+
   if (CreatesNestedLoop(producer, consumer)) {
+    VLOG(5) << "Fusing " << producer.name() << " into " << consumer.name()
+            << " creates nested loop";
     return false;
   }
+
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+    VLOG(5) << "Layout of " << producer.name()
+            << " is not fusion-friendly for consumer reduction "
+            << consumer.name();
     return false;
   }
+
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
@@ -270,10 +284,14 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   // but fused constants are handled by shrared CPU/GPU code and always emitted
   // in the IR/PTX.  The external constant representation makes for faster
   // compiles and significantly smaller assembly code.
-  if (producer.opcode() == HloOpcode::kConstant) {
-    return ShapeUtil::IsEffectiveScalar(producer.shape()) &&
-           consumer.opcode() == HloOpcode::kFusion;
+  if (producer.opcode() == HloOpcode::kConstant &&
+      (!ShapeUtil::IsEffectiveScalar(producer.shape()) ||
+       consumer.opcode() != HloOpcode::kFusion)) {
+    VLOG(5) << "Not fusing constant " << producer.name() << " into "
+            << consumer.name();
+    return false;
   }
+
   return true;
 }
 

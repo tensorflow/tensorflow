@@ -19,19 +19,6 @@ namespace tensorflow {
 REGISTER5(BinaryOp, CPU, "Xlogy", functor::xlogy, float, Eigen::half, double,
           complex64, complex128);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("Xlogy").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
-      BinaryOp<SYCLDevice, functor::xlogy<TYPE>>);
-REGISTER_SYCL_KERNEL(Eigen::half);
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-REGISTER_SYCL_KERNEL(complex64);
-REGISTER_SYCL_KERNEL(complex128);
-#undef REGISTER_SYCL_KERNEL
-
-#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER5(BinaryOp, GPU, "Xlogy", functor::xlogy, float, Eigen::half, double,
