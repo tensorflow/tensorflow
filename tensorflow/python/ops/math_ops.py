@@ -3721,8 +3721,9 @@ def log_sigmoid(x, name=None):
 
   Usage Example:
 
-  If a positive number is large, then its log_sigmoid will approach to 0 since the
-  formula will be `y = log( <large_num> / (1 + <large_num>) )` which approximates to `log (1)` which is 0.
+  If a positive number is large, then its log_sigmoid will approach to 0 since
+  the formula will be `y = log( <large_num> / (1 + <large_num>) )` which
+  approximates to `log (1)` which is 0.
 
   >>> x = tf.constant([0.0, 1.0, 50.0, 100.0])
   >>> tf.math.log_sigmoid(x)
@@ -3730,9 +3731,10 @@ def log_sigmoid(x, name=None):
   array([-6.9314718e-01, -3.1326169e-01, -1.9287499e-22, -0.0000000e+00],
         dtype=float32)>
 
-  If a negative number is large, its log_sigmoid will approach to the number itself since the
-  formula will be `y = log( 1 / (1 + <large_num>) )` which is `log (1) - log ( (1 + <large_num>) )` which 
-  approximates to `- <large_num>` that is the number itself.
+  If a negative number is large, its log_sigmoid will approach to the number
+  itself since the formula will be `y = log( 1 / (1 + <large_num>) )` which is
+  `log (1) - log ( (1 + <large_num>) )` which approximates to `- <large_num>`
+  that is the number itself.
 
   >>> x = tf.constant([-100.0, -50.0, -1.0, 0.0])
   >>> tf.math.log_sigmoid(x)
