@@ -24,18 +24,15 @@ namespace grappler {
 
 enum class AutoMixedPrecisionMode { CUDA, MKL };
 
-<<<<<<< HEAD
 //Getting FP16 supported devices for ROCm
 #if TENSORFLOW_USE_ROCM
 bool HasEnhancedFP16ComputeSupport(std::pair<int, int> gpu_arch);
 #endif
 
-=======
 // Note: This is primarily used by the tf.experimental.tensorrt.Converter class
 // to use mixed precision on ops not converted by TensorRT. It is also used for
 // the soon-to-be-deprecated enable_mixed_precision_graph_rewrite API.
 //
->>>>>>> upstream/master
 // Convert data types to float16 or bfloat16 where appropriate to improve
 // performance on GPUs or CPUs.
 class AutoMixedPrecision : public GraphOptimizer {

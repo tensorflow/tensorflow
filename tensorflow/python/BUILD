@@ -2498,11 +2498,8 @@ tf_py_test(
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",
-<<<<<<< HEAD
     tfrt_enabled = True,
     tags = ["no_rocm"],
-=======
->>>>>>> upstream/master
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5319,11 +5316,8 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 24,
-<<<<<<< HEAD
     tfrt_enabled = True,
     tags = ["no_rocm"],
-=======
->>>>>>> upstream/master
     deps = [
         ":array_ops",
         ":client_testlib",
