@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/internal/parse_annotation.h"
+#include "tensorflow/core/profiler/utils/parse_annotation.h"
 
 #include <vector>
 
