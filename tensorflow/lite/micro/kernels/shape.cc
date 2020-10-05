@@ -23,17 +23,17 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
+/*
 namespace ops {
 namespace micro {
 namespace shape {
-
+*/
+namespace {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 void ExtractShape(const TfLiteEvalTensor* input, int32_t* output_data) {
-  int numInputDims = input->dims->size;
-
-  for (int i = 0; i < numInputDims; ++i) {
+  for (int i = 0; i < input->dims->size; ++i) {
     output_data[i] = input->dims->data[i];
   }
 }
@@ -50,27 +50,31 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       tflite::micro::GetEvalInput(context, node, kInputTensor);
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
-  if (output->type != kTfLiteInt32)
+  if (output->type != kTfLiteInt32) {
+    TF_LITE_KERNEL_LOG(context, "Output type %s (%d) not supported.",
+                       TfLiteTypeGetName(output->type), output->type);
     return kTfLiteError;
-  else
+  } else {
     ExtractShape(input, tflite::micro::GetTensorData<int32_t>(output));
+  }
 
   return kTfLiteOk;
 }
 
-}  // namespace shape
+}  // namespace
 
 TfLiteRegistration Register_SHAPE() {
   return {/*init=*/nullptr,
           /*free=*/nullptr,
-          /*prepare=*/shape::Prepare,
-          /*invoke=*/shape::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
+//}  // namespace micro
+//}  // namespace ops
+//}  // namespace tflite
 }  // namespace tflite
