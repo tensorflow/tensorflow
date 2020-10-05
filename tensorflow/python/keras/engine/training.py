@@ -218,6 +218,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):
+    self._is_model_for_instrumentation = True
     base_layer.keras_api_gauge.get_cell('model').set(True)
 
     # Special case for Subclassed Functional Model, which we couldn't detect

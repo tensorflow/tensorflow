@@ -96,9 +96,11 @@ _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
 
 keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
                                           'keras layers usage', 'method')
+keras_models_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/models', 'keras model usage', 'method')
 keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                        'keras api usage', 'method')
-keras_model_gauge = monitoring.BoolGauge(
+keras_premade_model_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
@@ -304,7 +306,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                dynamic=False,
                **kwargs):
     keras_api_gauge.get_cell('layer').set(True)
-    keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+    if getattr(self, '_is_model_for_instrumentation', False):
+      keras_models_gauge.get_cell(self.__class__.__name__).set(True)
+    else:
+      keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
