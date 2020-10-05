@@ -1,4 +1,4 @@
-# Release 2.4.0
+h# Release 2.4.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
@@ -299,6 +299,12 @@
 *    `TensorRT`
     *    Add parameter allow_mixed_precision_on_unconverted_ops to
          TrtConversionParams.
+
+*   `tf.print`:
+
+    *   Bug fix in `tf.print()` with `OrderedDict` where if an `OrderedDict`
+        didn't have the keys sorted, the keys and values were not being printed
+        in accordance with their correct mapping.
 
 *   Other:
 

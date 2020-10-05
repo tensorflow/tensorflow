@@ -161,6 +161,7 @@ cc_library(
     name = "tf_cuda_runtime_wrappers",
     srcs = ["tf_cuda_runtime_wrappers.cc"],
     compatible_with = get_compatible_with_cloud(),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "@llvm-project//llvm:Support",

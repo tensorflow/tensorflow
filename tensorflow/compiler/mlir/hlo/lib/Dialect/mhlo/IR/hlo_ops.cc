@@ -2002,6 +2002,23 @@ struct divide<APInt> {
 };
 
 template <typename T>
+struct remainder : std::modulus<T> {};
+
+template <>
+struct remainder<APInt> {
+  APInt operator()(const APInt& a, const APInt& b) const { return a.srem(b); }
+};
+
+template <>
+struct remainder<APFloat> {
+  APFloat operator()(const APFloat& a, const APFloat& b) const {
+    APFloat result(a);
+    result.remainder(b);
+    return result;
+  }
+};
+
+template <typename T>
 struct max {
   T operator()(const T& a, const T& b) const { return std::max<T>(a, b); }
 };
@@ -2042,6 +2059,7 @@ BINARY_FOLDER(AddOp, std::plus);
 BINARY_FOLDER(SubOp, std::minus);
 BINARY_FOLDER(MulOp, std::multiplies);
 BINARY_FOLDER(DivOp, divide);
+BINARY_FOLDER(RemOp, remainder);
 BINARY_FOLDER(MaxOp, max);
 BINARY_FOLDER(MinOp, min);
 

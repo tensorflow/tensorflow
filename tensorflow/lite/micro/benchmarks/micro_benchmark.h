@@ -43,22 +43,22 @@ extern tflite::ErrorReporter* reporter;
   return 0;                          \
   }
 
-#define TF_LITE_MICRO_BENCHMARK(func)                                         \
-  if (tflite::ticks_per_second() == 0) {                                      \
-    TF_LITE_REPORT_ERROR(micro_benchmark::reporter,                           \
-                         "no timer implementation found");                    \
-    return 0;                                                                 \
-  }                                                                           \
-  start_ticks = tflite::GetCurrentTimeTicks();                                \
-  func;                                                                       \
-  duration_ticks = tflite::GetCurrentTimeTicks() - start_ticks;               \
-  if (duration_ticks > INT_MAX / 1000) {                                      \
-    duration_ms = duration_ticks / (tflite::ticks_per_second() / 1000);       \
-  } else {                                                                    \
-    duration_ms = (duration_ticks * 1000) / tflite::ticks_per_second();       \
-  }                                                                           \
-  TF_LITE_REPORT_ERROR(micro_benchmark::reporter, "%s took %d ticks (%d ms)", \
-                       #func, duration_ticks, duration_ms);
+#define TF_LITE_MICRO_BENCHMARK(func)                                   \
+  if (tflite::ticks_per_second() == 0) {                                \
+    TF_LITE_REPORT_ERROR(micro_benchmark::reporter,                     \
+                         "no timer implementation found");              \
+    return 0;                                                           \
+  }                                                                     \
+  start_ticks = tflite::GetCurrentTimeTicks();                          \
+  func;                                                                 \
+  duration_ticks = tflite::GetCurrentTimeTicks() - start_ticks;         \
+  if (duration_ticks > INT_MAX / 1000) {                                \
+    duration_ms = duration_ticks / (tflite::ticks_per_second() / 1000); \
+  } else {                                                              \
+    duration_ms = (duration_ticks * 1000) / tflite::ticks_per_second(); \
+  }                                                                     \
+  micro_benchmark::reporter->Report("%s took %d ticks (%d ms)", #func,  \
+                                    duration_ticks, duration_ms);
 
 template <typename inputT>
 class MicroBenchmarkRunner {
