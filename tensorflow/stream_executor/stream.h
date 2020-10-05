@@ -1679,16 +1679,6 @@ class Stream {
                        DeviceMemory<std::complex<double>> *b, int ldb);
 
   // See BlasSupport::DoBlatLtMatmul.
-  Stream& ThenBlasLtMatmul(const blas::IBlasLtMatmulPlan* plan,
-                           const HostOrDeviceScalar<void>& alpha,
-                           DeviceMemoryBase a, DeviceMemoryBase b,
-                           const HostOrDeviceScalar<void>& beta,
-                           DeviceMemoryBase c,
-                           ScratchAllocator* scratch_allocator,
-                           const blas::IBlasLtMatmulAlgorithm* algorithm,
-                           DeviceMemoryBase bias,
-                           blas::ProfileResult* output_profile_result);
-
   // Note that we prevent alpha and beta from being used to deduce CType so that
   // they can be constructed implicitly from values of type CType. Without this,
   // type deduction would fail when this function is called with a value of type
@@ -1703,8 +1693,8 @@ class Stream {
       const blas::IBlasLtMatmulAlgorithm* algorithm,
       const DeviceMemory<CType>& bias = {},
       blas::ProfileResult* output_profile_result = nullptr) {
-    return ThenBlasLtMatmul(plan, alpha, a, b, beta, *c, scratch_allocator,
-                            algorithm, bias, output_profile_result);
+    return ThenBlasLtMatmulImpl(plan, alpha, a, b, beta, c, scratch_allocator,
+                                algorithm, bias, output_profile_result);
   }
 
   // See FftSupport::DoFft.
@@ -2138,6 +2128,19 @@ class Stream {
       const DeviceMemory<T> &input_data,
       const dnn::BatchDescriptor &bias_descriptor,
       DeviceMemory<T> *backward_bias_data);
+
+  // Implementation of ThenBlasLtMatmul that is shared by all types.
+  template <typename ABType, typename CType>
+  Stream& ThenBlasLtMatmulImpl(const blas::IBlasLtMatmulPlan* plan,
+                               const HostOrDeviceScalar<CType>& alpha,
+                               const DeviceMemory<ABType>& a,
+                               const DeviceMemory<ABType>& b,
+                               const HostOrDeviceScalar<CType>& beta,
+                               DeviceMemory<CType>* c,
+                               ScratchAllocator* scratch_allocator,
+                               const blas::IBlasLtMatmulAlgorithm* algorithm,
+                               const DeviceMemory<CType>& bias,
+                               blas::ProfileResult* output_profile_result);
 
   SE_DISALLOW_COPY_AND_ASSIGN(Stream);
 };
