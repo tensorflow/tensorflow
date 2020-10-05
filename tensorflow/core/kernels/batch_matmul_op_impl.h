@@ -469,6 +469,17 @@ struct CoefficientType<Eigen::half> {
   typedef float type;
 };
 
+inline Status FromExecutorStatus(const se::port::Status& s) {
+  return s.ok() ? Status::OK()
+                : Status(static_cast<error::Code>(static_cast<int>(s.code())),
+                         s.error_message());
+}
+
+template <typename T>
+inline Status FromExecutorStatus(const se::port::StatusOr<T>& s) {
+  return FromExecutorStatus(s.status());
+}
+
 }  // namespace
 
 template <typename Scalar>
@@ -554,38 +565,25 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             context,
             GetBlasComputationType(dtype, allow_tf32, &computation_type),
             errors::Internal("Unsupported dtype for batched matmul"));
+
+        auto status_or_plan = stream->parent()->CreateBlasLtMatmulPlan(
+            {/*ab_type=*/blas_dtype,
+             /*c_type=*/blas_dtype, computation_type,
+             se::blas::PointerMode::kHost, se::blas::Epilogue::kDefault,
+             blas_transpose_b, blas_transpose_a, n, m, k,
+             /*lda=*/in_y.dim_size(2), /*ldb=*/in_x.dim_size(2), /*ldc=*/n,
+             batch_size, b_stride, a_stride, c_stride});
+        OP_REQUIRES(context, status_or_plan.ok(),
+                    FromExecutorStatus(status_or_plan));
         std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
-            stream->parent()->CreateBlasLtMatmulPlan(
-                {/*ab_type=*/blas_dtype,
-                 /*c_type=*/blas_dtype, computation_type,
-                 se::blas::PointerMode::kHost, se::blas::Epilogue::kDefault,
-                 blas_transpose_b, blas_transpose_a, n, m, k,
-                 /*lda=*/in_y.dim_size(2), /*ldb=*/in_x.dim_size(2), /*ldc=*/n,
-                 batch_size, b_stride, a_stride, c_stride});
-        OP_REQUIRES(
-            context, plan,
-            errors::Internal("CreateBlasLtMatmulPlan failed : a.shape=(",
-                             in_x.dim_size(0), ", ", in_x.dim_size(1), ", ",
-                             in_x.dim_size(2), "), b.shape=(", in_y.dim_size(0),
-                             ", ", in_y.dim_size(1), ", ", in_y.dim_size(2),
-                             "), m=", m, ", n=", n, ", k=", k,
-                             ", batch_size=", batch_size, ", adjoint_a=", adj_x,
-                             ", adjoint_b=", adj_x, ", dtype=", dtype,
-                             ", computation_type=", computation_type));
-        std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>
-            algorithms;
-        OP_REQUIRES(
-            context,
-            stream->parent()->GetBlasLtMatmulAlgorithms(
-                plan.get(), max_scratch_size, max_algorithm_count, &algorithms),
-            errors::Internal("GetBlasLtMatmulAlgorithms failed: a.shape=(",
-                             in_x.dim_size(0), ", ", in_x.dim_size(1), ", ",
-                             in_x.dim_size(2), "), b.shape=(", in_y.dim_size(0),
-                             ", ", in_y.dim_size(1), ", ", in_y.dim_size(2),
-                             "), m=", m, ", n=", n, ", k=", k,
-                             ", batch_size=", batch_size, ", adjoint_a=", adj_x,
-                             ", adjoint_b=", adj_x, ", dtype=", dtype,
-                             ", computation_type=", computation_type));
+            status_or_plan.ConsumeValueOrDie();
+
+        auto status_or_algorithms = stream->parent()->GetBlasLtMatmulAlgorithms(
+            plan.get(), max_scratch_size, max_algorithm_count);
+        OP_REQUIRES(context, status_or_algorithms.ok(),
+                    FromExecutorStatus(status_or_algorithms));
+        auto algorithms = status_or_algorithms.ConsumeValueOrDie();
+
         plan_and_algorithms =
             BatchMatmulPlanMapSingleton::GetInstance()->Insert(
                 matmul_parameters, {std::move(plan), std::move(algorithms)});

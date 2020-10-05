@@ -336,26 +336,28 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
   return blas_support->GetBlasGemmAlgorithms(out_algorithms);
 }
 
-std::unique_ptr<blas::IBlasLtMatmulPlan> StreamExecutor::CreateBlasLtMatmulPlan(
+port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
+StreamExecutor::CreateBlasLtMatmulPlan(
     const blas::BlasLtMatmulPlanParams& params) {
-  blas::BlasSupport *blas_support = AsBlas();
+  blas::BlasSupport* blas_support = AsBlas();
   if (!blas_support) {
-    return nullptr;
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the blas implementation.");
   }
   return blas_support->CreateBlasLtMatmulPlan(params);
 }
 
-bool StreamExecutor::GetBlasLtMatmulAlgorithms(
-    const blas::IBlasLtMatmulPlan* plan, size_t max_workspace_size,
-    int max_algorithm_count,
-    std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>*
-        out_algorithms) {
-  blas::BlasSupport *blas_support = AsBlas();
+port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+StreamExecutor::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan* plan,
+                                          size_t max_workspace_size,
+                                          int max_algorithm_count) {
+  blas::BlasSupport* blas_support = AsBlas();
   if (!blas_support) {
-    return false;
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the blas implementation.");
   }
-  return blas_support->GetBlasLtMatmulAlgorithms(
-      plan, max_workspace_size, max_algorithm_count, out_algorithms);
+  return blas_support->GetBlasLtMatmulAlgorithms(plan, max_workspace_size,
+                                                 max_algorithm_count);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
