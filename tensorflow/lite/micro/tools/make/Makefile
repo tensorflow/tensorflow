@@ -122,7 +122,9 @@ CXXFLAGS := \
   -fno-threadsafe-statics \
   $(COMMON_FLAGS)
 
-CCFLAGS  := $(COMMON_FLAGS)
+CCFLAGS  := \
+	-std=c11 \
+	$(COMMON_FLAGS)
 
 ARFLAGS := -r
 
