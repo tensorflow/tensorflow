@@ -3224,7 +3224,8 @@ blas::ComputationType ToComputationType<double>() {
 template <>
 blas::ComputationType ToComputationType<std::complex<float>>() {
   return blas::ComputationType::kComplexF32;
-}template <>
+}
+template <>
 blas::ComputationType ToComputationType<std::complex<double>>() {
   return blas::ComputationType::kComplexF64;
 }
