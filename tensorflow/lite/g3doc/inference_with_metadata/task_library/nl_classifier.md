@@ -29,6 +29,10 @@ API.
 
 ## Run inference in Java
 
+See the
+[Text Classification reference app](https://github.com/tensorflow/examples/blob/master/lite/examples/text_classification/android/lib_task_api/src/main/java/org/tensorflow/lite/examples/textclassification/client/TextClassificationClient.java)
+for an example of how to use `NLClassifier` in an Android app.
+
 ### Step 1: Import Gradle dependency and other settings
 
 Copy the `.tflite` model file to the assets directory of the Android module
