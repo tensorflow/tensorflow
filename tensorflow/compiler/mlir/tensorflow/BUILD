@@ -1394,6 +1394,7 @@ cc_library(
         ":decode_constant_pass",
         ":eval_util",
         ":tensorflow",
+        ":tensorflow_traits",
         ":tensorflow_types",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",

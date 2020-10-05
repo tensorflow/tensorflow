@@ -105,10 +105,7 @@ tf_cc_binary(
 tf_cc_binary(
     name = "tf_to_kernel",
     srcs = ["tf_to_kernel.cc"],
-    visibility = [
-        "//tensorflow/compiler/mlir/tools/kernel_gen/tests/tf_to_kernel:__pkg__",
-        "//tensorflow/core/kernels/mlir_generated:__pkg__",
-    ],
+    visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
     deps = [
         ":kernel_creator",
         "//tensorflow/compiler/mlir:init_mlir",
@@ -162,8 +159,9 @@ cc_library(
 
 cc_library(
     name = "tf_cuda_runtime_wrappers",
-    srcs = ["tf_cuda_runtime_wrappers.cpp"],
+    srcs = ["tf_cuda_runtime_wrappers.cc"],
     compatible_with = get_compatible_with_cloud(),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "@llvm-project//llvm:Support",

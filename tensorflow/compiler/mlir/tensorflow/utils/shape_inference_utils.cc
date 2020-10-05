@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -65,7 +66,8 @@ namespace TF {
 
 namespace {
 
-// Extracts attributes from a MLIR operation, including derived attributes.
+// Extracts attributes from a MLIR operation, including derived attributes, into
+// one NamedAttrList.
 NamedAttrList GetAllAttributesFromOperation(Operation* op) {
   NamedAttrList attr_list;
   attr_list.append(op->getAttrDictionary().getValue());
@@ -76,6 +78,33 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
   }
 
   return attr_list;
+}
+
+struct Attributes {
+  NamedAttrList concrete;
+  NamedAttrList derived;
+};
+
+// Extracts attributes from a MLIR operation, including derived attributes, into
+// separate NamedAttrLists. Concrete attributes that are defined with the same
+// names as derived attributes are excluded.
+Attributes GetAttributesFromOperation(Operation* op) {
+  Attributes attributes;
+  DictionaryAttr derived_attrs = nullptr;
+  if (auto derived = dyn_cast<DerivedAttributeOpInterface>(op)) {
+    derived_attrs = derived.materializeDerivedAttributes();
+    attributes.derived.append(derived_attrs.getValue());
+  }
+
+  if (derived_attrs) {
+    for (const auto& attr : op->getAttrs())
+      if (!derived_attrs.get(attr.first.strref()))
+        attributes.concrete.push_back(attr);
+  } else {
+    attributes.concrete.append(op->getAttrs());
+  }
+
+  return attributes;
 }
 
 // Extracts a PartialTensorShape from the MLIR type.
@@ -183,7 +212,7 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
 LogicalResult InferReturnTypeComponentsFallback(
     MLIRContext* context, StringRef op_name, int64_t graph_version,
     Optional<Location> location, ValueRange operands,
-    const NamedAttrList& attributes, OperandAsConstantFn operand_as_constant_fn,
+    const Attributes& attributes, OperandAsConstantFn operand_as_constant_fn,
     OpResultAsShapeFn op_result_as_shape_fn,
     ResultElementTypeFn result_element_type_fn,
     SmallVectorImpl<ShapedTypeComponents>& inferred_return_shapes) {
@@ -212,22 +241,33 @@ LogicalResult InferReturnTypeComponentsFallback(
   // Convert the operation attributes to be able to use the InferenceContext
   // and the TensorFlow shape function.
   tensorflow::AttrValueMap converted_attributes;
-  NamedAttrList attributes_to_convert;
-  // Filter out unregistered attributes.
-  for (const auto& attr_def : op_reg_data->op_def.attr())
-    if (auto registered_attr = attributes.get(attr_def.name()))
-      attributes_to_convert.set(attr_def.name(), registered_attr);
 
-  auto attrs_status = tensorflow::ConvertAttributes(
-      attributes_to_convert, /*attrs_to_ignore=*/{}, /*remove_ref_type=*/false,
-      &converted_attributes);
-  if (!attrs_status.ok()) {
-    LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << op_name
-                            << "': " << attrs_status.error_message() << "\n");
-    return emitOptionalError(
-        location,
-        "failed to convert attributes to proto map<string, AttrValue>");
-  }
+  auto convert_attrs = [&](const NamedAttrList& attributes_to_convert,
+                           bool remove_ref_type) {
+    NamedAttrList registered_attributes;
+
+    // Filter out unregistered attributes.
+    for (const auto& attr_def : op_reg_data->op_def.attr())
+      if (auto registered_attr = attributes_to_convert.get(attr_def.name()))
+        registered_attributes.set(attr_def.name(), registered_attr);
+
+    auto attrs_status = tensorflow::ConvertAttributes(
+        registered_attributes, /*attrs_to_ignore=*/{}, remove_ref_type,
+        &converted_attributes);
+    if (!attrs_status.ok()) {
+      LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << op_name
+                              << "': " << attrs_status.error_message() << "\n");
+      return emitOptionalError(
+          location,
+          "failed to convert attributes to proto map<string, AttrValue>");
+    }
+
+    return success();
+  };
+
+  if (failed(convert_attrs(attributes.concrete, /*remove_ref_type=*/false)) ||
+      failed(convert_attrs(attributes.derived, /*remove_ref_type=*/true)))
+    return failure();
 
   // Collect an array with input values for constant operands and input shapes
   // for all the operands.
@@ -357,7 +397,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     OpResultAsShapeFn op_result_as_shape_fn,
     ResultElementTypeFn result_element_type_fn,
     SmallVectorImpl<ShapedTypeComponents>& inferred_return_shapes) {
-  auto attributes = GetAllAttributesFromOperation(op);
+  auto attributes = GetAttributesFromOperation(op);
   return InferReturnTypeComponentsFallback(
       op->getContext(), op->getName().getStringRef(), graph_version, location,
       op->getOperands(), attributes, operand_as_constant_fn,

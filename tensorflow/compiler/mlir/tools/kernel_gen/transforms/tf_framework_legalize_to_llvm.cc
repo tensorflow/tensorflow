@@ -171,7 +171,8 @@ class DeallocRawOpConverter : public ConvertToLLVMCallOpPattern<DeallocRawOp> {
  protected:
   StringRef GetFuncName() const override { return kCInterfaceDealloc; }
   LLVMType GetFuncType() const override {
-    return LLVM::LLVMType::getFunctionTy(getVoidType(), getVoidPtrType(),
+    return LLVM::LLVMType::getFunctionTy(getVoidType(),
+                                         {getVoidPtrType(), getVoidPtrType()},
                                          /*isVarArg=*/false);
   }
 };

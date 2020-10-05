@@ -360,6 +360,19 @@ def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
   }];
 }
 
+def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Atan operator";
+
+  let description = [{
+    Returns `Atan(operand)` element-wise.
+
+    $$
+    \atan(x) = \atan2(x, 1)
+    $$
+  }];
+}
+
 def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
     HLO_FpOrComplexTensor> {
   let summary = "Sinh operation";
