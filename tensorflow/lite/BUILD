@@ -669,6 +669,12 @@ cc_library(
     hdrs = ["core/macros.h"],
 )
 
+cc_library(
+    name = "stateful_error_reporter",
+    hdrs = ["stateful_error_reporter.h"],
+    deps = ["//tensorflow/lite/core/api"],
+)
+
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.
 # Note: This target is not yet finalized, and the exact set of exported (C/C++)
 # APIs is subject to change. The output library name is platform dependent:

@@ -46,7 +46,7 @@ cc_library(
     srcs = ["python_error_reporter.cc"],
     hdrs = ["python_error_reporter.h"],
     deps = [
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite:stateful_error_reporter",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
