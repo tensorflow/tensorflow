@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
@@ -471,8 +472,9 @@ TEST_F(QuantizationUtilsTest, SymmetricQuantizeTensorFromMinMax) {
   readonly_model->UnPackTo(&model);
   auto subgraph = model.subgraphs[0].get();
   auto conv_op = subgraph->operators.at(0).get();
-  ASSERT_EQ(model.operator_codes.at(conv_op->opcode_index)->builtin_code,
-            BuiltinOperator_CONV_2D);
+  ASSERT_EQ(
+      GetBuiltinCode(model.operator_codes.at(conv_op->opcode_index).get()),
+      BuiltinOperator_CONV_2D);
   int32_t weights_tensor_idx = conv_op->inputs[1];
   TensorT* weights_tensor = subgraph->tensors.at(weights_tensor_idx).get();
 
@@ -520,8 +522,9 @@ TEST_F(QuantizationUtilsTest, SymmetricQuantizeTensorNullQuantParams) {
   readonly_model->UnPackTo(&model);
   auto subgraph = model.subgraphs[0].get();
   auto conv_op = subgraph->operators.at(0).get();
-  ASSERT_EQ(model.operator_codes.at(conv_op->opcode_index)->builtin_code,
-            BuiltinOperator_CONV_2D);
+  ASSERT_EQ(
+      GetBuiltinCode(model.operator_codes.at(conv_op->opcode_index).get()),
+      BuiltinOperator_CONV_2D);
   int32_t weights_tensor_idx = conv_op->inputs[1];
   TensorT* weights_tensor = subgraph->tensors.at(weights_tensor_idx).get();
   // Empty quantization parameters.
@@ -554,8 +557,9 @@ TEST_F(QuantizationUtilsTest, SymmetricQuantizeTensor) {
   readonly_model->UnPackTo(&model);
   auto subgraph = model.subgraphs[0].get();
   auto conv_op = subgraph->operators.at(0).get();
-  ASSERT_EQ(model.operator_codes.at(conv_op->opcode_index)->builtin_code,
-            BuiltinOperator_CONV_2D);
+  ASSERT_EQ(
+      GetBuiltinCode(model.operator_codes.at(conv_op->opcode_index).get()),
+      BuiltinOperator_CONV_2D);
   int32_t weights_tensor_idx = conv_op->inputs[1];
   TensorT* weights_tensor = subgraph->tensors.at(weights_tensor_idx).get();
 
@@ -586,8 +590,9 @@ TEST_F(QuantizationUtilsTest, QuantizeFloat16) {
   readonly_model->UnPackTo(&model);
   auto subgraph = model.subgraphs[0].get();
   auto conv_op = subgraph->operators.at(0).get();
-  ASSERT_EQ(model.operator_codes.at(conv_op->opcode_index)->builtin_code,
-            BuiltinOperator_CONV_2D);
+  ASSERT_EQ(
+      GetBuiltinCode(model.operator_codes.at(conv_op->opcode_index).get()),
+      BuiltinOperator_CONV_2D);
   int32_t weights_tensor_idx = conv_op->inputs[1];
   TensorT* weights_tensor = subgraph->tensors.at(weights_tensor_idx).get();
 
