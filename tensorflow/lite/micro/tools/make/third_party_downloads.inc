@@ -36,9 +36,9 @@ TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 CMSIS_URL := "http://github.com/ARM-software/CMSIS_5/archive/01f5b32badf7b78c85a24a7149b56400fa6a2999.zip"
 CMSIS_MD5 := "823916c6f1749c65fd0bfdeec20b30ed"
 
-AM_SDK_URL := "http://mirror.tensorflow.org/s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
-AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
-AM_SDK_DEST := AmbiqSuite-Rel2.2.0
+AM_SDK_URL := "https://github.com/sparkfun/AmbiqSuiteSDK/archive/v2.5.1.zip"
+AM_SDK_MD5 := "907a566e9f160cab3495fce16108273f"
+AM_SDK_DEST := AmbiqSuiteSDK-2.5.1
 
 SF_BSPS_URL := "https://github.com/sparkfun/SparkFun_Apollo3_AmbiqSuite_BSPs/archive/v0.0.9.zip"
 SF_BSPS_MD5 := "e42376144834c0edbd7a8f600dcd3552"
