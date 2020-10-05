@@ -1,3 +1,21 @@
+<!--
+Semi-automated TOC generation with instructions from
+https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
+-->
+
+<!--ts-->
+   * [Memory Management in TensorFlow Lite Micro](#memory-management-in-tensorflow-lite-micro)
+      * [Tensor Arena](#tensor-arena)
+         * [Head Section](#head-section)
+         * [Temporary Section](#temporary-section)
+         * [Tail Section](#tail-section)
+      * [Recording Memory APIs](#recording-memory-apis)
+         * [Allocation Section Details](#allocation-section-details)
+
+<!-- Added by: advaitjain, at: Mon 05 Oct 2020 02:21:02 PM PDT -->
+
+<!--te-->
+
 # Memory Management in TensorFlow Lite Micro
 
 This document outlines how memory is managed internally by TensorFlow Lite Micro (TFLM) today. It outlines the "online" allocation strategy used by the default TFLM APIs for loading a model into a shared tensor arena.

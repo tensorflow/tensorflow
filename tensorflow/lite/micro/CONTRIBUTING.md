@@ -4,40 +4,23 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 -->
 
 <!--ts-->
+   * [Contributing Guidelines](#contributing-guidelines)
+      * [General Pull Request Guidelines](#general-pull-request-guidelines)
+      * [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
+         * [Bug Fixes](#bug-fixes)
+         * [Reference Kernel Implementations](#reference-kernel-implementations)
+         * [Optimized Kernel Implementations](#optimized-kernel-implementations)
+         * [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
+         * [New Features](#new-features)
+   * [Development Workflow Notes](#development-workflow-notes)
+      * [Before submitting your PR](#before-submitting-your-pr)
+      * [During the PR review](#during-the-pr-review)
+      * [Reviewer notes](#reviewer-notes)
+      * [Python notes](#python-notes)
 
-*   [Resources](#resources)
-*   [Contributing Guidelines](#contributing-guidelines)
-    *   [General Pull Request Guidelines](#general-pull-request-guidelines)
-    *   [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
-        *   [Bug Fixes](#bug-fixes)
-        *   [Reference Kernel Implementations](#reference-kernel-implementations)
-        *   [Optimized Kernel Implementations](#optimized-kernel-implementations)
-        *   [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
-        *   [New Features](#new-features)
-*   [Development Workflow Notes](#development-workflow-notes)
-    *   [Before submitting your PR](#before-submitting-your-pr)
-    *   [During the PR review](#during-the-pr-review)
-    *   [Reviewer notes](#reviewer-notes)
-    *   [Python notes](#python-notes)
-
-<!-- Added by: advaitjain, at: Tue 08 Sep 2020 04:00:31 PM PDT -->
+<!-- Added by: advaitjain, at: Mon 05 Oct 2020 02:38:02 PM PDT -->
 
 <!--te-->
-
-# Resources
-
-A
-[TF Lite Micro Github issue](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
-should be the primary method of getting in touch with the TensorFlow Lite Micro
-(TFLM) team.
-
-The following resources may also be useful:
-
-1.  SIG Micro [email group](https://groups.google.com/a/tensorflow.org/g/micro)
-    and
-    [monthly meetings](http://doc/1YHq9rmhrOUdcZnrEnVCWvd87s2wQbq4z17HbeRl-DBc).
-
-1.  SIG Micro [gitter chat room](https://gitter.im/tensorflow/sig-micro).
 
 # Contributing Guidelines
 
