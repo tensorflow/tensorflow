@@ -140,14 +140,6 @@ std::string ToVlogString(const HostOrDeviceScalar<T> &memory_or_constant) {
   return ToVlogString(memory_or_constant.value());
 }
 
-std::string ToVlogString(const HostOrDeviceScalar<void>& memory_or_constant) {
-  if (memory_or_constant.is_pointer()) {
-    return ToVlogString(memory_or_constant.opaque_pointer());
-  }
-  return memory_or_constant.CallWithValue<std::string>(
-      [](const auto& value) { return ToVlogString(value); });
-}
-
 template <class T>
 std::string ToVlogString(port::ArraySlice<T> elements) {
   std::string str = absl::StrCat(

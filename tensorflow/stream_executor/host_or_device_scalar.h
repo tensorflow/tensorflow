@@ -137,29 +137,6 @@ class HostOrDeviceScalar<void> {
   }
   DataType data_type() const { return dtype_; }
 
-  template <typename ResultType, typename GenericUnaryFunc>
-  ResultType CallWithValue(GenericUnaryFunc func) const {
-    CHECK(!is_pointer());
-    switch (dtype_) {
-      case DataType::kFloat:
-        return func(float_);
-      case DataType::kDouble:
-        return func(double_);
-      case DataType::kHalf:
-        return func(half_);
-      case DataType::kInt8:
-        return func(int8_);
-      case DataType::kInt32:
-        return func(int32_);
-      case DataType::kComplexFloat:
-        return func(complex_float_);
-      case DataType::kComplexDouble:
-        return func(complex_double_);
-      default:
-        return {};
-    }
-  }
-
  private:
   template <typename T>
   const T& value_impl() const;
