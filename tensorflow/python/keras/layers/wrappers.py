@@ -102,6 +102,9 @@ class TimeDistributed(Wrapper):
   >>> outputs.shape
   TensorShape([None, 10, 126, 126, 64])
 
+  Because `TimeDistributed` applies an instance of `Conv2D` to each of the
+  timestamps, the weights used at each timestamp are shared.
+
   Arguments:
     layer: a `tf.keras.layers.Layer` instance.
 
