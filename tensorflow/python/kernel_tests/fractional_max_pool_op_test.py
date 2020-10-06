@@ -276,7 +276,7 @@ class FractionalMaxPoolTest(test.TestCase):
     tensor_shape = (num_batches, num_rows, num_cols, num_channels)
     # random tensor with value in [-500.0, 500.0)
     rand_mat = self._PRNG.random_sample(tensor_shape) * 1000 - 500
-    self._ValidateFractionalMaxPoolResult(rand_mat, [1, 2.0, 2.0, 1], pseudo_random,
+    self._ValidateFractionalMaxPoolResult(rand_mat, [1, 2, 2, 1], pseudo_random,
                                           overlapping)
 
   @test_util.run_deprecated_v1
