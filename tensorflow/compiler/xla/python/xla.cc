@@ -75,7 +75,6 @@ namespace {
 
 namespace py = pybind11;
 
-
 struct Uniquer {
   absl::Mutex mu;
   NameUniquer name_uniquer TF_GUARDED_BY(mu);
@@ -820,6 +819,14 @@ PYBIND11_MODULE(xla_extension, m) {
                              hlo_module.config().debug_options(),
                              RenderedGraphFormat::kDot);
         });
+  m.def(
+      "hlo_module_cost_analysis",
+      [](PyClient* client,
+         const HloModule& module) -> StatusOr<std::map<string, float>> {
+        auto analysis = client->pjrt_client()->GetHloCostAnalysis();
+        TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
+        return analysis->properties();
+      });
 
   py::class_<XlaOp> xla_op_class(m, "XlaOp");
 
