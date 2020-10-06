@@ -124,6 +124,10 @@ class ControlFlowStackInfo {
 
   Operation* GetCallSiteOp() const { return callsite_op_; }
 
+  bool operator==(const ControlFlowStackInfo& other) const {
+    return type_ == other.type_ && callsite_op_ == other.callsite_op_;
+  }
+
  private:
   ControlFlowBranchType type_;
 
@@ -280,17 +284,56 @@ Value CreateCompilationKeyPlaceholder(Location loc, OpBuilder* builder) {
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
 }
 
+// Retrieves terminator of branch specified by `control_flow_info` of replicated
+// control flow op.
+Operation* GetControlFlowBranchRegionTerminator(
+    const ControlFlowStackInfo& controlflow_info, Operation* controlflow_op) {
+  if (auto inner_most_if = llvm::dyn_cast<TF::IfRegionOp>(controlflow_op)) {
+    if (controlflow_info.GetBranchType() == ControlFlowStackInfo::kIfThen) {
+      return inner_most_if.then_branch().front().getTerminator();
+    } else {
+      return inner_most_if.else_branch().front().getTerminator();
+    }
+  } else if (auto inner_most_while =
+                 llvm::dyn_cast<TF::WhileRegionOp>(controlflow_op)) {
+    if (controlflow_info.GetBranchType() == ControlFlowStackInfo::kWhileCond) {
+      return &inner_most_while.cond().front().front();
+    } else {
+      return inner_most_while.body().front().getTerminator();
+    }
+  }
+  assert(false);
+  return nullptr;
+}
+
 // Replicates the control flow operations that wraps outside compiled ops to
 // `destination_block`.
-Operation* ReplicateControlFlowStack(
+Operation* GetOrReplicateControlFlowStack(
     llvm::StringRef outside_cluster_name,
     const llvm::SmallVectorImpl<ControlFlowStackInfo>& stack_info,
     tf_device::ClusterOp tpu_cluster, ModuleOp module, Value compilation_key,
-    Block* destination_block, int* send_recv_counter) {
+    Block* destination_block, int* send_recv_counter,
+    llvm::SmallDenseMap<Operation*, Operation*>* replicated_controlflow_map) {
   assert(!stack_info.empty());
+  const auto& controlflow_info = stack_info.back();
+  auto it = replicated_controlflow_map->find(controlflow_info.GetCallSiteOp());
+  if (it != replicated_controlflow_map->end())
+    return GetControlFlowBranchRegionTerminator(controlflow_info, it->second);
+
   OpBuilder builder = OpBuilder::atBlockTerminator(destination_block);
   Operation* previous_replicated_controlflow_op = nullptr;
   for (const auto& controlflow_stack_info : stack_info) {
+    // If controlflow operation has already been created, reuse the cached
+    // controlflow operation.
+    auto it = replicated_controlflow_map->find(
+        controlflow_stack_info.GetCallSiteOp());
+    if (it != replicated_controlflow_map->end()) {
+      previous_replicated_controlflow_op = it->second;
+      builder.setInsertionPoint(GetControlFlowBranchRegionTerminator(
+          controlflow_stack_info, previous_replicated_controlflow_op));
+      continue;
+    }
+
     // Create control flow op given provided insertion point and
     // ControlFlowStackInfo.
     if (auto control_flow_op = llvm::dyn_cast<TF::IfRegionOp>(
@@ -325,28 +368,13 @@ Operation* ReplicateControlFlowStack(
     }
   }
 
+  replicated_controlflow_map->try_emplace(stack_info.back().GetCallSiteOp(),
+                                          previous_replicated_controlflow_op);
+
   // Return operation which should be used to as the insertion point to create
   // send/recv ops.
-  if (auto inner_most_if =
-          llvm::dyn_cast<TF::IfRegionOp>(previous_replicated_controlflow_op)) {
-    auto inner_most_controlflow_stack = stack_info.back();
-    if (inner_most_controlflow_stack.GetBranchType() ==
-        ControlFlowStackInfo::kIfThen) {
-      return inner_most_if.then_branch().front().getTerminator();
-    } else {
-      return inner_most_if.else_branch().front().getTerminator();
-    }
-  } else if (auto inner_most_while = llvm::dyn_cast<TF::WhileRegionOp>(
-                 previous_replicated_controlflow_op)) {
-    auto inner_most_controlflow_stack = stack_info.back();
-    if (inner_most_controlflow_stack.GetBranchType() ==
-        ControlFlowStackInfo::kWhileCond) {
-      return &inner_most_while.cond().front().front();
-    } else {
-      return inner_most_while.body().front().getTerminator();
-    }
-  }
-  return destination_block->getTerminator();
+  return GetControlFlowBranchRegionTerminator(
+      stack_info.back(), previous_replicated_controlflow_op);
 }
 
 // Collects and clusters ops in `block` with the same `_xla_outside_compilation`
@@ -426,6 +454,7 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
           bool is_external = false;
           if (defining_op) {
             if (!tpu_cluster.getOperation()->isAncestor(defining_op)) continue;
+
             is_external =
                 llvm::none_of(host_cluster_ops, [&](Operation* cluster_op) {
                   return defining_op == cluster_op;
@@ -474,7 +503,7 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
 }
 
 // Extracts all externally used outputs of `cluster_ops`.
-llvm::SmallVector<Value, 4> GetExternalOutputs(
+llvm::SmallSetVector<Value, 4> GetExternalOutputs(
     llvm::ArrayRef<Operation*> cluster_ops) {
   llvm::SmallSetVector<Value, 4> external_outputs;
   llvm::SmallPtrSet<Operation*, 4> host_cluster_ops_set;
@@ -496,7 +525,7 @@ llvm::SmallVector<Value, 4> GetExternalOutputs(
     }
   }
 
-  return external_outputs.takeVector();
+  return external_outputs;
 }
 
 // Sets the insertion point on `builder` for HostCompute op.  Sets insertion
@@ -543,52 +572,62 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
   return host_compute;
 }
 
-void MoveOutsideCompiledOps(
+// Represents a set of ops inside host computation that is wrapped inside the
+// same control flow.
+struct HostCluster {
+  // List of control flow that wraps host computation operations. May be empty.
+  llvm::SmallVector<ControlFlowStackInfo, 4> controlflow_stack;
+
+  // Set of operations that will run on host wrapped around same stack of
+  // control flow.
+  llvm::SmallVector<Operation*, 4> section_ops;
+};
+
+HostCluster* FindHostCluster(
+    llvm::SmallVectorImpl<HostCluster>& host_cluster_sections,
+    const llvm::SmallVector<ControlFlowStackInfo, 4>& control_flows) {
+  for (auto& section : host_cluster_sections)
+    if (control_flows == section.controlflow_stack) return &section;
+  return nullptr;
+}
+
+void MoveOutsideCompiledOpsInsideControlFlow(
     ModuleOp module, tf_device::ClusterOp tpu_cluster,
-    llvm::StringRef outside_cluster_name, tf_device::LaunchOp host_launch_op,
-    llvm::ArrayRef<Operation*> cluster_ops,
-    const llvm::SmallSetVector<Value, 4>& external_inputs,
-    llvm::ArrayRef<Value> external_outputs) {
-  // Since ops in `cluster_ops` do not cross function/control flow boundary, it
-  // is sufficient to identify the control flow that wraps `cluster_ops` by
-  // looking at any arbitary op inside `cluster_ops`.
-  auto controlflow_stack =
-      GetControlFlowStackForOp(tpu_cluster, cluster_ops.front());
-
-  Value compilation_key;
-  if (!controlflow_stack.empty() || !external_inputs.empty() ||
-      !external_outputs.empty()) {
-    OpBuilder builder(&host_launch_op.GetBody().front());
-    compilation_key =
-        CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), &builder);
-  }
-
+    llvm::StringRef host_cluster_section_name,
+    tf_device::LaunchOp host_launch_op, Value compilation_key,
+    llvm::ArrayRef<Operation*> cluster_section_ops,
+    const llvm::SmallVectorImpl<ControlFlowStackInfo>& controlflow_stack,
+    const llvm::SmallSetVector<Value, 4>& section_external_inputs,
+    llvm::ArrayRef<Value> section_external_outputs,
+    llvm::SmallDenseMap<Operation*, Operation*>* replicated_controlflow_map) {
   Operation* insertion_op = nullptr;
   if (controlflow_stack.empty()) {
     insertion_op = host_launch_op.GetBody().getTerminator();
   } else {
     int send_recv_counter = 0;
-    insertion_op = ReplicateControlFlowStack(
-        outside_cluster_name, controlflow_stack, tpu_cluster, module,
-        compilation_key, &host_launch_op.GetBody(), &send_recv_counter);
+    insertion_op = GetOrReplicateControlFlowStack(
+        host_cluster_section_name, controlflow_stack, tpu_cluster, module,
+        compilation_key, &host_launch_op.GetBody(), &send_recv_counter,
+        replicated_controlflow_map);
   }
 
   MLIRContext* context = host_launch_op.getContext();
-  if (external_inputs.empty() && external_outputs.empty()) {
-    MoveOutsideClusterOpsBeforeOp(insertion_op, cluster_ops, context);
+  if (section_external_inputs.empty() && section_external_outputs.empty()) {
+    MoveOutsideClusterOpsBeforeOp(insertion_op, cluster_section_ops, context);
     return;
   }
 
   OpBuilder builder(insertion_op);
   llvm::SmallVector<Type, 4> host_output_types;
-  for (const auto& external_input : external_inputs)
+  for (const auto& external_input : section_external_inputs)
     host_output_types.push_back(external_input.getType());
 
   std::string args_communication_key =
-      llvm::formatv("host_compute_channel_{0}_args", outside_cluster_name)
+      llvm::formatv("host_compute_channel_{0}_args", host_cluster_section_name)
           .str();
   std::string retvals_communication_key =
-      llvm::formatv("host_compute_channel_{0}_retvals", outside_cluster_name)
+      llvm::formatv("host_compute_channel_{0}_retvals",
+                    host_cluster_section_name)
           .str();
 
   auto recv_at_host = builder.create<TF::_XlaRecvAtHostOp>(
@@ -597,25 +636,105 @@ void MoveOutsideCompiledOps(
       builder.getStringAttr(args_communication_key),
       /*device_ordinal=*/builder.getI64IntegerAttr(0));
 
-  auto host_compute = CreateHostCompute(
-      &builder, tpu_cluster, cluster_ops, external_inputs, external_outputs,
-      args_communication_key, retvals_communication_key);
-  MoveOutsideClusterOpsBeforeOp(insertion_op, cluster_ops, context);
+  auto host_compute =
+      CreateHostCompute(&builder, tpu_cluster, cluster_section_ops,
+                        section_external_inputs, section_external_outputs,
+                        args_communication_key, retvals_communication_key);
+  MoveOutsideClusterOpsBeforeOp(insertion_op, cluster_section_ops, context);
 
   builder.setInsertionPoint(insertion_op);
   builder.create<TF::_XlaSendFromHostOp>(
-      tpu_cluster.getLoc(), external_outputs,
+      tpu_cluster.getLoc(), section_external_outputs,
       /*dynamic_key=*/compilation_key,
       builder.getStringAttr(retvals_communication_key),
       /*device_ordinal=*/builder.getI64IntegerAttr(0));
 
-  for (auto result : llvm::zip(external_inputs, recv_at_host.getResults()))
+  for (auto result :
+       llvm::zip(section_external_inputs, recv_at_host.getResults())) {
     mlir::replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
-                                     host_launch_op.body());
+                                     *insertion_op->getParentRegion());
+  }
 
-  for (auto result : llvm::zip(external_outputs, host_compute.getResults()))
-    mlir::replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
-                                     tpu_cluster.body());
+  for (auto result :
+       llvm::zip(section_external_outputs, host_compute.getResults())) {
+    for (auto& result_use : std::get<0>(result).getUses()) {
+      Operation* result_using_op = result_use.getOwner();
+      const bool inside_device_cluster =
+          tpu_cluster.body().isAncestor(result_using_op->getParentRegion());
+      if (inside_device_cluster) result_use.set(std::get<1>(result));
+    }
+  }
+}
+
+void MoveOutsideCompiledOps(
+    ModuleOp module, tf_device::ClusterOp tpu_cluster,
+    llvm::StringRef outside_cluster_name, tf_device::LaunchOp host_launch_op,
+    llvm::ArrayRef<Operation*> cluster_ops,
+    const llvm::SmallSetVector<Value, 4>& external_inputs,
+    const llvm::SmallSetVector<Value, 4>& external_outputs) {
+  // Identify and groups ops in `cluster_ops` by ops wrapped inside the same
+  // control flows.
+  llvm::SmallVector<HostCluster, 4> host_cluster_sections;
+  for (Operation* host_cluster_op : cluster_ops) {
+    auto controlflow_stack =
+        GetControlFlowStackForOp(tpu_cluster, host_cluster_op);
+    auto host_cluster_section =
+        FindHostCluster(host_cluster_sections, controlflow_stack);
+    if (!host_cluster_section) {
+      host_cluster_sections.emplace_back(
+          HostCluster{controlflow_stack, {host_cluster_op}});
+    } else {
+      host_cluster_section->section_ops.emplace_back(host_cluster_op);
+    }
+  }
+
+  const bool has_control_flow =
+      llvm::any_of(host_cluster_sections, [](const auto host_cluster_section) {
+        return !host_cluster_section.controlflow_stack.empty();
+      });
+
+  Value compilation_key;
+  if (has_control_flow || !external_inputs.empty() ||
+      !external_outputs.empty()) {
+    OpBuilder builder(&host_launch_op.GetBody().front());
+    compilation_key =
+        CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), &builder);
+  }
+
+  // Maintains a map of control flow callsite operation in TPU device side
+  // and an replicated control flow operation on host cluster.
+  llvm::SmallDenseMap<Operation*, Operation*> replicated_controlflows;
+
+  // Move `cluster_op` to host cluster, replicating control flow if ops are
+  // wrapped inside a control flow.
+  for (const auto& host_cluster_section_and_index :
+       llvm::enumerate(host_cluster_sections)) {
+    const auto& host_cluster_section = host_cluster_section_and_index.value();
+    const int index = host_cluster_section_and_index.index();
+
+    const auto& controlflow_stack = host_cluster_section.controlflow_stack;
+    const auto& cluster_section_ops = host_cluster_section.section_ops;
+    auto section_external_inputs =
+        GetExternalOperands(tpu_cluster, cluster_section_ops);
+    for (auto input : section_external_inputs) {
+      if (!external_inputs.contains(input))
+        section_external_inputs.remove(input);
+    }
+    auto section_external_outputs = GetExternalOutputs(cluster_section_ops);
+    for (auto output : section_external_outputs) {
+      if (!external_outputs.contains(output))
+        section_external_outputs.remove(output);
+    }
+
+    const std::string host_cluster_section_name =
+        llvm::formatv("{0}_{1}", outside_cluster_name, index).str();
+
+    MoveOutsideCompiledOpsInsideControlFlow(
+        module, tpu_cluster, host_cluster_section_name, host_launch_op,
+        compilation_key, cluster_section_ops, controlflow_stack,
+        section_external_inputs, section_external_outputs.takeVector(),
+        &replicated_controlflows);
+  }
 }
 
 // Creates a `parallel_execute` op in place of launch with 'clusters` and

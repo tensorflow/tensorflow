@@ -149,12 +149,7 @@ class OutsideCompiledCluster {
         op->getUsers(),
         [&](Operation* user) { return host_cluster_ops_.contains(user); });
 
-    const bool inside_same_block =
-        llvm::all_of(host_cluster_ops_, [&](Operation* op_in_cluster) {
-          return op_in_cluster->getBlock() == op->getBlock();
-        });
-
-    return inside_same_block && contains_data_dependency;
+    return contains_data_dependency;
   }
 
   // `host_cluster_op_` stores a set of ops that will be grouped and computed
