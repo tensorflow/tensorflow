@@ -159,7 +159,7 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
-    shard_count = 6,
+    shard_count = 12,
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
@@ -169,7 +169,6 @@ py_test(
         ":lite",
         ":lite_v2_test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/tools/sanitizers:_pywrap_tensorflow_lite_sanitizers",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
