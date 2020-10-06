@@ -288,6 +288,7 @@ cc_library(
         ":cl_device",
         ":precision",
         ":program_cache",
+        ":tensor",
         ":tensor_type",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",

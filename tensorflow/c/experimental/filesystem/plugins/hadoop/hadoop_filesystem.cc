@@ -22,9 +22,9 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/logging.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for HADOOP environments.
@@ -148,15 +148,20 @@ class LibHDFS {
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
     if (hdfs_home != nullptr) {
       auto JoinPath = [](std::string home, std::string lib) {
+#if defined(_WIN32)
+        if (home.back() != '\\') home.push_back('\\');
+        return home + "lib\\native\\" + lib;
+#else
         if (home.back() != '/') home.push_back('/');
         return home + "lib/native/" + lib;
+#endif
       };
       std::string path = JoinPath(hdfs_home, kLibHdfsDso);
       TryLoadAndBind(path.c_str(), &handle_, status);
       if (TF_GetCode(status) == TF_OK) {
         return;
       } else {
-        std::cerr << "HadoopFileSystem load error: " << TF_Message(status);
+        TF_Log(TF_FATAL, "HadoopFileSystem load error: %s", TF_Message(status));
       }
     }
 
@@ -207,6 +212,7 @@ hdfsFS Connect(tf_hadoop_filesystem::HadoopFile* hadoop_file,
         builder, namenode.empty() ? "default" : namenode.c_str());
     cacheKey += namenode;
   }
+  absl::MutexLock l(&hadoop_file->connection_cache_lock);
   if (hadoop_file->connection_cache.find(cacheKey) ==
       hadoop_file->connection_cache.end()) {
     auto cacheFs = libhdfs->hdfsBuilderConnect(builder);
@@ -418,17 +424,20 @@ void Close(const TF_WritableFile* file, TF_Status* status) {
 // SECTION 3. Implementation for `TF_ReadOnlyMemoryRegion`
 // ----------------------------------------------------------------------------
 namespace tf_read_only_memory_region {
-
-// TODO(vnvo2409): Implement later
-
+// Hadoop doesn't support Readonly Memory Region
 }  // namespace tf_read_only_memory_region
 
 // SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_hadoop_filesystem {
 
+HadoopFile::HadoopFile(TF_Status* status)
+    : libhdfs(new LibHDFS(status)),
+      connection_cache_lock(),
+      connection_cache() {}
+
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
-  filesystem->plugin_filesystem = new HadoopFile({new LibHDFS(status), {}});
+  filesystem->plugin_filesystem = new HadoopFile(status);
   if (TF_GetCode(status) != TF_OK) return;
   TF_SetStatus(status, TF_OK, "");
 }
@@ -699,7 +708,9 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   return num_entries;
 }
 
-// TODO(vnvo2409): Implement later
+static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
+  return strdup(uri);
+}
 
 }  // namespace tf_hadoop_filesystem
 
@@ -707,6 +718,42 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
                                         const char* uri) {
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
+
+  ops->random_access_file_ops = static_cast<TF_RandomAccessFileOps*>(
+      plugin_memory_allocate(TF_RANDOM_ACCESS_FILE_OPS_SIZE));
+  ops->random_access_file_ops->cleanup = tf_random_access_file::Cleanup;
+  ops->random_access_file_ops->read = tf_random_access_file::Read;
+
+  ops->writable_file_ops = static_cast<TF_WritableFileOps*>(
+      plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
+  ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
+  ops->writable_file_ops->append = tf_writable_file::Append;
+  ops->writable_file_ops->tell = tf_writable_file::Tell;
+  ops->writable_file_ops->flush = tf_writable_file::Flush;
+  ops->writable_file_ops->sync = tf_writable_file::Sync;
+  ops->writable_file_ops->close = tf_writable_file::Close;
+
+  ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
+      plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
+  ops->filesystem_ops->init = tf_hadoop_filesystem::Init;
+  ops->filesystem_ops->cleanup = tf_hadoop_filesystem::Cleanup;
+  ops->filesystem_ops->new_random_access_file =
+      tf_hadoop_filesystem::NewRandomAccessFile;
+  ops->filesystem_ops->new_writable_file =
+      tf_hadoop_filesystem::NewWritableFile;
+  ops->filesystem_ops->new_appendable_file =
+      tf_hadoop_filesystem::NewAppendableFile;
+  ops->filesystem_ops->new_read_only_memory_region_from_file =
+      tf_hadoop_filesystem::NewReadOnlyMemoryRegionFromFile;
+  ops->filesystem_ops->path_exists = tf_hadoop_filesystem::PathExists;
+  ops->filesystem_ops->stat = tf_hadoop_filesystem::Stat;
+  ops->filesystem_ops->get_file_size = tf_hadoop_filesystem::GetFileSize;
+  ops->filesystem_ops->delete_file = tf_hadoop_filesystem::DeleteFile;
+  ops->filesystem_ops->create_dir = tf_hadoop_filesystem::CreateDir;
+  ops->filesystem_ops->delete_dir = tf_hadoop_filesystem::DeleteDir;
+  ops->filesystem_ops->rename_file = tf_hadoop_filesystem::RenameFile;
+  ops->filesystem_ops->get_children = tf_hadoop_filesystem::GetChildren;
+  ops->filesystem_ops->translate_name = tf_hadoop_filesystem::TranslateName;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

@@ -85,6 +85,8 @@ class Flag {
   Flag(const char* name, std::function<bool(string)> string_hook,
        string default_value_for_display, const string& usage_text);
 
+  bool is_default_initialized() const { return default_initialized_; }
+
  private:
   friend class Flags;
 
@@ -115,6 +117,7 @@ class Flag {
   string string_default_for_display_;
 
   string usage_text_;
+  bool default_initialized_ = true;
 };
 
 class Flags {

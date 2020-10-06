@@ -734,13 +734,15 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
 #ifdef LIBTPU_ON_GCE
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "MLIR is not supported in this environment.";
   }
   TF_RETURN_IF_ERROR(
       CompileGraph(options, function_id, std::move(graph), args, result));
 #else
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(

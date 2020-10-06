@@ -63,6 +63,7 @@ py_library(
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
+        "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/distribute",

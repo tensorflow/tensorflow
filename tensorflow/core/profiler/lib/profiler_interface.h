@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_INTERFACE_H_
+#define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_INTERFACE_H_
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -54,4 +54,4 @@ class ProfilerInterface {
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_PROFILER_LIB_PROFILER_INTERFACE_H_

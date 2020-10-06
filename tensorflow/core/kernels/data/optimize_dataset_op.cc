@@ -112,15 +112,13 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
   // clang-format on
 
-  // Add the graduated experiments to the optimization list. Also log and
-  // record.
+  // Add the graduated experiments to the optimization list and log them.
   for (auto& experiment : graduated_experiments) {
     if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
         optimizations.end()) {
       optimizations.push_back(experiment);
     }
     VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
-    metrics::RecordTFDataExperiment(experiment);
   }
 
   // If there are no optimizations to be applied, directly return the input.

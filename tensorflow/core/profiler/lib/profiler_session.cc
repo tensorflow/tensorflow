@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -32,7 +32,7 @@ limitations under the License.
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_lock.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/group_events.h"

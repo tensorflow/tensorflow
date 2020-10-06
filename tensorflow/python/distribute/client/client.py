@@ -324,11 +324,6 @@ class Closure(object):
     # It will do nothing if there is no return value.
     nest.map_structure(lambda x: x.fetch(), self._output_remote_values)  # pylint: disable=protected-access
 
-  def _set_output_remote_values_aborted(self):
-    """Set output remote_value aborted."""
-    # It will do nothing if there is no return value.
-    nest.map_structure(lambda x: x._set_aborted(), self._output_remote_values)  # pylint: disable=protected-access
-
   def _set_output_remote_values_cancelled(self):
     nest.map_structure(
         lambda x: x._set_error(  # pylint: disable=protected-access,g-long-lambda

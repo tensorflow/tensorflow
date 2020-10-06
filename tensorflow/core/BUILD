@@ -296,7 +296,6 @@ cc_library(
     hdrs = ["//tensorflow/core/platform:base_hdrs"],
     copts = tf_copts(),
     tags = ["avoid_dep"],
-    visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:byte_order",
@@ -1290,7 +1289,7 @@ filegroup(
             "**/*main.cc",
         ],
     ),
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 # Sources required to build the TensorFlow framework with runtime on
@@ -1350,12 +1349,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//visibility:public"],
-)
-
 # Native library support for mobile applications.  Does not contain
 # operators, use :portable_tensorflow_lib if you want full operator
 # support.
@@ -1369,7 +1362,7 @@ alias(
 # Compiles to a trivial library on non-mobile to prevent irrelevant
 # build errors. If not building this e.g. as part of an android_binary,
 # a command such as the following must be used:
-# bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# bazel build -c opt tensorflow/core:portable_tensorflow_lib \
 # --define=TENSORFLOW_PROTOS=lite \
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
@@ -1392,24 +1385,6 @@ cc_library(
     alwayslink = 1,
 )
 
-alias(
-    name = "android_tensorflow_lib_lite",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_tensorflow_lib_lite_nortti",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_tensorflow_lib_lite_nortti_lite_protos",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
@@ -1418,26 +1393,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
-)
-
-alias(
-    name = "ios_tensorflow_lib_lite",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-# Full TensorFlow library with operator support. Use this unless reducing
-# binary size (by packaging a reduced operator set) is a concern.
-alias(
-    name = "android_tensorflow_lib",
-    actual = ":portable_tensorflow_lib",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "ios_tensorflow_lib",
-    actual = ":portable_tensorflow_lib",
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -1479,28 +1434,6 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "**/tpu_*",
-        ],
-    ),
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "android_test_srcs",
-    testonly = 1,
-    # TODO(andrewharp/nhua):
-    # make more test-related sources portable e.g. "//tensorflow/core/platform:test.cc",
-    srcs = tf_portable_full_lite_protos(
-        full = [
-            "//tensorflow/core/framework:android_test_hdrs",
-            "//tensorflow/core/framework:android_test_srcs",
-            "//tensorflow/core/platform:android_test_srcs",
-            "//tensorflow/core/util:android_test_srcs",
-        ],
-        lite = [
-            "//tensorflow/core/framework:android_test_hdrs",
-            "//tensorflow/core/framework:android_test_srcs_no_core",
-            "//tensorflow/core/platform:android_test_srcs",
-            "//tensorflow/core/util:android_test_srcs",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -2829,6 +2762,7 @@ tf_cc_test(
         "ops/image_ops_test.cc",
         "ops/io_ops_test.cc",
         "ops/linalg_ops_test.cc",
+        "ops/lookup_ops_test.cc",
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",

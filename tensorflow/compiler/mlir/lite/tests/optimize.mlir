@@ -272,6 +272,22 @@ func @fuseMulIntoFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
 // CHECK:  return %[[RES]] : tensor<4x2xf32>
 }
 
+// CHECK-LABEL: @fuseBroadcastMulIntoFullyConnected
+func @fuseBroadcastMulIntoFullyConnected(%arg0: tensor<1x10368xbf16>) -> tensor<32x1x256xbf16> {
+  %cst_0 = constant dense<2.0> : tensor<256x10368xbf16>
+  %cst_1 = constant unit
+  %cst_2 = constant dense<3.0> : tensor<32x1x256xbf16>
+  %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {
+    fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"
+  } : (tensor<1x10368xbf16>, tensor<256x10368xbf16>, none) -> tensor<1x256xbf16>
+  %1 = "tfl.mul"(%0, %cst_2) {fused_activation_function = "NONE"} : (tensor<1x256xbf16>, tensor<32x1x256xbf16>) -> tensor<32x1x256xbf16>
+  return %1 : tensor<32x1x256xbf16>
+
+// CHECK:  %[[V0:.*]] = "tfl.fully_connected"(%arg0, {{.*}}) {{{.*}}} : (tensor<1x10368xbf16>, tensor<256x10368xbf16>, none) -> tensor<1x256xbf16>
+// CHECK:  %[[V1:.*]] = "tfl.mul"(%[[V0]], {{.*}}) {{{.*}}} : (tensor<1x256xbf16>, tensor<32x1x256xbf16>) -> tensor<32x1x256xbf16>
+// CHECK:  return %[[V1]] : tensor<32x1x256xbf16>
+}
+
 
 // CHECK-LABEL: @fuseAddIntoFollowingFullyConnectedWithQDQs
 func @fuseAddIntoFollowingFullyConnectedWithQDQs(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {

@@ -617,6 +617,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->GetDeviceDescription().threads_per_warp();
   gpu_device_info.shared_memory_per_block =
       stream_exec->GetDeviceDescription().shared_memory_per_block();
+  gpu_device_info.threads_per_core_limit =
+      stream_exec->GetDeviceDescription().threads_per_core_limit();
+  gpu_device_info.core_count = stream_exec->GetDeviceDescription().core_count();
 
   absl::optional<CudaComputeCapability> cuda_compute_capability =
       [&]() -> absl::optional<CudaComputeCapability> {

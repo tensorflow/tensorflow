@@ -353,7 +353,9 @@ def HLO_PowOp : HLO_BinaryElementwiseOp<"power",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_PowOp;
 
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
-      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RemOp;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RemOp {
+  let hasFolder = 1;
+}
 
 def HLO_ShiftLeftOp : HLO_BinaryElementwiseOp<"shift_left",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ShiftLeftOp;

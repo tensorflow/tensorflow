@@ -234,18 +234,6 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
   return Status::OK();
 }
 
-// Updates NodeDef constructed out of an MLIR Case/IfW/While op to map it to
-// either TensorFlow StatelessX or X op depending on the additional attribute.
-void UpdateCompositeOp(NodeDef* node_def) {
-  auto it = node_def->mutable_attr()->find("is_stateless");
-  if (it != node_def->attr().end()) {
-    if (it->second.b()) {
-      *node_def->mutable_op() = "Stateless" + node_def->op();
-    }
-    node_def->mutable_attr()->erase(it);
-  }
-}
-
 // Returns true if the executor/control dialect op should map to Ref node in
 // TensorFlow Graph. For control dialect NextIteration it uses the 1st operand
 // type. For executor dialect NextIteration it uses the 2nd operand type. For
@@ -297,7 +285,6 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
 }
 
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
-    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     mlir::Operation* inst, llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
@@ -327,6 +314,14 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   node_def->set_name(name.str());
   node_def->set_op(std::string(op_name.str()));
 
+  // Update NodeDef constructed out of an MLIR Case/If/While op to map it to
+  // either TensorFlow StatelessX or X op depending on the additional attribute.
+  if (llvm::isa<mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp>(inst)) {
+    auto stateless = inst->getAttrOfType<mlir::BoolAttr>("is_stateless");
+    if (stateless && stateless.getValue())
+      *node_def->mutable_op() = "Stateless" + node_def->op();
+  }
+
   // Add inputs to the NodeDef based on the number of operands. This is required
   // as later when edges are added to the Node using Graph::AddEdge the
   // associated NodeDef is not updated.
@@ -337,19 +332,9 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     node_def->set_device(std::string(attr.getValue()));
   }
 
-  // Add the node attributes.
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertAttributes(inst->getAttrs(), attrs_to_ignore,
-                        /*remove_ref_type=*/false, node_def->mutable_attr()),
-      "while converting attributes for node: ", name.str());
-
   // Add the node debug info.
   TF_RETURN_IF_ERROR(ConvertLocation(
       inst->getLoc(), node_def->mutable_experimental_debug_info()));
-
-  if (node_def->op() == "Case") UpdateCompositeOp(node_def.get());
-  if (node_def->op() == "If") UpdateCompositeOp(node_def.get());
-  if (node_def->op() == "While") UpdateCompositeOp(node_def.get());
 
   return node_def;
 }
