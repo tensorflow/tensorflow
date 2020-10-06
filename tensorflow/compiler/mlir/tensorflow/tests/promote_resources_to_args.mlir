@@ -287,6 +287,26 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<!tf.resource<
 
 // -----
 
+// Tests if local variables that are dead after resource op lifting are removed.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<i32>) -> tensor<2xf32> {
+  // CHECK-NOT: tf.MlirLocalVarOp
+  // CHECK-NOT: tf.AssignVariableOp
+  %0 = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<2xf32>>>
+  %1 = "tf._SomeOp"() : () -> tensor<2xf32>
+  "tf.AssignVariableOp"(%0, %1) : (tensor<!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+  %2 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
+  return %2 : tensor<2xf32>
+}
+func @callee(%arg0: tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32> attributes {sym_visibility = "private"} {
+  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+
+// -----
+
 // Tests main function with multiple blocks.
 
 // expected-error@+1 {{expects function 'main' to have 1 block, got 2}}
