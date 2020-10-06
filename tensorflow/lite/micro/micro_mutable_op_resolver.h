@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -183,9 +184,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_FLOOR(), ParseFloor);
   }
 
-  TfLiteStatus AddFullyConnected() {
-    return AddBuiltin(BuiltinOperator_FULLY_CONNECTED,
-                      tflite::ops::micro::Register_FULLY_CONNECTED(),
+  TfLiteStatus AddFullyConnected(
+      const TfLiteRegistration& registration = Register_FULLY_CONNECTED()) {
+    return AddBuiltin(BuiltinOperator_FULLY_CONNECTED, registration,
                       ParseFullyConnected);
   }
 
@@ -461,7 +462,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int num_buitin_ops_ = 0;
 
   ErrorReporter* error_reporter_;
-
 };
 
 };  // namespace tflite
