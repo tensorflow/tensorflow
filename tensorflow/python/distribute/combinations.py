@@ -363,11 +363,6 @@ times = combinations_lib.times
 NamedObject = combinations_lib.NamedObject
 
 
-def main():
-  """Tests must call this main()."""
-  return multi_process_runner.test_main()
-
-
 # Identifies whether we're in the main process or worker processes.
 # `_multi_worker_test` decoration behaves differently in the main processs and
 # the worker processes. See the documentation of _multi_worker_test for detail.

@@ -5358,6 +5358,7 @@ py_test(
         ":client_testlib",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:test_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )
