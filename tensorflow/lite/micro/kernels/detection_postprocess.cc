@@ -30,10 +30,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
-#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+
 
 namespace tflite {
 namespace ops {
@@ -127,21 +129,35 @@ struct OpData {
   TfLiteQuantizationParams input_box_encodings;
   TfLiteQuantizationParams input_class_predictions;
   TfLiteQuantizationParams input_anchors;
+
+  // In case out dimensions need to be allocated.
+  TfLiteIntArray* detection_boxes_dims;
+  TfLiteIntArray* detection_classes_dims;
+  TfLiteIntArray* detection_scores_dims;
+  TfLiteIntArray* num_detections_dims;
 };
 
 TfLiteStatus AllocateOutDimensions(TfLiteContext* context,
-                                   TfLiteIntArray** dims, int x, int y = 0,
-                                   int z = 0) {
+                                    TfLiteTensor* tensor,
+                                    TfLiteIntArray** dims, int x, int y = 0,
+                                    int z = 0) {
   int size = 1;
-
+  int size_dim = 1;
   size = size * x;
-  size = (y > 0) ? size * y : size;
-  size = (z > 0) ? size * z : size;
+
+  if (y > 0) {
+    size = size * y;
+    size_dim++;
+    if (z > 0) {
+      size = size * z;
+      size_dim++;
+    }
+  }
 
   *dims = reinterpret_cast<TfLiteIntArray*>(context->AllocatePersistentBuffer(
       context, TfLiteIntArrayGetSizeInBytes(size)));
 
-  (*dims)->size = size;
+  (*dims)->size = size_dim;
   (*dims)->data[0] = x;
   if (y > 0) {
     (*dims)->data[1] = y;
@@ -149,6 +165,9 @@ TfLiteStatus AllocateOutDimensions(TfLiteContext* context,
   if (z > 0) {
     (*dims)->data[2] = z;
   }
+
+  TFLITE_DCHECK(tensor->type == kTfLiteFloat32);
+  tensor->bytes = size * sizeof(float);
 
   return kTfLiteOk;
 }
@@ -264,8 +283,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* detection_boxes =
       GetOutput(context, node, kOutputTensorDetectionBoxes);
   if (detection_boxes->dims->size == 0) {
-    TF_LITE_ENSURE_STATUS(AllocateOutDimensions(context, &detection_boxes->dims,
+    TF_LITE_ENSURE_STATUS(AllocateOutDimensions(context, detection_boxes,
+                                                &detection_boxes->dims,
                                                 1, num_detected_boxes, 4));
+    op_data->detection_boxes_dims = detection_boxes->dims;
   }
 
   // Output Tensor detection_classes: size is set to (1, num_detected_boxes)
@@ -273,7 +294,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       GetOutput(context, node, kOutputTensorDetectionClasses);
   if (detection_classes->dims->size == 0) {
     TF_LITE_ENSURE_STATUS(AllocateOutDimensions(
-        context, &detection_classes->dims, 1, num_detected_boxes));
+        context, detection_classes,
+        &detection_classes->dims, 1, num_detected_boxes));
+    op_data->detection_classes_dims = detection_classes->dims;
   }
 
   // Output Tensor detection_scores: size is set to (1, num_detected_boxes)
@@ -281,15 +304,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       GetOutput(context, node, kOutputTensorDetectionScores);
   if (detection_scores->dims->size == 0) {
     TF_LITE_ENSURE_STATUS(AllocateOutDimensions(
-        context, &detection_scores->dims, 1, num_detected_boxes));
-  }
+        context, detection_scores,
+        &detection_scores->dims, 1, num_detected_boxes));
+    op_data->detection_scores_dims = detection_scores->dims;
+   }
 
   // Output Tensor num_detections: size is set to 1
   TfLiteTensor* num_detections =
       GetOutput(context, node, kOutputTensorNumDetections);
   if (num_detections->dims->size == 0) {
     TF_LITE_ENSURE_STATUS(
-        AllocateOutDimensions(context, &num_detections->dims, 1));
+        AllocateOutDimensions(context, num_detections,
+                              &num_detections->dims, 1));
+    op_data->num_detections_dims = num_detections->dims;
   }
 
   return kTfLiteOk;
@@ -842,6 +869,28 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, (kBatchSize == 1));
   auto* op_data = static_cast<OpData*>(node->user_data);
+
+  TfLiteEvalTensor* detection_boxes =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensorDetectionBoxes);
+  if (detection_boxes->dims->size == 0) {
+    detection_boxes->dims = op_data->detection_boxes_dims;
+  }
+  TfLiteEvalTensor* detection_classes =
+      tflite::micro::GetEvalOutput(context, node,
+                                   kOutputTensorDetectionClasses);
+  if (detection_classes->dims->size == 0) {
+    detection_classes->dims = op_data->detection_classes_dims;
+  }
+  TfLiteEvalTensor* detection_scores =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensorDetectionScores);
+  if (detection_scores->dims->size == 0) {
+    detection_scores->dims = op_data->detection_scores_dims;
+   }
+  TfLiteEvalTensor* num_detections =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensorNumDetections);
+  if (num_detections->dims->size == 0) {
+    num_detections->dims = op_data->num_detections_dims;
+  }
 
   // These two functions correspond to two blocks in the Object Detection model.
   // In future, we would like to break the custom op in two blocks, which is

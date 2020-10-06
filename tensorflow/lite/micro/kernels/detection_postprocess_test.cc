@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
+// See: tensorflow/lite/micro/kernels/detection_postprocess_test/readme
+#include "tensorflow/lite/micro/kernels/detection_postprocess_test/flexbuffers_generated_data.h"
+
 namespace tflite {
 namespace testing {
 namespace {
@@ -158,22 +161,6 @@ void TestDetectionPostprocess(
   tensors[5] = CreateFloatTensor(output_data3, output_dims3);
   tensors[6] = CreateFloatTensor(output_data4, output_dims4);
 
-  flexbuffers::Builder fbb;
-  fbb.Map([&]() {
-    fbb.Int("max_detections", 3);
-    fbb.Int("max_classes_per_detection", 1);
-    fbb.Int("detections_per_class", 1);
-    fbb.Bool("use_regular_nms", use_regular_nms);
-    fbb.Float("nms_score_threshold", 0.0);
-    fbb.Float("nms_iou_threshold", 0.5);
-    fbb.Int("num_classes", 2);
-    fbb.Float("y_scale", 10.0);
-    fbb.Float("x_scale", 10.0);
-    fbb.Float("h_scale", 5.0);
-    fbb.Float("w_scale", 5.0);
-  });
-  fbb.Finish();
-
   ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp("TFLite_Detection_PostProcess");
@@ -187,9 +174,22 @@ void TestDetectionPostprocess(
   micro::KernelRunner runner(*registration, tensors, tensors_size, inputs_array,
                              outputs_array, nullptr, micro_test::reporter);
 
-  const char* init_data = reinterpret_cast<const char*>(fbb.GetBuffer().data());
+  // Using generated data as input to operator.
+  int data_size;
+  const char* init_data;
+  const char* init_data_none_regular_nms =
+      reinterpret_cast<const char*>(tflite::testing::gen_data_none_regular_nms);
+  const char* init_data_regular_nms =
+      reinterpret_cast<const char*>(tflite::testing::gen_data_regular_nms);
+  if (use_regular_nms) {
+    init_data = init_data_regular_nms;
+    data_size = tflite::testing::gen_data_size_regular_nms;
+  } else {
+    init_data = init_data_none_regular_nms;
+    data_size = tflite::testing::gen_data_size_none_regular_nms;
+  }
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, runner.InitAndPrepare(init_data, fbb.GetBuffer().size()));
+      kTfLiteOk, runner.InitAndPrepare(init_data, data_size));
 
   // Output dimensions should not be undefined after Prepare
   TF_LITE_MICRO_EXPECT_NE(nullptr, tensors[3].dims);
