@@ -474,10 +474,11 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()
-  if shape:
-    shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)
+  shape = dynamic_batch_spec._shape
+  if shape.rank is not None and shape.rank > 0:
+    shape_list = shape.as_list()
+    shape_list[0] = None
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape_list)
   return dynamic_batch_spec
   # pylint: enable=protected-access
 
