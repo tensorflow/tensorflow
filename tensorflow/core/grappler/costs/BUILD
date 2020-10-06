@@ -31,7 +31,13 @@ tf_proto_library(
     srcs = ["op_performance_data.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/core/framework:attr_value_proto",
+        "//tensorflow/core/framework:resource_handle_proto",
+        "//tensorflow/core/framework:tensor_proto",
+        "//tensorflow/core/framework:tensor_shape_proto",
+        "//tensorflow/core/protobuf:for_core_protos",
+    ],
     visibility = ["//visibility:public"],
 )
 
