@@ -9,6 +9,9 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
 
 # buildifier: disable=same-origin-load
@@ -602,6 +605,7 @@ cc_library(
 cc_library(
     name = "pybind11_lib",
     hdrs = ["lib/core/pybind11_lib.h"],
+    compatible_with = get_compatible_with_portable(),
     features = ["-parse_headers"],
     visibility = tf_external_workspace_visible(visibility),
     deps = [
@@ -806,6 +810,7 @@ tf_python_pybind_extension(
     name = "_pywrap_tensor_float_32_execution",
     srcs = ["util/tensor_float_32.cc"],
     hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
+    compatible_with = get_compatible_with_portable(),
     module_name = "_pywrap_tensor_float_32_execution",
     deps = [
         "@pybind11",
@@ -5469,6 +5474,7 @@ py_library(
 py_strict_library(
     name = "tf_export",
     srcs = ["util/tf_export.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
@@ -5497,6 +5503,7 @@ py_strict_library(
         "util/tf_decorator.py",
         "util/tf_inspect.py",
     ],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__subpackages__",
@@ -5514,6 +5521,7 @@ py_strict_library(
 py_strict_library(
     name = "tf_stack",
     srcs = ["util/tf_stack.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
@@ -5526,6 +5534,7 @@ py_strict_library(
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
+    compatible_with = get_compatible_with_portable(),
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
@@ -5610,6 +5619,7 @@ tf_py_test(
 
 py_library(
     name = "global_test_configuration",
+    compatible_with = get_compatible_with_portable(),
     deps = if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]) +
            tf_enable_mlir_bridge(),
 )
@@ -5628,6 +5638,7 @@ py_library(
             "util/**/*_test.py",
         ],
     ),
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//tensorflow:__pkg__",

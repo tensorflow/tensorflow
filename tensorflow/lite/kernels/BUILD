@@ -263,6 +263,7 @@ cc_library(
     hdrs = [
         "eigen_support.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = [
@@ -300,6 +301,7 @@ cc_library(
 
 cc_library(
     name = "tflite_with_ruy_default",
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = select({
         ":chromiumos_arm64": [":tflite_with_ruy_enabled"],

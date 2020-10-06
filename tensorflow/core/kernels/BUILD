@@ -20,6 +20,9 @@ load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generat
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # buildifier: disable=same-origin-load
@@ -890,6 +893,7 @@ cc_library(
     hdrs = [
         "eigen_spatial_convolutions-inl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":eigen_convolution_helpers",
     ],
@@ -900,6 +904,7 @@ cc_library(
     hdrs = [
         "eigen_convolution_helpers.h",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 # OpKernel libraries ----------------------------------------------------------

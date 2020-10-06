@@ -2767,7 +2767,8 @@ def tf_python_pybind_extension(
         deps = [],
         defines = [],
         visibility = None,
-        testonly = None):
+        testonly = None,
+        compatible_with = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
@@ -2787,6 +2788,7 @@ def tf_python_pybind_extension(
         visibility = visibility,
         link_in_framework = True,
         testonly = testonly,
+        compatible_with = compatible_with,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
