@@ -199,17 +199,6 @@ LogicalResult MarkUncompilableOps(
               op->getContext()));
       outside_compiled_cluster_counter++;
     }
-    if (llvm::isa<TF::IfRegionOp, TF::WhileRegionOp>(op)) {
-      if (HasCapturedStringOperand(op)) {
-        op->setAttr(
-            kXlaOutsideCompilationAttr,
-            StringAttr::get(
-                llvm::formatv("auto{0}", outside_compiled_cluster_counter)
-                    .str(),
-                op->getContext()));
-        outside_compiled_cluster_counter++;
-      }
-    }
   });
   return success();
 }

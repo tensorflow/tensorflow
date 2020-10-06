@@ -472,3 +472,24 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "parse_annotation",
+    srcs = ["parse_annotation.cc"],
+    hdrs = ["parse_annotation.h"],
+    visibility = ["//tensorflow/core/profiler:friends"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "parse_annotation_test",
+    srcs = ["parse_annotation_test.cc"],
+    deps = [
+        ":parse_annotation",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)

@@ -435,6 +435,32 @@ func @callee() -> tensor<i32> attributes {sym_visibility = "public"} {
 
 // -----
 
+// CHECK-LABEL: func @main
+func @main() -> () {
+  // CHECK: "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> tensor<*xf32>
+  %call = "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> (tensor<*xf32>)
+  return
+}
+func @callee() -> (tensor<*xf32>) attributes {sym_visibility = "private"} {
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[LOCAL_VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource<tensor<*xf32>>>, tensor<f32>)
+  %index = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+  %value = "tf.Const"() {value = dense<[1.0, 2.0, 3.0]> : tensor<3xf32>} : () -> tensor<3xf32>
+  // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"
+  // CHECK: "tf.AssignVariableOp"(%[[LOCAL_VAR]], %[[UPDATE]]) : (tensor<!tf.resource<tensor<5x3xf32>>>, tensor<5x3xf32>) -> ()
+  %flow = "tf.TensorArrayWriteV3"(%ta#0, %index, %value, %ta#1) : (tensor<!tf.resource<tensor<*xf32>>>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+  // CHECK: %[[SLICE:.*]] = "tf.Slice"
+  // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<3> : tensor<1xi32>}
+  // CHECK: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]])
+  %val = "tf.TensorArrayReadV3"(%ta#0, %index, %ta#1) : (tensor<!tf.resource<tensor<*xf32>>>, tensor<i32>, tensor<f32>) -> tensor<*xf32>
+  // CHECK: %[[CAST:.*]] = tensor_cast %[[ELEM]] : tensor<3xf32> to tensor<*xf32>
+  // CHECK: return %[[CAST]] : tensor<*xf32>
+  return %val : tensor<*xf32>
+}
+
+// -----
+
 // Test the pass reports failure on unknown size.
 
 func @main(%arg0: tensor<i32>) -> () {

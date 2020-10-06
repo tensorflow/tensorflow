@@ -296,10 +296,6 @@ h# Release 2.4.0
 
     *   `tf.debugging.assert_shapes()` now works on `SparseTensor`s (#36268).
 
-*    `TensorRT`
-    *    Add parameter allow_mixed_precision_on_unconverted_ops to
-         TrtConversionParams.
-
 *   `tf.print`:
 
     *   Bug fix in `tf.print()` with `OrderedDict` where if an `OrderedDict`
@@ -311,7 +307,10 @@ h# Release 2.4.0
     *   We have replaced uses of "whitelist" and "blacklist" with "allowlist"
         and "denylist" where possible. Please see
         https://developers.google.com/style/word-list#blacklist for more
-        context. <ADD RELEASE NOTES HERE>
+        context.
+    *   Add `tf.config.experimental.mlir_bridge_rollout` which will help us
+        rollout the new MLIR TPU bridge.
+    *   <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 

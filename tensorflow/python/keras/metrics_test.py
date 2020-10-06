@@ -37,6 +37,8 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import Model
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import training as training_mod
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -2058,6 +2060,47 @@ class CustomMetricsTest(test.TestCase):
     self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
     metric_result = tf_functioned_metric_fn(sum_metric, y_true, y_pred)
     self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
+
+  def test_metric_not_tracked_as_sublayer_in_layer(self):
+
+    class MyLayer(base_layer.Layer):
+
+      def __init__(self, **kwargs):
+        super(MyLayer, self).__init__(**kwargs)
+        self.mean_obj = metrics.Mean(name='my_mean_obj')
+
+      def call(self, x):
+        self.add_metric(
+            math_ops.reduce_sum(x), aggregation='mean', name='my_mean_tensor')
+        self.add_metric(self.mean_obj(x))
+        return x
+
+    layer = MyLayer()
+    x = np.ones((1, 1))
+    layer(x)
+    self.assertLen(list(layer._flatten_layers(include_self=False)), 0)
+    self.assertLen(layer.metrics, 2)
+
+  def test_metric_not_tracked_as_sublayer_in_model(self):
+
+    class MyModel(training_mod.Model):
+
+      def __init__(self, **kwargs):
+        super(MyModel, self).__init__(**kwargs)
+        self.mean_obj = metrics.Mean(name='my_mean_obj')
+
+      def call(self, x):
+        self.add_metric(
+            math_ops.reduce_sum(x), aggregation='mean', name='my_mean_tensor')
+        self.add_metric(self.mean_obj(x))
+        return x
+
+    model = MyModel()
+    x = np.ones((1, 1))
+    model(x)
+    self.assertLen(list(model._flatten_layers(include_self=False)), 0)
+    self.assertLen(model.layers, 0)
+    self.assertLen(model.metrics, 2)
 
 
 def _get_model(compile_metrics):

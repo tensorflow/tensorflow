@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_TRACEME_RECORDER_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_TRACEME_RECORDER_H_
 
 #include <atomic>
 #include <string>
@@ -120,4 +120,5 @@ class TraceMeRecorder {
 
 }  // namespace profiler
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
+
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_TRACEME_RECORDER_H_

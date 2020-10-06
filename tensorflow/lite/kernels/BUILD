@@ -191,6 +191,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",

@@ -35,6 +35,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -595,6 +596,7 @@ class GRUV2Test(keras_parameterized.TestCase):
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
 
+  @test_util.enable_output_all_intermediates
   def test_v1_session_behavior(self):
     with ops.get_default_graph().as_default():
       # See b/139132348 for more details.

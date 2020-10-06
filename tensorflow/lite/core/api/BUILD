@@ -31,6 +31,7 @@ cc_library(
         # central location.
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
     ],
 )
 
@@ -50,6 +51,7 @@ cc_test(
     srcs = ["op_resolver_test.cc"],
     deps = [
         ":api",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -520,7 +520,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -571,7 +570,6 @@ cc_library(
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",

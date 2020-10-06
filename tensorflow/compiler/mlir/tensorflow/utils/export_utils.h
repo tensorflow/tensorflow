@@ -50,12 +50,8 @@ Status AddTensorFlowOpPrefix(std::string);
 StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
-// name should be unique to the graph it is being inserted into. `op_name_func`
-// is to map the op name of `inst` to its op name in TensorFlow. "name" and
-// "device" attributes are ignored by default. Use attrs_to_ignore to specify
-// any other attributes that should be ignored.
+// name should be unique to the graph it is being inserted into.
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
-    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     mlir::Operation* inst, llvm::StringRef name);
 
 // Converts MLIR attributes with values to their tensorflow equivalent.

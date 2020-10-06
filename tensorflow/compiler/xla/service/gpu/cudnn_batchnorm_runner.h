@@ -28,27 +28,36 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+struct CudnnBatchNormConfig {
+  Shape output_shape;
+  PrimitiveType output_type;
+  float epsilon;
+  int64 feature_index;
+};
+
+CudnnBatchNormConfig GetCudnnBatchNormConfig(const HloInstruction *instr,
+                                             float epsilon,
+                                             int64 feature_index);
+
 Status RunCudnnBatchNormForwardInference(
-    const HloInstruction* batchnorm, se::DeviceMemoryBase operand,
+    const CudnnBatchNormConfig &config, se::DeviceMemoryBase operand,
     se::DeviceMemoryBase output, se::DeviceMemory<float> scale,
     se::DeviceMemory<float> offset, se::DeviceMemory<float> mean,
-    se::DeviceMemory<float> variance, float epsilon, int64 feature_index,
-    se::Stream* stream);
+    se::DeviceMemory<float> variance, se::Stream *stream);
 
 Status RunCudnnBatchNormForwardTraining(
-    const HloInstruction* batchnorm, se::DeviceMemoryBase operand,
+    const CudnnBatchNormConfig &config, se::DeviceMemoryBase operand,
     se::DeviceMemoryBase output_data, se::DeviceMemory<float> output_mean,
     se::DeviceMemory<float> output_inv_stddev, se::DeviceMemory<float> scale,
-    se::DeviceMemory<float> offset, float epsilon, int64 feature_index,
-    se::Stream* stream);
+    se::DeviceMemory<float> offset, se::Stream *stream);
 
 Status RunCudnnBatchNormBackward(
-    const HloInstruction* batchnorm, se::DeviceMemoryBase operand,
+    const CudnnBatchNormConfig &config, se::DeviceMemoryBase operand,
     se::DeviceMemoryBase output_grad_data, se::DeviceMemoryBase grad_output,
     se::DeviceMemory<float> output_grad_scale,
     se::DeviceMemory<float> output_grad_offset, se::DeviceMemory<float> scale,
     se::DeviceMemory<float> mean, se::DeviceMemory<float> inv_stddev,
-    float epsilon, int64 feature_index, se::Stream* stream);
+    se::Stream *stream);
 }  // namespace gpu
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_BATCHNORM_RUNNER_H_

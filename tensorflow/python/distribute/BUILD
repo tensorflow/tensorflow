@@ -788,6 +788,7 @@ py_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -825,6 +826,7 @@ py_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":central_storage_strategy",

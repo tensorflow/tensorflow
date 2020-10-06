@@ -141,6 +141,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
