@@ -2717,6 +2717,7 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
       case TokKind::kInt:
       case TokKind::kDecimal:
       case TokKind::kw_nan:
+      case TokKind::kNegNan:
       case TokKind::kw_inf:
       case TokKind::kNegInf: {
         add_one_elem_seen();
@@ -4373,6 +4374,9 @@ bool HloParserImpl::ParseDouble(double* result) {
       break;
     case TokKind::kw_nan:
       *result = std::numeric_limits<double>::quiet_NaN();
+      break;
+    case TokKind::kNegNan:
+      *result = -std::numeric_limits<double>::quiet_NaN();
       break;
     case TokKind::kw_inf:
       *result = std::numeric_limits<double>::infinity();
