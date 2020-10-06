@@ -35,7 +35,8 @@ TEST(LookupOpsTest, LookupTableFindV2_ShapeFn) {
                    .Finalize(&op.node_def));
   std::vector<std::vector<ShapeInferenceTestOp::ShapeAndType>> types;
   auto set_types = [&op, &types](DataType key_type, DataType value_type) {
-    auto& table = types.emplace_back();
+    types.emplace_back();
+    auto& table = types.back();
     table.emplace_back("[3]", key_type);
     table.emplace_back("[4]", value_type);
     op.input_resource_handle_shapes_and_types = {&table, nullptr, nullptr};
@@ -64,7 +65,8 @@ TEST(LookupOpsTest, LookupTableExportV2_ShapeFn) {
                    .Finalize(&op.node_def));
   std::vector<std::vector<ShapeInferenceTestOp::ShapeAndType>> types;
   auto set_types = [&op, &types](DataType key_type, DataType value_type) {
-    auto& table = types.emplace_back();
+    types.emplace_back();
+    auto& table = types.back();
     table.emplace_back("[3]", key_type);
     table.emplace_back("[4]", value_type);
     op.input_resource_handle_shapes_and_types = {&table};
