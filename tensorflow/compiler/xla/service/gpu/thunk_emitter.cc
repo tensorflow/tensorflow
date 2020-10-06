@@ -73,15 +73,14 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildTriangularSolveThunk(
 
 std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
     const HloInstruction* inst) {
-  auto config_or = inst->backend_config<GemmBackendConfig>();
-  GemmBackendConfig gemm_config = std::move(config_or.ValueOrDie());
+  GpuGemmConfig config = GetGpuGemmConfig(inst);
   const HloInstruction* lhs = inst->operand(0);
   const HloInstruction* rhs = inst->operand(1);
 
   // The bias is passed inside the output buffer. If those buffers are shared
   // we can just use it, otherwise copy the bias values into the output buffer
   // first.
-  if (gemm_config.beta() != 0.0) {
+  if (config.backend_config.beta() != 0.0) {
     const HloInstruction* bias = inst->operand(2);
     CHECK_EQ(bias->shape(), inst->shape());
     if (GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
@@ -92,22 +91,22 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
           /*destination_buffer=*/GetAllocationSlice(*inst),
           /*mem_size=*/ShapeUtil::ByteSizeOf(inst->shape())));
       thunks.push_back(absl::make_unique<GemmThunk>(
-          context_->GetThunkInfo(inst),
+          context_->GetThunkInfo(inst), std::move(config),
           GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
           GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
           GetAllocationSlice(*inst),  // The output buffer.
-          /*implements_whole_instruction=*/false, std::move(gemm_config)));
+          /*implements_whole_instruction=*/false));
       return absl::make_unique<SequentialThunk>(context_->GetThunkInfo(inst),
                                                 std::move(thunks));
     }
   }
 
   return absl::make_unique<GemmThunk>(
-      context_->GetThunkInfo(inst),
+      context_->GetThunkInfo(inst), std::move(config),
       GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
       GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
       GetAllocationSlice(*inst),  // The output buffer.
-      /*implements_whole_instruction=*/true, std::move(gemm_config));
+      /*implements_whole_instruction=*/true);
 }
 
 std::unique_ptr<Thunk> ThunkEmitter::BuildInfeedThunk(
