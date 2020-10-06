@@ -40,7 +40,9 @@ filegroup(
     name = "kernel_srcs",
     srcs = if_mlir_unranked_kernels_enabled(
         [
-            "unranked_gpu_abs.cc",
+            "unranked_op_gpu_abs.cc",
+            "unranked_op_gpu_base.h",
+            "unranked_op_gpu_base.cc",
         ],
         [
             "cwise_op_gpu_abs.cc",
