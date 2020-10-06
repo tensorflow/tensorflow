@@ -2580,44 +2580,12 @@ REGISTER_OP("_MklFusedBatchNorm")
     .Attr("data_format: string = 'NHWC'")
     .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle x;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
-
-      bool is_training;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-      int number_inputs = (is_training) ? 3 : 5;
-      string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-      DimensionHandle channel_dim =
-          (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
-
-      // covers scale, offset, and if is_training is false, mean, variance
-      for (int i = 1; i < number_inputs; ++i) {
-        ShapeHandle vec;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
-      }
-
-      ShapeHandle y;
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
-      } else {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
-      }
-      c->set_output(0, y);
-      ShapeHandle vector_shape = c->Vector(channel_dim);
-      c->set_output(1, vector_shape);
-      c->set_output(2, vector_shape);
-      c->set_output(3, vector_shape);
-      c->set_output(4, vector_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
     .Doc(R"doc(
-MKL version of FusedBatchNorm operator. Uses MKL DNN APIs to perform fused
+oneDNN version of FusedBatchNorm operator. Uses oneDNN APIs to perform fused
 batch normalization.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -2646,60 +2614,12 @@ REGISTER_OP("_MklFusedBatchNormGrad")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle y_backprop;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
-      ShapeHandle x;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
-
-      bool is_training;
-      string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-      DimensionHandle channel_dim = (data_format == "NHWC")
-                                        ? c->Dim(y_backprop, 3)
-                                        : c->Dim(y_backprop, 1);
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
-      } else {
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
-      }
-
-      // covers scale, mean (reserve_space_1), variance (reserve_space_2)
-      for (int i = 2; i < 5; ++i) {
-        ShapeHandle vec;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
-      }
-
-      ShapeHandle x_backprop;
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(
-            c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
-      } else {
-        TF_RETURN_IF_ERROR(
-            c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
-      }
-      c->set_output(0, x_backprop);
-      c->set_output(1, c->Vector(channel_dim));
-      c->set_output(2, c->Vector(channel_dim));
-      // Set the correct shapes for reserve_spaces
-      // so that gradients can be performed when
-      // the op is in a symbolic condition.
-      if (is_training) {
-        c->set_output(3, c->Vector(0));
-        c->set_output(4, c->Vector(0));
-      } else {
-        c->set_output(3, c->Vector(channel_dim));
-        c->set_output(4, c->Vector(channel_dim));
-      }
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
     .Doc(R"doc(
-MKL version of FusedBatchNormGrad operator. Uses MKL DNN APIs to compute
+oneDNN version of FusedBatchNormGrad operator. Uses oneDNN APIs to compute
 gradients for fused batch normalization.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 

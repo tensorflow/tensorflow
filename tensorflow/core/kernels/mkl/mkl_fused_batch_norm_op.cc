@@ -986,7 +986,7 @@ class MklFusedBatchNormOp : public OpKernel {
       // Check if reorder is needed for src.
       const T* src_data = nullptr;
       std::shared_ptr<BatchNormFwdPd> bn_fwd_pd = bn_fwd->GetBatchNormFwdPd();
-      if (IS_SRC_REORDER_NEEDED(src_md, bn_fwd_pd, bn_fwd) && !native_format) {
+      if (!native_format && IS_SRC_REORDER_NEEDED(src_md, bn_fwd_pd, bn_fwd)) {
         src.SetUsrMem(src_md, &src_tensor);
         src.CheckReorderToOpMem(
             MEMORY_PD_WITHOUT_DATA(GET_SRC_DESC_FROM_OP_PD(bn_fwd_pd),
@@ -1389,8 +1389,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       // Check if diff_dst input needs to be reordered
       std::shared_ptr<BatchNormBwdPd> bn_bwd_pd = bn_bwd->GetBatchNormBwdPd();
-      if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, bn_bwd_pd, bn_bwd) &&
-          !native_format) {
+      if (!native_format &&
+          IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, bn_bwd_pd, bn_bwd)) {
         diff_dst.SetUsrMem(diff_dst_md, diff_dst_data);
         diff_dst.CheckReorderToOpMem(
             MEMORY_PD_WITHOUT_DATA(GET_DIFF_DST_DESC_FROM_OP_PD(bn_bwd_pd),
@@ -1399,7 +1399,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
         diff_dst_data = static_cast<T*>(diff_dst.GetOpMem().get_data_handle());
       }
 
-      if (IS_SRC_REORDER_NEEDED(src_md, bn_bwd_pd, bn_bwd) && !native_format) {
+      if (!native_format && IS_SRC_REORDER_NEEDED(src_md, bn_bwd_pd, bn_bwd)) {
         src.SetUsrMem(src_md, src_data);
         src.CheckReorderToOpMem(
             MEMORY_PD_WITHOUT_DATA(GET_SRC_DESC_FROM_OP_PD(bn_bwd_pd),
