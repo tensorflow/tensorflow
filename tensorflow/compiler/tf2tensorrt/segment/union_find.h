@@ -109,8 +109,9 @@ class ClusterBatchSize {
     return s;
   }
 
- private:
   bool HasStaticBatchValue() const { return static_batch_value_.has_value(); }
+
+ private:
   bool HasDynamicBatchValue() const { return has_dynamic_batch_value_; }
 
  private:

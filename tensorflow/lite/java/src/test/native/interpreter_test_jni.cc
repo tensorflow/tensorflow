@@ -33,15 +33,21 @@ Java_org_tensorflow_lite_InterpreterTest_getNativeHandleForDelegate(
       .free = nullptr,
       .prepare =
           [](TfLiteContext* context, TfLiteNode* node) {
-            const TfLiteTensor* input = tflite::GetInput(context, node, 0);
-            TfLiteTensor* output = tflite::GetOutput(context, node, 0);
+            const TfLiteTensor* input;
+            TF_LITE_ENSURE_OK(context,
+                              tflite::GetInputSafe(context, node, 0, &input));
+            TfLiteTensor* output;
+            TF_LITE_ENSURE_OK(context,
+                              tflite::GetOutputSafe(context, node, 0, &output));
             TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
             output->type = kTfLiteFloat32;
             return context->ResizeTensor(context, output, output_dims);
           },
       .invoke =
           [](TfLiteContext* context, TfLiteNode* node) {
-            TfLiteTensor* output = tflite::GetOutput(context, node, 0);
+            TfLiteTensor* output;
+            TF_LITE_ENSURE_OK(context,
+                              tflite::GetOutputSafe(context, node, 0, &output));
             std::fill(output->data.f,
                       output->data.f + tflite::NumElements(output), 7.0f);
             return kTfLiteOk;

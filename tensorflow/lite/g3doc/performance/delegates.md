@@ -21,10 +21,11 @@ TensorFlow Lite provides the following delegates for hardware acceleration:
 
 *   **GPU delegate for cross platform acceleration** - The GPU delegate can be
     used on both Android and iOS. It is optimized to run 32-bit and 16-bit float
-    based models where a GPU is available. For an overview of the GPU delegate,
-    see [TensorFlow Lite on GPU](gpu_advanced.md). For step-by-step tutorials on
-    using the GPU delegate with Android and iOS, see
-    [TensorFlow Lite GPU Delegate Tutorial](gpu.md).
+    based models where a GPU is available. It also supports 8-bit quantized
+    models and provides GPU performance on par with their float versions. For
+    details on the GPU delegate, see [TensorFlow Lite on GPU](gpu_advanced.md).
+    For step-by-step tutorials on using the GPU delegate with Android and iOS,
+    see [TensorFlow Lite GPU Delegate Tutorial](gpu.md).
 *   **NNAPI delegate for newer Android devices** - The NNAPI delegate can be
     used to accelerate models on Android devices with GPU, DSP and / or NPU
     available. It is available in Android 8.1 (API 27+) or higher. For an
@@ -86,6 +87,8 @@ execute Conv2D and Mean operations faster.
 
 ```c++
 #include "tensorflow/lite/util.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/context_util.h"
 
 // This is where the execution of the operations or whole graph happens.
 // The class below has an empty implementation just as a guideline

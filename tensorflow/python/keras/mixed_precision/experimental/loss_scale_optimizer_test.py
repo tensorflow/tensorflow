@@ -27,6 +27,7 @@ from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -53,7 +54,7 @@ default_strategy_fn = distribution_strategy_context.get_strategy
 
 
 def create_mirrored_strategy():
-  if context.num_gpus() >= 1:
+  if tf_config.list_logical_devices('GPU'):
     return mirrored_strategy.MirroredStrategy(['cpu:0', 'gpu:0'])
   else:
     return mirrored_strategy.MirroredStrategy(['cpu:0'])
@@ -187,6 +188,52 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # As before, the 2 is subtracted from the variable, making it's new value
       # 1.
       self.assertAllClose([1.], self.evaluate(var))
+
+  # pylint: disable=cell-var-from-loop
+  @parameterized.named_parameters(*TESTCASES)
+  def testClipping(self, strategy_fn):
+    strategy = strategy_fn()
+    learning_rate = 2.
+    for clip_type in ('clipnorm', 'global_clipnorm', 'clipvalue'):
+      with strategy.scope(), self.subTest(clip_type=clip_type):
+        var = variables.Variable([5.0])
+        opt = gradient_descent.SGD(learning_rate, **{clip_type: 2.0})
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=2, increment_period=1, multiplier=2)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+        self.assertEqual(getattr(opt, clip_type), 2.0)
+        self.assertEqual(
+            loss_scale.initial_loss_scale % strategy.num_replicas_in_sync, 0)
+
+        loss = lambda: var * 4 / strategy.num_replicas_in_sync
+        run_fn = lambda: opt.minimize(loss, var_list=[var])
+
+        # Test running with clipped gradients
+        run_op = strategy.experimental_run(run_fn)
+        self.evaluate(variables.global_variables_initializer())
+        self._run_if_in_graph_mode(run_op)
+        # The gradient is 4 but is clipped to 2, so the variable will be
+        # init_val - clipped_grad * lr == 5 - 2 * 2 == 1
+        self.assertAllClose([1.], self.evaluate(var))
+        self.assertEqual(self.evaluate(opt.loss_scale()), 4)
+
+        # Test changing the clip amount and running again
+        setattr(opt, clip_type, 3.0)
+        run_op = strategy.experimental_run(run_fn)
+        self._run_if_in_graph_mode(run_op)
+        # The gradient is 4 but is clipped to 3, so the variable will be
+        # prev_var - clipped_grad * lr == 1 - 3 * 2 == -5
+        self.assertAllClose([-5.], self.evaluate(var))
+        self.assertEqual(self.evaluate(opt.loss_scale()), 8)
+
+        # Test Inf gradients are still skipped instead of being clipped
+        loss = lambda: var * float('Inf')
+        run_fn = lambda: opt.minimize(loss, var_list=[var])
+        run_op = strategy.experimental_run(run_fn)
+        self._run_if_in_graph_mode(run_op)
+        self.assertAllClose([-5.], self.evaluate(var))  # Var does not change
+        self.assertEqual(self.evaluate(opt.loss_scale()), 4)
+  # pylint: enable=cell-var-from-loop
 
   @parameterized.named_parameters(*TESTCASES)
   def testDynamicUpdate(self, strategy_fn):
@@ -335,47 +382,71 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, r'loss_scale cannot be None'):
       loss_scale_optimizer.LossScaleOptimizer(opt, None)
 
-  @parameterized.named_parameters(*TESTCASES)
-  def testGettingAndSettingLearningRate(self, strategy_fn):
-    with self.test_session(), strategy_fn().scope() as strategy:
-      var = variables.Variable([5.0])
-      opt = adam.Adam(learning_rate=1.0)
-      loss = lambda: var * 2.0
-      run_fn = lambda: opt.minimize(loss, [var])
-      run_op = strategy.experimental_run(run_fn)
+  def testHyperParametersExposed(self):
+    with self.cached_session():
+      opt = adam.Adam(learning_rate=1.0, beta_1=0.5, beta_2=0.9)
+      lso = loss_scale_optimizer.LossScaleOptimizer(opt, 'dynamic')
+      # Force hyperparameters to be created
+      opt.lr  # pylint: disable=pointless-statement
       self.evaluate(variables.global_variables_initializer())
-      self._run_if_in_graph_mode(run_op)
 
-      lr = self.evaluate(opt.lr)
-      self.assertEqual(1.0, lr)
+      self.assertEqual(self.evaluate(lso.beta_1), 0.5)
+      self.assertIsInstance(lso.beta_1, variables.Variable)
+      self.assertEqual(self.evaluate(lso.lr), 1.0)
+      self.assertIs(lso.lr, opt.lr)
+      self.assertIs(lso.lr, lso.learning_rate)
 
-      opt.lr = 2.0
-      lr = self.evaluate(opt.lr)
-      self.assertEqual(2.0, lr)
+      lso.beta_1 = 0.25
+      self.assertEqual(self.evaluate(lso.beta_1), 0.25)
+      self.assertEqual(self.evaluate(opt.beta_1), 0.25)
+      self.assertIs(lso.beta_1, opt.beta_1)
+      opt.beta_1 = 0.75
+      self.assertEqual(self.evaluate(lso.beta_1), 0.75)
+      self.assertEqual(self.evaluate(opt.beta_1), 0.75)
+      self.assertIs(lso.beta_1, opt.beta_1)
+      lso.lr = 2.0
+      self.assertEqual(self.evaluate(lso.lr), 2.0)
+      self.assertEqual(self.evaluate(lso.learning_rate), 2.0)
+      self.assertEqual(self.evaluate(opt.lr), 2.0)
+      self.assertEqual(self.evaluate(opt.learning_rate), 2.0)
+      self.assertIs(lso.lr, opt.lr)
 
-      self.evaluate(opt.lr.assign(3.0))
-      lr = self.evaluate(opt.lr)
-      self.assertEqual(3.0, lr)
+      # Test setting attribute that is both attribute on LossScaleOptimizer and
+      # hyperparameter on wrapped optimizer.
+      class MyOpt(gradient_descent.SGD):
 
+        def __init__(self):
+          super().__init__()
+          self._set_hyper('loss_scale', 123.)
+
+      opt = MyOpt()
+      lso = loss_scale_optimizer.LossScaleOptimizer(opt, 'dynamic')
       with self.assertRaises(AttributeError):
-        opt.not_an_attr += 3
+        lso.loss_scale = loss_scale_module.FixedLossScale(2.)
 
   def testArbitraryAttributesNotExposed(self):
-    opt = adam.Adam(learning_rate=1.0)
-    # Test that Adam has attributes 'epsilon' and 'beta1'
-    opt.epsilon  # pylint: disable=pointless-statement
-    opt.beta_1  # pylint: disable=pointless-statement
-    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
-    # Test that attributes defined by OptimizerV2 subclasses are not exposed in
-    # LossScaleOptimizer, and that the error message is sensible.
+    opt = gradient_descent.SGD()
+    lso = loss_scale_optimizer.LossScaleOptimizer(opt, 'dynamic')
+    self.assertFalse(opt.nesterov)
     with self.assertRaisesRegex(
         AttributeError,
-        "'LossScaleOptimizer' object has no attribute 'epsilon'"):
-      opt.epsilon  # pylint: disable=pointless-statement
-    with self.assertRaisesRegex(
-        AttributeError,
-        "'LossScaleOptimizer' object has no attribute 'beta_1'"):
-      opt.beta_1  # pylint: disable=pointless-statement
+        "'LossScaleOptimizer' object has no attribute 'nesterov'"):
+      lso.nesterov  # pylint: disable=pointless-statement
+
+    lso.nesterov = True
+    self.assertTrue(lso.nesterov)
+    self.assertFalse(opt.nesterov)
+
+  def testDir(self):
+    lso = loss_scale_optimizer.LossScaleOptimizer(gradient_descent.SGD(),
+                                                  'dynamic')
+    dir_result = dir(lso)
+    self.assertIn('learning_rate', dir_result)  # Hyperparameter
+    self.assertIn('lr', dir_result)  # Hyperparameter
+    self.assertIn('minimize', dir_result)  # Attribute
+    self.assertIn('loss_scale', dir_result)  # Attribute
+    self.assertNotIn('nesterov', dir_result)  # Attribute on inner optimizer
+    self.assertIn('nesterov', dir(lso._optimizer))
 
   def testApplyGradientsGetsUnwrappedTensors(self):
     # Tests that gradients passed to apply_gradients are not wrapped in a

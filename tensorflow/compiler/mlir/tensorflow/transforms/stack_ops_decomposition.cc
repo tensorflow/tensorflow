@@ -139,8 +139,7 @@ void ModifyFunctionSignature(
     handle_new_size_vars(func.getArguments().drop_front(original_arg_count));
   }
   func.setType(FunctionType::get(
-      new_input_types,
-      llvm::to_vector<8>(func.front().getTerminator()->getOperandTypes()),
+      new_input_types, func.front().getTerminator()->getOperandTypes(),
       func.getContext()));
 }
 
@@ -163,7 +162,7 @@ LogicalResult HandleWhileOp(
     const llvm::SmallDenseMap<Value, Value>& data_var_to_size_var,
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
-  auto body = while_op.body_func();
+  auto body = while_op.body_function();
   llvm::SmallDenseMap<Value, Value> body_map;
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(while_op.getOperand(index));
@@ -187,7 +186,7 @@ LogicalResult HandleWhileOp(
     return failure();
   }
   // Cond should not change stacks in the arguments, so use an empty map.
-  auto cond = while_op.cond_func();
+  auto cond = while_op.cond_function();
   ModifyFunctionSignature(cond, nullptr, find_arg_stack_type);
   llvm::SmallDenseMap<Value, Value> empty_map;
   if (failed(DecomposeStackOpsInternal(&cond.front(), module, &empty_map,
@@ -231,8 +230,8 @@ LogicalResult HandleIfOp(
     const llvm::SmallDenseMap<Value, Value>& data_var_to_size_var,
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
-  auto then_func = if_op.then_func();
-  auto else_func = if_op.else_func();
+  auto then_func = if_op.then_function();
+  auto else_func = if_op.else_function();
   llvm::SmallDenseMap<Value, Value> then_map;
   llvm::SmallDenseMap<Value, Value> else_map;
 

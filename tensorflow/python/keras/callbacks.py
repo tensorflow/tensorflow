@@ -37,6 +37,7 @@ from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -53,6 +54,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.saved_model import save_options as save_options_lib
@@ -665,7 +667,8 @@ class Callback(object):
         epoch: Integer, index of epoch.
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
-          are prefixed with `val_`.
+          are prefixed with `val_`. For training epoch, the values of the  
+         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'acc': 0.7}`.
     """
 
   @doc_controls.for_subclass_implementers
@@ -1140,15 +1143,22 @@ class ModelCheckpoint(Callback):
     the end of every epoch, or after a fixed number of training batches.
   - Whether only weights are saved, or the whole model is saved.
 
+  Note: If you get `WARNING:tensorflow:Can save best model only with <name>
+  available, skipping` see the description of the `monitor` argument for
+  details on how to get this right.
+
   Example:
 
   ```python
+  model.compile(loss=..., optimizer=...,
+                metrics=['accuracy'])
+
   EPOCHS = 10
   checkpoint_filepath = '/tmp/checkpoint'
   model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
       filepath=checkpoint_filepath,
       save_weights_only=True,
-      monitor='val_acc',
+      monitor='val_accuracy',
       mode='max',
       save_best_only=True)
 
@@ -1167,18 +1177,32 @@ class ModelCheckpoint(Callback):
         `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
         checkpoints will be saved with the epoch number and the validation loss
         in the filename.
-      monitor: quantity to monitor.
+      monitor: The metric name to monitor. Typically the metrics are set by the
+        `Model.compile` method. Note:
+
+        * Prefix the name with `"val_`" to monitor validation metrics.
+        * Use `"loss"` or "`val_loss`" to monitor the model's total loss.
+        * If you specify metrics as strings, like `"accuracy"`, pass the same
+          string (with or without the `"val_"` prefix).
+        * If you pass `metrics.Metric` objects, `monitor` should be set to
+          `metric.name`
+        * If you're not sure about the metric names you can check the contents
+          of the `history.history` dictionary returned by
+          `history = model.fit()`
+        * Multi-output models set additional prefixes on the metric names.
+
       verbose: verbosity mode, 0 or 1.
-      save_best_only: if `save_best_only=True`, the latest best model according
-        to the quantity monitored will not be overwritten.
-        If `filepath` doesn't contain formatting options like `{epoch}` then
-        `filepath` will be overwritten by each new better model.
-      mode: one of {auto, min, max}. If `save_best_only=True`, the decision to
-        overwrite the current save file is made based on either the maximization
-        or the minimization of the monitored quantity. For `val_acc`, this
-        should be `max`, for `val_loss` this should be `min`, etc. In `auto`
-        mode, the direction is automatically inferred from the name of the
-        monitored quantity.
+      save_best_only: if `save_best_only=True`, it only saves when the model
+        is considered the "best" and the latest best model according to the
+        quantity monitored will not be overwritten. If `filepath` doesn't
+        contain formatting options like `{epoch}` then `filepath` will be
+        overwritten by each new better model.
+      mode: one of {'auto', 'min', 'max'}. If `save_best_only=True`, the
+        decision to overwrite the current save file is made based on either
+        the maximization or the minimization of the monitored quantity.
+        For `val_acc`, this should be `max`, for `val_loss` this should be
+        `min`, etc. In `auto` mode, the direction is automatically inferred
+        from the name of the monitored quantity.
       save_weights_only: if True, then only the model's weights will be saved
         (`model.save_weights(filepath)`), else the full model is saved
         (`model.save(filepath)`).
@@ -1579,7 +1603,8 @@ class BackupAndRestore(Callback):
     self._supported_strategies = (
         distribute_lib._DefaultDistributionStrategy,
         mirrored_strategy.MirroredStrategy,
-        collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+        collective_all_reduce_strategy.CollectiveAllReduceStrategy,
+        tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
 
     if not context.executing_eagerly():
       if ops.inside_function():
@@ -1607,8 +1632,10 @@ class BackupAndRestore(Callback):
     if not isinstance(self.model.distribute_strategy,
                       self._supported_strategies):
       raise NotImplementedError(
-          'Currently only support empty strategy, MirroredStrategy and '
-          'MultiWorkerMirroredStrategy.')
+          '%s is not supported yet. '
+          'Currently BackupAndRestore callback only supports empty strategy, '
+          'MirroredStrategy, MultiWorkerMirroredStrategy and TPUStrategy.' %
+          type(self.model.distribute_strategy).__name__)
     self.model._training_state = (
         worker_training_state.WorkerTrainingState(self.model, self.backup_dir))
     self._training_state = self.model._training_state
@@ -2130,7 +2157,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     config_pbtxt = text_format.MessageToString(config)
     path = os.path.join(self._log_write_dir, 'projector_config.pbtxt')
-    with open(path, 'w') as f:
+    with gfile.Open(path, 'w') as f:
       f.write(config_pbtxt)
 
   def _push_writer(self, writer, step):
@@ -2560,8 +2587,6 @@ class CSVLogger(Callback):
         delimiter = self.sep
 
       fieldnames = ['epoch'] + self.keys
-      if six.PY2:
-        fieldnames = [unicode(x) for x in fieldnames]
 
       self.writer = csv.DictWriter(
           self.csv_file,

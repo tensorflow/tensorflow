@@ -132,10 +132,10 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
 
 namespace internal {
 
-XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
-                            absl::Span<const XlaOp> operands,
-                            absl::string_view fusion_kind,
-                            const XlaComputation& fused_computation) {
+XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
+                                    absl::Span<const XlaOp> operands,
+                                    absl::string_view fusion_kind,
+                                    const XlaComputation& fused_computation) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_fusion_kind(std::string(fusion_kind));
@@ -147,6 +147,21 @@ XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
     return builder->AddInstruction(std::move(instr), HloOpcode::kFusion,
                                    operands);
   });
+}
+
+XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
+                                     const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kBitcast,
+                                   {operand});
+  });
+}
+
+HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
+  return &op.builder()
+              ->instructions_[op.builder()->handle_to_index_[op.handle_]];
 }
 
 }  // namespace internal
@@ -1707,7 +1722,9 @@ XlaOp XlaBuilder::CustomCall(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-    bool has_side_effect) {
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
@@ -1739,7 +1756,8 @@ XlaOp XlaBuilder::CustomCall(
       }
     }
     return CustomCallInternal(call_target_name, operands, shape, opaque,
-                              operand_shapes_with_layout, has_side_effect);
+                              operand_shapes_with_layout, has_side_effect,
+                              output_operand_aliasing);
   });
 }
 
@@ -1747,7 +1765,9 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-    bool has_side_effect) {
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_custom_call_target(call_target_name);
@@ -1759,6 +1779,16 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     }
   }
   instr.set_custom_call_has_side_effect(has_side_effect);
+  for (const auto& pair : output_operand_aliasing) {
+    auto aliasing = instr.add_custom_call_output_operand_aliasing();
+    aliasing->set_operand_index(pair.second.first);
+    for (int64 index : pair.second.second) {
+      aliasing->add_operand_shape_index(index);
+    }
+    for (int64 index : pair.first) {
+      aliasing->add_output_shape_index(index);
+    }
+  }
   return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
 }
 
@@ -1766,7 +1796,9 @@ XlaOp XlaBuilder::CustomCall(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const XlaComputation& computation, const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-    bool has_side_effect) {
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1804,6 +1836,16 @@ XlaOp XlaBuilder::CustomCall(
       }
     }
     AddCalledComputation(computation, &instr);
+    for (const auto& pair : output_operand_aliasing) {
+      auto aliasing = instr.add_custom_call_output_operand_aliasing();
+      aliasing->set_operand_index(pair.second.first);
+      for (int64 index : pair.second.second) {
+        aliasing->add_operand_shape_index(index);
+      }
+      for (int64 index : pair.first) {
+        aliasing->add_output_shape_index(index);
+      }
+    }
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
   });
 }
@@ -3861,31 +3903,39 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
   return builder->Call(computation, operands);
 }
 
-XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 absl::Span<const XlaOp> operands, const Shape& shape,
-                 const string& opaque, bool has_side_effect) {
+XlaOp CustomCall(
+    XlaBuilder* builder, const string& call_target_name,
+    absl::Span<const XlaOp> operands, const Shape& shape, const string& opaque,
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect);
+                             has_side_effect, output_operand_aliasing);
 }
 
-XlaOp CustomCallWithComputation(XlaBuilder* builder,
-                                const string& call_target_name,
-                                absl::Span<const XlaOp> operands,
-                                const XlaComputation& computation,
-                                const Shape& shape, const string& opaque,
-                                bool has_side_effect) {
-  return builder->CustomCall(
-      call_target_name, operands, computation, shape, opaque,
-      /*operand_shapes_with_layout=*/absl::nullopt, has_side_effect);
+XlaOp CustomCallWithComputation(
+    XlaBuilder* builder, const string& call_target_name,
+    absl::Span<const XlaOp> operands, const XlaComputation& computation,
+    const Shape& shape, const string& opaque, bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
+  return builder->CustomCall(call_target_name, operands, computation, shape,
+                             opaque,
+                             /*operand_shapes_with_layout=*/absl::nullopt,
+                             has_side_effect, output_operand_aliasing);
 }
 
-XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
-                           absl::Span<const XlaOp> operands, const Shape& shape,
-                           absl::Span<const Shape> operand_shapes_with_layout,
-                           const string& opaque, bool has_side_effect) {
+XlaOp CustomCallWithLayout(
+    XlaBuilder* builder, const string& call_target_name,
+    absl::Span<const XlaOp> operands, const Shape& shape,
+    absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
-                             operand_shapes_with_layout, has_side_effect);
+                             operand_shapes_with_layout, has_side_effect,
+                             output_operand_aliasing);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,

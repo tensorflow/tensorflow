@@ -74,9 +74,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* indices = GetInput(context, node, kIndices);
-  const TfLiteTensor* updates = GetInput(context, node, kUpdates);
-  const TfLiteTensor* shape = GetInput(context, node, kShape);
+  const TfLiteTensor* indices;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kIndices, &indices));
+  const TfLiteTensor* updates;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kUpdates, &updates));
+  const TfLiteTensor* shape;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kShape, &shape));
 
   switch (updates->type) {
     case kTfLiteFloat32:
@@ -96,7 +99,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = updates->type;
 
   if (IsConstantTensor(shape)) {
@@ -163,10 +168,15 @@ TfLiteStatus EvalScatterNd(TfLiteContext* context, const TfLiteTensor* indices,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* indices = GetInput(context, node, kIndices);
-  const TfLiteTensor* updates = GetInput(context, node, kUpdates);
-  const TfLiteTensor* shape = GetInput(context, node, kShape);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* indices;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kIndices, &indices));
+  const TfLiteTensor* updates;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kUpdates, &updates));
+  const TfLiteTensor* shape;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kShape, &shape));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (indices->type) {
     case kTfLiteInt32:

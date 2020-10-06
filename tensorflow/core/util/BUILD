@@ -16,7 +16,14 @@ load(
     "tf_cuda_only_cc_test",
     "tf_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -598,6 +605,7 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
+    compatible_with = [],
     # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
@@ -621,6 +629,7 @@ tf_kernel_library(
     name = "rocm_solvers",
     srcs = ["rocm_solvers.cc"],
     hdrs = ["rocm_solvers.h"],
+    compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
@@ -639,6 +648,7 @@ tf_kernel_library(
     name = "cuda_sparse",
     srcs = if_cuda(["cuda_sparse.cc"]) + if_rocm(["rocm_sparse.cc"]),
     hdrs = ["cuda_sparse.h"],
+    compatible_with = [],
     deps = [
         ":cuda_solvers",
         "//tensorflow/core:framework",
@@ -867,5 +877,8 @@ tf_proto_library(
         ":event_proto",
         ":saved_tensor_slice_proto",
         ":memmapped_file_system_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )

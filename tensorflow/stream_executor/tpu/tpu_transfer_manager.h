@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
 namespace tensorflow {
+namespace tpu {
 
 class TpuTransferManager : public xla::TpuTransferManagerInterface {
  public:
@@ -67,9 +68,16 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   int64 GetByteSizeRequirement(const xla::Shape& shape) const override;
 
+  StatusOr<xla::Shape> ChooseCompactLayoutForShape(
+      const xla::Shape& host_shape) const override;
+
   bool CanShapedBufferBeAccessedNow(
       stream_executor::StreamExecutor* executor,
       const xla::ShapedBuffer& device_buffer) const override;
+
+  bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const override;
 
   Status WriteSingleTupleIndexTable(
       stream_executor::Stream* stream,
@@ -85,6 +93,7 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
   XLA_TransferManager* manager_;
 };
 
+}  // namespace tpu
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TRANSFER_MANAGER_H_

@@ -136,12 +136,11 @@ Status GraphMgr::InitItem(
 
   // We don't explicitly Validate the graph def because ConvertGraphDefToGraph
   // does that below.
-
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, /*config=*/&config_proto,
       gdef.versions().producer(), item->lib_def.get(),
       graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
-      /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+      /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [this, session](const int64 step_id, const DeviceMgr*,
                           Rendezvous** r) -> Status {

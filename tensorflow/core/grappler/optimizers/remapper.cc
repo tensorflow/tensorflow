@@ -365,12 +365,12 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 }
 
 bool IsSupportedActivation(const NodeDef& node) {
-// Disable LeakyRelu temporarily before MKL PR is merged.
-#ifndef INTEL_MKL
-  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+#ifdef INTEL_MKL
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node) ||
+         IsTanh(node);
 #else
-  return IsRelu(node) || IsRelu6(node) || IsElu(node);
-#endif  // !INTEL_MKL
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+#endif
 }
 
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
@@ -463,6 +463,9 @@ bool FindContractionWithBiasAndActivation(
   const auto* contraction_node_view =
       bias_add_node_view->GetRegularFanin(0).node_view();
   const auto* contraction_node_def = contraction_node_view->node();
+
+  // Currently, only matmul + bias + tanh is enable
+  if (!IsMatMul(*contraction_node_def) && IsTanh(*node_def)) return false;
 
   // Currently, only conv + bias + leakyrelu is enabled
   if (!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) return false;
@@ -715,6 +718,9 @@ bool FindContractionWithBiasAndAddActivation(
   const auto* node_def = node_view->node();
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
+
+  // Currently, Contraction + Bias + Add + Tanh pattern is not supported
+  if (IsTanh(*node_def)) return false;
 
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
   // MKL activation op only supports float and bfloat16 data types.
@@ -1432,29 +1438,41 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
 
-  if (fused_node.attr().at(kDataFormat).s() == "NCHW") {
+  string x_format = fused_node.attr().at(kDataFormat).s();
+  if (x_format == "NCHW" or x_format == "NCDHW") {
     // Need to reshape the last 4 inputs
     NodeDef new_shape;
     const string new_shape_name =
-        AddPrefixToNodeName("NCHWShape", fused_node.name());
+        AddPrefixToNodeName(x_format + "Shape", fused_node.name());
     new_shape.set_name(new_shape_name);
     new_shape.set_op("Const");
     new_shape.set_device(fused_node.device());
     *new_shape.add_input() = AsControlDependency(scale);
     (*new_shape.mutable_attr())["dtype"].set_type(DT_INT32);
-    Tensor t(DT_INT32, {4});
-    t.flat<int32>()(0) = 1;
-    t.flat<int32>()(1) = -1;
-    t.flat<int32>()(2) = 1;
-    t.flat<int32>()(3) = 1;
-    t.AsProtoTensorContent(
-        (*new_shape.mutable_attr())["value"].mutable_tensor());
+    if (x_format == "NCHW") {
+      Tensor t(DT_INT32, {4});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = -1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = 1;
+      t.AsProtoTensorContent(
+          (*new_shape.mutable_attr())["value"].mutable_tensor());
+    } else {
+      Tensor t(DT_INT32, {5});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = -1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = 1;
+      t.flat<int32>()(4) = 1;
+      t.AsProtoTensorContent(
+          (*new_shape.mutable_attr())["value"].mutable_tensor());
+    }
     mutation->AddNode(std::move(new_shape), &status);
     TF_RETURN_IF_ERROR(status);
 
     NodeDef reshaped_scale;
     reshaped_scale.set_name(
-        AddPrefixToNodeName("NCHWShapedScale", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedScale", fused_node.name()));
     reshaped_scale.set_op("Reshape");
     reshaped_scale.set_device(fused_node.device());
     *reshaped_scale.add_input() = scale;
@@ -1467,7 +1485,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_offset;
     reshaped_offset.set_name(
-        AddPrefixToNodeName("NCHWShapedOffset", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedOffset", fused_node.name()));
     reshaped_offset.set_op("Reshape");
     reshaped_offset.set_device(fused_node.device());
     *reshaped_offset.add_input() = offset;
@@ -1480,7 +1498,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_mean;
     reshaped_mean.set_name(
-        AddPrefixToNodeName("NCHWShapedMean", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedMean", fused_node.name()));
     reshaped_mean.set_op("Reshape");
     reshaped_mean.set_device(fused_node.device());
     *reshaped_mean.add_input() = mean;
@@ -1493,7 +1511,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_variance;
     reshaped_variance.set_name(
-        AddPrefixToNodeName("NCHWShapedVariance", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedVariance", fused_node.name()));
     reshaped_variance.set_op("Reshape");
     reshaped_variance.set_device(fused_node.device());
     *reshaped_variance.add_input() = variance;

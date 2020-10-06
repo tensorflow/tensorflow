@@ -31,7 +31,7 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 //===----------------------------------------------------------------------===//
 
 def FeatureDimension : NativeCodeCall<
-    "getFeatureDimensionAttr($_builder, $0, $1)">;
+    "getFeatureDimensionAttr($_builder, $0.getValue(), $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
@@ -86,7 +86,7 @@ def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
     "types must be broadcastable">;
 
 class DirectBinaryPat<Op FromOp, Op ToOp>
-  : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+  : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_AddOp, HLOClient_BroadcastAddOp],
@@ -578,6 +578,7 @@ foreach Mapping = [
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
+                   [TF_InvertOp, HLO_NotOp],
                    [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_Log1pOp, HLO_Log1pOp],
@@ -586,26 +587,15 @@ foreach Mapping = [
                    [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SigmoidOp, HLO_LogisticOp],
+                   [TF_SinhOp, HLOClient_SinhOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
+                   [TF_TanOp, HLOClient_TanOp],
                   ] in {
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
-
-// Expand acos to MHLO dialect as follows:
-//   acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))  if x != -1
-//           = pi                                 if x == -1
-def : Pat<(HLOClient_AcosOp $input), (HLO_SelectOp
-  (HLO_CompareOp $input, (HLO_ConstantLike<"0"> $input),
-     HLO_COMPARISON_DIRECTION_NE),
-  (HLO_MulOp (HLO_ConstantLike<"2.0f"> $input),
-    (HLO_Atan2Op
-      (HLO_SqrtOp (HLO_SubOp
-         (HLO_ConstantLike<"1"> $input), (HLO_MulOp $input, $input))),
-      (HLO_AddOp (HLO_ConstantLike<"1"> $input), $input))),
-  (HLO_ConstantLike<"M_PI"> $input))>;
 
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.

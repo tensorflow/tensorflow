@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import threading
+import warnings
 import weakref
 
 import numpy as np
@@ -40,7 +41,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device_spec
@@ -54,6 +54,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -81,8 +83,6 @@ from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -425,10 +425,10 @@ def set_learning_phase(value):
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
   """
-  logging.warning('`tf.keras.backend.set_learning_phase` is deprecated and '
-                  'will be removed after 2020-10-11. To update it, simply '
-                  'pass a True/False value to the `training` argument of the '
-                  '`__call__` method of your layer or model.')
+  warnings.warn('`tf.keras.backend.set_learning_phase` is deprecated and '
+                'will be removed after 2020-10-11. To update it, simply '
+                'pass a True/False value to the `training` argument of the '
+                '`__call__` method of your layer or model.')
   deprecated_internal_set_learning_phase(value)
 
 
@@ -483,10 +483,10 @@ def learning_phase_scope(value):
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
-  logging.warning('`tf.keras.backend.learning_phase_scope` is deprecated and '
-                  'will be removed after 2020-10-11. To update it, simply '
-                  'pass a True/False value to the `training` argument of the '
-                  '`__call__` method of your layer or model.')
+  warnings.warn('`tf.keras.backend.learning_phase_scope` is deprecated and '
+                'will be removed after 2020-10-11. To update it, simply '
+                'pass a True/False value to the `training` argument of the '
+                '`__call__` method of your layer or model.')
   with deprecated_internal_learning_phase_scope(value):
     try:
       yield
@@ -1267,7 +1267,8 @@ def is_placeholder(x):
   try:
     if keras_tensor.keras_tensors_enabled():
       return hasattr(x, '_is_backend_placeholder')
-    if isinstance(x, composite_tensor.CompositeTensor):
+    from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
+    if tf_utils.is_extension_type(x):
       flat_components = nest.flatten(x, expand_composites=True)
       return py_any(is_placeholder(c) for c in flat_components)
     else:
@@ -1816,6 +1817,8 @@ def moving_average_update(x, value, momentum):
 def dot(x, y):
   """Multiplies 2 tensors (and/or variables) and returns a tensor.
 
+  This operation corresponds to `numpy.dot(a, b, out=None)`.
+
   Arguments:
       x: Tensor or variable.
       y: Tensor or variable.
@@ -1825,6 +1828,7 @@ def dot(x, y):
 
   Examples:
 
+  If inputs `x` and `y` are 2-D arrays, then it is equivalent to `tf.matmul`.
   >>> x = tf.keras.backend.placeholder(shape=(2, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
@@ -1837,6 +1841,8 @@ def dot(x, y):
   >>> xy
   <KerasTensor: shape=(32, 28, 4) dtype=float32 ...>
 
+  If `x` is an N-D array and `y` is an M-D array (where M>=2), it is a sum
+  product over the last axis of `x` and the second-to-last axis of `y`.
   >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
   >>> y = tf.keras.backend.ones((4, 3, 5))
   >>> xy = tf.keras.backend.dot(x, y)
@@ -3880,7 +3886,8 @@ class GraphExecutionFunction(object):
     # CompositeTensors. E.g., if output_structure contains a SparseTensor, then
     # this ensures that we return its value as a SparseTensorValue rather than
     # a SparseTensor.
-    if isinstance(tensor, composite_tensor.CompositeTensor):
+    from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
+    if tf_utils.is_extension_type(tensor):
       return self._session.run(tensor)
     else:
       return tensor
@@ -4799,8 +4806,14 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """
   target = ops.convert_to_tensor_v2_with_dispatch(target)
   output = ops.convert_to_tensor_v2_with_dispatch(output)
-
   target.shape.assert_is_compatible_with(output.shape)
+
+  # Use logits whenever they are available. `softmax` and `sigmoid`
+  # activations cache logits on the `output` Tensor.
+  if hasattr(output, '_keras_logits'):
+    output = output._keras_logits  # pylint: disable=protected-access
+    from_logits = True
+
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
@@ -4850,9 +4863,14 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   target = ops.convert_to_tensor_v2_with_dispatch(target)
   output = ops.convert_to_tensor_v2_with_dispatch(output)
 
-  if (not from_logits and
-      not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
+  # Use logits whenever they are available. `softmax` and `sigmoid`
+  # activations cache logits on the `output` Tensor.
+  if hasattr(output, '_keras_logits'):
+    output = output._keras_logits  # pylint: disable=protected-access
+    from_logits = True
+  elif (not from_logits and
+        not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+        output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4860,8 +4878,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
     assert len(output.op.inputs) == 1
     output = output.op.inputs[0]
     from_logits = True
-
-  if not from_logits:
+  elif not from_logits:
     epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
     output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
     output = math_ops.log(output)
@@ -4927,6 +4944,12 @@ def binary_crossentropy(target, output, from_logits=False):
   """
   target = ops.convert_to_tensor_v2_with_dispatch(target)
   output = ops.convert_to_tensor_v2_with_dispatch(output)
+
+  # Use logits whenever they are available. `softmax` and `sigmoid`
+  # activations cache logits on the `output` Tensor.
+  if hasattr(output, '_keras_logits'):
+    output = output._keras_logits  # pylint: disable=protected-access
+    from_logits = True
 
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
@@ -6018,8 +6041,9 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
   dtype=float32)>
   """
-  logging.warning('`tf.keras.backend.random_binomial` is deprecated. '
-                  'Please use `tf.keras.backend.random_bernoulli` instead.')
+  warnings.warn('`tf.keras.backend.random_binomial` is deprecated, '
+                'and will be removed in a future version.'
+                'Please use `tf.keras.backend.random_bernoulli` instead.')
   return random_bernoulli(shape, p, dtype, seed)
 
 

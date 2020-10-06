@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@io_bazel_rules_closure//closure:defs.bzl",
     "closure_proto_library",
@@ -89,9 +91,6 @@ filegroup(
     ],
 )
 
-# TODO(bmzhao): Split this target into separate tf_proto_libraries.
-# This target is a holdover from the target tensorflow/core:example_protos,
-# but splitting it while require multiple LSCs.
 tf_proto_library(
     name = "example_protos",
     srcs = [
@@ -100,6 +99,7 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -121,6 +121,9 @@ tf_proto_library(
     protodeps = [
         ":example_protos",
         ":example_parser_configuration_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )
 

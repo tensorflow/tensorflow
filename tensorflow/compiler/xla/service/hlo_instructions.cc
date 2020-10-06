@@ -447,7 +447,10 @@ std::vector<string> HloChannelInstruction::ExtraAttributesToStringImpl(
 bool HloChannelInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
-    /*eq_computations*/) const {
+        eq_computations) const {
+  if (!IdenticalSlowPathIgnoringChannelIdValues(other, eq_computations)) {
+    return false;
+  }
   const auto& casted_other = static_cast<const HloChannelInstruction&>(other);
   return channel_id() == casted_other.channel_id();
 }
@@ -475,7 +478,7 @@ std::vector<string> HloSendRecvInstruction::ExtraAttributesToStringImpl(
   return attrs;
 }
 
-bool HloSendRecvInstruction::IdenticalSlowPath(
+bool HloSendRecvInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
@@ -596,13 +599,14 @@ std::vector<string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
   return result;
 }
 
-bool HloCollectiveInstruction::IdenticalSlowPath(
+bool HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloCollectiveInstruction&>(other);
-  return HloChannelInstruction::IdenticalSlowPath(other, eq_computations) &&
+  return HloChannelInstruction::IdenticalSlowPathIgnoringChannelIdValues(
+             other, eq_computations) &&
          constrain_layout() == casted_other.constrain_layout() &&
          absl::c_equal(replica_groups(), casted_other.replica_groups(),
                        [](const ReplicaGroup& a, const ReplicaGroup& b) {
@@ -645,12 +649,13 @@ HloInstructionProto HloAllGatherInstruction::ToProto() const {
   return proto;
 }
 
-bool HloAllGatherInstruction::IdenticalSlowPath(
+bool HloAllGatherInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   const auto& casted_other = static_cast<const HloAllGatherInstruction&>(other);
-  return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
+  return HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
+             other, eq_computations) &&
          all_gather_dimension_ == casted_other.all_gather_dimension() &&
          use_global_device_ids() == casted_other.use_global_device_ids();
 }
@@ -691,12 +696,13 @@ std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
   return result;
 }
 
-bool HloAllReduceInstruction::IdenticalSlowPath(
+bool HloAllReduceInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
-  return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
+  return HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
+             other, eq_computations) &&
          constrain_layout() == casted_other.constrain_layout() &&
          use_global_device_ids() == casted_other.use_global_device_ids() &&
          eq_computations(to_apply(), casted_other.to_apply());
@@ -747,12 +753,13 @@ std::vector<string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
   return result;
 }
 
-bool HloAllToAllInstruction::IdenticalSlowPath(
+bool HloAllToAllInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   const auto& casted_other = static_cast<const HloAllToAllInstruction&>(other);
-  return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
+  return HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
+             other, eq_computations) &&
          split_dimension_ == casted_other.split_dimension();
 }
 
@@ -788,7 +795,7 @@ HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
   return result;
 }
 
-bool HloCollectivePermuteInstruction::IdenticalSlowPath(
+bool HloCollectivePermuteInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
@@ -797,7 +804,8 @@ bool HloCollectivePermuteInstruction::IdenticalSlowPath(
   }
   const auto& casted_other =
       static_cast<const HloCollectivePermuteInstruction&>(other);
-  return HloChannelInstruction::IdenticalSlowPath(other, eq_computations) &&
+  return HloChannelInstruction::IdenticalSlowPathIgnoringChannelIdValues(
+             other, eq_computations) &&
          absl::c_equal(source_target_pairs(),
                        casted_other.source_target_pairs(),
                        [](const std::pair<int64, int64>& a,
@@ -2387,6 +2395,16 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
     }
   }
   proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
+  for (const auto& pair : output_to_operand_aliasing_) {
+    auto aliasing = proto.add_custom_call_output_operand_aliasing();
+    aliasing->set_operand_index(pair.second.first);
+    for (int64 index : pair.first) {
+      aliasing->add_output_shape_index(index);
+    }
+    for (int64 index : pair.second.second) {
+      aliasing->add_operand_shape_index(index);
+    }
+  }
   return proto;
 }
 
@@ -2423,6 +2441,16 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   }
   if (custom_call_has_side_effect_) {
     extra.push_back("custom_call_has_side_effect=true");
+  }
+  if (!output_to_operand_aliasing_.empty()) {
+    std::vector<string> pair_strings;
+    for (const auto& pair : output_to_operand_aliasing_) {
+      pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
+                                    pair.second.first, ", ",
+                                    pair.second.second.ToString(), ")"));
+    }
+    extra.push_back(StrCat("output_to_operand_aliasing={",
+                           StrJoin(pair_strings, ", "), "}"));
   }
   return extra;
 }
@@ -2467,6 +2495,10 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       casted_other.custom_call_has_side_effect()) {
     return false;
   }
+  if (output_to_operand_aliasing_ !=
+      casted_other.output_to_operand_aliasing()) {
+    return false;
+  }
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;
@@ -2491,6 +2523,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_feature_group_count(feature_group_count_);
   cloned->set_batch_group_count(batch_group_count_);
   cloned->set_custom_call_has_side_effect(custom_call_has_side_effect_);
+  cloned->set_output_to_operand_aliasing(output_to_operand_aliasing_);
   return std::move(cloned);
 }
 

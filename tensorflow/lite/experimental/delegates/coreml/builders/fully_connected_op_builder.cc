@@ -153,8 +153,10 @@ bool IsFullyConnectedOpSupported(const TfLiteRegistration* registration,
   if (fc_params->weights_format != kTfLiteFullyConnectedWeightsFormatDefault) {
     return false;
   }
-  const TfLiteTensor* input = GetInput(context, node, kInput);
-  const TfLiteTensor* weights = GetInput(context, node, kWeights);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInput, &input));
+  const TfLiteTensor* weights;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kWeights, &weights));
 
   if (!IsFloatType(input->type)) {
     return false;
@@ -169,7 +171,8 @@ bool IsFullyConnectedOpSupported(const TfLiteRegistration* registration,
   }
 
   if (node->inputs->size > 2) {
-    const TfLiteTensor* bias = GetInput(context, node, kBias);
+    const TfLiteTensor* bias;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBias, &bias));
     if (!IsFloatType(bias->type) || !IsConstantTensor(bias)) {
       return false;
     }

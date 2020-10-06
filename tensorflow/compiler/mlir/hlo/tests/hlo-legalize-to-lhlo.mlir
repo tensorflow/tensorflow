@@ -1,8 +1,5 @@
 // RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-placement -split-input-file %s -o - | FILECHECK_OPTS="" FileCheck --check-prefixes=PRE,BOTH %s
 // RUN: mlir-hlo-opt -hlo-legalize-to-lhlo=results-escape-function=true -buffer-placement -split-input-file %s -o - | FILECHECK_OPTS="" FileCheck --check-prefixes=ESC,BOTH %s
-// TODO(herhut): unbreak the test after upstream API changes.
-// XFAIL: *
-
 
 // BOTH-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -173,7 +170,7 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
   // BOTH-SAME: (%[[OPERAND:.*]]: memref<?x?xf32>)
   %tensor_operand = tensor_load %operand : memref<?x?xf32>
   %c1 = constant 1 : i64
-  %shape = tensor_from_elements(%c1, %c1, %c1) : tensor<3xi64>
+  %shape = tensor_from_elements %c1, %c1, %c1 : tensor<3xi64>
   %tensor_result = "mhlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape) {
     broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
@@ -239,6 +236,21 @@ func @complex(%real: memref<2x2xf32>,
 
 // -----
 
+// BOTH-LABEL: func @complex_dyn
+func @complex_dyn(%real: memref<?xf32>,
+                  %imag: memref<?xf32>,
+                  %result: memref<?xcomplex<f32>>) {
+  %tensor_real = tensor_load %real : memref<?xf32>
+  %tensor_imag = tensor_load %imag : memref<?xf32>
+  %tensor_result = "mhlo.complex"(%tensor_real, %tensor_imag)
+      : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xcomplex<f32>>
+  // BOTH: "lmhlo.complex"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<?xcomplex<f32>>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @real
 func @real(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>
@@ -251,6 +263,18 @@ func @real(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
 
 // -----
 
+// BOTH-LABEL: func @real_dyn
+func @real_dyn(%operand: memref<?xcomplex<f32>>, %result: memref<?xf32>) {
+  %tensor_operand = tensor_load %operand : memref<?xcomplex<f32>>
+  %tensor_result = "mhlo.real"(%tensor_operand)
+      : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // BOTH: "lmhlo.real"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<?xf32>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @imag
 func @imag(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>
@@ -258,6 +282,18 @@ func @imag(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
       : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
   // BOTH: "lmhlo.imag"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// BOTH-LABEL: func @imag_dyn
+func @imag_dyn(%operand: memref<?xcomplex<f32>>, %result: memref<?xf32>) {
+  %tensor_operand = tensor_load %operand : memref<?xcomplex<f32>>
+  %tensor_result = "mhlo.imag"(%tensor_operand)
+      : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // BOTH: "lmhlo.imag"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<?xf32>
   return
 }
 
@@ -347,6 +383,18 @@ func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// BOTH-LABEL: func @not
+func @not(%operand: memref<2x2xi32>, %result: memref<2x2xi32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xi32>
+  %tensor_result = "mhlo.not"(%tensor_operand)
+      : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  // BOTH: "lmhlo.not"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @rsqrt
 func @rsqrt(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -419,7 +467,7 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
   // BOTH: %[[C1:.*]] = constant 1 : index
   // BOTH: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // BOTH: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // BOTH: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
+  // BOTH: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
   // BOTH: %[[C0_:.*]] = constant 0 : index
   // BOTH: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
   // BOTH: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
@@ -444,7 +492,7 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) {
   // BOTH: %[[C1:.*]] = constant 1 : index
   // BOTH: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // BOTH: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // BOTH: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
+  // BOTH: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
   // BOTH: %[[C0_:.*]] = constant 0 : index
   // BOTH: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
   // BOTH: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
@@ -536,5 +584,31 @@ func @transpose(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   // BOTH: "lmhlo.transpose"(%{{.*}}, %{{.*}}) {permutation = dense<[1, 0]> : tensor<2xi64>}
   // BOTH-NOT: tensor_store
   tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// BOTH-LABEL: func @custom_call
+// BOTH-SAME:([[ARG0:%.*]]: memref<2x2xf32>, [[ARG1:%.*]]: memref<2x3xf32>, [[RESULT:%.*]]: memref<4x4xf16>)
+func @custom_call(%arg0: memref<2x2xf32>, %arg1: memref<2x3xf32>, %result: memref<4x4xf16>) {
+  %arg0_tensor = tensor_load %arg0 : memref<2x2xf32>
+  %arg1_tensor = tensor_load %arg1 : memref<2x3xf32>
+  // BOTH: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false}
+  %result_tensor = "mhlo.custom_call"(%arg0_tensor, %arg1_tensor)
+                   {backend_config = "", call_target_name = "foo", has_side_effect = false}
+                   : (tensor<2x2xf32>, tensor<2x3xf32>) -> tensor<4x4xf16>
+  tensor_store %result_tensor, %result: memref<4x4xf16>
+  return
+}
+
+// ----
+
+// BOTH-LABEL: func @isfinite
+func @isfinite(%arg0: memref<2x2xf32>, %result: memref<2x2xi1>) {
+  %arg0_tensor = tensor_load %arg0 : memref<2x2xf32>
+  // BOTH: "lmhlo.is_finite"(%{{.*}}, %{{.*}})
+  %result_tensor = "mhlo.is_finite"(%arg0_tensor) : (tensor<2x2xf32>) -> tensor<2x2xi1>
+  tensor_store %result_tensor, %result: memref<2x2xi1>
   return
 }

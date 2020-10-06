@@ -171,10 +171,11 @@ int main(int argc, char **argv) {
       llvm::errs() << "There should be only one exported name";
       return kTrFailure;
     }
-
-    module =
-        tensorflow::ImportSavedModel(input_file_name, saved_model_version, tags,
-                                     exported_names, specs, &context);
+    std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
+                                          custom_opdefs.end());
+    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
+                                          tags, extra_opdefs, exported_names,
+                                          specs, &context);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,

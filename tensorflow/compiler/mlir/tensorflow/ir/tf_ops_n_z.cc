@@ -565,6 +565,17 @@ OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReluOp
+//===----------------------------------------------------------------------===//
+
+Optional<ContractionFusion> ReluOp::GetContractionFusion() {
+  // Only f32 is supported for fusion.
+  if (!T().isF32()) return None;
+
+  return ContractionFusion("Relu", /*additional_arguments=*/{});
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
@@ -1021,6 +1032,7 @@ static LogicalResult Verify(SizeOp op) {
 
 OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
   ShapedType output_type = getType().cast<ShapedType>();
+  if (!output_type.hasRank()) return {};
   ShapedType input_type = getOperand().getType().cast<ShapedType>();
   if (!input_type.hasStaticShape()) return {};
   int size = input_type.getNumElements();
@@ -1167,8 +1179,178 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 // SpaceToBatchNDOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/157475606): Add Verify(SpaceToBatchNDOp)
-// TODO(b/157475606): Add SpaceToBatchNDOp::inferReturnTypes
+int64_t SpaceToBatchNDBlockRank(const TensorType block_shape_type,
+                                const TensorType paddings_type) {
+  if (block_shape_type.hasStaticShape()) {
+    return block_shape_type.getShape()[0];
+  } else if (paddings_type.hasStaticShape()) {
+    return paddings_type.getShape()[0];
+  } else {
+    return -1;
+  }
+}
+
+static LogicalResult Verify(SpaceToBatchNDOp op) {
+  const auto input_type = op.input().getType().cast<TensorType>();
+  const auto block_shape_type = op.block_shape().getType().cast<TensorType>();
+  const auto paddings_type = op.paddings().getType().cast<TensorType>();
+
+  // Check that block_shape has rank 1.
+  if (!IsOfRankOrUnranked(op.block_shape(), 1)) {
+    return op.emitOpError() << "requires rank of block_shape = 1; got "
+                            << block_shape_type.getRank();
+  }
+
+  // Check that paddings has rank 2.
+  if (!IsOfRankOrUnranked(op.paddings(), 2)) {
+    return op.emitOpError()
+           << "requires rank of paddings = 2; got " << paddings_type.getRank();
+  }
+
+  // Check that paddings.shape[1]=2.
+  if (paddings_type.hasStaticShape() && paddings_type.getShape()[1] != 2) {
+    return op.emitOpError() << "requires paddings.shape[1] to be 2; got "
+                            << paddings_type.getShape()[1];
+  }
+
+  // Check that block_shape and paddings have consistent ranks.
+  if (block_shape_type.hasStaticShape() && paddings_type.hasStaticShape() &&
+      block_shape_type.getShape()[0] != paddings_type.getShape()[0]) {
+    return op.emitOpError()
+           << "requires block_shape.shape[0] must equal paddings.shape[0]";
+  }
+
+  const int64_t block_rank =
+      SpaceToBatchNDBlockRank(block_shape_type, paddings_type);
+
+  // Further checks require block_rank to be known.
+  if (block_rank == -1) {
+    return success();
+  }
+
+  // check that rank of input_type >= block_rank + 1
+  if (input_type.hasRank() && input_type.getRank() < 1 + block_rank) {
+    return op.emitOpError() << "requires rank of input >= 1 + rank of block";
+  }
+
+  ElementsAttr block_shape_attr = nullptr;
+  ElementsAttr paddings_attr = nullptr;
+
+  // Check that block_shape[*] >= 1.
+  if (matchPattern(op.block_shape(), m_Constant(&block_shape_attr))) {
+    uint64_t i = 0;
+    for (auto block_len : block_shape_attr.getValues<APInt>()) {
+      if (block_len.getSExtValue() < 1) {
+        return op.emitOpError()
+               << "requires all values of block_shape to be >= 1; "
+                  "failed for dimension "
+               << i;
+      }
+      ++i;
+    }
+  }
+
+  // Check that paddings[*] >= 0.
+  if (matchPattern(op.paddings(), m_Constant(&paddings_attr))) {
+    for (uint64_t i = 0; i < block_rank; ++i) {
+      const int64_t pad_start =
+          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+      const int64_t pad_end =
+          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+      if (pad_start < 0 || pad_end < 0) {
+        return op.emitOpError()
+               << "requires all values of paddings to be >= 0; "
+                  "failed for dimension "
+               << i;
+      }
+    }
+  }
+
+  // Check that block_shape divides the padded input.
+  if (input_type.hasStaticShape() && block_shape_attr && paddings_attr) {
+    for (uint64_t i = 0; i < block_rank; ++i) {
+      const int64_t input_len = input_type.getShape()[1 + i];
+      const int64_t pad_start =
+          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+      const int64_t pad_end =
+          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+      const int64_t block_len =
+          block_shape_attr.getValue({i}).cast<IntegerAttr>().getInt();
+      if ((input_len + pad_start + pad_end) % block_len != 0) {
+        return op.emitOpError()
+               << "requires block_shape[i] divides "
+                  "input_shape[i + 1] + paddings[i, 0] + paddings[i, 1]; "
+                  "failed for i="
+               << i;
+      }
+    }
+  }
+
+  return success();
+}
+
+// Infers returned rank if possible. Further, infers returned dimension sizes
+// when possible. For all dimensions sizes to be inferred, the arguments
+// block_shape and paddings must be constant.
+LogicalResult SpaceToBatchNDOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  const Value input = operands[0];
+  const Value block_shape_val = operands[1];
+  const Value paddings_val = operands[2];
+  const auto input_type = input.getType().cast<TensorType>();
+  const auto block_shape_type = block_shape_val.getType().cast<TensorType>();
+  const auto paddings_type = paddings_val.getType().cast<TensorType>();
+
+  // The return is unranked when the input is unranked.
+  if (!input_type.hasRank()) {
+    inferredReturnTypes.assign(
+        {UnrankedTensorType::get(input_type.getElementType())});
+    return success();
+  }
+
+  const int64_t input_rank = input_type.getRank();
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  const int64_t block_rank =
+      SpaceToBatchNDBlockRank(block_shape_type, paddings_type);
+  SmallVector<int64_t, 4> return_shape(input_rank, ShapedType::kDynamicSize);
+
+  // The return has all dimension sizes unknown when block_rank is unknown.
+  if (block_rank == -1) {
+    inferredReturnTypes.assign(
+        {RankedTensorType::get(return_shape, input_type.getElementType())});
+    return success();
+  }
+
+  // The return preserves the remaining dimensions after blocked dimensions.
+  for (uint64_t i = 1 + block_rank; i < input_rank; ++i) {
+    return_shape[i] = input_shape[i];
+  }
+
+  // The rest of the dimension sizes can be calculated when block_shape and
+  // paddings arguments are constant.
+  ElementsAttr block_shape_attr;
+  ElementsAttr paddings_attr;
+  if (matchPattern(block_shape_val, m_Constant(&block_shape_attr)) &&
+      matchPattern(paddings_val, m_Constant(&paddings_attr))) {
+    int64_t return_batch = input_shape[0];
+    for (uint64_t i = 0; i < block_rank; ++i) {
+      int64_t paddings_sum =
+          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt() +
+          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+      int64_t block_shape_i =
+          block_shape_attr.getValue({i}).cast<IntegerAttr>().getInt();
+      return_batch *= block_shape_i;
+      return_shape[1 + i] = (paddings_sum + input_shape[i + 1]) / block_shape_i;
+    }
+    return_shape[0] = return_batch;
+  }
+
+  inferredReturnTypes.assign(
+      {RankedTensorType::get(return_shape, input_type.getElementType())});
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // SparseSoftmaxCrossEntropyWithLogitsOp
@@ -2100,6 +2282,45 @@ void TruncateDivOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// NonMaxSuppressionV3Op
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Canonicalize NonMaxSuppressionV3Op to NonMaxSuppressionV4Op.
+class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
+  using OpRewritePattern<NonMaxSuppressionV3Op>::OpRewritePattern;
+  LogicalResult matchAndRewrite(NonMaxSuppressionV3Op nms_op,
+                                PatternRewriter &rewriter) const override {
+    if (nms_op.getNumOperands() != 5) {
+      return failure();
+    }
+    SmallVector<Type, 2> new_result_types;
+    new_result_types.push_back(nms_op.getType());
+    auto input_ty = nms_op.getType().template cast<ShapedType>();
+    // corresponds to the second result type of nmsv4
+    RankedTensorType valid_output_type =
+        RankedTensorType::get({}, input_ty.getElementType());
+    new_result_types.push_back(valid_output_type);
+
+    auto nmsv4 = rewriter.create<TF::NonMaxSuppressionV4Op>(
+        nms_op.getLoc(), new_result_types, nms_op.boxes(), nms_op.scores(),
+        nms_op.max_output_size(), nms_op.iou_threshold(),
+        nms_op.score_threshold());
+    // Cannot replace the NMSv3 Op with NMSv4 since the outputs between the
+    // two are different (v4 expects two output values vs v3 requires only one.
+    nms_op.replaceAllUsesWith(nmsv4.getResult(0));
+    return success();
+  }
+};
+}  // namespace.
+
+void NonMaxSuppressionV3Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<NMSV3ToNMSV4Op>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // UnpackOp
 //===----------------------------------------------------------------------===//
 
@@ -2277,8 +2498,8 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
 }
 
 static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_func();
-  auto body_fn = op.body_func();
+  auto cond_fn = op.cond_function();
+  auto body_fn = op.body_function();
   if (!cond_fn) {
     return op.emitOpError("cond refers to an undefined function : ")
            << op.cond();
@@ -2479,12 +2700,12 @@ void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<XdivyWithSqrtDivisor>(context);
 }
 
+}  // namespace TF
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc.inc"
-
-}  // namespace TF
-}  // namespace mlir

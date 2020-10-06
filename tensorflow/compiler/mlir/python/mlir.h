@@ -25,11 +25,21 @@ limitations under the License.
 namespace tensorflow {
 
 // Simple wrapper to support tf.mlir.experimental.convert_graph_def.
-// Load a .pbptx, convert to MLIR, and (optionally) optimize the module before
-// returning it as a string.
+// Load a GraphDef (binary or textual proto format), convert to MLIR, and
+// (optionally) optimize the module before returning it as a string.
 // This is an early experimental API, ideally we should return a wrapper object
 // around a Python binding to the MLIR module.
 std::string ImportGraphDef(const std::string &proto,
+                           const std::string &pass_pipeline, TF_Status *status);
+
+// Simple wrapper to support tf.mlir.experimental.convert_function.
+// Load FunctionDef and FunctionDefLibrary (binary or textual proto format),
+// convert to MLIR, and (optionally) optimize the module before returning it as
+// a string.
+// This is an early experimental API, ideally we should return a wrapper object
+// around a Python binding to the MLIR module.
+std::string ImportFunction(const std::string &functiondef_proto,
+                           const std::string &functiondef_library_proto,
                            const std::string &pass_pipeline, TF_Status *status);
 
 // Load a SavedModel and return a textual MLIR string corresponding to it.

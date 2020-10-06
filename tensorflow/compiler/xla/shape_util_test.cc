@@ -558,6 +558,8 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape1)));
   EXPECT_FALSE(std::get<0>(
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
+  EXPECT_FALSE(std::get<0>(
+      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape0)));
 }
 
 TEST(ShapeUtilTest, ForEachIndex) {

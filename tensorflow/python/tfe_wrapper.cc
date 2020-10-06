@@ -28,15 +28,18 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/dlpack.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/get_compiler_ir.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 
 namespace py = pybind11;
@@ -284,7 +287,160 @@ static py::object TFE_ClearScalarCache() {
   return py::none();
 }
 
+// Returns compiler IR for a given function.
+static std::string TFE_GetCompilerIr(py::handle& ctx,
+                                     const char* concrete_function_name,
+                                     const char* stage, const char* device_name,
+                                     py::handle& inputs) {
+  EagerContext* context = ContextFromInterface(
+      reinterpret_cast<ImmediateExecutionContext*>(InputTFE_Context(ctx)));
+
+  std::string s_stage(stage);
+  IrExportStage selected_stage = [&] {
+    if (s_stage == "hlo") {
+      return IrExportStage::HLO;
+    } else if (s_stage == "optimized_hlo") {
+      return IrExportStage::OPTIMIZED_HLO;
+    } else if (s_stage == "optimized_hlo_dot") {
+      return IrExportStage::OPTIMIZED_HLO_DOT;
+    } else {
+      ThrowValueError(
+          absl::StrFormat("Invalid stage selected: '%s'. Valid values are: "
+                          "'hlo', 'optimized_hlo', 'optimized_hlo_dot'",
+                          s_stage)
+              .c_str());
+    }
+  }();
+
+  TFE_InputTensorHandles handles = InputTFE_InputTensorHandles(inputs);
+
+  std::vector<const TensorHandle*> input_handles;
+  for (TFE_TensorHandle* tensor_handle : handles) {
+    AbstractTensorHandle* abstract_tensor_handle = unwrap(tensor_handle);
+    input_handles.push_back(TensorHandleFromInterface(abstract_tensor_handle));
+  }
+
+  DeviceNameUtils::ParsedName input_device_name;
+  if (!DeviceNameUtils::ParseFullOrLocalName(device_name, &input_device_name)) {
+    ThrowValueError(
+        absl::StrFormat("Failed parsing device name: '%s'", device_name)
+            .c_str());
+  }
+
+  std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
+  auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
+    return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
+                                                  d->parsed_name());
+  });
+  if (selected_device == devices.end()) {
+    ThrowValueError("No matching device found");
+  }
+
+  xla::StatusOr<std::string> hlo_text =
+      GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
+                    *selected_device, context, input_handles);
+
+  if (!hlo_text.ok()) {
+    ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
+                                    hlo_text.status().error_message())
+                        .c_str());
+  }
+  return *hlo_text;
+}
+
 }  // namespace tensorflow
+
+namespace {
+
+// Wrapper around the EagerContextThreadLocalData struct (defined in
+// pywrap_tfe.h), so it can be accessed from Python.
+//
+// For PyObject* fields, the get_*() methods return a new reference; and the
+// set_*() methods create a new reference (i.e., they do not steal a reference).
+class EagerContextThreadLocalDataWrapper {
+ public:
+  explicit EagerContextThreadLocalDataWrapper(py::handle py_eager_context,
+                                              py::handle is_eager,
+                                              py::handle device_spec)
+      : py_eager_context_(py_eager_context.ptr()) {
+    tensorflow::MakeEagerContextThreadLocalData(
+        py_eager_context.ptr(), is_eager.ptr(), device_spec.ptr());
+  }
+
+  ~EagerContextThreadLocalDataWrapper() {
+    tensorflow::DestroyEagerContextThreadLocalData(py_eager_context_);
+  }
+
+  bool get_is_eager() const { return GetData()->is_eager; }
+  void set_is_eager(bool v) { GetData()->is_eager = v; }
+
+  bool get_invoking_op_callbacks() const {
+    return GetData()->invoking_op_callbacks;
+  }
+  void set_invoking_op_callbacks(bool v) {
+    GetData()->invoking_op_callbacks = v;
+  }
+
+  py::handle get_device_name() const {
+    return GetPyObject(&GetData()->device_name);
+  }
+  void set_device_name(py::handle v) {
+    SetPyObject(v, &GetData()->device_name);
+  }
+
+  py::handle get_scope_name() const {
+    return GetPyObject(&GetData()->scope_name);
+  }
+  void set_scope_name(py::handle v) { SetPyObject(v, &GetData()->scope_name); }
+
+  py::handle get_device_spec() const {
+    return GetPyObject(&GetData()->device_spec);
+  }
+  void set_device_spec(py::handle v) {
+    SetPyObject(v, &GetData()->device_spec);
+  }
+
+  py::handle get_function_call_options() const {
+    return GetPyObject(&GetData()->function_call_options);
+  }
+  void set_function_call_options(py::handle v) {
+    SetPyObject(v, &GetData()->function_call_options);
+  }
+
+  py::handle get_executor() const { return GetPyObject(&GetData()->executor); }
+  void set_executor(py::handle v) { SetPyObject(v, &GetData()->executor); }
+
+  py::handle get_op_callbacks() const {
+    return GetPyObject(&GetData()->op_callbacks);
+  }
+  void set_op_callbacks(py::handle v) {
+    SetPyObject(v, &GetData()->op_callbacks);
+  }
+
+ private:
+  tensorflow::EagerContextThreadLocalData* GetData() const {
+    auto* result =
+        tensorflow::GetEagerContextThreadLocalData(py_eager_context_);
+    if (!result) {
+      throw py::error_already_set();
+    }
+    return result;
+  }
+
+  py::handle GetPyObject(tensorflow::Safe_PyObjectPtr* obj) const {
+    Py_INCREF(obj->get());
+    return obj->get();
+  }
+
+  void SetPyObject(py::handle value, tensorflow::Safe_PyObjectPtr* ptr) {
+    Py_INCREF(value.ptr());
+    ptr->reset(value.ptr());
+  }
+
+  PyObject* py_eager_context_;  // not owned (borrowed reference).
+};
+
+}  // namespace
 
 // py::return_value_policy::reference is defined as specified by the
 // pybind11 documents listed here.
@@ -420,6 +576,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_SetXlaConstantFoldingDisabled", &TF_SetXlaConstantFoldingDisabled);
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
+  m.def("TF_GetCompilerIr", &tensorflow::TFE_GetCompilerIr);
 
   // MLIR Logic
   m.def("TF_IsMlirBridgeEnabled", [] {
@@ -1194,9 +1351,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // DLPack functions
   m.def("TFE_ToDlpackCapsule", [](py::handle& o) {
     PyObject* eager_tensor_pyobject_ptr = o.ptr();
-    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+
+    if (!EagerTensor_CheckExact(eager_tensor_pyobject_ptr)) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "The argument to `to_dlpack` must be a TF tensor, not Python object");
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+
+    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
     void* dlm_ptr = tensorflow::TFE_HandleToDLPack(thandle, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
 
@@ -1271,6 +1435,38 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
+
+  py::class_<EagerContextThreadLocalDataWrapper>(m,
+                                                 "EagerContextThreadLocalData")
+      .def(py::init<py::handle, py::handle, py::handle>(),
+           py::arg("py_eager_context"), py::arg("is_eager"),
+           py::arg("device_spec"))
+      .def_property("is_eager",
+                    &EagerContextThreadLocalDataWrapper::get_is_eager,
+                    &EagerContextThreadLocalDataWrapper::set_is_eager)
+      .def_property(
+          "invoking_op_callbacks",
+          &EagerContextThreadLocalDataWrapper::get_invoking_op_callbacks,
+          &EagerContextThreadLocalDataWrapper::set_invoking_op_callbacks)
+      .def_property("device_name",
+                    &EagerContextThreadLocalDataWrapper::get_device_name,
+                    &EagerContextThreadLocalDataWrapper::set_device_name)
+      .def_property("scope_name",
+                    &EagerContextThreadLocalDataWrapper::get_scope_name,
+                    &EagerContextThreadLocalDataWrapper::set_scope_name)
+      .def_property("device_spec",
+                    &EagerContextThreadLocalDataWrapper::get_device_spec,
+                    &EagerContextThreadLocalDataWrapper::set_device_spec)
+      .def_property(
+          "function_call_options",
+          &EagerContextThreadLocalDataWrapper::get_function_call_options,
+          &EagerContextThreadLocalDataWrapper::set_function_call_options)
+      .def_property("executor",
+                    &EagerContextThreadLocalDataWrapper::get_executor,
+                    &EagerContextThreadLocalDataWrapper::set_executor)
+      .def_property("op_callbacks",
+                    &EagerContextThreadLocalDataWrapper::get_op_callbacks,
+                    &EagerContextThreadLocalDataWrapper::set_op_callbacks);
 
   // C API Enum
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -42,7 +44,45 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+// CalculatePostOrderSchedule traverses a module and assign a ordinal to each
+// instruction based the postorder dependency.
+int64 CalculatePostOrderScheduleHelper(
+    const HloComputation* comp, int64 start_ordinal,
+    absl::flat_hash_map<HloInstruction*, int64>* ordinal_map) {
+  int64 ordinal = start_ordinal;
+  for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
+    if (instruction->opcode() == HloOpcode::kCall ||
+        instruction->opcode() == HloOpcode::kConditional) {
+      for (const HloComputation* called_computation :
+           instruction->called_computations()) {
+        ordinal = CalculatePostOrderScheduleHelper(called_computation, ordinal,
+                                                   ordinal_map);
+      }
+    }
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      ordinal = CalculatePostOrderScheduleHelper(instruction->while_condition(),
+                                                 ordinal, ordinal_map);
+      ordinal = CalculatePostOrderScheduleHelper(instruction->while_body(),
+                                                 ordinal, ordinal_map);
+    }
+    // It's possible that in some unit tests the computation graph is not
+    // flatten (meaning we could have multiple callers for one computation). In
+    // that case the oridinal_map will see the instruction multiple times. We
+    // consider that case to be ok as it only shows up in unit tests.
+    ordinal_map->insert({instruction, ordinal++});
+  }
+  return ordinal;
+}
 
+absl::flat_hash_map<HloInstruction*, int64> CalculatePostOrderSchedule(
+    const HloModule& module) {
+  absl::flat_hash_map<HloInstruction*, int64> map;
+  CalculatePostOrderScheduleHelper(module.entry_computation(), 0, &map);
+  return map;
+}
+
+}  // namespace
 using absl::StrAppend;
 using absl::StrCat;
 
@@ -392,6 +432,23 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateCustomCallValueSet(
+    HloInstruction* custom_call) {
+  CHECK_EQ(custom_call->opcode(), HloOpcode::kCustomCall);
+  bool changed = false;
+  for (const auto& aliasing : Cast<HloCustomCallInstruction>(custom_call)
+                                  ->output_to_operand_aliasing()) {
+    const HloValueSet& operand_value_set = GetValueSet(
+        custom_call->operand(aliasing.second.first), aliasing.second.second);
+    HloValueSet& value_set = GetValueSet(custom_call, aliasing.first);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateCopyStartValueSet(HloInstruction* copy_start) {
   CHECK_EQ(copy_start->opcode(), HloOpcode::kCopyStart);
   bool changed = false;
@@ -717,6 +774,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateAddDependencyValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
+    case HloOpcode::kCustomCall:
+      return UpdateCustomCallValueSet(instruction);
     case HloOpcode::kSetDimensionSize:
       return UpdateSetDimensionSizeValueSet(instruction);
     case HloOpcode::kDomain:
@@ -757,27 +816,35 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 }
 
 void HloDataflowAnalysis::Propagate() {
-  std::queue<HloInstruction*> worklist;
+  using Work = std::pair<int64, HloInstruction*>;
+  // Avoid duplicating work by preferring work items early in the post order
+  // schedule. Intuitively, we start from entry parameters and propagate buffers
+  // updates throughout the module only once.
+  std::priority_queue<Work, std::vector<Work>, std::greater<Work>> worklist;
   absl::flat_hash_set<HloInstruction*> workset;
-  auto add_to_worklist = [&worklist, &workset](HloInstruction* instruction) {
+  auto priority_map = CalculatePostOrderSchedule(module_);
+  auto add_to_worklist = [&priority_map, &worklist,
+                          &workset](HloInstruction* instruction) {
     if (workset.insert(instruction).second) {
-      worklist.push(instruction);
+      worklist.emplace(priority_map[instruction], instruction);
     }
   };
 
-  for (HloComputation* computation : module_.computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
+  auto comps = module_.MakeComputationPostOrder();
+  for (HloComputation* computation : comps) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
       add_to_worklist(instruction);
     }
   }
   VLOG(1) << "SSA_FORM_: " << ssa_form_;
 
   while (!worklist.empty()) {
-    HloInstruction* instruction = worklist.front();
+    HloInstruction* instruction = worklist.top().second;
     auto add_to_worklist = [&](HloInstruction* todo) {
       if (workset.insert(todo).second) {
         VLOG(1) << "  Adding todo : " << todo->name();
-        worklist.push(todo);
+        worklist.emplace(priority_map[todo], todo);
       }
     };
     worklist.pop();
@@ -970,6 +1037,22 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_value_at(/*index=*/{1});
           define_value_at(/*index=*/{2});
           break;
+        case HloOpcode::kCustomCall: {
+          absl::flat_hash_set<ShapeIndex> aliasing_indices;
+          for (const auto& aliasing :
+               Cast<HloCustomCallInstruction>(instruction)
+                   ->output_to_operand_aliasing()) {
+            aliasing_indices.insert(aliasing.first);
+          }
+          ShapeUtil::ForEachSubshape(
+              instruction->shape(),
+              [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+                if (!aliasing_indices.contains(index)) {
+                  define_value_at(index);
+                }
+              });
+          break;
+        }
         default:
           define_all_values();
           break;
@@ -1130,69 +1213,49 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return true;
 }
 
-// Given a fusion whose root is a dynamic-update-slice op, determines whether
-// the fusion's output buffer can be shared with the buffer of fusion_param,
-// which must be a fused parameter of the fusion.
-//
-// Preconditions:
-//
-//  - fusion's root is a dynamic-update-slice op.
-//  - fusion_param is a parameter within the fusion.
-//
-// fusion_param may point to a subelement of the actual parameter instruction if
-// the param is a tuple; i.e. fusion_param->index() need not be the empty list.
-//
-// Returns true if:
-//
-//  * fusion_param is used by the root of dynamic-update-slice as the "base" of
-//    the update, i.e. the thing being updated, AND
-//  * all other uses of fusion_param are dynamic-slices that slice the same
-//    indices as are overwritten in the dynamic-update-slice.
-//
-// In the case that there are no other uses of fusion_param (last bullet point
-// is vacuously true) it's easy to see why an in-place DUS is safe; this is just
-// the "natural" implementation of DUS.  If there are other users, in-place DUS
-// is safe on the assumption that the thread which writes element i of the
-// output will be the only one to read element i of fusion_param (via the
-// dynamic-slice ops).
-static bool CanDoInPlaceDynamicUpdateSlice(HloInstruction* fusion,
-                                           const HloValue& fusion_param_value) {
-  auto* root =
-      Cast<HloDynamicUpdateSliceInstruction>(fusion->fused_expression_root());
-  auto* fusion_param = fusion_param_value.instruction();
-  CHECK_EQ(fusion_param->opcode(), HloOpcode::kParameter);
-  CHECK_EQ(fusion_param->parent(), fusion->fused_instructions_computation());
+/*static*/ bool HloDataflowAnalysis::IsInPlaceOperation(HloOpcode opcode) {
+  return opcode == HloOpcode::kDynamicUpdateSlice ||
+         opcode == HloOpcode::kScatter;
+}
 
-  // fusion_param must be used by the root as the "base" of the
-  // dynamic-update-slice.  The natural way to check this would be
-  //
-  //   `if (root->operand(0) != fusion_param)`
-  //
-  // but we also have to handle the case where the fusion parameter is
-  // tuple-shaped and we're considering just one element of that tuple, i.e.
-  // fusion_param.index() != {}.
-  if (absl::c_count_if(fusion_param_value.uses(), [&](const HloUse& use) {
-        return use.instruction == root;
-      }) != 1) {
-    return false;
+/*static*/ std::vector<std::pair<HloUse, ShapeIndex>>
+HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
+  if (IsInPlaceOperation(instruction->opcode())) {
+    return {{HloUse{instruction, 0, {}}, {}}};
+  } else if (instruction->opcode() != HloOpcode::kFusion) {
+    return {};
   }
-
-  // All other uses of fusion_param must be dynamic-slices that slice the same
-  // indices as are overwritten by the dynamic-update-slice.
-  for (const HloUse& use : fusion_param_value.uses()) {
-    auto* user = use.instruction;
-    if (user == root) {
-      continue;
+  std::vector<std::pair<HloUse, ShapeIndex>> input_output_pairs;
+  for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    const HloInstruction* hlo_generating_output =
+        instruction->fused_expression_root();
+    for (int64 i = 0; i < indexed_shape.index.size(); ++i) {
+      if (hlo_generating_output->opcode() == HloOpcode::kTuple) {
+        hlo_generating_output =
+            hlo_generating_output->operand(indexed_shape.index[i]);
+      } else {
+        CHECK_EQ(i, indexed_shape.index.size() - 1);
+      }
     }
 
-    // Check that `user` is a dynamic-slice op and has the same slice indices as
-    // `root`.
-    auto* ds = DynCast<HloDynamicSliceInstruction>(user);
-    if (!ds || ds->index_operands() != root->index_operands()) {
-      return false;
+    if (IsInPlaceOperation(hlo_generating_output->opcode())) {
+      ShapeIndex operand_index;
+      const HloInstruction* fusion_parameter =
+          hlo_generating_output->operand(0);
+      while (fusion_parameter->opcode() == HloOpcode::kGetTupleElement) {
+        operand_index.push_front(fusion_parameter->tuple_index());
+        fusion_parameter = fusion_parameter->operand(0);
+      }
+
+      if (fusion_parameter->opcode() == HloOpcode::kParameter) {
+        input_output_pairs.emplace_back(
+            HloUse{instruction, fusion_parameter->parameter_number(),
+                   operand_index},
+            indexed_shape.index);
+      }
     }
   }
-  return true;
+  return input_output_pairs;
 }
 
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
@@ -1213,24 +1276,17 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     return false;
   }
 
-  if (user->opcode() == HloOpcode::kFusion) {
-    // Get the parameter associated with 'operand';
-    HloInstruction* fusion_param =
-        user->fused_parameter(user->operand_index(operand));
-
-    const HloValue& fusion_param_value =
-        GetValueDefinedAt(fusion_param, operand_index);
-
-    // TODO(b/80315712): This code is in a bit of a weird intermediate state
-    // at the moment. The in-place DUS check really needs to be common to all
-    // backends, so it runs first. Then we run the backend-specific check if
-    // provided, or go through the target-independent check if not.
-    // Unfortunately, the notionally "target-independent" path actually contains
-    // some target-specific code, so we can't run all of it *in addition* to the
-    // target-specific function, like the interface documentation says.
-    if (user->fused_expression_root()->opcode() ==
-        HloOpcode::kDynamicUpdateSlice) {
-      return CanDoInPlaceDynamicUpdateSlice(user, fusion_param_value);
+  // Must-alias relationship returns true for in-place operations (DUS and DUS
+  // fusions), regardless of the backend.
+  for (const auto& operand_and_output_index :
+       GetInPlaceInputOutputPairs(user)) {
+    if (operand_and_output_index.second != user_index) {
+      continue;
+    }
+    for (const HloUse& use : GetUniqueValueAt(operand, operand_index).uses()) {
+      if (use == operand_and_output_index.first) {
+        return true;
+      }
     }
   }
 

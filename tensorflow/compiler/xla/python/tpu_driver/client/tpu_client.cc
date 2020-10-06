@@ -588,7 +588,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
 static const absl::Duration kWarnExecutionDelay = absl::Seconds(10);
 
 // Delay before terminating a stalled execute call.
-static const absl::Duration kMaxExecutionDelay = absl::Seconds(120);
+static const absl::Duration kMaxExecutionDelay = absl::Minutes(60);
 
 Status WaitForExecuteEvent(tpu_driver::Event* event) {
   absl::optional<Status> opt_status;

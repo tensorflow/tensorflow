@@ -894,6 +894,7 @@ void PjRtBuffer::WaitForOutstandingDonationHold() {
 
 StatusOr<std::shared_ptr<TrackedDeviceBuffer>> PjRtBuffer::Release(
     bool wait_for_operations_to_complete) {
+  tensorflow::profiler::TraceMe trace_me("PjRtBuffer::Release");
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
   TrackedDeviceBuffer::StreamAndEventContainer events;
   {

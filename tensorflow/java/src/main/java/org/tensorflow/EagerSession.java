@@ -168,9 +168,9 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
      * <p>Warning: the support of this feature is subject to changes since TensorFlow protos might
      * not be supported on public endpoints in the future.
      *
+     * <p>See also: <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto">config.proto</a>
+     *
      * @param value a serialized config proto
-     * @see <a
-     *     href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto"/>
      */
     public Options config(byte[] value) {
       config = value;
