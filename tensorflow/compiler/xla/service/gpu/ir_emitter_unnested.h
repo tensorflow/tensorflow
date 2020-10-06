@@ -178,7 +178,7 @@ class IrEmitterUnnested : public IrEmitter,
   // `unroll_factor` is greater than one.
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk, int unroll_factor);
+      KernelThunk* thunk, int unroll_factor, bool few_waves = false);
 
   Status Postprocess(HloInstruction* hlo) override;
 

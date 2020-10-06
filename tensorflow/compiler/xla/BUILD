@@ -277,6 +277,7 @@ tf_cc_test(
         ":types",
         ":util",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:bfloat16",
     ],
 )
 

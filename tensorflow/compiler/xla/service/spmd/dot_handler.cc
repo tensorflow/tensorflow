@@ -1132,6 +1132,46 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
       .hlo();
 }
 
+DotConvDimsMapping ConvertDimsMappingWithFeatureGroupCount(
+    const DotConvDimsMapping& dims_mapping, HloInstruction* original_hlo) {
+  const auto& dnums = original_hlo->convolution_dimension_numbers();
+  DotConvDimsMapping new_dims_mapping;
+  new_dims_mapping.batch_dims = dims_mapping.batch_dims;
+  new_dims_mapping.conv_spatial_dims = dims_mapping.conv_spatial_dims;
+  // Append batch dims.
+  new_dims_mapping.batch_dims.emplace_back();
+  new_dims_mapping.batch_dims.back().lhs = dnums.input_feature_dimension();
+  new_dims_mapping.batch_dims.back().rhs =
+      dnums.kernel_output_feature_dimension();
+  new_dims_mapping.batch_dims.back().output = dnums.output_feature_dimension();
+  new_dims_mapping.batch_dims.back().spatial = -1;
+  // Setup non contracting dims.
+  new_dims_mapping.lhs_non_contracting_dims.emplace_back();
+  new_dims_mapping.lhs_non_contracting_dims.back().lhs =
+      dnums.input_batch_dimension();
+  new_dims_mapping.rhs_non_contracting_dims.emplace_back();
+  new_dims_mapping.rhs_non_contracting_dims.back().rhs =
+      dnums.kernel_input_feature_dimension();
+  return new_dims_mapping;
+}
+
+DotConvDimsMapping ConvertDimsMappingWithBatchGroupCount(
+    const DotConvDimsMapping& dims_mapping, HloInstruction* original_hlo) {
+  const auto& dnums = original_hlo->convolution_dimension_numbers();
+  DotConvDimsMapping new_dims_mapping;
+  new_dims_mapping.batch_dims = dims_mapping.batch_dims;
+  new_dims_mapping.conv_spatial_dims = dims_mapping.conv_spatial_dims;
+  new_dims_mapping.contracting_dims = dims_mapping.contracting_dims;
+  // Append batch dims.
+  new_dims_mapping.batch_dims.emplace_back();
+  new_dims_mapping.batch_dims.back().lhs = dnums.input_batch_dimension();
+  new_dims_mapping.batch_dims.back().rhs =
+      dnums.kernel_output_feature_dimension();
+  new_dims_mapping.batch_dims.back().output = dnums.output_feature_dimension();
+  new_dims_mapping.batch_dims.back().spatial = -1;
+  return new_dims_mapping;
+}
+
 // Recursive partitioning function. If there are partial dimensions matching in
 // the operands and output, group the devices and recursively partition the
 // in-group dot.
@@ -1210,6 +1250,15 @@ StatusOr<HloInstruction*> PartitionDot(
       (original_hlo->opcode() == HloOpcode::kConvolution &&
        (original_hlo->batch_group_count() > 1 ||
         original_hlo->feature_group_count() > 1))) {
+    // Partition with kernel_input_feature_dim > 1 and feature_group_count > 1
+    // is not supported.
+    const auto& dnums = original_hlo->convolution_dimension_numbers();
+    if (original_hlo->feature_group_count() > 1 &&
+        rhs.hlo()->shape().dimensions(dnums.kernel_input_feature_dimension()) >
+            1) {
+      return nullptr;
+    }
+
     TF_ASSIGN_OR_RETURN(
         auto partitioned_conv,
         PartitionConvolution(lhs, rhs, output_base_shape, output_sharding,
@@ -1219,6 +1268,56 @@ StatusOr<HloInstruction*> PartitionDot(
 
     if (partitioned_conv) {
       return partitioned_conv;
+    }
+
+    // Recursively partition on different types of dimensions for convolution.
+    // Case 0.a: Group partitions by feature group count.
+    if (original_hlo->feature_group_count() > 1 ||
+        original_hlo->batch_group_count() > 1) {
+      DotConvDimsMapping new_dims_mapping;
+      if (original_hlo->feature_group_count() > 1) {
+        new_dims_mapping =
+            ConvertDimsMappingWithFeatureGroupCount(dims_mapping, original_hlo);
+      }
+
+      if (original_hlo->batch_group_count() > 1) {
+        new_dims_mapping =
+            ConvertDimsMappingWithBatchGroupCount(dims_mapping, original_hlo);
+      }
+
+      const int64 conv_lhs_contracting_partitions = get_partitions_for_dims(
+          lhs.sharding(), new_dims_mapping.contracting_dims, 0);
+      const int64 conv_rhs_contracting_partitions = get_partitions_for_dims(
+          rhs.sharding(), new_dims_mapping.contracting_dims, 1);
+      const int64 conv_lhs_non_contracting_partitions = get_partitions_for_dims(
+          lhs.sharding(), new_dims_mapping.lhs_non_contracting_dims, 0);
+      const int64 conv_rhs_non_contracting_partitions = get_partitions_for_dims(
+          rhs.sharding(), new_dims_mapping.rhs_non_contracting_dims, 1);
+      const int64 conv_lhs_batch_partitions = get_partitions_for_dims(
+          lhs.sharding(), new_dims_mapping.batch_dims, 0);
+      const int64 conv_rhs_batch_partitions = get_partitions_for_dims(
+          rhs.sharding(), new_dims_mapping.batch_dims, 1);
+      const int64 conv_output_batch_partitions = get_partitions_for_dims(
+          output_sharding, new_dims_mapping.batch_dims, 2);
+      if ((conv_lhs_batch_partitions == conv_output_batch_partitions ||
+           conv_rhs_batch_partitions == conv_output_batch_partitions) &&
+          conv_output_batch_partitions > 1) {
+        TF_ASSIGN_OR_RETURN(
+            auto try_partitioned_conv,
+            PartitionDotGroupOnBatch(
+                lhs, rhs, output_base_shape, output_sharding, new_dims_mapping,
+                num_partitions, conv_lhs_contracting_partitions,
+                conv_rhs_contracting_partitions,
+                conv_lhs_non_contracting_partitions,
+                conv_rhs_non_contracting_partitions, create_sharded_dot,
+                conv_window, module, original_hlo,
+                require_matching_devices_to_group, options, b,
+                windowed_dot_general_loops));
+        if (try_partitioned_conv) {
+          return try_partitioned_conv;
+        }
+      }
+      return nullptr;
     }
   }
 

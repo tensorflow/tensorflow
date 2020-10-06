@@ -98,6 +98,78 @@ TF_LITE_MICRO_TEST(TestAdjustHeadSizeMisalignedHandlesCorrectBytesAvailable) {
   TF_LITE_MICRO_EXPECT_GE(aligned_available_bytes, arena_size - 1000 - 24);
 }
 
+TF_LITE_MICRO_TEST(TestGetAvailableMemory) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  constexpr size_t allocation_size = 100;
+  allocator.SetHeadSize(/*size=*/allocation_size,
+                        /*alignment=*/1);
+  allocator.AllocateFromTail(/*size=*/allocation_size,
+                             /*alignment=*/1);
+
+  TF_LITE_MICRO_EXPECT_EQ(allocator.GetAvailableMemory(/*alignment=*/1),
+                          arena_size - allocation_size * 2);
+}
+
+TF_LITE_MICRO_TEST(TestGetAvailableMemoryWithTempAllocations) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  constexpr size_t allocation_size = 100;
+  allocator.AllocateTemp(/*size=*/allocation_size,
+                         /*alignment=*/1);
+
+  TF_LITE_MICRO_EXPECT_EQ(allocator.GetAvailableMemory(/*alignment=*/1),
+                          arena_size - allocation_size);
+
+  // Reset temp allocations and ensure GetAvailableMemory() is back to the
+  // starting size:
+  allocator.ResetTempAllocations();
+
+  TF_LITE_MICRO_EXPECT_EQ(allocator.GetAvailableMemory(/*alignment=*/1),
+                          arena_size);
+}
+
+TF_LITE_MICRO_TEST(TestGetUsedBytes) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+  TF_LITE_MICRO_EXPECT_EQ(allocator.GetUsedBytes(), static_cast<size_t>(0));
+
+  constexpr size_t allocation_size = 100;
+  allocator.SetHeadSize(/*size=*/allocation_size,
+                        /*alignment=*/1);
+  allocator.AllocateFromTail(/*size=*/allocation_size,
+                             /*alignment=*/1);
+
+  TF_LITE_MICRO_EXPECT_EQ(allocator.GetUsedBytes(), allocation_size * 2);
+}
+
+TF_LITE_MICRO_TEST(TestGetUsedBytesTempAllocations) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  constexpr size_t allocation_size = 100;
+  allocator.AllocateTemp(/*size=*/allocation_size,
+                         /*alignment=*/1);
+
+  TF_LITE_MICRO_EXPECT_EQ(allocator.GetUsedBytes(), allocation_size);
+
+  // Reset temp allocations and ensure GetUsedBytes() is back to the starting
+  // size:
+  allocator.ResetTempAllocations();
+
+  TF_LITE_MICRO_EXPECT_EQ(allocator.GetUsedBytes(), static_cast<size_t>(0));
+}
+
 TF_LITE_MICRO_TEST(TestJustFits) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];

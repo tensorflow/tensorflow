@@ -78,6 +78,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_conv_ops_perchannel_test",
     size = "small",
     srcs = ["mkl_quantized_conv_ops_perchannel_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_conv_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -92,6 +93,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_conv_ops_test",
     size = "small",
     srcs = ["mkl_quantized_conv_ops_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_conv_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -106,6 +108,7 @@ tf_cc_test_mkl(
     name = "mkl_qmatmul_op_test",
     size = "small",
     srcs = ["mkl_qmatmul_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_qmatmul_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -132,6 +135,7 @@ tf_cc_test_mkl(
     name = "mkl_quantize_op_test",
     size = "small",
     srcs = ["mkl_quantize_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_quantize_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -144,6 +148,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_pooling_ops_test",
     size = "small",
     srcs = ["mkl_quantized_pooling_ops_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_pooling_ops",
         "//tensorflow/core:array_ops_op_lib",
@@ -158,6 +163,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_concat_op_test",
     size = "small",
     srcs = ["mkl_quantized_concat_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_concat_op",
         "//tensorflow/core:array_ops_op_lib",

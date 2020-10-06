@@ -31,15 +31,15 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 
 // TODO(b/169547730): Automatically generate these declarations.
-extern "C" ::UnrankedMemRefType<Eigen::half> _mlir_ciface_abs_unranked_f16(
+extern "C" ::UnrankedMemRefType<Eigen::half> _mlir_ciface_abs_f16(
     tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<Eigen::half>* arg);
-extern "C" ::UnrankedMemRefType<float> _mlir_ciface_abs_unranked_f32(
+extern "C" ::UnrankedMemRefType<float> _mlir_ciface_abs_f32(
     tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<float>* arg);
-extern "C" ::UnrankedMemRefType<double> _mlir_ciface_abs_unranked_f64(
+extern "C" ::UnrankedMemRefType<double> _mlir_ciface_abs_f64(
     tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<double>* arg);
-extern "C" ::UnrankedMemRefType<int32> _mlir_ciface_abs_unranked_i32(
+extern "C" ::UnrankedMemRefType<int32> _mlir_ciface_abs_i32(
     tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<int32>* arg);
-extern "C" ::UnrankedMemRefType<int64> _mlir_ciface_abs_unranked_i64(
+extern "C" ::UnrankedMemRefType<int64> _mlir_ciface_abs_i64(
     tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<int64>* arg);
 
 namespace tensorflow {
@@ -121,7 +121,7 @@ Tensor ConvertDescriptorToTensor(
 
 }  // namespace
 
-#define MLIR_FUNCTION(data_type) _mlir_ciface_abs_unranked_##data_type
+#define MLIR_FUNCTION(data_type) _mlir_ciface_abs_##data_type
 
 // Generates a class derived from OpKernel with Compute function that converts
 // input tensors to unranked memref descriptors and calls mlir-generated

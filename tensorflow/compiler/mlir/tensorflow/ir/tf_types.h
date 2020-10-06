@@ -302,6 +302,10 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
 // compatible.
 bool AreCastCompatible(ArrayRef<Type> types);
 
+// Returns true if corresponding elements of lhs and rhs AreCastCompatible and
+// lhs and rhs are the same length.
+bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
+
 // If `ty` is a tensor type and its element type has subtypes, then returns a
 // new type of same shape but dropped subtypes for the element type.
 // Otherwise, if `ty` has subtypes, then returns corresponding type with dropped

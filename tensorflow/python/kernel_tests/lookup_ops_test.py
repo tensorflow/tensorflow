@@ -473,6 +473,24 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.evaluate(lookup_ops.tables_initializer())
     self.assertAllEqual(grad, -10.)
 
+  def testExportShapeInference(self):
+    table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        constant_op.constant([2, 5], dtype=dtypes.int64),
+        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
+
 
 class KeyValueTensorInitializerTest(BaseLookupTableTest):
 
@@ -2038,6 +2056,30 @@ class DenseHashTableOpTest(test.TestCase):
     table.insert("v1", v1.handle)
     self.assertEqual([], table.lookup("v1").shape)
 
+  def testExportShapeInference(self):
+    default_value = -1
+    empty_key = 0
+    deleted_key = -1
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        deleted_key=deleted_key)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
+
 
 class IndexTableFromFile(test.TestCase):
 
@@ -3578,6 +3620,26 @@ class MutableHashTableOpTest(test.TestCase):
 
       result = self.evaluate(output)
       self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
+
+  def testExportShapeInference(self):
+    default_value = -1
+    table = lookup_ops.MutableHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
 class MutableHashTableBenchmark(test.Benchmark):

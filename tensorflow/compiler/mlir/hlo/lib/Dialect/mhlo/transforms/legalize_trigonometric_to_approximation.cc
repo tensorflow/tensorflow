@@ -235,6 +235,23 @@ class ApproximateAtan2Lowering
   }
 };
 
+class ApproximateAtanLowering
+    : public ApproximateOnExtendedF32Lowering<AtanOp> {
+ public:
+  explicit ApproximateAtanLowering(MLIRContext *ctx)
+      : ApproximateOnExtendedF32Lowering<AtanOp>(ctx) {}
+
+  // Reduce atan(x) to atan2(x, 1) to subsequently rely on an atan approximation
+  // for the argument range [-1, 1].
+  Value emitApproximation(ValueRange args, Location loc,
+                          PatternRewriter &rewriter) const override {
+    Value x = args.front();
+    assert(x.getType().isF32());
+    Value one = rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(1));
+    return rewriter.create<Atan2Op>(loc, x, one);
+  }
+};
+
 struct LegalizeTrigonometricToApproximationPass
     : public PassWrapper<LegalizeTrigonometricToApproximationPass,
                          FunctionPass> {
@@ -257,6 +274,7 @@ void PopulateTrigonometricToApproximationPatterns(
     mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
+      ApproximateAtanLowering,
       ApproximateAtan2Lowering,
       ApproximateTanhLowering>(context);
   // clang-format on

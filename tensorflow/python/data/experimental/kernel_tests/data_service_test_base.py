@@ -115,7 +115,14 @@ class TestCluster(object):
 
   # pylint: disable=protected-access
   def restart_dispatcher(self):
-    """Stops `dispatcher` and creates a new dispatcher with the same port."""
+    """Stops `dispatcher` and creates a new dispatcher with the same port.
+
+    Restarting is supported only when the dispatcher is configured with
+    `fault_tolerant_mode=True`.
+    """
+    if not self.dispatcher._config.fault_tolerant_mode:
+      raise ValueError(
+          "Trying to restart the dispatcher without fault-tolerance.")
     port = int(self.dispatcher_address().split(":")[1])
     self.dispatcher._stop()
     self.dispatcher = server_lib.DispatchServer(

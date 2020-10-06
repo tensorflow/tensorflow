@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_FACTORY_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_FACTORY_H_
+#ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_FACTORY_H_
+#define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_FACTORY_H_
 
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 
 namespace tensorflow {
@@ -35,4 +35,4 @@ void CreateProfilers(const ProfileOptions& options,
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_FACTORY_H_
+#endif  // TENSORFLOW_CORE_PROFILER_LIB_PROFILER_FACTORY_H_
