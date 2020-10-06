@@ -287,7 +287,7 @@ Operation* ReplicateControlFlowStack(
     const llvm::SmallVectorImpl<ControlFlowStackInfo>& stack_info,
     tf_device::ClusterOp tpu_cluster, ModuleOp module, Value compilation_key,
     Block* destination_block, int* send_recv_counter) {
-  assert(stack_info.size());
+  assert(!stack_info.empty());
   OpBuilder builder = OpBuilder::atBlockTerminator(destination_block);
   Operation* previous_replicated_controlflow_op = nullptr;
   for (const auto& controlflow_stack_info : stack_info) {
