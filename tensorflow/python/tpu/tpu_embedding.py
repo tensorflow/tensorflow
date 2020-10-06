@@ -1636,7 +1636,7 @@ def _validate_optimization_parameters(optimization_parameters,
   else:
     # Missing global optimization_parameters.
     if tbl_optimizer_missing:
-      ValueError('`optimization_parameters` is missing.')
+      raise ValueError('`optimization_parameters` is missing.')
 
 
 class _OptimizerHandler(object):
