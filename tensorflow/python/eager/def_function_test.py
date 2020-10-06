@@ -944,10 +944,10 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     def double(a):
       return a + a
     
-    double(tf.constant(1))
-    double(tf.constant(2))
+    double(constant_op.constant(1))
+    double(constant_op.constant(2))
     assertAllEqual(double.experimental_get_tracing_count(), 1)
-    double(tf.constant("a"))
+    double(constant_op.constant("a"))
     assertAllEqual(double.experimental_get_tracing_count(), 2)
 
   def test_experimental_get_tracing_count_method(self):
@@ -956,14 +956,14 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       def testDouble(self, a):
         return a + a
     obj1 = TestClass()
-    obj1.testDouble(tf.constant(1))
-    obj1.testDouble(tf.constant(2))
-    obj1.testDouble(tf.constant(1.1))
+    obj1.testDouble(constant_op.constant(1))
+    obj1.testDouble(constant_op.constant(2))
+    obj1.testDouble(constant_op.constant(1.1))
     assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
     obj2 = TestClass()
-    obj2.testDouble(tf.constant(1))
-    obj2.testDouble(tf.constant(1.1))
-    obj2.testDouble(tf.constant("a"))
+    obj2.testDouble(constant_op.constant(1))
+    obj2.testDouble(constant_op.constant(1.1))
+    obj2.testDouble(constant_op.constant("a"))
     assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
 
