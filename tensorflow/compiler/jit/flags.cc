@@ -167,9 +167,6 @@ void AllocateAndParseFlags() {
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
 
-  mlir_flags = new MlirCommonFlags;
-  mlir_flags->tf_mlir_enable_mlir_bridge = false;
-
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
     return true;
@@ -215,14 +212,28 @@ void AllocateAndParseFlags() {
        Flag("tf_introduce_floating_point_jitter_amount",
             &jitter_flags->jitter_amount,
             "The amount of jitter to introduce.  This amount is added to each "
-            "element in the tensors named in `tensor_names."),
+            "element in the tensors named in `tensor_names.")});
 
-       Flag("tf_mlir_enable_mlir_bridge",
-            &mlir_flags->tf_mlir_enable_mlir_bridge,
-            "Enables experimental MLIR-Based TensorFlow Compiler Bridge.")});
+  bool enable_mlir_bridge = false;
+  flag_list->emplace_back(
+      "tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
+      "Enables experimental MLIR-Based TensorFlow Compiler Bridge.");
+  const Flag& enable_mlir_bridge_flag = flag_list->back();
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
+
+  mlir_flags = new MlirCommonFlags;
+  if (enable_mlir_bridge_flag.is_default_initialized()) {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+  } else if (enable_mlir_bridge) {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+  } else {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
+  }
 }
 
 }  // namespace

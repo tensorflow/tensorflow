@@ -89,7 +89,8 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   XlaOpRegistry::RegisterCompilationKernels();
 
   // Only check for compilability if the MLIR bridge is not enabled.
-  if (!GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge !=
+      tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
     if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
       std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
