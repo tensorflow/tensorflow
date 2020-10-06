@@ -429,8 +429,13 @@ PYBIND11_MODULE(xla_extension, m) {
           })
       .def_property(
           "device_assignment",
-          [](const CompileOptions& options) {
-            return options.executable_build_options.device_assignment();
+          [](const CompileOptions& options)
+              -> absl::optional<DeviceAssignment> {
+            return options.executable_build_options.has_device_assignment()
+                       ? absl::optional<DeviceAssignment>(
+                             options.executable_build_options
+                                 .device_assignment())
+                       : absl::nullopt;
           },
           [](CompileOptions& options,
              const DeviceAssignment& device_assignment) {
@@ -465,32 +470,31 @@ PYBIND11_MODULE(xla_extension, m) {
              return local_device->client()->TransferToInfeedLocal(
                  literal, local_device->device_ordinal());
            })
-      .def(
-          "transfer_from_outfeed",
-          [](const PjRtDevice& device,
-             const Shape& shape) -> StatusOr<py::object> {
-            GlobalPyRefManager()->CollectGarbage();
-            std::shared_ptr<Literal> literal_shared;
-            {
-              py::gil_scoped_release gil_release;
-              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                  device.GetLocalDeviceState());
-              Shape shape_with_layout = shape;
-              ShapeUtil::ForEachMutableSubshape(
-                  &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
-                    if (!subshape->has_layout()) {
-                      LayoutUtil::SetToDefaultLayout(subshape);
-                    }
-                  });
-              TF_ASSIGN_OR_RETURN(
-                  Literal literal,
-                  local_device->client()->TransferFromOutfeedLocal(
-                      shape_with_layout, local_device->device_ordinal()));
+      .def("transfer_from_outfeed",
+           [](const PjRtDevice& device,
+              const Shape& shape) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal_shared;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                                   device.GetLocalDeviceState());
+               Shape shape_with_layout = shape;
+               ShapeUtil::ForEachMutableSubshape(
+                   &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
+                     if (!subshape->has_layout()) {
+                       LayoutUtil::SetToDefaultLayout(subshape);
+                     }
+                   });
+               TF_ASSIGN_OR_RETURN(
+                   Literal literal,
+                   local_device->client()->TransferFromOutfeedLocal(
+                       shape_with_layout, local_device->device_ordinal()));
 
-              literal_shared = std::make_shared<Literal>(std::move(literal));
-            }
-            return LiteralToPython(std::move(literal_shared));
-          });
+               literal_shared = std::make_shared<Literal>(std::move(literal));
+             }
+             return LiteralToPython(std::move(literal_shared));
+           });
 
   py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
