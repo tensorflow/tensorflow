@@ -345,10 +345,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_RSQRT(), ParseRsqrt);
   }
 
-  TfLiteStatus AddShape(
-      const TfLiteRegistration& registration = Register_SHAPE()) {
-    return AddBuiltin(BuiltinOperator_SHAPE, tflite::Register_SHAPE(),
-                      ParseShape);
+  TfLiteStatus AddShape() {
+    return AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE(), ParseShape);
   }
 
   TfLiteStatus AddSin() {
