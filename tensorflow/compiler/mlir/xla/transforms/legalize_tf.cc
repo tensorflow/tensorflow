@@ -5207,6 +5207,46 @@ class ConvertXlaDynamicUpdateSliceOp
   }
 };
 
+// Converts ClipByValue to XLA's clamp operation. Includes the broadcasting
+// semantics for static and dynamic cases.
+class ConvertClipByValueOp : public OpRewritePattern<TF::ClipByValueOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::ClipByValueOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.t();
+    Value min = op.clip_value_min();
+    Value max = op.clip_value_max();
+
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto min_ty = min.getType().cast<ShapedType>();
+    auto max_ty = max.getType().cast<ShapedType>();
+
+    if (!input_ty.hasRank() || !min_ty.hasRank() || !max_ty.hasRank()) {
+      return failure();
+    }
+
+    auto shape = rewriter.create<TF::ShapeOp>(
+        op.getLoc(),
+        RankedTensorType::get({input_ty.getRank()}, rewriter.getI32Type()),
+        input);
+
+    if (min_ty != input_ty) {
+      min =
+          rewriter.create<TF::BroadcastToOp>(op.getLoc(), input_ty, min, shape);
+    }
+
+    if (max_ty != input_ty) {
+      max =
+          rewriter.create<TF::BroadcastToOp>(op.getLoc(), input_ty, max, shape);
+    }
+
+    rewriter.replaceOpWithNewOp<mhlo::ClampOp>(op, input_ty, min, input, max);
+    return success();
+  }
+};
+
 // Converts the Cumsum or Cumprod TensorFlow op to the HLO ReduceWindow op by
 // setting appropriate window dimensions, with the given aggregation op as the
 // reduction function. The input tensor needs to have a static shape, and 'axis'
@@ -6068,22 +6108,22 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
   patterns->insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
       ConvertBiasAddOp, ConvertBroadcastToOp, ConvertBF16FloorDivOp,
-      ConvertConv2DOp, ConvertConv3DOp, ConvertDepthConv2DOp,
-      ConvertConv2DBackpropFilterOp, ConvertConv3DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
-      ConvertCumprodOp, ConvertCumsumOp, ConvertDiagPartOp,
-      ConvertDynamicExpandDimsOp, ConvertDynamicReshapeOp, ConvertEinsumOp,
-      ConvertRFFTOp, ConvertIRFFTOp, ConvertFusedBatchNormGradOp,
-      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
-      ConvertFusedBatchNormV2Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPool2DOp, ConvertAvgPool3DOp,
-      ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
-      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertClipByValueOp, ConvertConv2DOp, ConvertConv3DOp,
+      ConvertDepthConv2DOp, ConvertConv2DBackpropFilterOp,
+      ConvertConv3DBackpropFilterOp, ConvertConv2DBackpropInputOp,
+      ConvertConv3DBackpropInputOp, ConvertCumprodOp, ConvertCumsumOp,
+      ConvertDiagPartOp, ConvertDynamicExpandDimsOp, ConvertDynamicReshapeOp,
+      ConvertEinsumOp, ConvertRFFTOp, ConvertIRFFTOp,
+      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
+      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
+      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
+      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
+      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
+      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
+      ConvertDynamicRangeOp, ConvertMatrixDiagPartV3Op, ConvertRangeOp,
+      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,

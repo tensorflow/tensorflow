@@ -61,7 +61,7 @@ from tensorflow.tools.docs import doc_controls
 def get_distributed_dataset(dataset,
                             input_workers,
                             strategy,
-                            split_batch_by=None,
+                            num_replicas_in_sync=None,
                             input_context=None):
   """Returns a distributed dataset from the given tf.data.Dataset instance.
 
@@ -77,8 +77,10 @@ def get_distributed_dataset(dataset,
         iterators should be created.
     strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-    split_batch_by: Optional integer. If present, we "split" each batch of the
-        dataset by `split_batch_by` value.
+    num_replicas_in_sync: Optional integer. If this is not None, the value is
+        used to decide how to rebatch datasets into smaller batches so that
+        the total batch size for each step (across all workers and replicas)
+        adds up to `dataset`'s batch size.
     input_context: `InputContext` for sharding. Only pass this in for between
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
@@ -92,14 +94,14 @@ def get_distributed_dataset(dataset,
         dataset,
         input_workers,
         strategy,
-        split_batch_by=split_batch_by,
+        num_replicas_in_sync=num_replicas_in_sync,
         input_context=input_context)
   else:
     return DistributedDatasetV1(
         dataset,
         input_workers,
         strategy,
-        split_batch_by=split_batch_by,
+        num_replicas_in_sync=num_replicas_in_sync,
         input_context=input_context)
 
 
@@ -917,20 +919,24 @@ class DistributedDataset(_IterableInput):
                dataset,
                input_workers,
                strategy,
-               split_batch_by=None,
+               num_replicas_in_sync=None,
                input_context=None):
     """Distribute the dataset on all workers.
 
-    If `split_batch_by` is not None, we "split" each batch of the dataset by
-    `split_batch_by` value.
+    If `num_replicas_in_sync` is not None, we split each batch of the dataset
+    into `num_replicas_in_sync` smaller batches, to be distributed among that
+    worker's replicas, so that the batch size for a global step (across all
+    workers and replicas) is as expected.
 
     Args:
       dataset: `tf.data.Dataset` that will be used as the input source.
       input_workers: an `InputWorkers` object.
       strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-      split_batch_by: Optional integer. If present, we "split" each batch of the
-        dataset by `split_batch_by` value.
+      num_replicas_in_sync: Optional integer. If this is not None, the value
+        is used to decide how to rebatch datasets into smaller batches so that
+        the total batch size for each step (across all workers and replicas)
+        adds up to `dataset`'s batch size.
       input_context: `InputContext` for sharding. Only pass this in for between
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
@@ -942,36 +948,29 @@ class DistributedDataset(_IterableInput):
     # different subset of files. If that is not possible, will attempt to shard
     # the final input such that each worker will run the entire preprocessing
     # pipeline and only receive its own shard of the dataset.
-    if split_batch_by:
-      try:
-        # pylint: disable=protected-access
-        with ops.colocate_with(dataset._variant_tensor):
-          dataset = distribute._LegacyRebatchDataset(dataset, split_batch_by)
-          # Add a prefetch to pipeline rebatching for performance.
-          # TODO(rachelim): Instead of inserting an extra prefetch stage here,
-          # leverage static graph rewrites to insert _RebatchDataset before
-          # the final `prefetch` if it exists.
-          dataset = dataset.prefetch(split_batch_by)
-      except errors.InvalidArgumentError as e:
-        if "without encountering a batch" in str(e):
-          six.reraise(
-              ValueError,
-              ValueError(
-                  "Call the `batch` method on the input Dataset in order to be "
-                  "able to split your input across {} replicas.\n Please "
-                  "the tf.distribute.Strategy guide. {}".format(
-                      split_batch_by, e)),
-              sys.exc_info()[2])
-        else:
-          raise
+
+    # Additionally, we rebatch the dataset on each worker into
+    # `num_replicas_in_sync` smaller batches to be distributed among that
+    # worker's replicas, so that the batch size for a global step (across all
+    # workers and replicas) adds up to the original dataset's batch size.
+    if num_replicas_in_sync is not None:
+      num_workers = input_context.num_input_pipelines if input_context else len(
+          input_workers.worker_devices)
+      rebatch_fn = self._make_rebatch_fn(dataset, num_workers,
+                                         num_replicas_in_sync)
+    else:
+      rebatch_fn = None
 
     self._cloned_datasets = []
     if input_context:
       # Between-graph where we rely on the input_context for sharding
       assert input_workers.num_workers == 1
+      if rebatch_fn is not None:
+        dataset = rebatch_fn(dataset, input_context.input_pipeline_id)
       dataset = input_ops.auto_shard_dataset(dataset,
                                              input_context.num_input_pipelines,
-                                             input_context.input_pipeline_id)
+                                             input_context.input_pipeline_id,
+                                             num_replicas_in_sync)
       self._cloned_datasets.append(dataset)
     else:
       replicated_ds = distribute.replicate(dataset,
@@ -980,16 +979,73 @@ class DistributedDataset(_IterableInput):
         with ops.device(worker):
           cloned_dataset = replicated_ds[worker]
           cloned_dataset = cloned_dataset.with_options(dataset.options())
+          if rebatch_fn is not None:
+            cloned_dataset = rebatch_fn(cloned_dataset, i)
           cloned_dataset = input_ops.auto_shard_dataset(
-              cloned_dataset, len(input_workers.worker_devices), i)
+              cloned_dataset, len(input_workers.worker_devices), i,
+              num_replicas_in_sync)
           self._cloned_datasets.append(cloned_dataset)
 
     self._input_workers = input_workers
     self._strategy = strategy
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, dataset.element_spec)
-    self._element_spec = _create_distributed_tensor_spec(self._strategy,
-                                                         dataset.element_spec)  # pylint: disable=protected-access
+    self._element_spec = _create_distributed_tensor_spec(
+        self._strategy, self._cloned_datasets[0].element_spec)
+
+  def _make_rebatch_fn(self, dataset, num_workers, num_replicas_in_sync):
+    """Returns a callable that rebatches the input dataset.
+
+    Args:
+      dataset: A `tf.data.Dataset` representing the dataset to be distributed.
+      num_workers: An integer representing the number of workers to distribute
+        `dataset` among.
+      num_replicas_in_sync: An integer representing the number of replicas in
+        sync across all workers.
+    """
+    if num_replicas_in_sync % num_workers:
+      raise ValueError(
+          "tf.distribute expects every worker to have the same number of "
+          "replicas. However, encountered `num_replicas_in_sync` ({}) that "
+          "cannot be divided by `num_workers` ({})".format(
+              num_replicas_in_sync, num_workers))
+
+    num_replicas_per_worker = num_replicas_in_sync // num_workers
+    with ops.colocate_with(dataset._variant_tensor):  # pylint: disable=protected-access
+      batch_size = distribute.compute_batch_size(dataset)
+
+    def rebatch_fn(dataset, worker_index):
+      try:
+        # pylint: disable=protected-access
+        def apply_rebatch():
+          batch_sizes = distribute.batch_sizes_for_worker(
+              batch_size, num_workers, num_replicas_per_worker, worker_index)
+          return distribute._RebatchDataset(
+              dataset, batch_sizes).prefetch(num_replicas_per_worker)
+
+        def apply_legacy_rebatch():
+          return distribute._LegacyRebatchDataset(
+              dataset, num_replicas_in_sync).prefetch(num_replicas_per_worker)
+
+        with ops.colocate_with(dataset._variant_tensor):
+          return control_flow_ops.cond(
+              math_ops.not_equal(batch_size, -1),
+              true_fn=apply_rebatch,
+              false_fn=apply_legacy_rebatch)
+      except errors.InvalidArgumentError as e:
+        if "without encountering a batch" in str(e):
+          six.reraise(
+              ValueError,
+              ValueError(
+                  "Call the `batch` method on the input Dataset in order to be "
+                  "able to split your input across {} replicas.\n Please see "
+                  "the tf.distribute.Strategy guide. {}".format(
+                      num_replicas_in_sync, e)),
+              sys.exc_info()[2])
+        else:
+          raise
+
+    return rebatch_fn
 
   def __iter__(self):
     if not (context.executing_eagerly() or
@@ -1040,14 +1096,14 @@ class DistributedDatasetV1(DistributedDataset):
                dataset,
                input_workers,
                strategy,
-               split_batch_by=None,
+               num_replicas_in_sync=None,
                input_context=None):
     self._input_workers = input_workers
     super(DistributedDatasetV1, self).__init__(
         dataset,
         input_workers,
         strategy,
-        split_batch_by=split_batch_by,
+        num_replicas_in_sync=num_replicas_in_sync,
         input_context=input_context)
 
   def make_one_shot_iterator(self):
@@ -1305,20 +1361,24 @@ class DatasetIterator(DistributedIteratorV1):
                dataset,
                input_workers,
                strategy,
-               split_batch_by=None,
+               num_replicas_in_sync=None,
                input_context=None):
     """Make an iterator for the dataset on given devices.
 
-    If `split_batch_by` is not None, we "split" each batch of the
-    dataset by `split_batch_by` value.
+    If `num_replicas_in_sync` is not None, we split each batch of the dataset
+    into `num_replicas_in_sync` smaller batches, to be distributed among that
+    worker's replicas, so that the batch size for a global step (across all
+    workers and replicas) is as expected.
 
     Args:
       dataset: `tf.data.Dataset` that will be used as the input source.
       input_workers: an `InputWorkers` object.
       strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-      split_batch_by: Optional integer. If present, we "split" each batch of the
-        dataset by `split_batch_by` value.
+      num_replicas_in_sync: Optional integer. If this is not None, the value is
+        used to decide how to rebatch datasets into smaller batches so that the
+        total batch size for each step (across all workers and replicas) adds up
+        to `dataset`'s batch size.
       input_context: `InputContext` for sharding. Only pass this in for between
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
@@ -1328,7 +1388,7 @@ class DatasetIterator(DistributedIteratorV1):
         dataset,
         input_workers,
         strategy,
-        split_batch_by=split_batch_by,
+        num_replicas_in_sync=num_replicas_in_sync,
         input_context=input_context)
     worker_iterators = _create_iterators_per_worker(
         dist_dataset._cloned_datasets, input_workers, True)  # pylint: disable=protected-access

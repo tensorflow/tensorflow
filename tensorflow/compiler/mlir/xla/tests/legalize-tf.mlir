@@ -483,6 +483,57 @@ func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tenso
   return %0 : tensor<?x?x?x?xi32>
 }
 
+
+//===----------------------------------------------------------------------===//
+// ClipByValue
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @clip
+func @clip(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<f32> {
+  // CHECK: [[VAL:%.+]] = "mhlo.clamp"(%arg1, %arg0, %arg2)
+
+  %0 = "tf.ClipByValue"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return [[VAL]]
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: @clip_dynamic
+func @clip_dynamic(%arg0 : tensor<?xf32>, %arg1 : tensor<?xf32>, %arg2 : tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[CLAMP:%.+]] = "mhlo.clamp"(%arg1, %arg0, %arg2)
+  %0 = "tf.ClipByValue"(%arg0, %arg1, %arg2) : (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: return [[CLAMP]]
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @clip_static_broadcast
+func @clip_static_broadcast(%arg0 : tensor<5xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<5xf32> {
+  // CHECK-DAG: [[SHP:%.+]] = mhlo.constant dense<5>
+  // CHECK-DAG: [[SHPIDX:%.+]] = tensor_cast [[SHP]]
+  // CHECK-DAG: [[BROADCAST_MIN:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
+  // CHECK-DAG: [[BROADCAST_MAX:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg2, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
+  // CHECK-DAG: [[CLAMP:%.+]] = "mhlo.clamp"([[BROADCAST_MIN]], %arg0, [[BROADCAST_MAX]])
+  %0 = "tf.ClipByValue"(%arg0, %arg1, %arg2) : (tensor<5xf32>, tensor<f32>, tensor<f32>) -> tensor<5xf32>
+
+  // CHECK: return [[CLAMP]]
+  return %0 : tensor<5xf32>
+}
+
+
+// CHECK-LABEL: @clip_dynamic_broadcast
+func @clip_dynamic_broadcast(%arg0 : tensor<?xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[SHP:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXT:%.+]] = shape.to_extent_tensor [[SHP]]
+  // CHECK-DAG: [[SHPIDX:%.+]] = index_cast %1
+  // CHECK-DAG: [[BROADCAST_MIN:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
+  // CHECK-DAG: [[BROADCAST_MAX:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg2, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
+  // CHECK-DAG: [[CLAMP:%.+]] = "mhlo.clamp"([[BROADCAST_MIN]], %arg0, [[BROADCAST_MAX]])
+  %0 = "tf.ClipByValue"(%arg0, %arg1, %arg2) : (tensor<?xf32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+
+  // CHECK: return [[CLAMP]]
+  return %0 : tensor<?xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // DiagPart
 //===----------------------------------------------------------------------===//
@@ -2123,6 +2174,13 @@ func @floor_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK:  "mhlo.floor"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   %0 = "tf.Floor"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @invert_op_unranked
+func @invert_op_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK:  "mhlo.not"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  %0 = "tf.Invert"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: @is_finite

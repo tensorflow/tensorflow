@@ -585,6 +585,8 @@ class InferenceBuilderImpl : public InferenceBuilder {
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
       create_info.hints.Add(ModelHints::kReduceKernelsCount);
       create_info.hints.Add(ModelHints::kFastTuning);
+    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
+      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 

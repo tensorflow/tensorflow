@@ -790,6 +790,14 @@ class OptimizerV2(trackable.Trackable):
         return self._get_hyper(name)
       raise e
 
+  def __dir__(self):
+    result = set(super(OptimizerV2, self).__dir__())
+    if "_hyper" in result:
+      result |= self._hyper.keys()
+      if "learning_rate" in self._hyper.keys():
+        result.add("lr")
+    return list(result)
+
   def __setattr__(self, name, value):
     """Override setattr to support dynamic hyperparameter setting."""
     # Backwards compatibility with Keras optimizers.

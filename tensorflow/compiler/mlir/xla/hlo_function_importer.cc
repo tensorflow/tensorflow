@@ -174,15 +174,16 @@ tensorflow::Status HloFunctionImporter::ImportInstructions(
   return tensorflow::Status::OK();
 }
 
-StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
+StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     HloInstruction* instruction, mlir::OpBuilder* func_builder) {
   TF_ASSIGN_OR_RETURN(auto operands, GetOperands(instruction));
   TF_ASSIGN_OR_RETURN(auto result_type, ConvertShapeToType<RankedTensorType>(
                                             instruction->shape(), *builder_));
-  llvm::SmallVector<NamedAttribute, 10> attributes = {builder_->getNamedAttr(
-      "name", builder_->getStringAttr(instruction->name()))};
-  mlir::Location loc = func_builder->getUnknownLoc();
+  mlir::Location loc =
+      mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()),
+                         func_builder->getContext());
 
+  llvm::SmallVector<NamedAttribute, 10> attributes;
   switch (instruction->opcode()) {
     case HloOpcode::kParameter: {
       return nullptr;
@@ -214,8 +215,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     return new_operation;                                                     \
   }
     case HloOpcode::kBroadcast: {
-      // Note that the HLO broadcast is more powerful than the XLA broadcast op.
-      // BroadcastInDim offers a superset of the HLO op's functionality.
+      // Note that the HLO broadcast is more powerful than the XLA broadcast
+      // op. BroadcastInDim offers a superset of the HLO op's functionality.
       attributes.push_back(
           builder_->getNamedAttr("broadcast_dimensions",
                                  ConvertDimensions(instruction->dimensions())));
@@ -458,7 +459,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
         return op.getOperation();
       }
 
-      // Otherwise, it is a indexed conditional and should be mapped to Case op.
+      // Otherwise, it is a indexed conditional and should be mapped to Case
+      // op.
       TF_RETURN_IF_ERROR(GetMlirTypes(
           {instruction->branch_computation(0)->root_instruction()}, &rets));
 
@@ -474,8 +476,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       return op.getOperation();
     }
     case HloOpcode::kConcatenate: {
-      // TODO(b/132057942): Support taking an uint64_t instead of an IntegerAttr
-      // for concatenate dimension.
+      // TODO(b/132057942): Support taking an uint64_t instead of an
+      // IntegerAttr for concatenate dimension.
       return func_builder
           ->create<mlir::mhlo::ConcatenateOp>(
               loc, result_type, operands,
@@ -679,6 +681,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
+      NoAttributeCase(kCbrt, CbrtOp);
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kCeil, CeilOp);
       NoAttributeCase(kClamp, ClampOp);
@@ -703,9 +706,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kReal, RealOp);
       NoAttributeCase(kRemainder, RemOp);
       NoAttributeCase(kReplicaId, ReplicaIdOp);
-      // The dimensions attribute is not present on the HLO Reshape instruction.
-      // If dimensions are non-default, the XLA builder implements it as a
-      // separate transpose.
+      // The dimensions attribute is not present on the HLO Reshape
+      // instruction. If dimensions are non-default, the XLA builder
+      // implements it as a separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
       NoAttributeCase(kRoundNearestAfz, RoundOp);
       NoAttributeCase(kRsqrt, RsqrtOp);
@@ -720,9 +723,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kTanh, TanhOp);
       NoAttributeCase(kTuple, TupleOp);
       NoAttributeCase(kXor, XorOp);
-      // TODO(b/129422361) Copy needs special handling because it is not defined
-      // in tensorflow/compiler/xla/client/xla_builder.h.
-      // See operation semantics in
+      // TODO(b/129422361) Copy needs special handling because it is not
+      // defined in tensorflow/compiler/xla/client/xla_builder.h. See
+      // operation semantics in
       // g3doc/platforms/xla/g3doc/internal/hlo_semantics#copy
       NoAttributeCase(kCopy, CopyOp);
 #undef NoAttributeCase
@@ -735,6 +738,20 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           ImportAsRegion(*instruction->fused_instructions_computation(),
                          &fusion.fused_computation()));
       return fusion.getOperation();
+    }
+    case HloOpcode::kBitcast:
+      return func_builder
+          ->create<mlir::mhlo::BitcastOp>(loc, result_type, operands,
+                                          attributes)
+          .getOperation();
+    case HloOpcode::kReducePrecision: {
+      auto op = func_builder->create<mlir::mhlo::ReducePrecisionOp>(
+          loc, result_type, operands[0], attributes);
+      op.exponent_bitsAttr(func_builder->getIntegerAttr(
+          func_builder->getI32Type(), instruction->exponent_bits()));
+      op.mantissa_bitsAttr(func_builder->getIntegerAttr(
+          func_builder->getI32Type(), instruction->mantissa_bits()));
+      return op.getOperation();
     }
     case HloOpcode::kAddDependency:
       // Arbitrary op code that I suspect we will not implement for quite a
@@ -752,6 +769,28 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       return func_builder->createOperation(result);
     }
   }
+}
+
+StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
+    HloInstruction* instruction, mlir::OpBuilder* func_builder) {
+  TF_ASSIGN_OR_RETURN(mlir::Operation * op,
+                      ImportInstructionImpl(instruction, func_builder));
+  if (op == nullptr) return op;
+
+  // See MlirToHloConversionOptions for more about layouts.
+  //
+  // Minor-to-major is a permutation of [0, rank), presenting tensor dimensions
+  // in physical minor-to-major order.
+  if (instruction->shape().IsArray() &&
+      instruction->shape().layout() !=
+          LayoutUtil::MakeDescendingLayout(
+              instruction->shape().dimensions().size())) {
+    llvm::SmallVector<int64_t, 4> minor_to_major(
+        instruction->shape().layout().minor_to_major().begin(),
+        instruction->shape().layout().minor_to_major().end());
+    op->setAttr("minor_to_major", builder_->getIndexTensorAttr(minor_to_major));
+  }
+  return op;
 }
 
 StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(

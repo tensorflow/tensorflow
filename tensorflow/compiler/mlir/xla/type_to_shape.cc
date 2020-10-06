@@ -102,8 +102,7 @@ Shape TypeToShape(mlir::Type type) {
   if (ptype != PrimitiveType::PRIMITIVE_TYPE_INVALID)
     return ShapeUtil::MakeShape(ptype, {});
 
-  if (type.isBF16() || type.isF32() || type.isF64() ||
-      type.isa<mlir::IntegerType>()) {
+  if (type.isIntOrFloat()) {
     auto* context = type.getContext();
     mlir::emitError(mlir::UnknownLoc::get(context))
         << "lowering should have been handled by primitive type lowering for "

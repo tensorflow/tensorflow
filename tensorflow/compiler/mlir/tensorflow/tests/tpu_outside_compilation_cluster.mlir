@@ -95,7 +95,6 @@ func @two_clusters_with_one_op_each() {
   // CHECK-NEXT: "tf.opC"
   // CHECK-NEXT: "tf.opD"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER6]]"
-  // CHECK-SAME: _xla_outside_compilation = "{{[a-zA-Z_0-9]+}}"
   // CHECK-NEXT: "tf.opE"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() : () -> tensor<i32>
@@ -118,9 +117,8 @@ func @two_clusters_with_two_ops_each() {
   // CHECK-NEXT: "tf.opD"
   // CHECK-NEXT: "tf.opE"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER8]]"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER9:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opF"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER9]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER8]]"
   // CHECK-NEXT: "tf.opG"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() : () -> tensor<i32>
@@ -163,12 +161,11 @@ func @two_clusters_with_same_parent() {
   // CHECK-NEXT: "tf.opB"
   // CHECK-NEXT: "tf.opC"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER10]]"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER11:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opD"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER12:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opE"
   // CHECK-NEXT: "tf.opF"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13:[a-zA-Z_0-9]+]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER12]]"
   // CHECK-NEXT: "tf.opG"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<i32>
@@ -189,10 +186,10 @@ func @two_clusters_with_same_outside_compiled_parent() {
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER12:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opB"
   // CHECK-NEXT: "tf.opC"
-  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER12]]"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT: "tf.opD"
-  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER14:[a-zA-Z_0-9]+]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER12]]"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER13]]"
   // CHECK-NEXT: "tf.Identity"
   // CHECK-NEXT: "tf.opF"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER13]]"
@@ -234,8 +231,7 @@ func @outside_compile_with_block() {
   // CHECK-NEXT: "tf.opB"
   // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER15]]"
   // CHECK: "tf.opC"
-  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER14]]"
-  // CHECK-SAME: _xla_outside_compilation = "{{[a-zA-Z_0-9]+}}"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER15]]"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<i32>
     %b = "tf.opB"(%a) {_xla_outside_compilation = "0"} : (tensor<i32>) -> tensor<i32>
@@ -257,7 +253,6 @@ func @two_clusters_with_one_op_each_with_indirect_dependency() {
   // CHECK-NEXT: "tf.opD"
   // CHECK-NEXT: "tf.opE"
   // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER16]]"
-  // CHECK-SAME: _xla_outside_compilation = "{{[a-zA-Z_0-9]+}}"
   // CHECK-NEXT: "tf.opF"
   "tf_device.cluster"() ( {
     %a = "tf.opA"() : () -> tensor<i32>
@@ -376,7 +371,7 @@ func @check_clustering_ops_inside_nested_control_flow(%arg0 : tensor<*x!tf.resou
   // CHECK-NEXT:   "tf.B"
   // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER17:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT:   "tf.C"
-  // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER17:[a-zA-Z_0-9]+]]"
+  // CHECK-NOT:   _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK:        "tf.IfRegion"
   // CHECK:          "tf.IfRegion"
   // CHECK-NEXT:       "tf.Const"
@@ -407,6 +402,139 @@ func @check_clustering_ops_inside_nested_control_flow(%arg0 : tensor<*x!tf.resou
       %7 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
       "tf.Yield"(%7) : (tensor<i1>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> tensor<i1>
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @single_variant_input
+func @single_variant_input() {
+  // CHECK: "tf.opA"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1:[a-zA-Z_0-9]+]]"
+  // CHECK: "tf.opB"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  // CHECK: "tf.opC"
+  "tf_device.cluster"() ( {
+    %1= "tf.opA"() : () -> tensor<!tf.variant<tensor<f32>>>
+    "tf.opB"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> ()
+    "tf.opC"() : () -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @chained_variant_input
+func @chained_variant_input() {
+  // CHECK: "tf.opA"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1:[a-zA-Z_0-9]+]]"
+  // CHECK: "tf.opB"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  // CHECK: "tf.opC"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  "tf_device.cluster"() ( {
+    %1 = "tf.opA"() : () -> tensor<!tf.variant<tensor<f32>>>
+    %2 = "tf.opB"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
+    "tf.opC"(%2) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @single_variant_output
+func @single_variant_output() {
+  // CHECK: "tf.opA"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1:[a-zA-Z_0-9]+]]"
+  // CHECK: "tf.opB"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  // CHECK: "tf.opC"
+  "tf_device.cluster"() ( {
+    %1= "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<!tf.variant<tensor<f32>>>
+    "tf.opB"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+    "tf.opC"() : () -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @chained_variant_output
+func @chained_variant_output() {
+  // CHECK: "tf.opA"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1:[a-zA-Z_0-9]+]]"
+  // CHECK: "tf.opB"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  // CHECK: "tf.opC"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  "tf_device.cluster"() ( {
+    %1 = "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<!tf.variant<tensor<f32>>>
+    %2 = "tf.opB"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
+    "tf.opC"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @variant_input_output
+func @variant_input_output() {
+  // CHECK: "tf.opA"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1:[a-zA-Z_0-9]+]]"
+  // CHECK: "tf.opB"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  // CHECK: "tf.opC"
+  // CHECK-SAME: _xla_outside_compilation = "[[CLUSTER1]]"
+  "tf_device.cluster"() ( {
+    %1 = "tf.opA"() : () -> tensor<!tf.variant<tensor<f32>>>
+    %2 = "tf.opB"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
+    "tf.opC"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @variant_input_nested
+func @variant_input_nested(%arg0 : tensor<*x!tf.resource>) {
+  // CHECK:      tf_device.cluster
+  // CHECK-NEXT:   "tf.Const"
+  // CHECK-NEXT:   "tf.C"
+  // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER1:[a-zA-Z_0-9]+]]"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:        "tf.opD"
+  // CHECK-NOT: _xla_outside_compilation = "[[CLUSTER1]]"
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.C"() {_xla_outside_compilation = "auto0"} : () -> (tensor<!tf.variant<tensor<f32>>>)
+    "tf.IfRegion"(%0) ( {
+      %1 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.opD"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+      "tf.Yield"(%1) : (tensor<i1>) -> ()
+      }, {
+      %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%1) : (tensor<i1>) -> ()
+      }) { is_stateless = true, _xla_outside_compilation = "auto1" } : (tensor<i1>) -> tensor<i1>
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @variant_output_nested
+func @variant_output_nested(%arg0 : tensor<*x!tf.resource>) {
+  // CHECK:      tf_device.cluster
+  // CHECK:        "tf.IfRegion"
+  // CHECK:        "tf.C"
+  // CHECK-NOT: _xla_outside_compilation
+  // CHECK:        "tf.D"
+  // CHECK-NOT: _xla_outside_compilation
+  // CHECK:        "tf.Yield"
+  // CHECK: _xla_outside_compilation
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.IfRegion"(%0) ( {
+      %2 = "tf.C"()  : () -> (tensor<!tf.variant<tensor<f32>>>)
+      "tf.Yield"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+      }, {
+      %2 = "tf.D"() : () -> (tensor<!tf.variant<tensor<f32>>>)
+      "tf.Yield"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+      }) { is_stateless = true, _xla_outside_compilation = "auto1" } : (tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
+    "tf.E"(%1) {_xla_outside_compilation = "auto0"} : (tensor<!tf.variant<tensor<f32>>>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return

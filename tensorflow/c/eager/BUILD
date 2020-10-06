@@ -3,7 +3,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
@@ -289,7 +289,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
     ),
@@ -354,7 +354,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
     ),

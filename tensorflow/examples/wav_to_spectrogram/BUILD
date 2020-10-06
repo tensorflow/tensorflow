@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "wav_to_spectrogram_lib",
     srcs = ["wav_to_spectrogram.cc"],

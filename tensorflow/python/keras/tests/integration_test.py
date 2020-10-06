@@ -28,8 +28,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.legacy_tf_layers import base as base_layer
 from tensorflow.python.keras.utils import np_utils
-from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.platform import test

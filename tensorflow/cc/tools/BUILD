@@ -12,8 +12,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "freeze_saved_model",
     srcs = ["freeze_saved_model.cc"],

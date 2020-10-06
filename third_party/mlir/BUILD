@@ -125,11 +125,13 @@ cc_library(
         "lib/CAPI/IR/StandardAttributes.cpp",
         "lib/CAPI/IR/StandardTypes.cpp",
         "lib/CAPI/IR/Support.cpp",
+        "lib/CAPI/Standard/StandardDialect.cpp",
     ],
     hdrs = [
         "include/mlir-c/AffineMap.h",
         "include/mlir-c/IR.h",
         "include/mlir-c/StandardAttributes.h",
+        "include/mlir-c/StandardDialect.h",
         "include/mlir-c/StandardTypes.h",
         "include/mlir-c/Support.h",
         "include/mlir/CAPI/AffineMap.h",
@@ -142,8 +144,20 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":StandardOps",
         ":Support",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "MLIRBindingsPythonExtension",
+    hdrs = [
+        "include/mlir-c/Bindings/Python/Interop.h",
+    ],
+    deps = [
+        ":CAPIIR",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -165,7 +179,6 @@ cc_library(
 filegroup(
     name = "OpBaseTdFiles",
     srcs = [
-        "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
         "include/mlir/Dialect/StandardOps/IR/StandardOpsBase.td",
         "include/mlir/IR/OpBase.td",
     ],
@@ -187,7 +200,6 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td",
         "include/mlir/Dialect/Affine/IR/AffineOps.td",
-        "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
@@ -236,6 +248,44 @@ gentbl(
     td_file = "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td",
     td_srcs = [
         ":AffineOpsTdFiles",
+    ],
+)
+
+##---------------------------------------------------------------------------##
+# Async dialect.
+##---------------------------------------------------------------------------##
+
+filegroup(
+    name = "AsyncOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Async/IR/AsyncBase.td",
+        "include/mlir/Dialect/Async/IR/AsyncOps.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "AsyncOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/Async/IR/AsyncOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/Async/IR/AsyncOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/Dialect/Async/IR/AsyncOpsDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Async/IR/AsyncOps.td",
+    td_srcs = [
+        ":AsyncOpsTdFiles",
     ],
 )
 
@@ -501,6 +551,26 @@ cc_library(
         ":EDSC",
         ":IR",
         ":LoopLikeInterface",
+        ":SideEffectInterfaces",
+        ":StandardOps",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "Async",
+    srcs = glob([
+        "lib/Dialect/Async/IR/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/Async/IR/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":AsyncOpsIncGen",
+        ":Dialect",
+        ":IR",
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
@@ -2952,6 +3022,7 @@ cc_library(
         ":AffinePassIncGen",
         ":AffineToStandard",
         ":AffineTransforms",
+        ":Async",
         ":ConversionPasses",
         ":GPUDialect",
         ":GPUPassIncGen",

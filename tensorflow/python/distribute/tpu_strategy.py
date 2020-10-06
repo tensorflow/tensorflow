@@ -752,7 +752,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -809,7 +809,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     input_workers = self._get_input_workers(options)

@@ -1,0 +1,5 @@
+func @erf(%arg0: tensor<?xelem_type>) -> tensor<?xelem_type> {
+  %0 = "tf.Erf"(%arg0) { }
+    : (tensor<?xelem_type>) -> tensor<?xelem_type>
+  return %0 : tensor<?xelem_type>
+}

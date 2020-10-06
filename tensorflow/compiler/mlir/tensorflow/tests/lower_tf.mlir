@@ -86,10 +86,19 @@ func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32
   return %0 : tensor<2x3xf32>
 }
 
+// CHECK-LABEL: @is_inf
+func @is_inf(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
+  // CHECK: %[[INF:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[ABS:.*]] = "tf.Abs"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%[[ABS]], %[[INF]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  %0 = "tf.IsInf"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<3x4xi1>
+}
+
 // CHECK-LABEL: @is_nan
 func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
-  // CHECK: %[[NAN:.*]] = "tf.Const"() {value = dense<0x7FC00000> : tensor<f32>} : () -> tensor<f32>
-  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%arg0, %[[NAN]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  // CHECK: %[[RESULT:.*]] = "tf.NotEqual"(%arg0, %arg0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xi1>
   %0 = "tf.IsNan"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
   // CHECK: return %[[RESULT]]
   return %0 : tensor<3x4xi1>
@@ -218,7 +227,7 @@ func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<
 // %input has 1 batch dimension then 2 block dimensions then 1 remainder
 // dimension.
 // CHECK-LABEL: fourdim_SpaceToBatchND
-func @fourdim_SpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<*xf32> {
+func @fourdim_SpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<?x?x?x10xf32> {
   // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"() {value = dense<0> : tensor<1x2xi64>}
   // CHECK-DAG: [[ZERO_I32:%.+]] = "tf.Const"() {value = dense<0> : tensor<i32>}
   // CHECK-DAG: [[ZERO_I64:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
@@ -242,15 +251,15 @@ func @fourdim_SpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<
   // CHECK-DAG: [[PERMUTED:%.+]] = "tf.Transpose"([[RESHAPED]], [[PERMUTATION]])
   // CHECK-DAG: [[RESULT:%.+]] = "tf.Reshape"([[PERMUTED]], [[OUTPUT_SHAPE]])
   // CHECK-DAG: return [[RESULT]]
-  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<?x?x?x10xf32>
+  return %0 : tensor<?x?x?x10xf32>
 }
 
 // %input has 1 batch dimension then 3 block dimensions then 2 remainder
 // dimensions. This checks only ops that are specific to the case with 3 block
 // dimension and 2 remainder dimensions.
 // CHECK-LABEL: sixdim_SpaceToBatchND
-func @sixdim_SpaceToBatchND(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: tensor<3xi64>, %paddings: tensor<3x2xi64>) -> tensor<*xf32> {
+func @sixdim_SpaceToBatchND(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: tensor<3xi64>, %paddings: tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32> {
   // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"()
   // CHECK-DAG: [[FULL_PADDINGS:%.+]] = "tf.ConcatV2"([[PAD00]], %arg2, [[PAD00]], [[PAD00]], {{.+}})
   // CHECK-DAG: [[INPUT_SHAPE:%.+]] = "tf.Const"() {value = dense<[3, 5, 7, 9, 10, 11]> : tensor<6xi64>}
@@ -265,8 +274,8 @@ func @sixdim_SpaceToBatchND(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: ten
   // CHECK-DAG: [[OUTPUT_BATCH_PART2:%.+]] = "tf.Mul"([[OUTPUT_BATCH_PART1]], [[BLOCK_SHAPE_SPLITS]]#1)
   // CHECK-DAG: [[OUTPUT_BATCH:%.+]] = "tf.Mul"([[OUTPUT_BATCH_PART2]], [[BLOCK_SHAPE_SPLITS]]#2)
   // CHECK-DAG: [[OUTPUT_SHAPE:%.+]] = "tf.ConcatV2"([[OUTPUT_BATCH]], [[OUTER_SHAPE_0]], [[OUTER_SHAPE_1]], [[OUTER_SHAPE_2]], [[PADDED_SHAPE_SPLITS]]#4, [[PADDED_SHAPE_SPLITS]]#5, {{.+}})
-  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x9x10x11xf32>, tensor<3xi64>, tensor<3x2xi64>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x9x10x11xf32>, tensor<3xi64>, tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32>
+  return %0 : tensor<?x?x?x?x10x11xf32>
 }
 
 func @fake_quant_with_min_max_args(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
