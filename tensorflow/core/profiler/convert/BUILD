@@ -117,6 +117,79 @@ cc_library(
 )
 
 cc_library(
+    name = "op_stats_to_pod_stats",
+    srcs = ["op_stats_to_pod_stats.cc"],
+    hdrs = ["op_stats_to_pod_stats.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:pod_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:diagnostics",
+        "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "op_stats_to_pod_stats_test",
+    srcs = ["op_stats_to_pod_stats_test.cc"],
+    deps = [
+        ":op_stats_to_pod_stats",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:diagnostics",
+        "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "op_stats_to_pod_viewer",
+    srcs = ["op_stats_to_pod_viewer.cc"],
+    hdrs = ["op_stats_to_pod_viewer.h"],
+    deps = [
+        ":op_stats_to_pod_stats",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:pod_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:pod_viewer_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:diagnostics",
+        "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "op_stats_to_pod_viewer_test",
+    srcs = ["op_stats_to_pod_viewer_test.cc"],
+    deps = [
+        ":op_stats_to_pod_viewer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:pod_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:diagnostics",
+        "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "op_stats_to_input_pipeline_analysis",
     srcs = ["op_stats_to_input_pipeline_analysis.cc"],
     hdrs = ["op_stats_to_input_pipeline_analysis.h"],
