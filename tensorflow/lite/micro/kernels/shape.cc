@@ -23,11 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
-/*
-namespace ops {
-namespace micro {
-namespace shape {
-*/
+
 namespace {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
@@ -74,7 +70,4 @@ TfLiteRegistration Register_SHAPE() {
           /*version=*/0};
 }
 
-//}  // namespace micro
-//}  // namespace ops
-//}  // namespace tflite
 }  // namespace tflite
