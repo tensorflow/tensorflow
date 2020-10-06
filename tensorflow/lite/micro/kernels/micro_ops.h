@@ -18,6 +18,11 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
+// TFLM is incrementally moving towards a flat tflite namespace
+// (https://abseil.io/tips/130). Any new ops (or cleanup of existing ops should
+// have their Register function declarations in the tflite namespace.
+TfLiteRegistration Register_SHAPE();
+
 namespace ops {
 namespace micro {
 
@@ -74,7 +79,6 @@ TfLiteRegistration Register_RESHAPE();
 TfLiteRegistration Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration Register_ROUND();
 TfLiteRegistration Register_RSQRT();
-TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SIN();
 TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPLIT();
