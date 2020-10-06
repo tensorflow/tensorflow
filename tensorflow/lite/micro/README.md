@@ -40,14 +40,14 @@ The following resources may also be useful:
 If you are interested in contributing code to TensorFlow Lite for
 Microcontrollers then please read our [contributions guide](CONTRIBUTING.md).
 
-# Additional Documentation for the TFLM Internals
 
-For developers that are intersted in more details of the internals of the
+# Additional Documentation
+
+For developers that are interested in more details of the internals of the
 project, we have additional documentation in the [docs](docs/) folder.
 
+ * [Benchmarks](benchmarks/README.md)
  * [Memory Management](docs/memory_management.md)
  * [New Platform Support](docs/new_platform_support.md)
-
-
 
 
