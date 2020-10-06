@@ -23,12 +23,9 @@ ifeq ($(TARGET),$(filter $(TARGET),\
   $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
   $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
   $(eval $(call add_third_party_download,$(AM_SDK_URL),$(AM_SDK_MD5),$(AM_SDK_DEST),patch_am_sdk))
-
-  ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
-    $(eval $(call add_third_party_download,$(SF_BSPS_URL),$(SF_BSPS_MD5),$(AM_SDK_DEST)/$(SF_BSPS_DEST),))
-    # Make sure that we download the full Ambiq SDK before the SparkFun BSPs.
+  $(eval $(call add_third_party_download,$(SF_BSPS_URL),$(SF_BSPS_MD5),$(AM_SDK_DEST)/$(SF_BSPS_DEST),))
+# Make sure that we download the full Ambiq SDK before the SparkFun BSPs.
 $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
-  endif
 
   ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
     # sparkfun boards all share a common implementation of debug_log.cc and micro_time.cc
@@ -114,7 +111,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
     -fno-exceptions \
     -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
-    -Wl,-T,$(TENSORFLOW_ROOT)$(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/apollo3evb.ld \
+    -Wl,-T,$(TENSORFLOW_ROOT)$(SF_BSPS_DEST)/common/tools_sfe/templates/apollo3_tflu.ld \
     -Wl,-Map=$(TENSORFLOW_ROOT)$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
   BUILD_TYPE := micro
   ifeq ($(TARGET), apollo3evb)
@@ -156,7 +153,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
   # setting clock speed, default uart setups, etc. and an implementation
   # of the DebugLog interfaces.
   MICROLITE_CC_SRCS += \
-    $(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/startup_gcc.c \
+    $(SF_BSPS_DEST)/common/tools_sfe/templates/startup_gcc_tflu.c \
     $(APOLLO3_SDK)/utils/am_util_delay.c \
     $(APOLLO3_SDK)/utils/am_util_faultisr.c \
     $(APOLLO3_SDK)/utils/am_util_id.c \
