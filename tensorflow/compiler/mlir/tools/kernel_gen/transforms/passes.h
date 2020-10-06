@@ -61,8 +61,7 @@ CreatePropagateTensorFlowABIKnowledgePass(
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
-    mlir::StringRef blob_annotation = "", ArrayRef<uint32_t> architectures = {},
-    bool generate_fatbin = true);
+    mlir::StringRef blob_annotation = "", int32_t architecture = 0);
 
 // Pass to unfuse batch norm.
 std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();

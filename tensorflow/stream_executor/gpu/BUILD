@@ -251,7 +251,6 @@ cc_library(
     ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
-        "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
     ]),
 )
 
