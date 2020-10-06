@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
