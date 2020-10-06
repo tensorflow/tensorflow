@@ -405,7 +405,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(*mu_) {
       mutex_lock l(*mu_);
       num_calls_--;
-      RecordBufferEnqueue(ctx.get(), result->return_values);
       result->notification.Notify();
       cond_var_->notify_all();
     }
@@ -428,6 +427,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
       auto done = [this, ctx, result](Status status) {
         result->status.Update(status);
+        RecordBufferEnqueue(ctx.get(), result->return_values);
         CallCompleted(ctx, result);
       };
 
