@@ -363,6 +363,10 @@ class BufferAssignment {
     return temp_allocation_total_size_;
   }
 
+  int32 multiheap_size_constraint_per_heap() const {
+    return multiheap_size_constraint_per_heap_;
+  }
+
   // Returns whether the given buffer has been assigned an allocation.
   bool HasAllocation(const HloValue& value) const;
 
@@ -491,7 +495,11 @@ class BufferAssignment {
         buffer_size_(std::move(buffer_size)),
         color_alignment_(std::move(color_alignment)),
         alias_analysis_(std::move(alias_analysis)),
-        hlo_live_range_(std::move(hlo_live_range)) {}
+        hlo_live_range_(std::move(hlo_live_range)),
+        multiheap_size_constraint_per_heap_(
+            module->config()
+                .debug_options()
+                .xla_multiheap_size_constraint_per_heap()) {}
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
@@ -534,6 +542,8 @@ class BufferAssignment {
 
   // The total size of all temporary buffers.
   int64 temp_allocation_total_size_ = 0;
+
+  int32 multiheap_size_constraint_per_heap_;
 
   // Maps Buffers to the index of the BufferAllocation which holds the buffer.
   absl::flat_hash_map<const HloValue*, BufferAllocation::Index>

@@ -73,6 +73,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_deterministic_reductions(false);
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
+  opts.set_xla_multiheap_size_constraint_per_heap(-1);
 
   return opts;
 }
@@ -571,6 +572,16 @@ static void AllocateFlags() {
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_multiheap_size_constraint_per_heap",
+      int32_setter_for(
+          &DebugOptions::set_xla_multiheap_size_constraint_per_heap),
+      flag_values->xla_multiheap_size_constraint_per_heap(),
+      "Generates multiple heaps (i.e., temp buffers) with a size "
+      "constraint on each heap to avoid Out-of-Memory due to memory "
+      "fragmentation. The constraint is soft, so it works with tensors "
+      "larger than the given constraint size."));
+
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 
