@@ -26,6 +26,12 @@ namespace profiler {
 // Formats d with one digit after the decimal point.
 inline std::string OneDigit(double d) { return absl::StrFormat("%.1f", d); }
 
+// Formats d with maximum precision to allow parsing the result back to the same
+// number.
+inline std::string MaxPrecision(double d) {
+  return absl::StrFormat("%.17g", d);
+}
+
 }  // namespace profiler
 }  // namespace tensorflow
 
