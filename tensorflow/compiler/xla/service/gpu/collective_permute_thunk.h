@@ -19,21 +19,28 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace gpu {
 
+struct CollectivePermuteConfig {
+  std::vector<std::pair<int64, int64>> source_target_pairs;
+};
+
+CollectivePermuteConfig GetCollectivePermuteConfig(const HloInstruction* instr);
+
 // Thunk that implements the collective-permute HLO.
 class CollectivePermuteThunk : public Thunk {
  public:
-  CollectivePermuteThunk(ThunkInfo thunk_info,
+  CollectivePermuteThunk(ThunkInfo thunk_info, CollectivePermuteConfig&& config,
                          const BufferAllocation::Slice& src,
                          const BufferAllocation::Slice& dest);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const HloInstruction* hlo_instruction_;
+  CollectivePermuteConfig config_;
   BufferAllocation::Slice src_;
   BufferAllocation::Slice dest_;
 };

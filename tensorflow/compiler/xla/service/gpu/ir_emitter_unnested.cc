@@ -1623,9 +1623,10 @@ Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  CollectivePermuteConfig config = GetCollectivePermuteConfig(hlo);
   AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
-      GetThunkInfo(hlo), GetAllocationSlice(*hlo->operand(0)),
-      GetAllocationSlice(*hlo)));
+      GetThunkInfo(hlo), std::move(config),
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo)));
   return Status::OK();
 }
 
