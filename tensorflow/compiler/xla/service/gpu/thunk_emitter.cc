@@ -386,11 +386,26 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
       return slices;
     };
     std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices;
-    for (const auto* operand : custom_call->operands()) {
+    for (int64 i = 0; i < custom_call->operand_count(); i++) {
+      const auto* operand = custom_call->operand(i);
       operand_slices.push_back(get_slices_for_instr(operand));
+      const auto& s1 = operand_slices.back().shape();
+      const auto& s2 = operand->shape();
+      CHECK(ShapeUtil::Equal(s1, s2)) << absl::StreamFormat(
+          "Shape mismatch between operand shape and "
+          "slice shape for operand %d: %s vs %s",
+          i, s1.ToString(), s2.ToString());
     }
     ShapeTree<BufferAllocation::Slice> result_slices =
         get_slices_for_instr(custom_call);
+    CHECK(ShapeUtil::Equal(custom_call->shape(), result_slices.shape()))
+        << absl::StreamFormat(
+               "Shape mismatch between instr->shape() and "
+               "result_slices.shape(): "
+               "%s vs %s.",
+               custom_call->shape().ToString(),
+               result_slices.shape().ToString());
+
     AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
         context_->GetThunkInfo(custom_call), call_target,
         std::move(operand_slices), std::move(result_slices),
