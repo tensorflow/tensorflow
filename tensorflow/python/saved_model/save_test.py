@@ -556,6 +556,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
        save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES),
       ("_DiscardDistributedVariables", save_options.VariablePolicy.NONE))
   def test_expand_distributed_variables(self, expand_strategy):
+    # 1. Create a context with both CPU:0 and CPU:1.
     context._reset_context()
     cpus = context.context().list_physical_devices("CPU")
     if len(cpus) == 1:
@@ -566,6 +567,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
           ])
     context.ensure_initialized()
 
+    # 2. Create and save a model under a mirrored strategy.
     file_name = os.path.join(self.get_temp_dir(), "saved_model.pb")
     with mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"]).scope():
       root = tracking.AutoTrackable()
@@ -582,35 +584,34 @@ class SaveTest(test.TestCase, parameterized.TestCase):
           filename=file_name,
           options=save_options.SaveOptions(
               experimental_variable_policy=expand_strategy))
-    graph_def = meta_graph.read_meta_graph_file(file_name).graph_def
-    v0 = next((n for n in graph_def.node if n.name == "v"), None)
-    v1 = next((n for n in graph_def.node if n.name == "v/replica_1"), None)
-    self.assertIsNotNone(v0)
+
+    # 3. Read the output file and test behavior.
+    meta_graph_def = meta_graph.read_meta_graph_file(file_name)
+    object_graph = meta_graph_def.object_graph_def
+    graph_def = meta_graph_def.graph_def
+    v = next((n.variable
+              for n in object_graph.nodes
+              if n.HasField("variable") and n.variable.name == "v"), None)
     saved_function = next((f for f in graph_def.library.function
                            if "inference_f_" in f.signature.name), None)
     self.assertIsNotNone(saved_function)
     if (expand_strategy ==
         save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES):
-      self.assertIsNotNone(v1)
       # experimental_save_variable_devices should have been automatically set.
+      self.assertIn("CPU:0", v.device)
+      components = v.experimental_distributed_variable_components
+      self.assertLen(components, 2)
+      v0 = next((x for x in components if x.name == "v"), None)
+      v1 = next((x for x in components if x.name == "v/replica_1"), None)
+      self.assertIsNotNone(v0)
+      self.assertIsNotNone(v1)
       self.assertIn("CPU:0", v0.device)
       self.assertIn("CPU:1", v1.device)
       self.assertLen(saved_function.signature.input_arg, 2)
     else:
-      self.assertIsNone(v1)
-      self.assertEmpty(v0.device)
+      self.assertEmpty(v.device)
+      self.assertEmpty(v.experimental_distributed_variable_components)
       self.assertLen(saved_function.signature.input_arg, 1)
-
-  def test_expand_distributed_variables_not_allowed(self):
-    root = tracking.AutoTrackable()
-    with self.assertRaisesRegex(NotImplementedError,
-                                "not implemented in saved_model.save"):
-      save.save(
-          obj=root,
-          export_dir="",
-          options=save_options.SaveOptions(
-              experimental_variable_policy=save_options.VariablePolicy
-              .EXPAND_DISTRIBUTED_VARIABLES))
 
   def test_save_uninitialized_variable(self):
     root = tracking.AutoTrackable()

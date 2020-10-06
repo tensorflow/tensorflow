@@ -2285,7 +2285,15 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(
 
   std::vector<BufferAllocation::Slice> branch_operands;
   std::vector<ThunkSequence> branch_thunks;
-  for (int j = 0; j < hlo->branch_count(); ++j) {
+  std::vector<absl::optional<size_t>> branch_profile_indices;
+
+  int branch_count = hlo->branch_count();
+  branch_thunks.reserve(branch_count);
+  branch_profile_indices.reserve(branch_count);
+
+  const auto* index_map = ir_emitter_context_->profile_index_map();
+
+  for (int j = 0; j < branch_count; ++j) {
     branch_operands.emplace_back(GetAllocationSlice(*hlo->operand(j + 1)));
     HloComputation* branch_computation = hlo->branch_computation(j);
     TF_ASSIGN_OR_RETURN(
@@ -2294,11 +2302,19 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(
                                   ir_emitter_context_));
     TF_CHECK_OK(branch_computation->Accept(ir_emitter.get()));
     branch_thunks.push_back(std::move(*ir_emitter->ConsumeThunkSequence()));
+
+    absl::optional<size_t> profile_index;
+    if (index_map) {
+      profile_index = index_map->GetProfileIndexFor(*branch_computation);
+    }
+    branch_profile_indices.push_back(profile_index);
   }
 
+  ConditionalThunkConfig config = GetConditionalThunkConfig(
+      hlo, std::move(branch_thunks), std::move(branch_profile_indices));
   return std::unique_ptr<Thunk>(new ConditionalThunk(
-      GetThunkInfo(hlo), GetAllocationSlice(*hlo->operand(0)), branch_operands,
-      std::move(branch_thunks)));
+      GetThunkInfo(hlo), std::move(config),
+      GetAllocationSlice(*hlo->operand(0)), branch_operands));
 }
 
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
