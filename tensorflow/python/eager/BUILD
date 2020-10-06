@@ -486,6 +486,7 @@ cuda_py_test(
     shard_count = 15,
     tags = [
         "nomac",  # b/157056289
+	"no_rocm",
     ],
     deps = [
         ":backprop",
