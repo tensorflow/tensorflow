@@ -321,7 +321,7 @@ REGISTER_OP("_MklNativeFusedMatMul")
     // --------------------------------------------- //
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
-MKL version of FusedMatMul operator that does not depend
+oneDNN version of FusedMatMul operator that does not depend
 on layout propagation. Uses oneDNN APIs to implement MatMul fusion.
 
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
