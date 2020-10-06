@@ -85,6 +85,7 @@ tf_cc_test(
         ":profiler_client_impl",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/core:errors",
@@ -123,6 +124,7 @@ tf_cc_test(
     tags = ["external"],  # So that test suite reruns unconditionally.
     deps = [
         ":remote_profiler_session_manager",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
         "//tensorflow/core:test",
