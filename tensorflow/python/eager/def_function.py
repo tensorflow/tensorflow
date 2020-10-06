@@ -776,35 +776,29 @@ class Function(object):
   def experimental_get_tracing_count(self):
     """Returns the number of times the function has been traced.
 
-    A function may be traced more than once.
+    For more information on when a function is traced and when it is
+    traced multiple times see https://www.tensorflow.org/guide/function.
+    Example:
 
-    For example, as of now a function that was traced using the
-    tf.function decorator would be retraced if called with arguments
-    of different types wrt any previous call of said function.
+    >>> @tf.function
+    ... def double(a):
+    ...   return a + a
+    >>> double(tf.constant(1))
+    >>> double(tf.constant(2))
+    >>> double.experimental_get_tracing_count()
+    1
+    >>> double(tf.constant("a"))
+    >>> double.experimental_get_tracing_count()
+    2
     
-    For example if this function is defined:
 
-    ```@tf.function
-    def double(a):
-      return a + a
-    ```
+    The first time experimental_get_tracing_count is called
+    it returns 1, as the function is traced the first
+    time it is called, and the second time the same graph is used
+    since we're calling it with a parameter of the same type.
 
-    and then it is called like this:
-
-    ```print(double(tf.constant(1)))
-    print(double(tf.constant(2)))
-    double.experimental_get_tracing_count()
-    ```
-
-    then the last line would return 1, as the function is traced the first
-    time it is called, and the second time the same graph is used since
-    we're calling it with an int parameter. If, afterwards, we run this:
-
-    ```print(double(tf.constant("a")))
-    double.experimental_get_tracing_count()
-    ```
-
-    then this time the last line returns 2, as we called double with a
+    The second time experimental_get_tracing_count is called
+    it returns 2, as we called double with a
     different argument type, and so it was traced again.
 
     """
