@@ -115,6 +115,7 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
   size_t weights_load_offset = 0;
   size_t biases_load_offset = 0;
   size_t weights_fetch_size;
+  size_t bias_fetch_size;
   int8_t *sW, *tW;  // sW points to the head of the weights scratch space, tW
                     // points to the head of the fetched weights which equals sW
                     // for the first fetch but not for subsequent fetches
@@ -140,20 +141,26 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
                 op->execution_plan.changrps[n_th - 1].size)),
       op->execution_plan.GetWeightsScratchSize());
 
+  bias_fetch_size =
+      std::min((size_t)(changrp_len * op->execution_plan.GetBiasScratchSize() /
+                        (op->execution_plan.changrps[n_th - 1].start +
+                         op->execution_plan.changrps[n_th - 1].size)),
+               op->execution_plan.GetBiasScratchSize());
+
   for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
     const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
 
     // offset into the temp W and BSO pointers based on how many bytes we
     // have loaded since the last JoinTasks
     tW = sW + weights_load_offset;
-    tBSO = sBSO + biases_load_offset;
+    tBSO = (int16_t*)((int8_t*)sBSO + biases_load_offset);
 
     // fetch the weights and biases
     weights_load_offset += dispatcher->FetchWeights(
         &tW, weights->data.int8, weights_fetch_size, changrp);
 
-    biases_load_offset += dispatcher->FetchBiases(
-        &tBSO, bso->data.i16, op->execution_plan.GetBiasScratchSize(), changrp);
+    biases_load_offset +=
+        dispatcher->FetchBiases(&tBSO, bso->data.i16, bias_fetch_size, changrp);
 
     thread_data[i_th].Y = &output->data.int8[changrp.start];
     thread_data[i_th].X = input->data.int8;

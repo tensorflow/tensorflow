@@ -80,6 +80,7 @@ class ExecutionPlan {
  private:
   size_t n_threads_;
   size_t bias_scratch_offset_;
+  size_t bias_scratch_size_;
 };
 
 }  // namespace xcore

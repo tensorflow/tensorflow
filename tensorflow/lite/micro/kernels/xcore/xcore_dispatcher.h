@@ -19,9 +19,9 @@ extern "C" {
 #define ATTRIBUTE_THREAD_FUNCTION __attribute__((fptrgroup("thread_function")))
 
 #define STRINGIFY_THREAD_FUNCTION(NAME) #NAME
-#define GET_THREAD_FUNCTION_STACKWORDS(DEST, NAME)                     \
-  asm("ldc %[__dest], " STRINGIFY_THREAD_FUNCTION(NAME) ".nstackwords" \
-      : [ __dest ] "=r"(DEST))
+// #define GET_THREAD_FUNCTION_STACKWORDS(DEST, NAME)                     \
+//   asm("ldc %[__dest], " STRINGIFY_THREAD_FUNCTION(NAME) ".nstackwords" \
+//       : [ __dest ] "=r"(DEST))
 #define GET_THREAD_FUNCTION_STACKSIZE(DEST, NAME)                        \
   {                                                                      \
     size_t _stack_words;                                                 \
