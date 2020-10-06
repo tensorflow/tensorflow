@@ -57,7 +57,7 @@ class RemoteProfilerSessionManager {
   }
 
   // Awaits for responses from remote profiler sessions and returns them as a
-  // list. Subsequent calls will yield an empty list.
+  // list. Subsequent calls beyond the first will yield a list of errors.
   std::vector<Response> WaitForCompletion();
 
   // Not copyable or movable.

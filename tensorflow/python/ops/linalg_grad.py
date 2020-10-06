@@ -524,6 +524,7 @@ def _QrGrad(op, dq, dr):
     return _QrGradSquareAndDeepMatrices(q, r, dq, dr)
 
   # Partition a = [x, y], r = [u, v] and reduce to the square case
+  # The methodology is explained in detail in https://arxiv.org/abs/2009.10071
   a = op.inputs[0]
   y = a[..., :, num_rows:]
   u = r[..., :, :num_rows]

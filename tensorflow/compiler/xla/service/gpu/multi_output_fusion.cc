@@ -104,6 +104,13 @@ HloInstruction* SelectPreferredFusionCandidate(
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloReachabilityMap& reachability) {
   std::vector<HloInstruction*> fusion_candidates;
+  // If there is only one user, and it is not a multi-output fusion node, this
+  // fusion possibility was already considered and rejected by the FusionMerger
+  // pass. No need to try again!
+  if (producer->user_count() == 1 &&
+      !producer->users()[0]->IsMultiOutputFusion()) {
+    return fusion_candidates;
+  }
   for (HloInstruction* consumer : producer->users()) {
     VLOG(3) << "Looking at producer " << producer->name()
             << " and its consumer " << consumer->name();

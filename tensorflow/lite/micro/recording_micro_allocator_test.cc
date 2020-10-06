@@ -36,6 +36,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestRecordsTfLiteEvalTensorArrayData) {
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   tflite::AllOpsResolver all_ops_resolver;
   tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
@@ -55,7 +56,8 @@ TF_LITE_MICRO_TEST(TestRecordsTfLiteEvalTensorArrayData) {
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
-  status = micro_allocator->FinishModelAllocation(model, eval_tensors);
+  status = micro_allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles);
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
@@ -78,6 +80,7 @@ TF_LITE_MICRO_TEST(TestRecordsTfLiteEvalTensorArrayData) {
 
 TF_LITE_MICRO_TEST(TestRecordsNodeAndRegistrationArrayData) {
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   tflite::AllOpsResolver all_ops_resolver;
   tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
@@ -95,7 +98,8 @@ TF_LITE_MICRO_TEST(TestRecordsNodeAndRegistrationArrayData) {
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
-  status = micro_allocator->FinishModelAllocation(model, eval_tensors);
+  status = micro_allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles);
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
@@ -112,6 +116,7 @@ TF_LITE_MICRO_TEST(TestRecordsNodeAndRegistrationArrayData) {
 
 TF_LITE_MICRO_TEST(TestRecordsMultiTenantAllocations) {
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   tflite::AllOpsResolver all_ops_resolver;
   tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
@@ -133,7 +138,8 @@ TF_LITE_MICRO_TEST(TestRecordsMultiTenantAllocations) {
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
-  status = micro_allocator->FinishModelAllocation(model, eval_tensors);
+  status = micro_allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles);
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
@@ -143,8 +149,8 @@ TF_LITE_MICRO_TEST(TestRecordsMultiTenantAllocations) {
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
-  status = kTfLiteOk,
-  micro_allocator->FinishModelAllocation(model, eval_tensors);
+  status = kTfLiteOk, micro_allocator->FinishModelAllocation(
+                          model, eval_tensors, &scratch_buffer_handles);
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 

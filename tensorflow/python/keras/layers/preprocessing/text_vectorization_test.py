@@ -690,6 +690,25 @@ class TextVectorizationPreprocessingTest(
 
     self.assertAllEqual(expected_output, output)
 
+  def test_vocab_setting_via_init(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.INT,
+        vocabulary=vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
 
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationDistributionTest(

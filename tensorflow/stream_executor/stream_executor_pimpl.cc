@@ -744,6 +744,7 @@ bool StreamExecutor::AllocateStream(Stream *stream) {
     return false;
   }
 
+  RegisterStream(stream);
   return true;
 }
 
@@ -751,6 +752,7 @@ void StreamExecutor::DeallocateStream(Stream *stream) {
   implementation_->DeallocateStream(stream);
   CHECK_GE(live_stream_count_.fetch_sub(1), 0)
       << "live stream count should not dip below zero";
+  UnregisterStream(stream);
 }
 
 bool StreamExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {

@@ -512,7 +512,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
     return Status::OK();
   }
   PassManager pm(func_.getContext());
-  ::tensorflow::SetCrashReproducer(pm);
+  ::tensorflow::applyTensorflowAndCLOptions(pm);
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(CreateBreakUpIslandsPass());
 

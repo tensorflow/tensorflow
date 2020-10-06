@@ -843,9 +843,14 @@ absl::Status Arguments::AllocateObjects(CLContext* context) {
   for (auto& t : objects_) {
     RETURN_IF_ERROR(
         t.second.descriptor->CreateGPUObject(context, &t.second.obj_ptr));
-    t.second.descriptor->Release();
   }
   return absl::OkStatus();
+}
+
+void Arguments::ReleaseCPURepresentation() {
+  for (auto& t : objects_) {
+    t.second.descriptor->Release();
+  }
 }
 
 absl::Status Arguments::AddObjectArgs() {

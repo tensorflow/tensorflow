@@ -63,6 +63,24 @@ func @divide_fold_float() -> tensor<4xf64> {
   return %2 : tensor<4xf64>
 }
 
+// CHECK-LABEL: remainder_fold_int
+func @remainder_fold_int() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[5, 66, 5, 1]> : tensor<4xi32>
+  %1 = mhlo.constant dense<[3, 5, 1, 2]> : tensor<4xi32>
+  // CHECK: mhlo.constant dense<[2, 1, 0, 1]>
+  %2 = "mhlo.remainder"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>)
+  return %2 : tensor<4xi32>
+}
+
+// CHECK-LABEL: remainder_fold_float
+func @remainder_fold_float() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<[7.0, 66.5, 5.0, 3.1]> : tensor<4xf32>
+  %1 = mhlo.constant dense<[3.0, 5.0, 1.0, 2.6]> : tensor<4xf32>
+  // CHECK: mhlo.constant dense<[1.000000e+00, 1.500000e+00, 0.000000e+00, 5.000000e-01]>
+  %2 = "mhlo.remainder"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  return %2 : tensor<4xf32>
+}
+
 // CHECK-LABEL: max_scalar_fold
 func @max_scalar_fold() -> tensor<4xi64> {
   %0 = mhlo.constant dense<7> : tensor<4xi64>
@@ -949,6 +967,22 @@ func @gather_scalar_index_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<5x6x4xf32
   return %1 : tensor<5x6x4xf32>
   // CHECK:  %[[RET:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[5, 6, 5]> : tensor<3xi64>, start_indices = dense<[0, 0, 1]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<5x6x7xf32>) -> tensor<5x6x4xf32>
   // CHECK: return %[[RET]] : tensor<5x6x4xf32>
+}
+
+// CHECK-LABEL: gather_to_slice_reshape
+func @gather_to_slice_reshape(%arg0: tensor<5x6x7xf32>) -> tensor<3x6xf32> {
+  %0 = constant dense<[1, 2]> : tensor<2xi32>
+  %1 = "mhlo.gather"(%arg0, %0) {
+    dimension_numbers = {collapsed_slice_dims = dense<[2]> : tensor<1xi64>,
+                         index_vector_dim = 0 : i64,
+                         offset_dims = dense<[0, 1, 2]> : tensor<3xi64>,
+                         start_index_map = dense<[0, 2]> : tensor<2xi64>},
+    indices_are_sorted = false,
+    slice_sizes = dense<[3, 6, 1]> : tensor<3xi64>} : (tensor<5x6x7xf32>, tensor<2xi32>) -> tensor<3x6xf32>
+  return %1 : tensor<3x6xf32>
+  // CHECK:  %[[V0:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[4, 6, 3]> : tensor<3xi64>, start_indices = dense<[1, 0, 2]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<5x6x7xf32>) -> tensor<3x6x1xf32>
+  // CHECK:  %[[V1:.*]] = "mhlo.reshape"(%[[V0]]) : (tensor<3x6x1xf32>) -> tensor<3x6xf32>
+  // CHECK: return %[[V1]] : tensor<3x6xf32>
 }
 
 // CHECK-LABEL: func @fold_and_same

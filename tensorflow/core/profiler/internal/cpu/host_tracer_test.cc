@@ -16,7 +16,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/step_stats.pb.h"

@@ -7,6 +7,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_profiler_client_deps",
+    "tf_protos_profiler_service",
 )
 
 package(
@@ -85,18 +86,17 @@ tf_cc_test(
     ],
     deps = [
         ":profiler_client_impl",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
-    ],
+    ] + tf_protos_profiler_service(),
 )
 
 cc_library(
@@ -131,14 +131,13 @@ tf_cc_test(
     ],
     deps = [
         ":remote_profiler_session_manager",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-    ],
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
+    ] + tf_protos_profiler_service(),
 )

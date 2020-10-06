@@ -532,6 +532,7 @@ Status PartiallyRevivedObjects::Build(ImmediateExecutionContext* ctx,
   revived->variables = std::move(variables);
   revived->assets = std::move(assets);
   revived->constants = std::move(constants);
+  revived->signatures_map = std::move(signatures_map);
 
   // 3b. Move over resources.
   TF_RETURN_IF_ERROR(BuildResources(ctx, obj_graph, this, revived));

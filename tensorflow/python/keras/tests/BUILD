@@ -15,8 +15,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -94,7 +92,6 @@ tf_py_test(
     srcs = ["convert_to_constants_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -156,6 +153,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -177,7 +175,6 @@ tf_py_test(
     srcs = ["model_architectures_test.py"],
     python_version = "PY3",
     shard_count = 16,
-    tfrt_enabled = True,
     deps = [
         ":model_architectures",
         "//tensorflow/python/keras",

@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = [":friends"],
@@ -812,7 +812,6 @@ cc_library(
         ":tensorflow",
         ":tensorflow_types",
         "//tensorflow/core:framework",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -1171,7 +1170,6 @@ cc_library(
 cc_library(
     name = "export_tf_dialect_op",
     srcs = [
-        "translate/derived_attr_populator.inc",
         "translate/export_tf_dialect_op.cc",
     ],
     hdrs = [
@@ -1181,6 +1179,7 @@ cc_library(
         ":convert_type",
         ":export_utils",
         ":tensorflow",
+        "//tensorflow/compiler/mlir:string_container_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1189,6 +1188,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1542,38 +1542,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-tf_native_cc_binary(
-    name = "derived_attr_populator_gen",
-    srcs = [
-        "translate/derived_attr_populator_gen.cc",
-    ],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TableGen",
-        "@llvm-project//mlir:TableGen",
-    ],
-)
-
-gentbl(
-    name = "derived_attr_populator_inc",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        ("", "translate/derived_attr_populator.inc"),
-    ],
-    tblgen = ":derived_attr_populator_gen",
-    td_file = "ir/tf_ops.td",
-    td_srcs = [
-        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
-        "ir/tf_generated_ops.td",
-        "ir/tf_op_base.td",
-        "ir/tf_op_interfaces.td",
     ],
 )
 

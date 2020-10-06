@@ -3364,8 +3364,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
-  # TODO(b/162544929): Enable this test.
-  def DISABLE_testCancelBlockedFunctionExecution(self):
+  def testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
 
