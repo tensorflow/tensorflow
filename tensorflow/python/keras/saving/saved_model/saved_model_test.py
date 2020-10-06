@@ -1054,6 +1054,7 @@ class MetricTest(test.TestCase, parameterized.TestCase):
             num_tensor_args,
             test_sample_weight=False)
 
+  @test.disable_for_rocm(skip_message='Skipping the test as ROCm.')
   def test_registered_custom_metric(self):
 
     @generic_utils.register_keras_serializable('Testing')
