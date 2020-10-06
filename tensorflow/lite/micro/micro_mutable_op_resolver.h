@@ -408,6 +408,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int GetRegistrationLength() { return registrations_len_; }
 
  private:
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
                           const TfLiteRegistration& registration,
                           MicroOpResolver::BuiltinParseFunction parser) {
@@ -464,7 +466,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
 
   ErrorReporter* error_reporter_;
 
-  TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
 };  // namespace tflite

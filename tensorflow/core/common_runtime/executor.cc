@@ -440,8 +440,7 @@ void ExecutorState<PropagatorStateType>::RunTask(Closure&& c) {
   // mutable is needed because std::forward<Closure> in the lambda body may move
   // the Closure `c`.
   runner_([c = std::forward<Closure>(c)]() mutable {
-    auto qlen = queue_length.fetch_sub(1, std::memory_order_relaxed);
-    metrics::UpdateGraphPendingQueueLength(qlen - 1);
+    queue_length.fetch_sub(1, std::memory_order_relaxed);
     std::forward<Closure>(c)();
   });
 }

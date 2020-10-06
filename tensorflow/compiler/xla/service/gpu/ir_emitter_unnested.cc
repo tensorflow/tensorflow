@@ -2272,8 +2272,15 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
       IrEmitterUnnested::Create(hlo_module_config_, body, ir_emitter_context_));
   TF_RETURN_IF_ERROR(body->Accept(ir_emitter_body.get()));
 
+  const auto* index_map = ir_emitter_context_->profile_index_map();
+  absl::optional<size_t> body_profile_index;
+  if (index_map) {
+    body_profile_index = index_map->GetProfileIndexFor(*body);
+  }
+
   return std::unique_ptr<Thunk>(new ForThunk(
-      GetThunkInfo(hlo), loop_limit, ir_emitter_body->ConsumeThunkSequence()));
+      GetThunkInfo(hlo), loop_limit, ir_emitter_body->ConsumeThunkSequence(),
+      body_profile_index));
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(

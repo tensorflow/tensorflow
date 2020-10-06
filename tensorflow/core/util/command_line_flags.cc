@@ -135,9 +135,8 @@ bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
 Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text)
     : name_(name),
       type_(TYPE_INT32),
-      int32_hook_([this, dst](int32 value) {
+      int32_hook_([dst](int32 value) {
         *dst = value;
-        this->default_initialized_ = false;
         return true;
       }),
       int32_default_for_display_(*dst),
@@ -146,9 +145,8 @@ Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text)
 Flag::Flag(const char* name, tensorflow::int64* dst, const string& usage_text)
     : name_(name),
       type_(TYPE_INT64),
-      int64_hook_([this, dst](int64 value) {
+      int64_hook_([dst](int64 value) {
         *dst = value;
-        this->default_initialized_ = false;
         return true;
       }),
       int64_default_for_display_(*dst),
@@ -157,9 +155,8 @@ Flag::Flag(const char* name, tensorflow::int64* dst, const string& usage_text)
 Flag::Flag(const char* name, float* dst, const string& usage_text)
     : name_(name),
       type_(TYPE_FLOAT),
-      float_hook_([this, dst](float value) {
+      float_hook_([dst](float value) {
         *dst = value;
-        this->default_initialized_ = false;
         return true;
       }),
       float_default_for_display_(*dst),
@@ -168,9 +165,8 @@ Flag::Flag(const char* name, float* dst, const string& usage_text)
 Flag::Flag(const char* name, bool* dst, const string& usage_text)
     : name_(name),
       type_(TYPE_BOOL),
-      bool_hook_([this, dst](bool value) {
+      bool_hook_([dst](bool value) {
         *dst = value;
-        this->default_initialized_ = false;
         return true;
       }),
       bool_default_for_display_(*dst),
@@ -179,9 +175,8 @@ Flag::Flag(const char* name, bool* dst, const string& usage_text)
 Flag::Flag(const char* name, string* dst, const string& usage_text)
     : name_(name),
       type_(TYPE_STRING),
-      string_hook_([this, dst](string value) {
+      string_hook_([dst](string value) {
         *dst = std::move(value);
-        this->default_initialized_ = false;
         return true;
       }),
       string_default_for_display_(*dst),

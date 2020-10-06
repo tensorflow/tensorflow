@@ -1207,11 +1207,10 @@ def placeholder(shape=None,
     if ndim:
       shape = (None,) * ndim
   if keras_tensor.keras_tensors_enabled():
-    spec = tensor_spec.TensorSpec(
-        shape=shape, dtype=dtype, name=name)
     if sparse:
       spec = sparse_tensor.SparseTensorSpec(
           shape=shape, dtype=dtype)
+      x = keras_tensor.SparseKerasTensor(spec, name=name)
     elif ragged:
       ragged_rank = 0
       for i in range(1, len(shape)):
@@ -1224,7 +1223,11 @@ def placeholder(shape=None,
       spec = ragged_tensor.RaggedTensorSpec(
           shape=shape, dtype=dtype, ragged_rank=ragged_rank)
 
-    x = keras_tensor.KerasTensor(spec, name=name)
+      x = keras_tensor.RaggedKerasTensor(spec, name=name)
+    else:
+      spec = tensor_spec.TensorSpec(
+          shape=shape, dtype=dtype, name=name)
+      x = keras_tensor.KerasTensor(spec, name=name)
   else:
     with get_graph().as_default():
       if sparse:
