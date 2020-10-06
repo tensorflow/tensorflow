@@ -840,6 +840,7 @@ cuda_py_test(
         "checkpoint_management_test.py",
     ],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":checkpoint_management",
         ":saver",
@@ -1235,7 +1236,6 @@ cuda_py_test(
     grpc_enabled = True,
     main = "session_manager_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":checkpoint_management",
         ":saver",

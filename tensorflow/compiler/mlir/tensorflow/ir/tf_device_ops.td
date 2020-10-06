@@ -36,7 +36,7 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let cppNamespace = "tf_device";
+  let cppNamespace = "::mlir::tf_device";
 }
 
 //===----------------------------------------------------------------------===//
@@ -295,14 +295,8 @@ For example:
   let builders = [
     OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
               "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
-              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs, "
-              "llvm::ArrayRef<Value> packed_inputs, "
-              "llvm::ArrayRef<Type> replica_output_types">,
-    OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
-              "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
-              "llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs, "
-              "llvm::ArrayRef<Value> packed_inputs, "
-              "Operation::result_type_range replica_output_types">
+              "llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs, "
+              "ValueRange packed_inputs, TypeRange replica_output_types">,
   ];
 
   let parser = [{ return Parse$cppClass(&parser, &result); }];

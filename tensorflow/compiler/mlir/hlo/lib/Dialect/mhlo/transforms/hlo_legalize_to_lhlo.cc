@@ -287,11 +287,36 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
   }
 };
 
-// Legalize mhlo.return to a lmhlo.copy and lmhlo.terminator. This functionality
-// is provided by mlir buffer assignment, so use the pattern from there.
-using HloToLhloReturnOpConverter =
-    BufferAssignmentReturnOpConverter<mhlo::ReturnOp, lmhlo::TerminatorOp,
-                                      lmhlo::CopyOp>;
+// Legalize mhlo.return to a lmhlo.copy and lmhlo.terminator.
+struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
+ public:
+  using BaseOpConversion<mhlo::ReturnOp>::BaseOpConversion;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReturnOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    auto& entry_block = op.getParentRegion()->front();
+    auto num_arguments = entry_block.getNumArguments();
+    if (operands.size() > num_arguments) {
+      return op.emitError(
+          "The number of operands that need Copy operations is more "
+          "than the number of target function arguments.");
+    }
+
+    // The index of the first output block argument.
+    auto dest_arg_idx = num_arguments - operands.size();
+
+    // Create a lmhlo.copy for each operand of mhlo.return.
+    for (Value operand : operands) {
+      rewriter.create<lmhlo::CopyOp>(loc, operand,
+                                     entry_block.getArgument(dest_arg_idx));
+      ++dest_arg_idx;
+    }
+    rewriter.replaceOpWithNewOp<lmhlo::TerminatorOp>(op);
+    return success();
+  }
+};
 
 class HloToLhloTensorLoadOpConverter
     : public BaseOpConversion<mlir::TensorLoadOp> {
@@ -429,6 +454,13 @@ struct HloLegalizeToLhlo
                          isMemRefType);
     });
 
+    auto kind = results_escape_function
+                    ? BufferAssignmentTypeConverter::KeepAsFunctionResult
+                    : BufferAssignmentTypeConverter::AppendToArgumentsList;
+    converter.setResultConversionKind<UnrankedTensorType, UnrankedMemRefType>(
+        kind);
+    converter.setResultConversionKind<RankedTensorType, MemRefType>(kind);
+
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateWithBufferAssignmentOpConversionPatterns<
         mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(&context, &converter,
@@ -456,6 +488,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::AbsOp>,
       HloToLhloOpConverter<mhlo::AddOp>,
       HloToLhloOpConverter<mhlo::AndOp>,
+      HloToLhloOpConverter<mhlo::Atan2Op>,
       HloToLhloOpConverter<mhlo::BroadcastInDimOp>,
       HloToLhloOpConverter<mhlo::CeilOp>,
       HloToLhloOpConverter<mhlo::CompareOp>,
@@ -465,6 +498,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::ConvertOp>,
       HloToLhloOpConverter<mhlo::CopyOp>,
       HloToLhloOpConverter<mhlo::CosOp>,
+      HloToLhloOpConverter<mhlo::CustomCallOp>,
       HloToLhloOpConverter<mhlo::DivOp>,
       HloToLhloOpConverter<mhlo::DotOp>,
       HloToLhloOpConverter<mhlo::ExpOp>,
@@ -472,17 +506,20 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::GatherOp>,
       HloToLhloOpConverter<mhlo::ImagOp>,
       HloToLhloOpConverter<mhlo::IotaOp>,
+      HloToLhloOpConverter<mhlo::IsFiniteOp>,
       HloToLhloOpConverter<mhlo::LogOp>,
       HloToLhloOpConverter<mhlo::MaxOp>,
       HloToLhloOpConverter<mhlo::MinOp>,
       HloToLhloOpConverter<mhlo::MulOp>,
       HloToLhloOpConverter<mhlo::NegOp>,
+      HloToLhloOpConverter<mhlo::NotOp>,
       HloToLhloOpConverter<mhlo::RealOp>,
       HloToLhloOpConverter<mhlo::RemOp>,
       HloToLhloOpConverter<mhlo::RsqrtOp>,
       HloToLhloOpConverter<mhlo::ReshapeOp>,
       HloToLhloOpConverter<mhlo::SelectOp>,
       HloToLhloOpConverter<mhlo::SignOp>,
+      HloToLhloOpConverter<mhlo::SinOp>,
       HloToLhloOpConverter<mhlo::SliceOp>,
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubOp>,

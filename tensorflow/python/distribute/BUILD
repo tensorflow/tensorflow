@@ -136,9 +136,6 @@ cuda_py_test(
 
 py_library(
     name = "distribute",
-    srcs = [
-        "__init__.py",
-    ],
     srcs_version = "PY2AND3",
     deps = [
         ":all_reduce",
@@ -147,7 +144,7 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":sharded_variable",
-        "//tensorflow/python/distribute/client:parameter_server_client",
+        "//tensorflow/python/distribute/client",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -601,7 +598,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -1000,6 +997,7 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":cross_device_utils",
@@ -1023,6 +1021,7 @@ cuda_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":collective_util",
         ":combinations",
         ":cross_device_ops",
         ":multi_process_runner",
@@ -1030,6 +1029,10 @@ cuda_py_test(
         ":reduce_util",
         ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
         "//tensorflow/python:util",
@@ -1059,8 +1062,12 @@ py_library(
     srcs = ["sharded_variable.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
     ],
@@ -1074,7 +1081,9 @@ tf_py_test(
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_spec",
@@ -1130,6 +1139,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+        "notsan",  # b/168645872
     ],
     tpu_tags = [
         "no_oss",  # b/150954621 Target too big to run serially reliably.
@@ -1320,23 +1330,6 @@ distribute_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
-    name = "strategy_reduce_test",
-    srcs = ["strategy_reduce_test.py"],
-    main = "strategy_reduce_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1693,9 +1686,6 @@ distribute_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
-        # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
-        # runner can run on guitar.
-        "noguitar",
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1751,20 +1741,17 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
-        ":cross_device_utils",
-        ":distribute_utils",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/types",
     ],
 )
 
 distribute_py_test(
     name = "test_util_test",
     srcs = ["test_util_test.py"],
+    disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1786,14 +1773,17 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":distribute_lib",
+        ":distribute_utils",
         ":parameter_server_strategy",
         ":sharded_variable",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_decorator",
-        "//tensorflow/python:variable_scope",
-        "@absl_py//absl/logging",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/training:server_lib",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -1801,20 +1791,27 @@ tf_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
+    tags = [
+        "notsan",  # b/168675975
+    ],
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:linalg_ops_impl",
         "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/training:server_lib",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

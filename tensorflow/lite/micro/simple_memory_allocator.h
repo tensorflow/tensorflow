@@ -43,13 +43,13 @@ class SimpleMemoryAllocator {
                                        uint8_t* buffer_head,
                                        size_t buffer_size);
 
-  // Ensure that the head (lowest address and moving upwards) memory allocation
-  // is at least a given size. This function will only increase the head size if
-  // the passed in value is larger than the current head size. Calls to this
-  // method will also invalidate all temporary allocation values. This call will
-  // fail if a chain of allocations through AllocateTemp() have not been cleaned
-  // up with a call to ResetTempAllocations().
-  virtual TfLiteStatus EnsureHeadSize(size_t size, size_t alignment);
+  // Adjusts the head (lowest address and moving upwards) memory allocation to a
+  // given size. Calls to this method will also invalidate all temporary
+  // allocation values (it sets the location of temp space at the end of the
+  // head section). This call will fail if a chain of allocations through
+  // AllocateTemp() have not been cleaned up with a call to
+  // ResetTempAllocations().
+  virtual TfLiteStatus SetHeadSize(size_t size, size_t alignment);
 
   // Allocates memory starting at the tail of the arena (highest address and
   // moving downwards).
@@ -69,6 +69,11 @@ class SimpleMemoryAllocator {
   // arena (lowest address).
   virtual void ResetTempAllocations();
 
+  // TODO(b/169834500): Consider renaming or dropping the head methods.
+  // GetBufferHead() will return the start of the head section. The GetHead()
+  // method currently returns the end address of the head section. This can
+  // easily lead to misuse by placing things at the end of the head section by
+  // calling GetHead().
   uint8_t* GetHead() const;
   uint8_t* GetBufferHead() const;
   uint8_t* GetTail() const;

@@ -152,24 +152,22 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
 }
 
-const BufferAllocation* GetAllocation(
-    mlir::BlockArgument func_arg, const BufferAssignment& buffer_assignment) {
+int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
   auto func_op =
       mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
-  int64 allocation_index = func_op
-                               .getArgAttrOfType<mlir::IntegerAttr>(
-                                   func_arg.getArgNumber(), "lmhlo.alloc")
-                               .getValue()
-                               .getSExtValue();
-  return &buffer_assignment.GetAllocation(allocation_index);
+  return func_op
+      .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
+                                           "lmhlo.alloc")
+      .getValue()
+      .getSExtValue();
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
-    mlir::Value v, const BufferAssignment& buffer_assignment) {
+    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
   int64 size = v.getType().cast<mlir::MemRefType>().getSizeInBits() / 8;
 
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
-    return BufferAllocation::Slice(GetAllocation(arg, buffer_assignment), 0,
+    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
                                    size);
   }
 
@@ -186,8 +184,8 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
     }
     if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
       return BufferAllocation::Slice(
-          GetAllocation(view.source().cast<mlir::BlockArgument>(),
-                        buffer_assignment),
+          &allocations[GetAllocationIndex(
+              view.source().cast<mlir::BlockArgument>())],
           mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
               .value()
               .cast<mlir::IntegerAttr>()
@@ -230,6 +228,7 @@ StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
   auto emitter = std::unique_ptr<IrEmitterUnnested>(new IrEmitterUnnested(
       hlo_module_config, hlo_computation, ir_emitter_context));
   TF_RETURN_IF_ERROR(emitter->lhlo_scratch_emitter_.Initialize());
+  TF_RETURN_IF_ERROR(emitter->EmitConstants(*hlo_computation, true));
   return std::move(emitter);
 }
 
@@ -1383,11 +1382,12 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
 
   result.thunk_info = GetThunkInfo(sort);
 
-  return EmitMlirSort(result);
+  return EmitSortFromMlir(result);
 }
 
-Status IrEmitterUnnested::EmitMlirSort(MlirEmitterInput input) {
-  const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
+Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
+  absl::Span<const BufferAllocation> allocations(
+      ir_emitter_context_->buffer_assignment().Allocations());
   auto sort_op = mlir::cast<mlir::lmhlo::SortOp>(input.op);
 
   int operand_count = sort_op.operands().size();
@@ -1396,20 +1396,18 @@ Status IrEmitterUnnested::EmitMlirSort(MlirEmitterInput input) {
   std::vector<xla::Shape> output_shapes(sort_op.output().size());
 
   for (int i = 0; i < operand_count; i++) {
-    operand_shapes[i] =
-        TypeToShape(sort_op.operands()[i].getType().cast<mlir::MemRefType>());
+    operand_shapes[i] = TypeToShape(sort_op.operands()[i].getType());
   }
 
   // Craft n + 1 slices, where the first n are output parameters, and the last
   // is the on-device tuple storage. We don't need n operands because sorting
   // kernels are always in-place.
   for (int i = 0; i < operand_count; i++) {
-    output_shapes[i] =
-        TypeToShape(sort_op.output()[i].getType().cast<mlir::MemRefType>());
+    output_shapes[i] = TypeToShape(sort_op.output()[i].getType());
     MlirBufferSlice slice;
     TF_ASSIGN_OR_RETURN(
         slice.buffer_slice,
-        GetAllocationSliceForMlir(sort_op.output()[i], buffer_assignment));
+        GetAllocationSliceForMlir(sort_op.output()[i], allocations));
     slice.written = true;
     slice.shape = operand_shapes[i];
     slices.push_back(slice);
@@ -1432,10 +1430,10 @@ Status IrEmitterUnnested::EmitMlirSort(MlirEmitterInput input) {
     // the values, because the emitter does the sorting in-place.
     TF_ASSIGN_OR_RETURN(
         auto destination_buffer,
-        GetAllocationSliceForMlir(sort_op.output()[i], buffer_assignment));
+        GetAllocationSliceForMlir(sort_op.output()[i], allocations));
     TF_ASSIGN_OR_RETURN(
         auto source_address,
-        GetAllocationSliceForMlir(sort_op.operands()[i], buffer_assignment));
+        GetAllocationSliceForMlir(sort_op.operands()[i], allocations));
     if (destination_buffer != source_address) {
       // TODO(b/26783907): Figure out why we never seem to share buffers for
       // key/value sort.
@@ -2887,7 +2885,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
                                              current_output);
         llvm::Value* warp_id =
             b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
-        ksl.If(is_zero(thread_id_info.lane_id), [&] {
+        ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
           llvm::Value* shmem_output_addr =
               shared_to_global(b_.CreateInBoundsGEP(
                   shared_cache, {b_.getInt32(0), constant(j), warp_id}));
@@ -2895,7 +2893,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
         });
 
         EmitSyncThreads();
-        ksl.If(is_zero(warp_id), [&] {
+        ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
           llvm::Value* block_accum_addr = shared_to_global(b_.CreateInBoundsGEP(
               shared_cache,
               {b_.getInt32(0), constant(j), thread_id_info.lane_id}));
@@ -2915,10 +2913,11 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
           EmitFullWarpShuffleDownLoopForReduce(
               reducers[i], element_type,
               /*block_accum_addr*/ selected_value);
-          ksl.If(is_zero(thread_id_info.thread_id_x), [&] {
-            TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                *reducers[i], output_address, block_accum_addr));
-          });
+          ksl.If("reduction_atomic_update", is_zero(thread_id_info.thread_id_x),
+                 [&] {
+                   TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                       *reducers[i], output_address, block_accum_addr));
+                 });
         });
 
       } else {
@@ -2953,10 +2952,11 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
             b_.CreateICmpULT(thread_id_info.thread_id_x,
                              tiling_kernel_info.output_tile_bounds[kDimY]));
 
-        ksl.If(b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-          TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-              *reducers[i], output_address, shmem_transposed_addr));
-        });
+        ksl.If("reduction_atomic_update",
+               b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
+                 TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                     *reducers[i], output_address, shmem_transposed_addr));
+               });
       }
     }
   }
@@ -3989,52 +3989,6 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
       absl::make_unique<SequentialThunk>(GetThunkInfo(unnested_hlo),
                                          std::move(thunks));
   AddThunkToThunkSequence(std::move(sequential_thunk));
-
-  return Status::OK();
-}
-
-Status IrEmitterUnnested::EmitConstantGlobals() {
-  for (const BufferAllocation& allocation :
-       ir_emitter_context_->buffer_assignment().Allocations()) {
-    if (!allocation.is_constant()) {
-      continue;
-    }
-
-    const Literal& literal = llvm_ir::LiteralForConstantAllocation(allocation);
-    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
-    llvm::ArrayType* global_type =
-        llvm::ArrayType::get(b_.getInt8Ty(), allocation.size());
-    llvm::Constant* initializer =
-        should_emit_initializer
-            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
-            : llvm::ConstantAggregateZero::get(global_type);
-    if (should_emit_initializer) {
-      VLOG(3) << "Emitted initializer for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-    }
-
-    // These globals will be looked up by name by GpuExecutable so we need to
-    // give them an external linkage.  Not all of their uses are visible in
-    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
-    // merely preserves their names (like available_externally), we also need
-    // to ensure that they stick around even if they're "unused".
-    //
-    // We may have to be more more clever here in the future if we notice that
-    // we're keeping around too many globals because of their linkage.
-    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
-        *ir_emitter_context_->llvm_module());
-    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-        global_type, /*isConstant=*/should_emit_initializer,
-        llvm::GlobalValue::ExternalLinkage,
-        /*Initializer=*/initializer,
-        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/global_address_space,
-        /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
-        global_for_const);
-  }
 
   return Status::OK();
 }

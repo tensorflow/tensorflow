@@ -29,7 +29,6 @@ import six
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -45,7 +44,7 @@ from tensorflow.python.keras.callbacks import Callback
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_module
-from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
@@ -992,7 +991,7 @@ class TrainingTest(keras_parameterized.TestCase):
     layer = layers_module.Dense(1, kernel_regularizer='l1')
     layer(array_ops.ones([1, 10]))
 
-    @function.defun
+    @def_function.function
     def get_losses():
       return layer.losses
 
@@ -2020,7 +2019,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
           [[0, .4, 1, 1], [2, .4, .3, 1]])
       dataset = dataset_ops.Dataset.from_tensor_slices(sample_weights)
       sample_weights = dataset_ops.make_one_shot_iterator(dataset).get_next()
-      sample_weights = training_utils.standardize_sample_weights(
+      sample_weights = training_utils_v1.standardize_sample_weights(
           sample_weights, model.output_names)
 
       # Update model loss with sample weight tensor.
@@ -3707,6 +3706,22 @@ class TestBuildCustomModel(keras_parameterized.TestCase):
     model = MyModel()
     model.build([None, 1])
     self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_build_dict_inputs(self):
+
+    class MyModel(training_module.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.l1 = layers_module.Dense(1)
+
+      def call(self, inputs):
+        return self.l1(inputs['x'])
+
+    model = MyModel()
+    model.build({'x': [None, 16]})
+    self.assertEqual(model.l1.kernel.shape.as_list(), [16, 1])
 
 
 if __name__ == '__main__':

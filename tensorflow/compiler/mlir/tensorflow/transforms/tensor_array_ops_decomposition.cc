@@ -132,6 +132,15 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
             return llvm::None;
           }
           return t;
+        } else if (auto scatter =
+                       llvm::dyn_cast<TF::TensorArrayScatterV3Op>(user)) {
+          // TensorArrayScatter writes vector of tensors to TensorArray. We can
+          // deduce the shape of TensorArray by dropping the 0th dim of
+          // TensorArrayScatter `value`.
+          auto t = scatter.value().getType().dyn_cast<RankedTensorType>();
+          if (!t || t.getShape().empty()) return llvm::None;
+          return RankedTensorType::get(t.getShape().drop_front(),
+                                       t.getElementType());
         }
         return llvm::None;
       });
@@ -443,12 +452,12 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
         insert(grad.handle(), grad.source().str());
       } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
         for (const auto& entry : AccessedGradients(
-                 {while_op.body_func(), while_op.cond_func()}, module))
+                 {while_op.body_function(), while_op.cond_function()}, module))
           for (const string& source : entry.getSecond())
             insert(while_op.getOperand(entry.getFirst()), source);
       } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-        for (const auto& entry :
-             AccessedGradients({if_op.then_func(), if_op.else_func()}, module))
+        for (const auto& entry : AccessedGradients(
+                 {if_op.then_function(), if_op.else_function()}, module))
           for (const string& source : entry.getSecond())
             insert(if_op.getOperand(entry.getFirst() + 1), source);
       } else if (auto call = llvm::dyn_cast<CallOpInterface>(&op)) {
@@ -509,8 +518,8 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
                             llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
                             llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
                                 decomposed_partitioned_call_callees) {
-  auto body = while_op.body_func();
-  auto cond = while_op.cond_func();
+  auto body = while_op.body_function();
+  auto cond = while_op.cond_function();
   auto grads = AccessedGradients({body, cond}, module);
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(while_op.getOperand(index));
@@ -570,6 +579,7 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }
@@ -592,8 +602,8 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
                          llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
                          llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
                              decomposed_partitioned_call_callees) {
-  auto then_branch = if_op.then_func();
-  auto else_branch = if_op.else_func();
+  auto then_branch = if_op.then_function();
+  auto else_branch = if_op.else_function();
   auto grads = AccessedGradients({then_branch, else_branch}, module);
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(if_op.getOperand(index + 1));
@@ -636,6 +646,7 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }

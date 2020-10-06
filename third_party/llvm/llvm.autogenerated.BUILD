@@ -420,7 +420,7 @@ cc_binary(
 )
 
 cc_library(
-    name = "filecheck-lib",
+    name = "FileCheckLib",
     srcs = glob([
         "lib/FileCheck/*.cpp",
         "lib/FileCheck/*.h",
@@ -443,8 +443,8 @@ cc_binary(
     linkopts = llvm_linkopts,
     stamp = 0,
     deps = [
+        ":FileCheckLib",
         ":Support",
-        ":filecheck-lib",
     ],
 )
 
@@ -548,6 +548,8 @@ llvm_target_list = [
             ("-gen-callingconv", "lib/Target/PowerPC/PPCGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/PowerPC/PPCGenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/PowerPC/PPCGenDisassemblerTables.inc"),
+            ("-gen-register-bank", "lib/Target/PowerPC/PPCGenRegisterBank.inc"),
+            ("-gen-global-isel", "lib/Target/PowerPC/PPCGenGlobalISel.inc"),
         ],
     },
     {
@@ -650,6 +652,7 @@ gentbl(
         ":common_target_td_sources",
     ] + glob([
         "lib/Target/" + target["dir_name"] + "/*.td",
+        "lib/Target/" + target["name"] + "/GISel/*.td",
     ]),
     deps = target.get("tbl_deps", []),
 ) for target in llvm_target_list]
@@ -2195,6 +2198,27 @@ cc_library(
 )
 
 cc_library(
+    name = "HelloNew",
+    srcs = glob([
+        "lib/Transforms/HelloNew/*.c",
+        "lib/Transforms/HelloNew/*.cpp",
+        "lib/Transforms/HelloNew/*.inc",
+        "lib/Transforms/HelloNew/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/HelloNew/*.h",
+        "include/llvm/Transforms/HelloNew/*.def",
+        "include/llvm/Transforms/HelloNew/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Core",
+        ":Support",
+        ":config",
+    ],
+)
+
+cc_library(
     name = "HexagonAsmParser",
     srcs = glob([
         "lib/Target/Hexagon/AsmParser/*.c",
@@ -3340,6 +3364,7 @@ cc_library(
         ":CodeGen",
         ":Core",
         ":Coroutines",
+        ":HelloNew",
         ":IPO",
         ":InstCombine",
         ":Instrumentation",
@@ -3383,6 +3408,7 @@ cc_library(
         "lib/Target/PowerPC/*.c",
         "lib/Target/PowerPC/*.cpp",
         "lib/Target/PowerPC/*.inc",
+        "lib/Target/PowerPC/GISel/*.cpp",
     ]),
     hdrs = glob([
         "include/llvm/Target/PowerPC/*.h",
@@ -3396,6 +3422,7 @@ cc_library(
         ":AsmPrinter",
         ":CodeGen",
         ":Core",
+        ":GlobalISel",
         ":MC",
         ":PowerPCDesc",
         ":PowerPCInfo",
@@ -3499,6 +3526,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":Core",
+        ":Demangle",
         ":Support",
         ":config",
     ],

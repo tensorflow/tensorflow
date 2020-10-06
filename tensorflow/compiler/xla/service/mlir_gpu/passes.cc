@@ -32,8 +32,10 @@ namespace xla {
 namespace mlir_gpu {
 namespace {
 
-struct FusionOpRemoverPass
-    : public mlir::PassWrapper<FusionOpRemoverPass, ::mlir::FunctionPass> {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/xla/service/mlir_gpu/passes.h.inc"
+
+struct FusionOpRemoverPass : FusionOpRemoverPassBase<FusionOpRemoverPass> {
   void runOnFunction() override {
     getFunction().walk([&](mlir::lmhlo::FusionOp op) {
       mlir::OpBuilder builder(op);
@@ -52,8 +54,7 @@ struct FusionOpRemoverPass
   }
 };
 
-struct StoreForwardingPass
-    : mlir::PassWrapper<StoreForwardingPass, mlir::FunctionPass> {
+struct StoreForwardingPass : StoreForwardingPassBase<StoreForwardingPass> {
   mlir::StoreOp findStore(mlir::Operation* op,
                           std::function<bool(mlir::StoreOp)> matches) {
     // Search from op upwards in the current block.
@@ -132,7 +133,7 @@ struct StoreForwardingPass
 };
 
 struct DeadTempBufferRemovalPass
-    : mlir::PassWrapper<DeadTempBufferRemovalPass, ::mlir::FunctionPass> {
+    : DeadTempBufferRemovalPassBase<DeadTempBufferRemovalPass> {
   bool operationConsideredDead(mlir::Operation* op) {
     for (auto result : op->getResults()) {
       if (!llvm::all_of(result.getUsers(), [&](mlir::Operation* op) {
@@ -183,8 +184,8 @@ struct DeadTempBufferRemovalPass
 };
 
 struct MoveScalarComputationsIntoGpuLaunchPass
-    : mlir::PassWrapper<MoveScalarComputationsIntoGpuLaunchPass,
-                        mlir::FunctionPass> {
+    : MoveScalarComputationsIntoGpuLaunchPassBase<
+          MoveScalarComputationsIntoGpuLaunchPass> {
   static bool isInliningBeneficiary(mlir::Operation* op) {
     return llvm::isa<mlir::ConstantOp, mlir::DimOp, mlir::SelectOp,
                      mlir::CmpIOp>(op);
@@ -234,14 +235,13 @@ struct MoveScalarComputationsIntoGpuLaunchPass
   }
 
   void runOnFunction() override {
-    mlir::FuncOp fun = getFunction();
-    fun.walk(
+    getFunction().walk(
         [](mlir::gpu::LaunchOp launch) { inlineOperationsIntoLaunch(launch); });
   }
 };
 
 struct RewriteKernelSignaturePass
-    : mlir::PassWrapper<RewriteKernelSignaturePass, mlir::FunctionPass> {
+    : RewriteKernelSignaturePassBase<RewriteKernelSignaturePass> {
   void runOnFunction() override {
     mlir::FuncOp func = getFunction();
     mlir::ModuleOp module = func.getParentOfType<mlir::ModuleOp>();
@@ -349,15 +349,14 @@ struct RewriteKernelSignaturePass
   }
 };
 
-struct MapParallelLoopsPass
-    : public mlir::PassWrapper<MapParallelLoopsPass, mlir::FunctionPass> {
+struct MapParallelLoopsPass : MapParallelLoopsPassBase<MapParallelLoopsPass> {
   void runOnFunction() override {
     mlir::greedilyMapParallelSCFToGPU(getFunction().getBody());
   }
 };
 
 struct FuseInnerParallelLoopsPass
-    : public mlir::PassWrapper<FuseInnerParallelLoopsPass, mlir::FunctionPass> {
+    : FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
   void runOnFunction() override {
     getFunction().walk([](mlir::scf::ParallelOp op) {
       mlir::scf::naivelyFuseParallelOps(op.region());
@@ -366,12 +365,10 @@ struct FuseInnerParallelLoopsPass
 };
 
 struct ParallelLoopCollapsingToFirstDimPass
-    : public mlir::PassWrapper<ParallelLoopCollapsingToFirstDimPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
-  void runOnOperation() override {
-    mlir::Operation* module = getOperation();
-
-    module->walk([&](mlir::scf::ParallelOp op) {
+    : ParallelLoopCollapsingToFirstDimPassBase<
+          ParallelLoopCollapsingToFirstDimPass> {
+  void runOnFunction() override {
+    getFunction().walk([&](mlir::scf::ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       std::vector<unsigned> combinedLoops;
       combinedLoops.reserve(num_loops);
@@ -414,7 +411,7 @@ std::unique_ptr<mlir::FunctionPass> createMapParallelLoopsPass() {
   return absl::make_unique<MapParallelLoopsPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+std::unique_ptr<mlir::FunctionPass>
 createParallelLoopCollapsingToFirstDimPass() {
   return absl::make_unique<ParallelLoopCollapsingToFirstDimPass>();
 }

@@ -299,13 +299,31 @@ class OptimizationOptions(options.OptionsBase):
       # prefetch transformations will be autotuned, though this is practically
       # equivalent to tuning the buffer sizes of the other asynchronous
       # transformations.
-      result.enabled.append("inject_prefetch")
+      result.enabled.append("autotune_buffer_sizes")
+      result.enabled.append("disable_prefetch_legacy_autotune")
+
     if self.autotune is False:  # pylint: disable=g-bool-id-comparison
-      result.disabled.append("inject_prefetch")
+      result.disabled.append("autotune_buffer_sizes")
+      result.disabled.append("disable_prefetch_legacy_autotune")
 
     return result
 
-  def _graph_rewrite_configs(self):
+  def _graph_rewrite_configs(self, autotune):
     if self.map_vectorization is not None:
-      return self.map_vectorization._graph_rewrite_configs()  # pylint: disable=protected-access
-    return []
+      graph_rewrite_configs = self.map_vectorization._graph_rewrite_configs()  # pylint: disable=protected-access
+    else:
+      graph_rewrite_configs = []
+    autotune_only_optimizations = [
+        "autotune_buffer_sizes",
+        "disable_prefetch_legacy_autotune",
+        "enable_gradient_descent",
+        "map_parallelization"
+    ]
+    if autotune is False:  # pylint: disable=g-bool-id-comparison
+      for optimization in autotune_only_optimizations:
+        graph_rewrite_configs.append(optimization + ":autotune:false")
+    else:
+      for optimization in autotune_only_optimizations:
+        graph_rewrite_configs.append(optimization + ":autotune:true")
+
+    return graph_rewrite_configs

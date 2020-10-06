@@ -74,27 +74,73 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+
+# For each tag specified on the command line we add -D<tag> to the cflags to
+# allow for #idefs in the code.
+#
+# We apply the following transformations (via the tr command):
+#   1. Convert the tag name to uppercase (TAGS=xtensa_hifimini -> -DXTENSA_HIFIMINI)
+#   2. (Temporarily) Replace dash with underscore (TAGS=cmsis-nn -> -DCMSIS_NN)
+#
+# Transformation 2 is needed because CMSIS-NN is not a valid macro name.
+#
+# TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
+# and ethos-u directories have been renamed.
+TAG_DEFINES := $(foreach TAG,$(TAGS),-D$(shell echo $(TAG) | tr [a-z] [A-Z] | tr - _))
+
 OPTIMIZATION_LEVEL := -O3
 
 CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
                -Wshadow -Wunused-variable -Wmissing-field-initializers \
-               -Wunused-function -Wswitch
+               -Wunused-function -Wswitch -Wvla
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
 CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
-	          $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
-CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL)
+	    $(CC_WARNINGS) $(OPTIMIZATION_LEVEL) $(TAG_DEFINES)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL) \
+            $(TAG_DEFINES)
 ARFLAGS := -r
+
+LDFLAGS += -Wl,--fatal-warnings
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
 TARGET_TOOLCHAIN_ROOT :=
 
+# Specifying BUILD_TYPE=<blah> as part of the make command gives us a few
+# options to choose from.
+#
+# If BUILD_TYPE is not specified, the default build (which should be suitable
+# most of the time) has all of the error checking logic at the expense of a
+# latency increase of ~5-10% relative to BUILD_TYPE=release_with_logs.
+#
+# This default build is most suited for usual development and testing as is
+# highlighted by the discussion on this github pull request:
+# https://github.com/tensorflow/tensorflow/pull/42314#issuecomment-694360567
 ifeq ($(BUILD_TYPE), debug)
-	CXXFLAGS += -DDEBUG -g
-	CCFLAGS  += -DDEBUG -g
+	# Specifying BUILD_TYPE=debug adds debug symbols to the binary (and makes it
+	# larger) and should be used to run a binary with gdb.
+	CXXFLAGS += -g
+	CCFLAGS  += -g
 else ifeq ($(BUILD_TYPE), release)
+	# The 'release' build results in the smallest binary (by virtue of removing
+	# strings from log messages, DCHECKs ...).
+	#
+	# The down-side is that we currently do not have a good mechanism to allow
+	# for logging that is not related to errors (e.g. profiling information, or
+	# logs that help determine if tests pass or fail). As a result, we are unable
+	# to run tests or benchmarks with BUILD_TYPE=release (which is a bit
+	# counter-intuitive). TODO(b/158205789): A global error reporter might help.
+	#
+	# For a close approximation of the release build use
+	# BUILD_TYPE=release_with_logs.
 	CXXFLAGS += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
 	CCFLAGS  += -DNDEBUG -DTF_LITE_STRIP_ERROR_STRINGS
+else ifeq ($(BUILD_TYPE), release_with_logs)
+	# The latency with BUILD_TYPE=release_with_logs will be close to the 'release'
+	# build and there will still be error logs. This build type may be preferable
+	# for profiling and benchmarking.
+	CXXFLAGS += -DNDEBUG
+	CCFLAGS  += -DNDEBUG
 else ifeq ($(BUILD_TYPE), no_tf_lite_static_memory)
 	# This build should not be used to run any binaries/tests since
 	# TF_LITE_STATIC_MEMORY should be defined for all micro builds. However,
@@ -104,9 +150,6 @@ else ifeq ($(BUILD_TYPE), no_tf_lite_static_memory)
 	# https://github.com/tensorflow/tensorflow/issues/43076
 	CXXFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CXXFLAGS))
 	CCFLAGS := $(filter-out -DTF_LITE_STATIC_MEMORY, $(CCFLAGS))
-else
-	CXXFLAGS += -DNDEBUG
-	CCFLAGS  += -DNDEBUG
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
@@ -362,7 +405,7 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $@ $< \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
+	$(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	@test -f $(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $(TARGET)?'; exit 1)

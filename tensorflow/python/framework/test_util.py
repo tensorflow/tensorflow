@@ -104,15 +104,19 @@ except Exception:  # pylint: disable=broad-except
   pass
 
 
-# Uses the same mechanism as above to selectively enable MLIR compilation.
+# Uses the same mechanism as above to selectively enable/disable MLIR
+# compilation.
 def is_mlir_bridge_enabled():
   return False
 
 
 try:
-  from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
-except Exception:  # pylint: disable=broad-except
-  pass
+  from tensorflow.python.framework.is_mlir_bridge_test_false import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except ImportError:
+  try:
+    from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+  except ImportError:
+    pass
 
 
 # Uses the same mechanism as above to selectively enable TFRT.
@@ -133,7 +137,7 @@ def _get_object_count_by_type():
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
-    if x.device_type == "GPU" or x.device_type == "SYCL":
+    if x.device_type == "GPU":
       return compat.as_str(x.name)
   return ""
 
@@ -286,7 +290,8 @@ def _strip_checkpoint_v2_randomized(graph_def):
       if attr_tensor_value and len(attr_tensor_value.string_val) == 1:
         attr_tensor_string_value = attr_tensor_value.string_val[0]
         if (attr_tensor_string_value and
-            re.match(_SHARDED_SAVE_OP_PATTERN, str(attr_tensor_string_value))):
+            re.match(compat.as_bytes(_SHARDED_SAVE_OP_PATTERN),
+                     attr_tensor_string_value)):
           delete_keys.append(attr_key)
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -299,7 +304,8 @@ def _strip_hash_table_shared_name(graph_def):
   for node in graph_def.node:
     delete_keys = []
     if node.op == "HashTableV2" and "shared_name" in node.attr:
-      if re.match(_TABLE_SHARED_NAME_PATTERN, str(node.attr["shared_name"].s)):
+      if re.match(compat.as_bytes(_TABLE_SHARED_NAME_PATTERN),
+                  node.attr["shared_name"].s):
         delete_keys.append("shared_name")
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -1563,6 +1569,10 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Returns:
     True if a GPU device of the requested kind is available.
   """
+
+  # This was needed earlier when we had support for SYCL in TensorFlow.
+  del cuda_only
+
   try:
     for local_device in device_lib.list_local_devices():
       if local_device.device_type == "GPU":
@@ -1570,8 +1580,6 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
         cc = gpu_info.compute_capability or (0, 0)
         if not min_cuda_compute_capability or cc >= min_cuda_compute_capability:
           return True
-      if local_device.device_type == "SYCL" and not cuda_only:
-        return True
     return False
   except errors_impl.NotFoundError as e:
     if not all(x in str(e) for x in ["CUDA", "not find"]):
@@ -2898,6 +2906,8 @@ class TensorFlowTestCase(googletest.TestCase):
     lines = []
     subscripts = np.transpose(subscripts)
     prefix = " " * indent
+    if np.ndim(value) == 0:
+      return [prefix + "[0] : " + str(value)]
     for subscript in itertools.islice(subscripts, limit):
       lines.append(prefix + str(subscript) + " : " +
                    str(value[tuple(subscript)]))

@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -279,6 +281,9 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
             });
 
   mutex_lock l(mu_);
+  if (!status_.ok()) {
+    return status_;
+  }
 
   if (collective->communicator_key.empty()) {
     // For single-node collectives, when the caller does not specify a
@@ -487,6 +492,7 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
                                  ncclRedOp_t reduction_op) {
   Collective* to_run = nullptr;
   DataType data_type;
+  Status nccl_manager_status;
   if (participant->input != nullptr) {
     data_type = participant->input->dtype();
   } else {
@@ -494,92 +500,100 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
   }
   {
     mutex_lock l(mu_);
-    auto collective_it = collectives_.find(context.collective_key);
-    Collective* collective = nullptr;
-    if (collective_it == collectives_.end()) {
-      collective =
-          new Collective(context.collective_key, data_type, collective_type,
-                         reduction_op, context.num_local_devices,
-                         context.num_global_devices, context.communicator_key);
-      collectives_.emplace(context.collective_key, collective);
-    } else {
-      collective = collective_it->second;
-    }
+    nccl_manager_status = status_;
+    if (nccl_manager_status.ok()) {
+      auto collective_it = collectives_.find(context.collective_key);
+      Collective* collective = nullptr;
+      if (collective_it == collectives_.end()) {
+        collective = new Collective(
+            context.collective_key, data_type, collective_type, reduction_op,
+            context.num_local_devices, context.num_global_devices,
+            context.communicator_key);
+        collectives_.emplace(context.collective_key, collective);
+      } else {
+        collective = collective_it->second;
+      }
 
-    // Check `collective` is correct and consistent.
-    if (collective->status.ok() && !collective->single_node &&
-        collective->communicator_key.empty()) {
-      collective->status = errors::Internal(
-          "Collective ", reduction_op, " is multi node with num_local_devices=",
-          collective->num_local_devices,
-          " and num_global_devices=", collective->num_global_devices,
-          " but has an empty communicator_key");
-    }
-    if (collective->status.ok() && collective->communicator_key.size() !=
-                                       context.communicator_key.size()) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           " mismatch in member communicator_key with size ",
-                           collective->communicator_key.size(),
-                           " and arg communicator_key with size ",
-                           context.communicator_key.size());
-    }
-    if (collective->status.ok() && collective->type != collective_type) {
-      collective->status = errors::Internal(
-          "Collective ", reduction_op, " previously initialized with type ",
-          collective->type, " but now got type ", collective_type);
-    }
-    if (collective->status.ok() &&
-        collective->num_global_devices != context.num_global_devices) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           " previously initialized with num_global_devices ",
-                           collective->num_global_devices, " but now got ",
-                           context.num_global_devices);
-    }
-    if (collective->status.ok() &&
-        collective->num_local_devices != context.num_local_devices) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           "previously initialized with num_local_devices ",
-                           collective->num_local_devices, " but now got ",
-                           context.num_local_devices);
-    }
-    if (collective->status.ok() &&
-        collective->participants.size() >= collective->num_local_devices) {
-      collective->status = errors::Internal(
-          "Collective ", reduction_op, " expected ",
-          collective->num_local_devices, " participants but now has ",
-          collective->participants.size(),
-          " with one more participant being added");
-    }
-    if (collective->status.ok() && collective->root_rank >= 0 &&
-        context.source_rank >= 0 &&
-        collective->root_rank != context.source_rank) {
-      collective->status = errors::Internal(
-          "Collective ", collective->collective_key, " already has root_rank ",
-          collective->root_rank, " but new participant has root_rank ",
-          context.source_rank);
-    }
-    if (collective->status.ok() &&
-        !kValidDataTypes.Contains(collective->data_type)) {
-      collective->status = errors::Internal(
-          "Collective ", collective->collective_key,
-          " expected data types compatible with NCCL but instead got ",
-          DataTypeString(collective->data_type));
-    }
+      // Check `collective` is correct and consistent.
+      if (collective->status.ok() && !collective->single_node &&
+          collective->communicator_key.empty()) {
+        collective->status = errors::Internal(
+            "Collective ", reduction_op,
+            " is multi node with num_local_devices=",
+            collective->num_local_devices,
+            " and num_global_devices=", collective->num_global_devices,
+            " but has an empty communicator_key");
+      }
+      if (collective->status.ok() && collective->communicator_key.size() !=
+                                         context.communicator_key.size()) {
+        collective->status =
+            errors::Internal("Collective ", reduction_op,
+                             " mismatch in member communicator_key with size ",
+                             collective->communicator_key.size(),
+                             " and arg communicator_key with size ",
+                             context.communicator_key.size());
+      }
+      if (collective->status.ok() && collective->type != collective_type) {
+        collective->status = errors::Internal(
+            "Collective ", reduction_op, " previously initialized with type ",
+            collective->type, " but now got type ", collective_type);
+      }
+      if (collective->status.ok() &&
+          collective->num_global_devices != context.num_global_devices) {
+        collective->status =
+            errors::Internal("Collective ", reduction_op,
+                             " previously initialized with num_global_devices ",
+                             collective->num_global_devices, " but now got ",
+                             context.num_global_devices);
+      }
+      if (collective->status.ok() &&
+          collective->num_local_devices != context.num_local_devices) {
+        collective->status =
+            errors::Internal("Collective ", reduction_op,
+                             "previously initialized with num_local_devices ",
+                             collective->num_local_devices, " but now got ",
+                             context.num_local_devices);
+      }
+      if (collective->status.ok() &&
+          collective->participants.size() >= collective->num_local_devices) {
+        collective->status = errors::Internal(
+            "Collective ", reduction_op, " expected ",
+            collective->num_local_devices, " participants but now has ",
+            collective->participants.size(),
+            " with one more participant being added");
+      }
+      if (collective->status.ok() && collective->root_rank >= 0 &&
+          context.source_rank >= 0 &&
+          collective->root_rank != context.source_rank) {
+        collective->status = errors::Internal(
+            "Collective ", collective->collective_key,
+            " already has root_rank ", collective->root_rank,
+            " but new participant has root_rank ", context.source_rank);
+      }
+      if (collective->status.ok() &&
+          !kValidDataTypes.Contains(collective->data_type)) {
+        collective->status = errors::Internal(
+            "Collective ", collective->collective_key,
+            " expected data types compatible with NCCL but instead got ",
+            DataTypeString(collective->data_type));
+      }
 
-    if (context.source_rank >= 0) {
-      collective->root_rank = context.source_rank;
-    }
-    collective->participants.emplace_back(std::move(participant));
-    ++collective->available_participants;
+      if (context.source_rank >= 0) {
+        collective->root_rank = context.source_rank;
+      }
 
-    if (CheckReady(context.collective_key, collective)) {
-      to_run = collective;
+      collective->participants.emplace_back(std::move(participant));
+      ++collective->available_participants;
+
+      if (CheckReady(context.collective_key, collective)) {
+        to_run = collective;
+      }
     }
   }
-
+  if (!nccl_manager_status.ok()) {
+    participant->done_callback(nccl_manager_status);
+    return;
+  }
   if (to_run != nullptr) RunCollective(to_run);
 }
 
@@ -832,6 +846,52 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
     };
     p->event_mgr->ThenExecute(comm_stream, done_callback);
   }
+}
+
+void NcclManager::StartAbort(const Status& s) {
+  VLOG(1) << "NcclManager StartAbort";
+  absl::flat_hash_map<string, Collective*> collectives;
+  // After status_ is set to a non-OK one, there should be no further
+  // modifications to collectives_.
+  {
+    mutex_lock l(mu_);
+    if (!status_.ok()) {
+      LOG(WARNING)
+          << "NcclManager already aborted, ignoring subsequent StartAbort with "
+          << s;
+      return;
+    }
+    status_ = s;
+    collectives.swap(collectives_);
+  }
+  // collectives_ contains pending launches that haven't been dispatched to
+  // kernel launch threads, so we can simply invoke the done callbacks of them.
+  for (const auto& item : collectives) {
+    for (const std::unique_ptr<Participant>& p : item.second->participants) {
+      p->done_callback(s);
+    }
+    item.second->Unref();
+  }
+  // Abort ncclComm. Note that there could be multiple ncclComm per device, and
+  // ncclCommAbort contains cuda calls that requires device synchronization.
+  // That is a collective on nccl_comm_0 can block ncclCommAbort(nccl_comm_1),
+  // so we need to abort all ncclComm in a concurrent fashion. This assumes that
+  // there's only one active NcclManager at a time.
+  UnboundedWorkQueue queue(Env::Default(), "nccl_abort");
+  int num_comms = 0;
+  for (std::unique_ptr<Communicator>& communicator : communicators_) {
+    num_comms += communicator->members.size();
+  }
+  BlockingCounter pending(num_comms);
+  for (std::unique_ptr<Communicator>& communicator : communicators_) {
+    for (const CommunicatorMember& member : communicator->members) {
+      queue.Schedule([&member, &pending]() {
+        ncclCommAbort(member.nccl_comm);
+        pending.DecrementCount();
+      });
+    }
+  }
+  pending.Wait();
 }
 
 }  // namespace tensorflow

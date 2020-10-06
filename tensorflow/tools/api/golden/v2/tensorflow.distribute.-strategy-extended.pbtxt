@@ -27,20 +27,12 @@ tf_class {
     argspec: "args=[\'self\', \'colocate_with_variable\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "non_slot_devices"
-    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "reduce_to"
     argspec: "args=[\'self\', \'reduce_op\', \'value\', \'destinations\', \'experimental_hints\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "update"
     argspec: "args=[\'self\', \'var\', \'fn\', \'args\', \'kwargs\', \'group\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'True\'], "
-  }
-  member_method {
-    name: "update_non_slot"
-    argspec: "args=[\'self\', \'colocate_with\', \'fn\', \'args\', \'kwargs\', \'group\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'True\'], "
   }
   member_method {
     name: "value_container"

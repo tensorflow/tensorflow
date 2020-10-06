@@ -36,6 +36,7 @@ class Device;
 class DeviceMgr;
 class GetStepSequenceRequest;
 class GetStepSequenceResponse;
+class NcclManager;
 class Tensor;
 
 // Types of supported collective operations.
@@ -62,6 +63,17 @@ struct CollGroupParams {
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
+  // Fully qualified name of device for each member, in default rank order.
+  std::vector<string> device_names;
+  // Task name prefix of corresponding device name.
+  std::vector<string> task_names;
+  // True if every task has the same number of devices.
+  bool same_num_devices_per_task = false;
+  // Task -> number of devices on that task.
+  std::unordered_map<string, int32> num_devices_per_task;
+  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
+  // GPUs.  Assumes same GPU configuration at each worker.
+  string gpu_ring_order = "";
   int32 num_tasks;  // number of distinct tasks in group
   CollGroupRuntimeDetails runtime_details;
   string ToString() const;
@@ -97,17 +109,6 @@ struct CollInstanceParams {
   CollectiveType type = UNDEFINED_COLLECTIVE;
   DataType data_type = DT_FLOAT;
   TensorShape shape = {0};
-  // Fully qualified name of device for each member, in default rank order.
-  std::vector<string> device_names;
-  // Task name prefix of corresponding device name.
-  std::vector<string> task_names;
-  // True if every task has the same number of devices.
-  bool same_num_devices_per_task = false;
-  // Task -> number of devices on that task.
-  std::unordered_map<string, int32> num_devices_per_task;
-  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
-  // GPUs.  Assumes same GPU configuration at each worker.
-  string gpu_ring_order = "";
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -229,6 +230,8 @@ class StepSequenceInterface {
   virtual void RetireStepId(int64 graph_key, int64 step_id) = 0;
 };
 
+class NcclCommunicatorInterface;
+
 // Interface that provides access to per-step CollectiveExecutor
 // instances and various distributed resolution capabilities.
 class CollectiveExecutorMgrInterface : public StepSequenceInterface {
@@ -246,6 +249,8 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
   virtual ParamResolverInterface* GetParamResolver() const = 0;
 
   virtual DeviceResolverInterface* GetDeviceResolver() const = 0;
+
+  virtual NcclCommunicatorInterface* GetNcclCommunicator() const = 0;
 };
 
 // Interface that a Collective Op implementation uses to exchange data
@@ -354,19 +359,12 @@ class CollectiveExecutor : public core::RefCounted {
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
 };
 
-class CollectiveContext {
- public:
-  CollectiveContext(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
-                    OpKernelContext* ctx, OpKernelContext::Params* op_params,
-                    const CollectiveParams& col_params, const string& exec_key,
-                    int64 step_id, const Tensor* input, Tensor* output);
-
-  virtual ~CollectiveContext() = default;
-
-  CollectiveExecutor* col_exec;        // Not owned
-  const DeviceMgr* dev_mgr;            // Not owned
-  OpKernelContext* op_ctx;             // Not owned
-  OpKernelContext::Params* op_params;  // Not owned
+struct CollectiveContext {
+  CollectiveExecutor* col_exec;                  // Not owned
+  NcclCommunicatorInterface* nccl_communicator;  // Not owned
+  const DeviceMgr* dev_mgr;                      // Not owned
+  OpKernelContext* op_ctx;                       // Not owned
+  OpKernelContext::Params* op_params;            // Not owned
   const CollectiveParams& col_params;
   const string exec_key;
   const int64 step_id;
@@ -375,6 +373,23 @@ class CollectiveContext {
   Device* device;       // The device for which this instance labors
   const string device_name;
   DeviceLocality device_locality;
+
+  CollectiveContext(CollectiveExecutor* col_exec,
+                    NcclCommunicatorInterface* nccl_communicator,
+                    const DeviceMgr* dev_mgr, OpKernelContext* ctx,
+                    OpKernelContext::Params* op_params,
+                    const CollectiveParams& col_params, const string& exec_key,
+                    int64 step_id, const Tensor* input, Tensor* output);
+};
+
+class NcclCommunicatorInterface {
+ public:
+  virtual ~NcclCommunicatorInterface() = default;
+
+  virtual void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
+                       StatusCallback done) = 0;
+
+  virtual void StartAbort(const Status& s) = 0;
 };
 
 // Interface of a Collective Op implementation.  Each specific CollectiveOp will

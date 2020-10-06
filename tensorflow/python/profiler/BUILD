@@ -36,6 +36,7 @@ cuda_py_test(
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
     tags = ["no_pip"],
+    tfrt_enabled = True,
     deps = [
         ":profiler_client",
         "//tensorflow/python/eager:test",
@@ -63,6 +64,7 @@ cuda_py_test(
         "no_pip",
         "no_rocm",
     ],
+    tfrt_enabled = True,
     deps = [
         ":profiler_v2",
         "//tensorflow/python:constant_op",
@@ -122,6 +124,7 @@ cuda_py_test(
     srcs = ["profiler_test.py"],
     python_version = "PY3",
     tags = ["no_pip"],
+    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":model_analyzer",
@@ -182,6 +185,7 @@ cuda_py_test(
         "no_gpu",  # b/136036359
         "no_pip",
     ],
+    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":profile_context",

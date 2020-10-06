@@ -54,6 +54,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "round.cc",
         "split.cc",
+        "split_v.cc",
         "strided_slice.cc",
         "sub.cc",
         "tanh.cc",

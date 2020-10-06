@@ -202,6 +202,10 @@ class NcclManager {
   // function.
   void SignalMultiNodeReady(const string& collective_key);
 
+  // Aborts all collectives. After abortion, no further collectives can be
+  // launched with this NcclManager.
+  void StartAbort(const Status& s);
+
  private:
   enum CollectiveType {
     kAllReduce = 1,
@@ -256,6 +260,8 @@ class NcclManager {
       device_to_comm_streams_ TF_GUARDED_BY(mu_);
 
   std::vector<std::unique_ptr<Communicator>> communicators_;
+
+  Status status_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(NcclManager);
 };

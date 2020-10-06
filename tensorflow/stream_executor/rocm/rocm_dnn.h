@@ -315,7 +315,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(
+  port::Status DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<double>& conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -329,7 +329,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(
+  port::Status DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<float>& conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -343,25 +343,23 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(Stream* stream,
-                       const dnn::BatchDescriptor& conv_input_descriptor,
-                       const DeviceMemory<Eigen::half>& conv_input_data,
-                       float conv_input_scale,
-                       const dnn::FilterDescriptor& filter_descriptor,
-                       const DeviceMemory<Eigen::half>& filter_data,
-                       const dnn::ConvolutionDescriptor& convolution_descriptor,
-                       const DeviceMemory<Eigen::half>& side_input_data,
-                       float side_input_scale,
-                       const dnn::BatchDescriptor& bias_descriptor,
-                       const DeviceMemory<Eigen::half>& biases,
-                       dnn::ActivationMode activation_mode,
-                       const dnn::BatchDescriptor& output_descriptor,
-                       DeviceMemory<Eigen::half>* output_data,
-                       ScratchAllocator* scratch_allocator,
-                       const dnn::AlgorithmConfig& algorithm_config,
-                       dnn::ProfileResult* output_profile_result) override;
+  port::Status DoFusedConvolve(
+      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      const DeviceMemory<Eigen::half>& conv_input_data, float conv_input_scale,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<Eigen::half>& side_input_data, float side_input_scale,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const DeviceMemory<Eigen::half>& biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(
+  port::Status DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,

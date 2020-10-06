@@ -14,7 +14,11 @@
 
 #import "ViewController.h"
 
+#if COCOAPODS
+@import TFLTensorFlowLite;
+#else
 #import "TFLTensorFlowLite.h"
+#endif
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -62,7 +66,7 @@ static NSString *const kNilInterpreterError =
 static NSString *const kInvokeInterpreterError = @"Failed to invoke interpreter due to error: %@.";
 
 /** Model paths. */
-static NSArray *gModelPaths;
+static NSArray<NSString *> *gModelPaths;
 
 @interface ViewController ()
 
@@ -153,6 +157,7 @@ static NSArray *gModelPaths;
     NSError *error;
     weakSelf.interpreter = [[TFLInterpreter alloc] initWithModelPath:modelPath
                                                              options:options
+                                                           delegates:@[]
                                                                error:&error];
     if (weakSelf.interpreter == nil || error != nil) {
       NSString *results =

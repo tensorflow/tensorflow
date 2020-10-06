@@ -85,9 +85,9 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     return self._element_spec
 
 
-def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=invalid-name
+def _AutoShardDatasetV1(input_dataset, num_workers, index, num_replicas=None):  # pylint: disable=invalid-name
   return dataset_ops.DatasetV1Adapter(
-      _AutoShardDataset(input_dataset, num_workers, index))
+      _AutoShardDataset(input_dataset, num_workers, index, num_replicas))
 
 
 class _RebatchDataset(dataset_ops.UnaryDataset):

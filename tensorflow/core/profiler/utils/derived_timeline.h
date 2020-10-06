@@ -98,9 +98,6 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only = false);
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              const std::vector<XPlane*>& device_traces,
-                              bool step_info_only = false);
 
 }  // namespace profiler
 }  // namespace tensorflow
