@@ -2763,6 +2763,7 @@ tf_cc_test(
         "ops/image_ops_test.cc",
         "ops/io_ops_test.cc",
         "ops/linalg_ops_test.cc",
+        "ops/lookup_ops_test.cc",
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",
