@@ -14,8 +14,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "compression_utils",
     srcs = ["compression_utils.cc"],

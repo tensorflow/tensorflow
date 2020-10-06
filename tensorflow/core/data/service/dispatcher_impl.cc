@@ -450,22 +450,6 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
         "processing mode <",
         actual, ">");
   }
-  if (job->dataset_id != dataset_id) {
-    std::shared_ptr<const DatasetDef> job_dataset_def;
-    TF_RETURN_IF_ERROR(GetDatasetDef(job->dataset_id, job_dataset_def));
-    std::shared_ptr<const DatasetDef> dataset_def;
-    TF_RETURN_IF_ERROR(GetDatasetDef(dataset_id, dataset_def));
-    Status s = CheckGraphsEqual(job_dataset_def->graph(), dataset_def->graph());
-    return errors::FailedPrecondition(
-        "Tried to create a job with name ", job_name, " for dataset ",
-        dataset_id,
-        ", but there is already an existing job with that name for dataset ",
-        job->dataset_id,
-        ". This either means that you are distributing two different datasets "
-        "under the same job_name, or that your dataset is being constructed "
-        "non-deterministically. Comparing the datasets results in: ",
-        s);
-  }
   return Status::OK();
 }
 

@@ -1213,8 +1213,9 @@ class ApiTest(test.TestCase):
     obj = TestClass()
     # It's intended that tf_convert modifies the original method in this case.
     # This is not desirable, but options are limited.
-    api.tf_convert(obj.method,
-                   ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
+    converted = api.tf_convert(
+        obj.method, ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
+    self.assertTrue(converted())
     self.assertTrue(obj.method())
 
   def test_super_with_one_arg(self):

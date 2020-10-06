@@ -64,22 +64,12 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 Status ConvertAttributes(
     const llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    AttrValueMap* values);
-
-// Sets type attribute with the given name. If the attribute already exists with
-// a different value, returns an error.
-Status SetTypeAttribute(absl::string_view name, mlir::Type type,
-                        AttrValueMap* values);
+    bool remove_ref_type, AttrValueMap* values);
 
 // Sets shape attribute with the given name. If the attribute already exists
 // with a different value, returns an error.
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shape,
                          AttrValueMap* values);
-
-// Sets the given size_t value as an integer attribute with the given name.
-// If the attribute already exists with a different value, returns an error.
-Status SetSizeAttribute(absl::string_view name, size_t size,
-                        AttrValueMap* values);
 
 // Returns true if the given instruction is an mlir::TF::LegacyCallOp or the
 // result of such an operation transformed by the

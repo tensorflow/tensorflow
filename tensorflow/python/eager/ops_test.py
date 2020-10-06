@@ -502,6 +502,18 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     context.async_clear_error()
     config.set_synchronous_execution(True)
 
+  def testCrossContextTensorCache(self):
+    old_context = context.context()
+    old_x = constant_op.constant(9.5)
+    context._set_context(context.Context())
+
+    try:
+      new_x = constant_op.constant(9.5)
+      self.assertEqual(new_x.numpy(), 9.5)
+    finally:
+      context._set_context(old_context)
+
+    self.assertEqual(old_x.numpy(), 9.5)
 
 if __name__ == '__main__':
   test.main()

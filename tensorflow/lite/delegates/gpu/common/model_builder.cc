@@ -505,45 +505,6 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   }
 };
 
-// Custom op version of TRANSPOSE_CONV.
-class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    const TfLiteTransposeConvParams* tf_options;
-    RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
-    RETURN_IF_ERROR(
-        CheckStrides(tf_options->stride_height, tf_options->stride_width));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    auto* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::CONVOLUTION_TRANSPOSED);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    const TfLiteTransposeConvParams* tf_options;
-    auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
-
-    ConvolutionTransposedAttributes attr;
-    attr.stride = status.ok()
-                      ? HW(tf_options->stride_height, tf_options->stride_width)
-                      : HW(1, 1);
-    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
-    reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
-
-    UpdatePadding(status.ok() ? tf_options->padding : kTfLitePaddingUnknown,
-                  graph->FindInputs(node->id)[0]->tensor.shape, &attr);
-    node->operation.attributes = std::move(attr);
-    return absl::OkStatus();
-  }
-};
-
 class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -1794,6 +1755,9 @@ class SliceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->ReadValue(0, &input));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
 
+    const TfLiteTensor* tfl_input = reader->GetInputTensor(0);
+    const int input_dims = tfl_input->dims->size;
+
     SliceAttributes attr;
     attr.strides = BHWC(1, 1, 1, 1);
     Tensor<Linear, DataType::INT32> starts, sizes;
@@ -1802,37 +1766,65 @@ class SliceOperationParser : public TFLiteOperationParser {
     if (starts.data.size() != sizes.data.size()) {
       return absl::InvalidArgumentError("Starts amount != sizes amount.");
     }
-    const auto& in_shape = input->tensor.shape;
-    if (starts.data.size() == 4) {
-      sizes.data[0] =
-          sizes.data[0] != -1 ? sizes.data[0] : in_shape.b - starts.data[0];
-      sizes.data[1] =
-          sizes.data[1] != -1 ? sizes.data[1] : in_shape.h - starts.data[1];
-      sizes.data[2] =
-          sizes.data[2] != -1 ? sizes.data[2] : in_shape.w - starts.data[2];
-      sizes.data[3] =
-          sizes.data[3] != -1 ? sizes.data[3] : in_shape.c - starts.data[3];
-      attr.starts =
-          BHWC(starts.data[0], starts.data[1], starts.data[2], starts.data[3]);
-      attr.ends =
-          BHWC(starts.data[0] + sizes.data[0], starts.data[1] + sizes.data[1],
-               starts.data[2] + sizes.data[2], starts.data[3] + sizes.data[3]);
-    } else if (starts.data.size() == 3) {
-      sizes.data[0] =
-          sizes.data[0] != -1 ? sizes.data[0] : in_shape.h - starts.data[0];
-      sizes.data[1] =
-          sizes.data[1] != -1 ? sizes.data[1] : in_shape.w - starts.data[1];
-      sizes.data[2] =
-          sizes.data[2] != -1 ? sizes.data[2] : in_shape.c - starts.data[2];
-      attr.starts = BHWC(0, starts.data[0], starts.data[1], starts.data[2]);
-      attr.ends =
-          BHWC(in_shape.b, starts.data[0] + sizes.data[0],
-               starts.data[1] + sizes.data[1], starts.data[2] + sizes.data[2]);
+    BHWC bhwc_starts(0, 0, 0, 0);
+    BHWC bhwc_sizes = input->tensor.shape;
+    if (input_dims == 4) {
+      // input in BHWC layout
+      if (starts.data.size() == 4) {
+        bhwc_starts.b = starts.data[0];
+        bhwc_starts.h = starts.data[1];
+        bhwc_starts.w = starts.data[2];
+        bhwc_starts.c = starts.data[3];
+        bhwc_sizes.b = sizes.data[0];
+        bhwc_sizes.h = sizes.data[1];
+        bhwc_sizes.w = sizes.data[2];
+        bhwc_sizes.c = sizes.data[3];
+      } else if (starts.data.size() == 3) {
+        // if input is 4D(BHWC) and args 3D, we assume that args in HWC layout
+        bhwc_starts.h = starts.data[0];
+        bhwc_starts.w = starts.data[1];
+        bhwc_starts.c = starts.data[2];
+        bhwc_sizes.h = sizes.data[0];
+        bhwc_sizes.w = sizes.data[1];
+        bhwc_sizes.c = sizes.data[2];
+      } else {
+        return absl::UnimplementedError(
+            "Slicing is supported for 3 or 4 dimensional tensors only.");
+      }
+    } else if (input_dims == 3) {
+      // input in BWC layout
+      if (starts.data.size() == 3) {
+        bhwc_starts.b = starts.data[0];
+        bhwc_starts.w = starts.data[1];
+        bhwc_starts.c = starts.data[2];
+        bhwc_sizes.b = sizes.data[0];
+        bhwc_sizes.w = sizes.data[1];
+        bhwc_sizes.c = sizes.data[2];
+      } else {
+        return absl::UnimplementedError(
+            "Slicing is supported for 3 or 4 dimensional tensors only.");
+      }
     } else {
-      // Error: Must be catched in IsSupported()
       return absl::UnimplementedError(
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
+    const auto& in_shape = input->tensor.shape;
+    if (bhwc_sizes.b == -1) {
+      bhwc_sizes.b = in_shape.b - bhwc_starts.b;
+    }
+    if (bhwc_sizes.h == -1) {
+      bhwc_sizes.h = in_shape.h - bhwc_starts.h;
+    }
+    if (bhwc_sizes.w == -1) {
+      bhwc_sizes.w = in_shape.w - bhwc_starts.w;
+    }
+    if (bhwc_sizes.c == -1) {
+      bhwc_sizes.c = in_shape.c - bhwc_starts.c;
+    }
+    attr.starts = bhwc_starts;
+    attr.ends =
+        BHWC(bhwc_starts.b + bhwc_sizes.b, bhwc_starts.h + bhwc_sizes.h,
+             bhwc_starts.w + bhwc_sizes.w, bhwc_starts.c + bhwc_sizes.c);
     RETURN_IF_ERROR(UpdateIfNegative(in_shape, &attr));
 
     auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
@@ -2140,7 +2132,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
 };
 
 // Builtin op version of TRANSPOSE_CONV.
-class TransposeConvOperationParser : public TFLiteOperationParser {
+class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
@@ -2178,6 +2170,45 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
     reader->ReadTensor(3, &attr.bias).IgnoreError();  // bias is optional
 
     UpdatePadding(tf_options->padding,
+                  graph->FindInputs(node->id)[0]->tensor.shape, &attr);
+    node->operation.attributes = std::move(attr);
+    return absl::OkStatus();
+  }
+};
+
+// Custom op version of TRANSPOSE_CONV.
+class TransposeConvCustomOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    const TfLiteTransposeConvParams* tf_options;
+    RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
+    RETURN_IF_ERROR(
+        CheckStrides(tf_options->stride_height, tf_options->stride_width));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    auto* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::CONVOLUTION_TRANSPOSED);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    const TfLiteTransposeConvParams* tf_options;
+    auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
+
+    ConvolutionTransposedAttributes attr;
+    attr.stride = status.ok()
+                      ? HW(tf_options->stride_height, tf_options->stride_width)
+                      : HW(1, 1);
+    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
+
+    UpdatePadding(status.ok() ? tf_options->padding : kTfLitePaddingUnknown,
                   graph->FindInputs(node->id)[0]->tensor.shape, &attr);
     node->operation.attributes = std::move(attr);
     return absl::OkStatus();
@@ -2724,12 +2755,12 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinTranspose:
       return std::make_unique<TransposeOperationParser>();
     case kTfLiteBuiltinTransposeConv:
-      return std::make_unique<TransposeConvOperationParser>();
+      return std::make_unique<TransposeConvBuiltinOperationParser>();
 
     case kTfLiteBuiltinCustom:
       const absl::string_view custom_name = registration->custom_name;
       if (custom_name == "Convolution2DTransposeBias") {
-        return std::make_unique<Convolution2DTransposeBiasParser>();
+        return std::make_unique<TransposeConvCustomOperationParser>();
       }
       if (custom_name == "MaxPoolingWithArgmax2D") {
         return std::make_unique<Pooling2DOperationParser>(PoolingType::MAX);

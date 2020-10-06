@@ -91,9 +91,6 @@ filegroup(
     ],
 )
 
-# TODO(bmzhao): Split this target into separate tf_proto_libraries.
-# This target is a holdover from the target tensorflow/core:example_protos,
-# but splitting it while require multiple LSCs.
 tf_proto_library(
     name = "example_protos",
     srcs = [
@@ -102,9 +99,7 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    tags = [
-        "alt_dep=//third_party/tensorflow/core:protos_all",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(

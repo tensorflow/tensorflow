@@ -148,18 +148,6 @@ tf_cuda_cc_test(
 # )
 
 gen_kernel_library(
-    name = "tanh",
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "abs",
     same_shape = "0,1",
     tile_size = "256",
@@ -181,6 +169,17 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "conj",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )
@@ -222,6 +221,41 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "imag",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "invert",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "isfinite",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "log",
     same_shape = "0,1",
     tile_size = "256",
@@ -234,11 +268,29 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "logicalnot",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = ["i1"],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "neg",
     same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "real",
+    tile_size = "256",
+    types = [
         "f32",
         "f64",
     ],
@@ -258,7 +310,34 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "sign",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        # TODO(b/162577610): Add bf16, c64 and c128.
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "sqrt",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "tanh",
     same_shape = "0,1",
     tile_size = "256",
     types = [

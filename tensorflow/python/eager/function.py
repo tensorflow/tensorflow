@@ -900,8 +900,9 @@ class _TapeGradientFunctions(object):
       for output in trainable_outputs:
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
-        gradients_wrt_outputs.append(
-            graph_placeholder(gradient_dtype, gradient_shape))
+        gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
+        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
             trainable_outputs,
@@ -2174,6 +2175,7 @@ class ConcreteFunction(object):
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
+        custom_gradient.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,

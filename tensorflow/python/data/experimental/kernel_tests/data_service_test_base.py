@@ -203,9 +203,9 @@ class TestBase(test_base.DatasetTestBase):
 
   def make_distributed_range_dataset(self,
                                      num_elements,
-                                     dispatcher,
+                                     cluster,
                                      job_name=None,
                                      max_outstanding_requests=None):
     dataset = dataset_ops.Dataset.range(num_elements)
-    return self.make_distributed_dataset(dataset, dispatcher, job_name,
+    return self.make_distributed_dataset(dataset, cluster, job_name,
                                          max_outstanding_requests)

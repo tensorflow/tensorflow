@@ -330,13 +330,13 @@ class BatchNormalizationBase(Layer):
       # output back to its original shape accordingly.
       if self._USE_V2_BEHAVIOR:
         if self.fused is None:
-          self.fused = (ndims == 4)
-        elif self.fused and ndims != 4:
+          self.fused = ndims in (4, 5)
+        elif self.fused and ndims not in (4, 5):
           raise ValueError('Batch normalization layers with fused=True only '
-                           'support 4D input tensors.')
+                           'support 4D or 5D input tensors.')
       else:
         assert self.fused is not None
-        self.fused = (ndims == 4 and self._fused_can_be_used())
+        self.fused = (ndims in (4, 5) and self._fused_can_be_used())
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
@@ -345,13 +345,22 @@ class BatchNormalizationBase(Layer):
       # common use case (turning 5D w/ virtual batch to NCHW)
 
     if self.fused:
-      if self.axis == [1]:
+      if self.axis == [1] and ndims == 4:
         self._data_format = 'NCHW'
-      elif self.axis == [3]:
+      elif self.axis == [1] and ndims == 5:
+        self._data_format = 'NCDHW'
+      elif self.axis == [3] and ndims == 4:
         self._data_format = 'NHWC'
+      elif self.axis == [4] and ndims == 5:
+        self._data_format = 'NDHWC'
+      elif ndims == 5:
+        # 5D tensors that can be passed in but should not use fused batch norm
+        # due to unsupported axis.
+        self.fused = False
       else:
         raise ValueError('Unsupported axis, fused batch norm only supports '
-                         'axis == [1] or axis == [3]')
+                         'axis == [1] or axis == [3] for 4D input tensors or '
+                         'axis == [1] or axis == [4] for 5D input tensors')
 
     axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
@@ -961,7 +970,8 @@ def enclosing_xla_context():
   return None
 
 
-@keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
+# pylint: disable=missing-docstring
+@keras_export(v1=['keras.layers.BatchNormalization'])
 class BatchNormalization(BatchNormalizationBase):
 
   __doc__ = replace_in_base_docstring([("""

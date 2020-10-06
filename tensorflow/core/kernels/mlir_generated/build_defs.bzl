@@ -7,6 +7,10 @@ load(
     "rocm_is_configured",
 )
 load(
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
@@ -200,10 +204,13 @@ def _gen_mlir_op_impl(ctx):
     ctx.actions.run_shell(
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
-        command = "cat %s | sed s/elem_type/%s/g > %s" % (
-            ctx.file.template.path,
-            ctx.attr.type,
-            ctx.outputs.out.path,
+        command = (
+            ("cat %s | sed s/elem_type/%s/g | sed 's/c64/complex<f32>/g'" +
+             " | sed 's/c128/complex<f64>/g' > %s") % (
+                ctx.file.template.path,
+                ctx.attr.type,
+                ctx.outputs.out.path,
+            )
         ),
     )
 
@@ -337,7 +344,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
       extra_args: Extra arguments to pass to the generator tool.
     """
 
-    if cuda_gpu_architectures() or rocm_gpu_architectures():
+    if cuda_gpu_architectures():
         for type in types:
             _gen_mlir_op(
                 name = name,
@@ -347,7 +354,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
                 name = "{name}_{type}_kernel_generator".format(name = name, type = type),
                 mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
                 output = "{name}_{type}.a".format(name = name, type = type),
-                gpu_archs = rocm_gpu_architectures() if rocm_is_configured() else cuda_gpu_architectures(),
+                gpu_archs = cuda_gpu_architectures(),
                 tile_size = tile_size,
                 unroll_factors = unroll_factors,
                 extra_args = extra_args,
@@ -359,7 +366,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
 
     native.cc_library(
         name = name + "_kernels",
-        deps = if_gpu_is_configured([":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
+        deps = if_cuda_is_configured([":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
         linkstatic = 1,
         tags = tags,
     )
