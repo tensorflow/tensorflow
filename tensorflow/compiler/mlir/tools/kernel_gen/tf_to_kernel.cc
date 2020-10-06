@@ -95,7 +95,8 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
 }
 
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-                int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
+                llvm::ArrayRef<uint32_t> architectures,
+                llvm::ArrayRef<uint32_t> tile_sizes,
                 llvm::ArrayRef<uint32_t> same_shape,
                 llvm::ArrayRef<uint32_t> unroll_factors) {
   // Read TF code.
@@ -107,7 +108,7 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/false,
-                              architecture, tile_sizes, same_shape,
+                              architectures, tile_sizes, same_shape,
                               unroll_factors));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
@@ -129,8 +130,8 @@ int main(int argc, char** argv) {
   llvm::cl::opt<std::string> output_file(
       "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
       llvm::cl::init("foo.bin"));
-  llvm::cl::list<int32_t> architecture(
-      "arch", llvm::cl::desc("target architecture (e.g. 50 for sm_50)"),
+  llvm::cl::list<uint32_t> architectures(
+      "arch", llvm::cl::desc("target architectures (e.g. 50 for sm_50)"),
       llvm::cl::OneOrMore, llvm::cl::CommaSeparated);
   llvm::cl::list<uint32_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
@@ -151,7 +152,7 @@ int main(int argc, char** argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
   auto status =
-      tensorflow::kernel_gen::Run(input_file, output_file, architecture.front(),
+      tensorflow::kernel_gen::Run(input_file, output_file, architectures,
                                   tile_sizes, same_shape, unroll_factors);
   if (!status.ok()) {
     LOG(ERROR) << status;

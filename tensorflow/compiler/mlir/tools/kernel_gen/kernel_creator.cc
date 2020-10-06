@@ -174,7 +174,8 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
 Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
                       llvm::ArrayRef<uint32_t> same_shape,
                       llvm::StringRef gpu_binary_attr_name,
-                      int32_t architecture) {
+                      llvm::ArrayRef<uint32_t> architectures,
+                      bool generate_fatbin) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -187,7 +188,7 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
   }
   kernel_pm.addPass(mlir::createStripDebugInfoPass());
   kernel_pm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToBlobPass(
-      gpu_binary_attr_name, architecture));
+      gpu_binary_attr_name, architectures, generate_fatbin));
 
   if (!gpu_binary_only) {
     pm.addPass(mlir::kernel_gen::transforms::CreateTFKernelToLLVMPass());
@@ -202,9 +203,9 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
 
 StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
-    int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
+    llvm::ArrayRef<uint32_t> architectures, llvm::ArrayRef<uint32_t> tile_sizes,
     llvm::ArrayRef<uint32_t> same_shape,
-    llvm::ArrayRef<uint32_t> unroll_factors) {
+    llvm::ArrayRef<uint32_t> unroll_factors, bool generate_fatbin) {
   mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
   TF_RETURN_IF_ERROR(
@@ -221,7 +222,8 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
 #endif
   TF_RETURN_IF_ERROR(LowerGPUToLLVM(module.get(), gpu_binary_only, same_shape,
-                                    kGpuBinaryAttrName, architecture));
+                                    kGpuBinaryAttrName, architectures,
+                                    generate_fatbin));
   return module;
 }
 

@@ -306,9 +306,6 @@ def _gen_unranked_kernel_fatbin_impl(ctx):
         archs_trimmed.append(arch[3:])
     arch_flag = ",".join(archs_trimmed)
 
-    # TODO(b/169066682): Generate Fatbin when lowering GPU module.
-    arch_flag = "75"
-
     filename = "%s.a" % (name)
     gpu_bin = ctx.outputs.output
     ctx.actions.run(
