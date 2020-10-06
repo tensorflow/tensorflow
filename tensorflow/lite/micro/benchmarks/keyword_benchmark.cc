@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h"
 #include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
-#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -54,7 +53,7 @@ void CreateBenchmarkRunner() {
   // lifetime must exceed that of the KeywordBenchmarkRunner object.
   KeywordOpResolver* op_resolver = new (op_resolver_buffer) KeywordOpResolver();
   op_resolver->AddDequantize();
-  op_resolver->AddFullyConnected(tflite::Register_FULLY_CONNECTED_INT8());
+  op_resolver->AddFullyConnected();
   op_resolver->AddQuantize();
   op_resolver->AddSoftmax();
   op_resolver->AddSvdf();
