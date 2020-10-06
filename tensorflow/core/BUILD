@@ -1740,6 +1740,7 @@ cc_library(
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
