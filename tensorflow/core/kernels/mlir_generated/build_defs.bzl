@@ -241,7 +241,7 @@ def _gen_mlir_op(name, type, unranked):
         unranked = unranked,
     )
 
-def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
+def gen_ranked_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
     """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
@@ -381,3 +381,24 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
         linkstatic = 1,
         tags = tags,
     )
+
+def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = [], generate_ranked = True, generate_unranked = False):
+    if (generate_ranked):
+        gen_ranked_kernel_library(
+            name = name,
+            types = types,
+            tile_size = tile_size,
+            tags = tags,
+            same_shape = same_shape,
+            unroll_factors = unroll_factors,
+            extra_args = extra_args,
+        )
+    if (generate_unranked):
+        gen_unranked_kernel_library(
+            name = name + "_unranked",
+            types = types,
+            tile_size = tile_size,
+            tags = tags,
+            unroll_factors = unroll_factors,
+            extra_args = extra_args,
+        )
