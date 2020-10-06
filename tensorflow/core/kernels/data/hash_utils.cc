@@ -161,6 +161,9 @@ class GraphHasher {
     while (!bfs_queue.empty()) {
       const NodeDef* node = bfs_queue.front();
       bfs_queue.pop();
+      if (visited.contains(node->name())) {
+        continue;
+      }
       visited.insert(node->name());
       NodeRep node_rep;
       for (int i = 0; i < node->input_size(); ++i) {
