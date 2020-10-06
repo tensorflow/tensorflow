@@ -36,9 +36,9 @@ TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 CMSIS_URL := "http://github.com/ARM-software/CMSIS_5/archive/01f5b32badf7b78c85a24a7149b56400fa6a2999.zip"
 CMSIS_MD5 := "823916c6f1749c65fd0bfdeec20b30ed"
 
-AM_SDK_URL := "https://github.com/sparkfun/AmbiqSuiteSDK/archive/v2.5.1.zip"
-AM_SDK_MD5 := "907a566e9f160cab3495fce16108273f"
-AM_SDK_DEST := AmbiqSuiteSDK-2.5.1
+AM_SDK_URL := "https://github.com/sparkfun/AmbiqSuiteSDK/archive/u2.5.1.zip"
+AM_SDK_MD5 := "8acfb1c75b7e66661d0ab4ae584f6b7b"
+AM_SDK_DEST := AmbiqSuiteSDK-u2.5.1
 
 SF_BSPS_URL := "https://github.com/sparkfun/SparkFun_Apollo3_AmbiqSuite_BSPs/archive/v0.0.10.zip"
 SF_BSPS_MD5 := "7adb66f604049327bf2319e0a84af6ec"
