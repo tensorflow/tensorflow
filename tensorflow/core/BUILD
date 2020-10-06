@@ -296,7 +296,6 @@ cc_library(
     hdrs = ["//tensorflow/core/platform:base_hdrs"],
     copts = tf_copts(),
     tags = ["avoid_dep"],
-    visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:byte_order",
@@ -1290,7 +1289,7 @@ filegroup(
             "**/*main.cc",
         ],
     ),
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 # Sources required to build the TensorFlow framework with runtime on
