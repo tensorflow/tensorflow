@@ -428,7 +428,7 @@ REGISTER_OP("_MklNativeMaxPool")
     .Output("workspace: uint8")
     .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
-MKL version of MaxPool operator that does not depend
+oneDNN version of MaxPool operator that does not depend
 on layout propagation. Uses oneDNN APIs to perform max pooling
 on the input.
 
@@ -449,13 +449,10 @@ REGISTER_OP("_MklNativeMaxPoolGrad")
     .Input("grad: T")
     .Input("workspace: uint8")
     .Output("output: T")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 4);
-    })
+    .SetShapeFn(shape_inference::MaxPoolGradShape)
     .Doc(R"doc(
-MKL version of MaxPoolGrad that does not depend
-on layout propagation. Uses oneDNN APIs to compute gradients of
-MaxPool operator.
+oneDNN version of MaxPoolGrad that does not depend on layout propagation.
+Uses oneDNN APIs to compute gradients of MaxPool operator.
 
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
@@ -473,9 +470,8 @@ REGISTER_OP("_MklNativeMaxPool3D")
     .Attr("workspace_enabled: bool = false")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
-MKL version of MaxPool3D operator that does not depend
-on layout propagation. Uses oneDNN APIs to perform 3D max pooling
-on the input.
+oneDNN version of MaxPoolGrad that does not depend on layout propagation.
+Uses oneDNN APIs to compute gradients of MaxPool operator.
 
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
@@ -494,13 +490,13 @@ REGISTER_OP("_MklNativeMaxPool3DGrad")
     .Attr("T: {half, bfloat16, float} = DT_FLOAT")
     .Attr("TInput: {half, bfloat16, float} = DT_FLOAT")
     .Attr("workspace_enabled: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 5);
-    })
+    .SetShapeFn(shape_inference::MaxPool3DGradShape)
     .Doc(R"doc(
-MKL version of MaxPool3DGrad operator that does not depend
-on layout propagation. Uses oneDNN APIs to compute gradients
-of MaxPool3D function.
+oneDNN version of MaxPool3DGrad operator that does not depend on layout
+propagation. Uses oneDNN APIs to compute gradients of MaxPool3D function.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
 )doc");
 
 REGISTER_OP("_MklQuantizedMaxPool")

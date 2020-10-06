@@ -341,9 +341,9 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       std::shared_ptr<PoolingBwdPd> pooling_bwd_pd =
           pooling_bwd->GetPoolingBwdPd();
       T* diff_dst_data = nullptr;
-      if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, pooling_bwd_pd,
-                                     pooling_bwd) &&
-          !this->native_format_) {
+      if (!this->native_format_ &&
+          IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, pooling_bwd_pd,
+                                     pooling_bwd)) {
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
         grad_dnn_data.CheckReorderToOpMem(
             MEMORY_PD_WITHOUT_DATA(GET_DIFF_DST_DESC_FROM_OP_PD(pooling_bwd_pd),

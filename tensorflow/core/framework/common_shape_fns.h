@@ -178,8 +178,14 @@ Status MaxPoolShape(shape_inference::InferenceContext* c);
 // Shape function for MaxPoolV2-like operations.
 Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs);
 
+// Shape function for MaxPoolGrad-like operations.
+Status MaxPoolGradShape(shape_inference::InferenceContext* c);
+
 // Shape function for 3D Pooling operations.
 Status Pool3DShape(shape_inference::InferenceContext* c);
+
+// Shape function for MaxPool3DGrad-like operations.
+Status MaxPool3DGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for use with ops whose output shapes are unknown.
 Status UnknownShape(shape_inference::InferenceContext* c);

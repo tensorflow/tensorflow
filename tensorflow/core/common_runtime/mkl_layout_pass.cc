@@ -3669,7 +3669,7 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   AddWorkSpaceEdgeIfNeeded(g, orig_node, &nb, &workspace_tensors,
                            &are_workspace_tensors_available);
   if (are_workspace_tensors_available) {
-    CHECK_EQ(workspace_tensors.size(), 1);
+    DCHECK_EQ(workspace_tensors.size(), 1);
     nb.Input(workspace_tensors[0].node, workspace_tensors[0].index);
   }
 
