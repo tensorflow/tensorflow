@@ -258,6 +258,19 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>)  {
 
 // -----
 
+// Tests removal of dead local variables.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<2xf32>) {
+  // CHECK-NOT: tf.MlirLocalVarOp
+  // CHECK-NOT: tf.AssignVariableOp
+  %0 = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<2xf32>>>
+  "tf.AssignVariableOp"(%0, %arg0) : (tensor<!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
 // Tests first read of one resource is used as a value to write to another
 // resource.
 
