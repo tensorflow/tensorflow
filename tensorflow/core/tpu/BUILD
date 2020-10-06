@@ -177,6 +177,23 @@ cc_library(
     ],
 )
 
+# This is an alternative to "tpu_api_dlsym_initializer" that only initializes
+# methods needed for the base TPU executor APIs (and thus has fewer deps). Do
+# not link in both this and "tpu_api_dlsym_initializer".
+cc_library(
+    name = "tpu_executor_dlsym_initializer",
+    srcs = ["tpu_executor_dlsym_initializer.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_api_dlsym_set_fn",
+        ":tpu_executor_init_fns",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+    ],
+    alwayslink = True,
+)
+
 cc_library(
     name = "tpu_api_dlsym_set_fn",
     hdrs = ["tpu_api_dlsym_set_fn.h"],
@@ -294,6 +311,7 @@ cc_library(
 cc_library(
     name = "tpu_on_demand_compiler",
     srcs = ["tpu_on_demand_compiler.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
