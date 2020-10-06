@@ -5,6 +5,7 @@ load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
     "go_grpc_library",
+    "go_proto_library",
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -132,6 +133,12 @@ cc_library(
         tf_grpc_cc_dependency(),
     ] + external_deps(),
     alwayslink = 1,
+)
+
+go_proto_library(
+    name = "tpu_service_go_proto",
+    compatible_with = ["//buildenv/target:gce"],
+    deps = [":tpu_service_proto"],
 )
 
 go_grpc_library(

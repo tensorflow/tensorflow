@@ -506,7 +506,6 @@ def tf_proto_library(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
-        create_go_proto = False,
         create_grpc_library = False,
         make_default_target_header_only = False,
         exports = [],
@@ -523,7 +522,6 @@ def tf_proto_library(
         create_java_proto,
         create_grpc_library,
         cc_stubby_versions,
-        create_go_proto,
     )
 
     native.proto_library(
