@@ -36,7 +36,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   explicit MicroMutableOpResolver(ErrorReporter* error_reporter = nullptr)
       : error_reporter_(error_reporter) {}
 
-
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
     if (op == BuiltinOperator_CUSTOM) return nullptr;
 
@@ -344,6 +343,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddRsqrt() {
     return AddBuiltin(BuiltinOperator_RSQRT,
                       tflite::ops::micro::Register_RSQRT(), ParseRsqrt);
+  }
+
+  TfLiteStatus AddShape() {
+    return AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE(), ParseShape);
   }
 
   TfLiteStatus AddSin() {
