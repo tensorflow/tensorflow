@@ -35,8 +35,9 @@ from tensorflow.python.framework import config
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.util.tf_export import tf_export
 
-FLAGS = flags.FLAGS
+_TF_INTERNAL_API_PREFIX = "__internal__.distribute.combinations."
 
 _did_connect_to_cluster = False
 CollectiveAllReduceExtended = (
@@ -50,6 +51,7 @@ def _get_tpu_strategy_creator(steps_per_run,
                               **kwargs):
 
   def _create_tpu_strategy():
+    FLAGS = flags.FLAGS  # pylint: disable=invalid-name
     global _did_connect_to_cluster
 
     try:
@@ -194,6 +196,11 @@ mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
     "Mirrored2CPU", lambda: mirrored_lib.MirroredStrategy(["/cpu:1", "/cpu:2"]))
+mirrored_strategy_with_cpu_1_and_2.__doc__ = (
+    """Mirrored strategy with 2 virtual CPUs.
+
+    Should call set_virtual_cpus_to_at_least(3) in the test's setUp methods.
+    """)
 central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
     "CentralStorage2GPUs",
     lambda: central_storage_strategy.CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
@@ -352,3 +359,57 @@ def all_strategy_minus_default_and_tpu_combinations():
 def all_strategy_combinations_minus_default():
   return (all_strategy_minus_default_and_tpu_combinations() +
           tpu_strategy_combinations())
+
+
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "central_storage_strategy_with_gpu_and_cpu",
+    v1=[]).export_constant(__name__,
+                           "central_storage_strategy_with_gpu_and_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "central_storage_strategy_with_two_gpus",
+    v1=[]).export_constant(__name__, "central_storage_strategy_with_two_gpus")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "cloud_tpu_strategy",
+    v1=[]).export_constant(__name__, "cloud_tpu_strategy")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "default_strategy",
+    v1=[]).export_constant(__name__, "default_strategy")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_cpu_1_and_2",
+    v1=[]).export_constant(__name__, "mirrored_strategy_with_cpu_1_and_2")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_gpu_and_cpu",
+    v1=[]).export_constant(__name__, "mirrored_strategy_with_gpu_and_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_one_cpu",
+    v1=[]).export_constant(__name__, "mirrored_strategy_with_one_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_one_gpu",
+    v1=[]).export_constant(__name__, "mirrored_strategy_with_one_gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_gpus",
+    v1=[]).export_constant(__name__, "mirrored_strategy_with_two_gpus")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x1_cpu",
+    v1=[]).export_constant(__name__, "multi_worker_mirrored_2x1_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x1_gpu",
+    v1=[]).export_constant(__name__, "multi_worker_mirrored_2x1_gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu",
+    v1=[]).export_constant(__name__, "multi_worker_mirrored_2x2_gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "one_device_strategy",
+    v1=[]).export_constant(__name__, "one_device_strategy")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "one_device_strategy_gpu",
+    v1=[]).export_constant(__name__, "one_device_strategy_gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "tpu_strategy",
+    v1=[]).export_constant(__name__, "tpu_strategy")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "tpu_strategy_one_core",
+    v1=[]).export_constant(__name__, "tpu_strategy_one_core")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "tpu_strategy_packed_var",
+    v1=[]).export_constant(__name__, "tpu_strategy_packed_var")
