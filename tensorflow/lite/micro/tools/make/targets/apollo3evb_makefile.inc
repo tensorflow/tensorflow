@@ -111,7 +111,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
     -fno-exceptions \
     -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
-    -Wl,-T,$(TENSORFLOW_ROOT)$(SF_BSPS_DEST)/common/tools_sfe/templates/apollo3_tflu.ld \
+    -Wl,-T,$(TENSORFLOW_ROOT)$(AM_SDK_DEST)/$(SF_BSPS_DEST)/common/tools_sfe/templates/apollo3_tflu.ld \
     -Wl,-Map=$(TENSORFLOW_ROOT)$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
   BUILD_TYPE := micro
   ifeq ($(TARGET), apollo3evb)
@@ -153,7 +153,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
   # setting clock speed, default uart setups, etc. and an implementation
   # of the DebugLog interfaces.
   MICROLITE_CC_SRCS += \
-    $(SF_BSPS_DEST)/common/tools_sfe/templates/startup_gcc_tflu.c \
+    $(AM_SDK_DEST)/$(SF_BSPS_DEST)/common/tools_sfe/templates/startup_gcc_tflu.c \
     $(APOLLO3_SDK)/utils/am_util_delay.c \
     $(APOLLO3_SDK)/utils/am_util_faultisr.c \
     $(APOLLO3_SDK)/utils/am_util_id.c \
