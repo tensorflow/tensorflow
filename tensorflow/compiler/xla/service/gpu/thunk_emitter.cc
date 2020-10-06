@@ -193,8 +193,9 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
       *slice = status_or_slice.ValueOrDie();
     }
   });
+  OutfeedConfig config = GetOutfeedConfig(inst);
   return absl::make_unique<OutfeedThunk>(context_->GetThunkInfo(inst),
-                                         std::move(slices));
+                                         std::move(config), std::move(slices));
 }
 
 Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
