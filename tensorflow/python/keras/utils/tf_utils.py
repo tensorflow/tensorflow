@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -363,6 +364,9 @@ def register_symbolic_tensor_type(cls):
     cls: A `class` type which shall be regarded as a symbolic `Tensor`.
   """
   global _user_convertible_tensor_types
+  if cls not in _user_convertible_tensor_types:
+    keras_tensor.register_keras_tensor_specialization(
+        cls, keras_tensor.UserRegisteredTypeKerasTensor)
   _user_convertible_tensor_types.add(cls)
 
 
