@@ -216,6 +216,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
+        ":cudnn_batchnorm_runner",
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable",
