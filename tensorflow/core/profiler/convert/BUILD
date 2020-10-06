@@ -104,6 +104,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_function_proto_cc",
         "//tensorflow/core/profiler/utils:diagnostics",
+        "//tensorflow/core/profiler/utils:format_utils",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:html_utils",
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
@@ -206,6 +207,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/utils:diagnostics",
         "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:format_utils",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:html_utils",
         "//tensorflow/core/profiler/utils:math_utils",
@@ -214,7 +216,6 @@ cc_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

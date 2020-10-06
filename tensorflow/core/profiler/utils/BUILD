@@ -59,6 +59,14 @@ cc_library(
 )
 
 cc_library(
+    name = "format_utils",
+    hdrs = ["format_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "html_utils",
     hdrs = ["html_utils.h"],
     deps = [
