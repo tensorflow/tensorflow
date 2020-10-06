@@ -574,13 +574,18 @@ def broadcast_static_shape(shape_x, shape_y):
 @dispatch.add_dispatch_support
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
-  """Returns the shape of a tensor.
-  
+  """Returns a tensor containing the shape of the input tensor.
+
   See also `tf.size`, `tf.rank`.
 
   `tf.shape` returns a 1-D integer tensor representing the shape of `input`.
+  For a scalar input, the tensor returned has a shape of (0,) and its value is
+  the empty vector (i.e. []).
 
   For example:
+
+  >>> tf.shape(1.)
+  <tf.Tensor: shape=(0,), dtype=int32, numpy=array([], dtype=int32)>
 
   >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
   >>> tf.shape(t)
@@ -597,7 +602,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a.shape
   TensorShape([None, None, 10])
-  
+
   (The first `None` represents the as yet unknown batch size.)
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
@@ -2472,7 +2477,6 @@ def matrix_diag(diagonal,
 @tf_export("linalg.diag_part", v1=["linalg.diag_part", "matrix_diag_part"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("matrix_diag_part")
-@dispatch.add_dispatch_support
 def matrix_diag_part(
     input,  # pylint:disable=redefined-builtin
     name="diag_part",
@@ -2608,6 +2612,51 @@ def matrix_diag_part(
 
   return gen_array_ops.matrix_diag_part_v3(
       input=input, k=k, padding_value=padding_value, align=align, name=name)
+
+
+@tf_export(
+    "linalg.tensor_diag_part", v1=["linalg.tensor_diag_part", "diag_part"])
+@dispatch.add_dispatch_support
+@deprecation.deprecated_endpoints("diag_part")
+def tensor_diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name=None):
+  """Returns the diagonal part of the tensor.
+
+  This operation returns a tensor with the `diagonal` part
+  of the `input`. The `diagonal` part is computed as follows:
+
+  Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+  tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+
+  `diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+
+  For a rank 2 tensor, `linalg.diag_part` and `linalg.tensor_diag_part`
+  produce the same result. For rank 3 and higher, linalg.diag_part extracts
+  the diagonal of each inner-most matrix in the tensor. An example where
+  they differ is given below.
+
+  >>> x = [[[[1111,1112],[1121,1122]],
+  ...       [[1211,1212],[1221,1222]]],
+  ...      [[[2111, 2112], [2121, 2122]],
+  ...       [[2211, 2212], [2221, 2222]]]
+  ...      ]
+  >>> tf.linalg.tensor_diag_part(x)
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[1111, 1212],
+         [2121, 2222]], dtype=int32)>
+  >>> tf.linalg.diag_part(x).shape
+  TensorShape([2, 2, 2])
+
+  Args:
+    input: A `Tensor` with rank `2k`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor containing diagonals of `input`. Has the same type as `input`, and
+    rank `k`.
+  """
+  return gen_array_ops.diag_part(input=input, name=name)
 
 
 @tf_export("linalg.set_diag", v1=["linalg.set_diag", "matrix_set_diag"])
@@ -4252,8 +4301,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
     # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
     matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen.dtype)
     result = row_vector < matrix
-
-    if dtype is None or result.dtype.base_dtype == dtype.base_dtype:
+    if dtype is None or result.dtype.is_compatible_with(dtype):
       return result
     else:
       return gen_math_ops.cast(result, dtype)
@@ -5160,6 +5208,293 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
   return out
 
 
+@deprecation.deprecated_endpoints("tensor_scatter_update")
+@tf_export(
+    "tensor_scatter_nd_update",
+    v1=["tensor_scatter_nd_update", "tensor_scatter_update"])
+@dispatch.add_dispatch_support
+def tensor_scatter_nd_update(tensor, indices, updates, name=None):
+  """"Scatter `updates` into an existing tensor according to `indices`.
+
+  This operation creates a new tensor by applying sparse `updates` to the
+  input `tensor`. This is similar to an index assignment.
+
+  ```
+  # Not implemented: tensors cannot be updated inplace.
+  tensor[indices] = updates
+  ```
+
+  If an out of bound index is found on CPU, an error is returned.
+
+  > **WARNING**: There are some GPU specific semantics for this operation.
+  >
+  > - If an out of bound index is found, the index is ignored.
+  > - The order in which updates are applied is nondeterministic, so the output
+  >   will be nondeterministic if `indices` contains duplicates.
+
+  This operation is very similar to `tf.scatter_nd`, except that the updates are
+  scattered onto an existing tensor (as opposed to a zero-tensor). If the memory
+  for the existing tensor cannot be re-used, a copy is made and updated.
+
+  In general:
+
+  * `indices` is an integer tensor - the indices to update in `tensor`.
+  * `indices` has **at least two** axes, the last axis is the depth of the
+    index vectors.
+  * For each index vector in `indices` there is a corresponding entry in
+    `updates`.
+  * If the length of the index vectors matches the rank of the `tensor`, then
+    the index vectors each point to scalars in `tensor` and each update is a
+    scalar.
+  * If the length of the index vectors is less than the rank of `tensor`, then
+    the index vectors each point to slices of `tensor` and shape of the updates
+    must match that slice.
+
+  Overall this leads to the following shape constraints:
+
+  ```
+  assert tf.rank(indices) >= 2
+  index_depth = indices.shape[-1]
+  batch_shape = indices.shape[:-1]
+  assert index_depth <= tf.rank(tensor)
+  outer_shape = tensor.shape[:index_depth]
+  inner_shape = tensor.shape[index_depth:]
+  assert updates.shape == batch_shape + inner_shape
+  ```
+
+  Typical usage is often much simpler than this general form, and it
+  can be better understood starting with simple examples:
+
+  ### Scalar updates
+
+  The simplest usage inserts scalar elements into a tensor by index.
+  In this case, the `index_depth` must equal the rank of the
+  input `tensor`, slice each column of `indices` is an index into an axis of the
+  input `tensor`.
+
+  In this simplest case the shape constraints are:
+
+  ```
+  num_updates, index_depth = indices.shape.as_list()
+  assert updates.shape == [num_updates]
+  assert index_depth == tf.rank(tensor)`
+  ```
+
+  For example, to insert 4 scattered elements in a rank-1 tensor with
+  8 elements.
+
+  <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%"
+    src="https://www.tensorflow.org/images/ScatterNd1.png">
+  </div>
+
+  This scatter operation would look like this:
+
+  >>> tensor = [0, 0, 0, 0, 0, 0, 0, 0]    # tf.rank(tensor) == 1
+  >>> indices = [[1], [3], [4], [7]]       # num_updates == 4, index_depth == 1
+  >>> updates = [9, 10, 11, 12]            # num_updates == 4
+  >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates))
+  tf.Tensor([ 0 9  0 10  11  0  0 12], shape=(8,), dtype=int32)
+
+  The length (first axis) of `updates` must equal the length of the `indices`:
+  `num_updates`. This is the the number of updates being inserted. Each
+  scalar update is inserted into `tensor` at the indexed location.
+
+  For a higher rank input `tensor` scalar updates can be inserted by using an
+  `index_depth` that matches `tf.rank(tensor)`:
+
+  >>> tensor = [[1, 1], [1, 1], [1, 1]]    # tf.rank(tensor) == 2
+  >>> indices = [[0, 1], [2, 0]]           # num_updates == 2, index_depth == 2
+  >>> updates = [5, 10]                    # num_updates == 2
+  >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates))
+  tf.Tensor(
+      [[ 1  5]
+       [ 1  1]
+       [10  1]], shape=(3, 2), dtype=int32)
+
+  ### Slice updates
+
+  When the input `tensor` has more than one axis scatter can be used to update
+  entire slices.
+
+  In this case it's helpful to think of the input `tensor` as being a two level
+  array-of-arrays. The shape of this two level array is split into the
+  `outer_shape` and the `inner_shape`.
+
+  `indices` indexes into the outer level of the input tensor (`outer_shape`).
+  and replaces the sub-array at that location with the coresponding item from
+  the `updates` list. The shape of each update is `inner_shape`.
+
+  When updating a list of slices the shape constraints are:
+
+  ```
+  num_updates, index_depth = indices.shape.as_list()
+  inner_shape = tensor.shape[:index_depth]
+  outer_shape = tensor.shape[index_depth:]
+  assert updates.shape == [num_updates, inner_shape]
+  ```
+
+  For example, to update rows of a `(6, 3)` `tensor`:
+
+  >>> tensor = tf.zeros([6, 3], dtype=tf.int32)
+
+  Use an index depth of one.
+
+  >>> indices = tf.constant([[2], [4]])     # num_updates == 2, index_depth == 1
+  >>> num_updates, index_depth = indices.shape.as_list()
+
+  The `outer_shape` is `6`, the inner shape is `3`:
+
+  >>> outer_shape = tensor.shape[:index_depth]
+  >>> inner_shape = tensor.shape[index_depth:]
+
+  2 rows are being indexed so 2 `updates` must be supplied.
+  Each update must be shaped to match the `inner_shape`.
+
+  >>> # num_updates == 2, inner_shape==3
+  >>> updates = tf.constant([[1, 2, 3],
+  ...                        [4, 5, 6]])
+
+  Alltogether this gives:
+
+  >>> tf.tensor_scatter_nd_update(tensor, indices, updates).numpy()
+  array([[0, 0, 0],
+         [0, 0, 0],
+         [1, 2, 3],
+         [0, 0, 0],
+         [4, 5, 6],
+         [0, 0, 0]], dtype=int32)
+
+  #### More slice update examples
+
+  A tensor representing a batch of uniformly sized video clips naturally has 5
+  axes: `[batch_size, time, width, height, channels]`.
+
+  For example:
+
+  >>> batch_size, time, width, height, channels = 13,11,7,5,3
+  >>> video_batch = tf.zeros([batch_size, time, width, height, channels])
+
+  To replace a selection of video clips:
+    * Use an `index_depth` of 1 (indexing the `outer_shape`: `[batch_size]`)
+    * Provide updates each with a shape matching the `inner_shape`:
+      `[time, width, height, channels]`.
+
+  To relace the first two clips with ones:
+
+  >>> indices = [[0],[1]]
+  >>> new_clips = tf.ones([2, time, width, height, channels])
+  >>> tf.tensor_scatter_nd_update(video_batch, indices, new_clips)
+
+  To replace a selection of frames in the videos:
+
+  * `indices` must have an `index_depth` of 2 for the `outer_shape`:
+    `[batch_size, time]`.
+  * `updates` must be shaped like a list of images.  Each update must have a
+    shape, matching the `inner_shape`: `[width, height, channels]`.
+
+  To replace the first frame of the first three video clips:
+
+  >>> indices = [[0, 0], [1, 0], [2, 0]] # num_updates=3, index_depth=2
+  >>> new_images = tf.ones([
+  ...   # num_updates=3, inner_shape=(width, height, channels)
+  ...   3, width, height, channels])
+  >>> tf.tensor_scatter_nd_update(video_batch, indices, new_images)
+
+  ### Folded indices
+
+  In simple cases it's convienient to think of `indices` and `updates` as
+  lists, but this is not a strict requirement. Instead of a flat `num_updates`,
+  the `indices` and `updates` can be folded into a `batch_shape`. This
+  `batch_shape` is all axes of the `indices`, except for the innermost
+  `index_depth` axis.
+
+  ```
+  index_depth = indices.shape[-1]
+  batch_shape = indices.shape[:-1]
+  ```
+
+  Note: The one exception is that the `batch_shape` cannot be `[]`. You can't
+  update a single index by passing indices with shape `[index_depth]`.
+
+  `updates` must have a matching `batch_shape` (the axes before `inner_shape`).
+
+  ```
+  assert updates.shape == batch_shape + inner_shape
+  ```
+
+  Note: The result is equivalent to flattening the `batch_shape` axes of
+  `indices` and `updates`. This generalization just avoids the need
+  for reshapes when it is more natural to construct "folded" indices and
+  updates.
+
+  With this generalization the full shape constraints are:
+
+  ```
+  assert tf.rank(indices) >= 2
+  index_depth = indices.shape[-1]
+  batch_shape = indices.shape[:-1]
+  assert index_depth <= tf.rank(tensor)
+  outer_shape = tensor.shape[:index_depth]
+  inner_shape = tensor.shape[index_depth:]
+  assert updates.shape == batch_shape + inner_shape
+  ```
+
+  For example, to draw an `X` on a `(5,5)` matrix start with these indices:
+
+  >>> tensor = tf.zeros([5,5])
+  >>> indices = tf.constant([
+  ...  [[0,0],
+  ...   [1,1],
+  ...   [2,2],
+  ...   [3,3],
+  ...   [4,4]],
+  ...  [[0,4],
+  ...   [1,3],
+  ...   [2,2],
+  ...   [3,1],
+  ...   [4,0]],
+  ... ])
+  >>> indices.shape.as_list()  # batch_shape == [2, 5], index_depth == 2
+  [2, 5, 2]
+
+  Here the `indices` do not have a shape of `[num_updates, index_depth]`, but a
+  shape of `batch_shape+[index_depth]`.
+
+  Since the `index_depth` is equal to the rank of `tensor`:
+
+  * `outer_shape` is `(5,5)`
+  * `inner_shape` is `()` - each update is scalar
+  * `updates.shape` is `batch_shape + inner_shape == (5,2) + ()`
+
+  >>> updates = [
+  ...   [1,1,1,1,1],
+  ...   [1,1,1,1,1],
+  ... ]
+
+  Putting this together gives:
+
+  >>> tf.tensor_scatter_nd_update(tensor, indices, updates).numpy()
+  array([[1., 0., 0., 0., 1.],
+         [0., 1., 0., 1., 0.],
+         [0., 0., 1., 0., 0.],
+         [0., 1., 0., 1., 0.],
+         [1., 0., 0., 0., 1.]], dtype=float32)
+
+  Args:
+    tensor: Tensor to copy/update.
+    indices: Indices to update.
+    updates: Updates to apply at the indices.
+    name: Optional name for the operation.
+
+  Returns:
+    A new tensor with the given shape and updates applied according to the
+    indices.
+  """
+  return gen_array_ops.tensor_scatter_update(
+      tensor=tensor, indices=indices, updates=updates, name=name)
+
+
 # Define quantize_v2 here in order to make name the second-to-last attribute,
 # because round_mode was added later.
 # (And also now because of 'axis' processing).
@@ -5519,9 +5854,9 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
   ```
 
   Args:
-    images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]
-    sizes: The size of the extracted patches. Must be [1, size_rows, size_cols,
-      1].
+    images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
+    sizes: The size of the extracted patches. Must be
+      `[1, size_rows, size_cols, 1]`.
     strides: A 1-D Tensor of length 4. How far the centers of two consecutive
       patches are in the images. Must be: `[1, stride_rows, stride_cols, 1]`.
     rates: A 1-D Tensor of length 4. Must be: `[1, rate_rows, rate_cols, 1]`.

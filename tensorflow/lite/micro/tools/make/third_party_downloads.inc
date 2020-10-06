@@ -33,8 +33,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "http://mirror.tensorflow.org/www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "http://mirror.tensorflow.org/github.com/ARM-software/CMSIS_5/archive/9daaa7a34a5627a24009462b8fa8413a00c4fdb1.zip"
-CMSIS_MD5 := "b988dacff8925ffffcb7e5079cc713b7"
+CMSIS_URL := "http://github.com/ARM-software/CMSIS_5/archive/01f5b32badf7b78c85a24a7149b56400fa6a2999.zip"
+CMSIS_MD5 := "823916c6f1749c65fd0bfdeec20b30ed"
 
 AM_SDK_URL := "http://mirror.tensorflow.org/s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -88,8 +88,8 @@ ZEPHYR_MD5 := "755622eb4812fde918a6382b65d50c3b"
 XTENSA_HIFI4_URL :="http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_06_27.zip"
 XTENSA_HIFI4_MD5 :="45fdc1209a8da62ab568aa6040f7eabf"
 
-ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-dae5be07b76e5361593d8c2fa4717970c2a5fc19.tar.gz"
-ETHOSU_MD5 := "dec0d3332724e2007b856b2c7507ced8"
+ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-2b201c340788ac582cec160b7217c2b5405b04f9.tar.gz"
+ETHOSU_MD5 := "0c148b90a1ee01de398892eb3a63e717"
 
-HIMAX_WE1_SDK_URL ="https://www.himax.com.tw/we-i/himax_we1_sdk_v03.zip"
-HIMAX_WE1_SDK_MD5 ="1cd9b17f3fdb3e9a1dfd1cc356694325"
+HIMAX_WE1_SDK_URL ="https://www.himax.com.tw/we-i/himax_we1_sdk_v04.zip"
+HIMAX_WE1_SDK_MD5 ="40b3ccb3c2e41210fe5c970d61e7e7d3"

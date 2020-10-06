@@ -727,6 +727,18 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
 
+  @test_util.run_v2_only
+  def testFallbackPath(self):
+    """Test a SavedModel fallback path using old converter."""
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.experimental_new_converter = False
+    tflite_model = converter.convert()
+
+    self.assertTrue(tflite_model)
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
@@ -1007,7 +1019,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
   @test_util.run_v2_only
-  def testKerasBidirectionalRNN(self):
+  def testKerasBidirectionalRNNReturnSequence(self):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
@@ -1016,6 +1028,25 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         tf.keras.layers.Bidirectional(
             recurrent_v2.LSTM(units=10, return_sequences=True),
             input_shape=(10, 10)))
+    model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(5))
+    model.add(tf.keras.layers.Activation('softmax'))
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testKerasBidirectionalRNN(self):
+    input_data = tf.constant(
+        np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
     model.add(tf.keras.layers.Bidirectional(recurrent_v2.LSTM(units=10)))
     model.add(tf.keras.layers.Dense(5))
     model.add(tf.keras.layers.Activation('softmax'))

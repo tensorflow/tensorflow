@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -36,6 +37,10 @@ def get_on_write_saveable(var, primary_var, name):
   # We use a callable so that we don't have to evaluate this expression
   # in the case where we are trying to restore instead of save.
   def tensor():
+    if context.executing_eagerly() and not primary_var.is_initialized():
+      # A SaveSpec tensor value of `None` indicates that the variable is
+      # uninitialized.
+      return None
     strategy = var.distribute_strategy
     return strategy.extended.read_var(var)
 

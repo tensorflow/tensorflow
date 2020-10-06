@@ -97,7 +97,8 @@ OpBuilder* CreateMirrorPadOpBuilder(GraphBuilder* graph_builder) {
 bool IsPadOpSupported(const TfLiteRegistration* registration,
                       const TfLiteNode* node, TfLiteContext* context) {
   // padding is d x 2 tensor, where d is the dimension of input.
-  const TfLiteTensor* padding = GetInput(context, node, 1);
+  const TfLiteTensor* padding;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &padding));
   if (!IsConstantTensor(padding)) {
     TF_LITE_KERNEL_LOG(context,
                        "%s: Only constant padding is supported for PAD.",

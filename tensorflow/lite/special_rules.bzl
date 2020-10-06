@@ -68,3 +68,12 @@ def tflite_hexagon_nn_skel_libraries():
     return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]
     """
     return []
+
+def tflite_schema_utils_friends():
+    """This is a no-op outside of Google.
+
+    Return the package group declaration to which targets for Flatbuffer schema utilities."""
+
+    # Its usage should be rare, and is often abused by tools that are doing
+    # Flatbuffer creation/manipulation in unofficially supported ways."
+    return ["//..."]

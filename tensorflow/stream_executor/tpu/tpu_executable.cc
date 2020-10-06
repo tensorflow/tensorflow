@@ -73,7 +73,7 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
     c_dev_assign.size = dev_assign_serialized.size;
   }
 
-  auto platform = tensorflow::down_cast<tensorflow::TpuPlatform*>(
+  auto platform = tensorflow::down_cast<tensorflow::tpu::TpuPlatform*>(
       tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform());
   auto stream = platform->stream_map()->at(
       run_options.run_options().stream()->implementation());
@@ -111,6 +111,11 @@ int64 TpuExecutable::ShapeSize(const Shape& shape) {
       tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
   ApiConverter::Free(&c_shape);
   return size;
+}
+
+absl::string_view TpuExecutable::fingerprint() const {
+  // TODO(skye): the fingerprint can be plumbed through via core_program_
+  LOG(FATAL) << "TpuExecutable::fingerprint() unimplemented";
 }
 
 }  // namespace xla

@@ -3,22 +3,23 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
-
-message RegisterWorkerRequest {
-  // The address of the registering worker.
-  string worker_address = 1;
-}
-
-message RegisterWorkerResponse {
-  // Tasks to begin processing.
-  repeated TaskDef tasks = 2;
-}
+import "tensorflow/core/framework/tensor.proto";
 
 message TaskProgress {
   // The task that this message is about.
   int64 task_id = 1;
   // Whether the task has completed.
   bool completed = 2;
+}
+
+message WorkerHeartbeatRequest {
+  string worker_address = 1;
+  repeated int64 current_tasks = 2;
+}
+
+message WorkerHeartbeatResponse {
+  repeated TaskDef new_tasks = 1;
+  repeated int64 tasks_to_delete = 2;
 }
 
 message WorkerUpdateRequest {
@@ -34,6 +35,16 @@ message GetDatasetDefRequest {
 
 message GetDatasetDefResponse {
   DatasetDef dataset_def = 1;
+}
+
+message GetSplitRequest {
+  int64 job_id = 1;
+  int64 repetition = 2;
+}
+
+message GetSplitResponse {
+  TensorProto split = 1;
+  bool end_of_splits = 2;
 }
 
 message GetOrRegisterDatasetRequest {
@@ -110,14 +121,17 @@ message GetWorkersResponse {
 }
 
 service DispatcherService {
-  // Registers a worker with the dispatcher.
-  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  // Performs a periodic worker heartbeat.
+  rpc WorkerHeartbeat(WorkerHeartbeatRequest) returns (WorkerHeartbeatResponse);
 
   // Updates the dispatcher with information about the worker's state.
   rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
 
   // Gets a dataset defintion.
   rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
+
+  // Gets the next split for a given job.
+  rpc GetSplit(GetSplitRequest) returns (GetSplitResponse);
 
   // Registers a dataset with the server, or returns its id if it is already
   // registered.

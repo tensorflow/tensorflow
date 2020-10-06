@@ -21,10 +21,7 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import cross_device_utils
-from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import values
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -57,16 +54,5 @@ def _gather(strategy, value):
     return array_ops.stack(value._values)
   assert len(strategy.extended.worker_devices) == len(value._values)
   inputs = [array_ops.expand_dims_v2(v, axis=0) for v in value._values]
-  collective_keys = strategy.extended._collective_keys
-  devices = strategy.extended.worker_devices
-  group_size = strategy.num_replicas_in_sync
-
-  @def_function.function
-  def gather_fn():
-    gathered = cross_device_utils.build_collective_gather(
-        inputs, devices, group_size, collective_keys)
-    return distribute_utils.update_regroup(
-        strategy.extended, gathered, group=True)
-
-  return gather_fn()
+  return strategy._gather(values.PerReplica(inputs), axis=0)
   # pylint: enable=protected-access

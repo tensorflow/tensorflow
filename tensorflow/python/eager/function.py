@@ -900,8 +900,9 @@ class _TapeGradientFunctions(object):
       for output in trainable_outputs:
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
-        gradients_wrt_outputs.append(
-            graph_placeholder(gradient_dtype, gradient_shape))
+        gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
+        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
             trainable_outputs,
@@ -909,6 +910,13 @@ class _TapeGradientFunctions(object):
             grad_ys=gradients_wrt_outputs,
             src_graph=self._func_graph)
 
+      if input_tangents:
+        # Convert IndexedSlices to dense tensors (as we do elsewhere for
+        # function gradients). Our C++ bindings don't know how to handle them
+        # currently.
+        gradients_wrt_inputs = nest.map_structure(
+            lambda x: ops.convert_to_tensor(x) if x is not None else None,
+            gradients_wrt_inputs)
       captures_from_forward = [
           c for c in backwards_graph.external_captures
           if not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph
@@ -1204,9 +1212,10 @@ class _TapeGradientFunctions(object):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
         zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
+    captured_inputs = backward.captured_inputs
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
-        for capture in backward.captured_inputs
+        for capture in captured_inputs
     ]
     if any(t.graph is forward_graph for t in remapped_captures
            if not isinstance(t, ops.EagerTensor)):
@@ -1220,8 +1229,7 @@ class _TapeGradientFunctions(object):
     # unconnected gradients. We do that in advance so we don't have to hold on
     # to the outputs themselves, which may not be needed otherwise.
     variant_zeros_like = {}
-    backward_function_inputs = (
-        len(backward.inputs) - len(backward.captured_inputs))
+    backward_function_inputs = (len(backward.inputs) - len(captured_inputs))
     recorded_outputs = []
     trainable_recorded_outputs = 0
     skip_positions = []
@@ -1590,9 +1598,9 @@ class ConcreteFunction(object):
     function_spec = self._pre_initialized_function_spec
     args = function_spec.fullargspec.args
     arg_specs, kwarg_specs = self.structured_input_signature
+    vararg_indices = range(len(function_spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(
-        args=list(args) +
-        ["<arg{}>".format(i + 1) for i in range(len(args), len(arg_specs))],
+        args=list(args) + ["<arg{}>".format(i + 1) for i in vararg_indices],
         varargs=None,
         varkw=None,
         defaults=[_BOUND_VALUE] * len(arg_specs),
@@ -2167,6 +2175,7 @@ class ConcreteFunction(object):
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
+        custom_gradient.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
@@ -2312,7 +2321,8 @@ class FunctionSpec(object):
   def from_function_and_signature(python_function,
                                   input_signature,
                                   is_pure=False,
-                                  experimental_follow_type_hints=False):
+                                  experimental_follow_type_hints=False,
+                                  experimental_compile=None):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2321,6 +2331,7 @@ class FunctionSpec(object):
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`
+      experimental_compile: see `tf.function`
 
     Returns:
       instance of FunctionSpec
@@ -2402,6 +2413,7 @@ class FunctionSpec(object):
         is_method,
         input_signature,
         is_pure=is_pure,
+        experimental_compile=experimental_compile,
         experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
@@ -2411,7 +2423,8 @@ class FunctionSpec(object):
                input_signature,
                is_pure=False,
                experimental_follow_type_hints=False,
-               name=None):
+               name=None,
+               experimental_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
@@ -2422,10 +2435,12 @@ class FunctionSpec(object):
         will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
+      experimental_compile: see `tf.function`.
     """
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
+    self._experimental_compile = experimental_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
@@ -2494,6 +2509,10 @@ class FunctionSpec(object):
   @property
   def is_pure(self):
     return self._is_pure
+
+  @property
+  def experimental_compile(self):
+    return self._experimental_compile
 
   @property
   def arg_names(self):

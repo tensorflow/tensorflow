@@ -91,25 +91,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "data_service_ops_test",
-    size = "medium",
-    srcs = ["data_service_ops_test.py"],
-    shard_count = 10,
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/experimental/service:server_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-    ],
-)
-
-tf_py_test(
     name = "dataset_test",
     size = "small",
     srcs = ["dataset_test.py"],
@@ -133,6 +114,7 @@ tf_py_test(
     name = "dataset_spec_test",
     size = "small",
     srcs = ["dataset_spec_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",
@@ -244,6 +226,7 @@ tf_py_test(
     name = "from_sparse_tensor_slices_test",
     size = "small",
     srcs = ["from_sparse_tensor_slices_test.py"],
+    tfrt_enabled = True,
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -335,6 +318,7 @@ tf_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -571,6 +555,26 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "placement_test",
+    size = "small",
+    srcs = ["placement_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
     ],
 )

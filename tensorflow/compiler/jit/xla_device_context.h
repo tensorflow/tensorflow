@@ -86,6 +86,9 @@ class XlaDeviceContext : public DeviceContext {
   // Returns a device-to-device stream, in round-robin fashion.
   se::Stream* GetDeviceToDeviceStream();
 
+  Status ThenExecute(Device* device, stream_executor::Stream* stream,
+                     std::function<void()> func) override;
+
  private:
   bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
 

@@ -184,15 +184,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   # Whether to perdically check the health of the cluster. If any worker is not
   # reachable, collectives are aborted and the user program should get a
   # tf.errors.UnavailableError. It's required to restart in order to recover.
-  _enable_check_health = False
+  _enable_check_health = True
   # Check health interval in seconds.
   _check_health_interval = 30
   # Timeout in seconds for the first check health. The first check health needs
   # to wait for cluster, which may make a longer time.
-  #
-  # TODO(b/151232436): now the inital barrier may hang in a rare case, so we
-  # need a finite timeout.
-  _check_health_initial_timeout = 1200
+  _check_health_initial_timeout = 0
+  # Times to retry before considering the peer is down.
+  _check_health_retry_limit = 3
 
   def __init__(self,
                container_strategy,
@@ -388,7 +387,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    # TODO(b/151232436): Enable check health thread by default.
     if self._enable_check_health:
       self._start_check_health_thread()
 
@@ -400,8 +398,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._communication)
 
   def __del__(self):
-    if self._enable_check_health:
-      self._stop_check_health_thread()
+    self._stop_check_health_thread()
 
   def _input_workers_with_options(self, options=None):
     host_device = device_util.get_host_for_device(self._worker_device)
@@ -479,11 +476,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_context = self._make_input_context()
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn=dataset_fn,
@@ -509,7 +505,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _make_input_fn_iterator(
@@ -609,6 +605,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       return self._host_cross_device_ops
 
+  def _gather_to_implementation(self, value, destinations, axis,
+                                experimental_hints):
+    return self._get_cross_device_ops(value)._gather(  # pylint: disable=protected-access
+        value,
+        destinations=destinations,
+        axis=axis,
+        experimental_hints=experimental_hints)
+
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
@@ -639,34 +643,57 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     while True:
       if self._check_health_thread_should_stop.is_set():
         return
-      try:
-        for job in self._cluster_spec.jobs:
-          for task_id in range(self._cluster_spec.num_tasks(job)):
-            context.context().check_collective_ops_peer_health(
-                "/job:{}/replica:0/task:{}".format(job, task_id))
-      except (errors.UnavailableError, errors.FailedPreconditionError) as e:
-        # TODO(b/151232436): Always raise UnavailableError when a peer fails.
-        # Now there could be many kinds of errors:
-        # - Unavailable: when the peer is not reachable, e.g. it's down.
-        # - FailedPrecondition: when the peer has restarted.
-        logging.error("Cluster check alive failed, aborting collectives")
-        context.context().abort_collective_ops(
-            errors.UNAVAILABLE, "cluster check alive failed: %s" % e)
-      except Exception as e:  # pylint: disable=broad-except
-        logging.exception("Unexpected exception in check alive.")
-        context.context().abort_collective_ops(
-            errors.INTERNAL, "unexecpted exception in check alive: %s" % e)
-        return
+      for job in self._cluster_spec.jobs:
+        for task_id in range(self._cluster_spec.num_tasks(job)):
+          peer = "/job:{}/replica:0/task:{}".format(job, task_id)
+          attempts = 0
+          while True:
+            attempts += 1
+            try:
+              context.context().check_collective_ops_peer_health(peer)
+              # If check_collective_ops_peer_health doesn't raise an Exception,
+              # the peer is healthy.
+              break
+            except (errors.UnavailableError,
+                    errors.FailedPreconditionError) as e:
+              # TODO(b/151232436): Always raise UnavailableError when a peer
+              # fails. Now there could be many kinds of errors:
+              # - Unavailable: when the peer is not reachable, e.g. it's down.
+              # - FailedPrecondition: when the peer has restarted.
+              if attempts < self._check_health_retry_limit:
+                logging.warning("%s seems down, retrying %d/%d", peer, attempts,
+                                self._check_health_retry_limit)
+                continue
+              logging.error(
+                  "Cluster check alive failed, %s is down, "
+                  "aborting collectives: %s", peer, e)
+              context.context().abort_collective_ops(
+                  errors.UNAVAILABLE,
+                  "cluster check alive failed, {} is down".format(peer))
+              return
+            except Exception as e:  # pylint: disable=broad-except
+              logging.error("Unexpected exception in check alive: %s", e)
+              context.context().abort_collective_ops(
+                  errors.INTERNAL,
+                  "unexecpted exception in check alive: %s" % e)
+              return
       time.sleep(self._check_health_interval)
 
   def _start_check_health_thread(self):
+    if not context.executing_eagerly():
+      logging.info("Check health is only supported in eager.")
+      return
     # Use a dummy all-reduce as a barrier to wait for all workers to be up,
     # otherwise the check health may fail immediately.
+
+    # Use array_ops.identity to create the dummy tensor so that we have a new
+    # Tensor. If we use constant it may be a cached from on a /job:localhost
+    # device, which will cause some code that relies on tensor.device to error.
     #
     # TODO(b/151232436): change to an explicit barrier if we have it.
-    dummy_value = ops.convert_to_tensor([])
-    logging.info("Waiting for the cluster, timeout = %d",
-                 self._check_health_initial_timeout)
+    dummy_value = array_ops.identity([])
+    logging.info("Waiting for the cluster, timeout = %s",
+                 self._check_health_initial_timeout or "inf")
     try:
       self._host_cross_device_ops.reduce(
           reduce_util.ReduceOp.SUM,
@@ -680,6 +707,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       raise RuntimeError(
           "Timeout waiting for the cluster, timeout is %d seconds" %
           self._check_health_initial_timeout)
+    logging.info("Cluster is ready.")
     self._check_health_thread_should_stop = threading.Event()
     # Start the thread as daemon to avoid it blocking the program from exiting.
     # We try best to shutdown the thread but __del__ is not guaranteed to be
@@ -690,9 +718,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._check_health_thread.start()
 
   def _stop_check_health_thread(self):
-    self._check_health_thread_should_stop.set()
-    self._check_health_thread.join()
-    self._check_health_thread = None
+    if getattr(self, "_check_health_thread", None):
+      logging.info("stopping check health thread")
+      self._check_health_thread_should_stop.set()
+      self._check_health_thread.join()
+      self._check_health_thread = None
+      logging.info("check health thread stopped")
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==

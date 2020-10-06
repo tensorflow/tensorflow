@@ -127,6 +127,14 @@ void TpuStream_Free(SE_Stream*);
 void* TpuStream_Stream(SE_Stream*);
 bool TpuStream_Status(SE_Stream*);
 bool TpuStream_IsSameSharedMemoryLocation(SE_Stream*, SE_Stream*);
+void TpuStream_EnqueueTransferHostToDevice(SE_Stream* stream,
+                                           SE_DeviceMemoryBase device_dst,
+                                           void* host_src, uint64_t size,
+                                           SE_Status* status);
+void TpuStream_EnqueueTransferDeviceToHost(SE_Stream* stream,
+                                           SE_DeviceMemoryBase device_src,
+                                           void* host_dst, uint64_t size,
+                                           SE_Status* status);
 void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
                                                SE_DeviceMemoryBase send_buffer,
                                                SE_DeviceMemoryBase recv_buffer,
@@ -180,9 +188,15 @@ void TpuTransferManager_TransferLiteralFromDevice(
     XLA_StatusCallbackFn callback, void* ctx);
 int64_t TpuTransferManager_GetByteSizeRequirement(XLA_TransferManager* manager,
                                                   XLA_Shape* shape);
+void TpuTransferManager_ChooseCompactLayoutForShape(
+    XLA_TransferManager* manager, XLA_Shape* host_shape, XLA_Shape* output,
+    SE_Status* status);
 bool TpuTransferManager_CanShapedBufferBeAccessedNow(
     XLA_TransferManager* manager, SE_StreamExecutor* executor,
     XLA_ShapedBuffer* device_buffer);
+bool TpuTransferManager_CanBufferBeAccessedNow(
+    XLA_TransferManager* manager, SE_StreamExecutor* executor,
+    SE_DeviceMemoryBase* device_buffer);
 void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
     SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
@@ -292,6 +306,15 @@ TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
     SE_HloExecutionProfile* hlo_execution_profile, SE_ExecutionOutput* output,
     SE_Status* status);
 
+TFTPU_CAPI_EXPORT void TpuExecutable_Fingerprint(SE_Executable* executable,
+                                                 const char** fingerprint,
+                                                 size_t* size);
+
+// Caller is responsible for freeing the returned module's proto and its
+// config's proto.
+TFTPU_CAPI_EXPORT XLA_HloModule
+TpuExecutable_HloModule(SE_Executable* executable);
+
 TFTPU_CAPI_EXPORT void TpuExecutable_Free(SE_Executable*);
 
 // Converts an XLA `Shape` into its equivalent TPU `Shape` representation.
@@ -355,6 +378,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_Stream);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_Status);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_IsSameSharedMemoryLocation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_EnqueueTransferHostToDevice);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_EnqueueTransferDeviceToHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_TpuEnqueueOnDeviceSendRecvLocal);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_New);
@@ -392,7 +417,9 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralToDeviceAsync);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_ChooseCompactLayoutForShape);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_CanShapedBufferBeAccessedNow);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_CanBufferBeAccessedNow);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetInfeedLayout);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_LinearizeToBuffers);
@@ -435,6 +462,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Fingerprint);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_HloModule);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Free);
 
   TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuShapeRepresentation);

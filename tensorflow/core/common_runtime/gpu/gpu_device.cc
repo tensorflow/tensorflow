@@ -601,7 +601,11 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
 
 // Based on the semantics of Device::Sync this call should wait for
 // all streams not just the current one.
-Status BaseGPUDevice::Sync() { return GPUUtil::SyncAll(this); }
+Status BaseGPUDevice::Sync() {
+  return tensorflow_gpu_device_info()
+      ->stream->parent()
+      ->BlockHostUntilAllStreamsAreDone();
+}
 
 void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
                                  OpKernelContext* context,

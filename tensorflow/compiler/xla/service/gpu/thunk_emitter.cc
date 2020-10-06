@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
@@ -238,9 +239,13 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     auto conv_result_slice = GetAllocationSlice(*custom_call, {0});
     auto scratch_slice = GetAllocationSlice(*custom_call, {1});
 
+    TF_ASSIGN_OR_RETURN(
+        GpuConvConfig config,
+        GetGpuConvConfig(Cast<HloCustomCallInstruction>(custom_call)));
     AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
-        context_->GetThunkInfo(custom_call), std::move(operand_slices),
-        conv_result_slice, scratch_slice, tuple_result_slice));
+        context_->GetThunkInfo(custom_call), std::move(config),
+        std::move(operand_slices), conv_result_slice, scratch_slice,
+        tuple_result_slice));
     return Status::OK();
   }
 

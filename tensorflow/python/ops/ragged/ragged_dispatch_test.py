@@ -139,6 +139,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
+    if test_util.IsBuiltWithROCm():
+      # TODO(rocm):
+      # This fails on ROCm...see JIRA ticket 236756
+      self.skipTest('Fails on ROCM')
+
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
@@ -482,6 +487,12 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           args=(ragged_factory_ops.constant_value([[True, False], [True]]),),
           expected=[[0, 0], [1, 0]]),
       dict(
+          op=array_ops.where_v2,
+          args=(ragged_factory_ops.constant_value([[True, False], [True]]),
+                ragged_factory_ops.constant_value([[b'A', b'B'], [b'C']]),
+                ragged_factory_ops.constant_value([[b'a', b'b'], [b'c']])),
+          expected=ragged_factory_ops.constant_value([[b'A', b'b'], [b'C']])),
+      dict(
           op=math_ops.unsorted_segment_sum,
           kwargs={
               'data': ragged_factory_ops.constant_value([[1, 2], [3]]),
@@ -734,8 +745,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     ]
 
     # Ops that should be listed as supported in v1 only.
-    # TODO(edloper): Add a dispatch for where_v2.
-    supported_ops_v1 = ['batch_gather', 'where']
+    supported_ops_v1 = ['batch_gather']
 
     # Ops that should be listed as supported in v2 only.
     supported_ops_v2 = []

@@ -163,7 +163,6 @@ tensorflow/third_party/repo.bzl
 tensorflow/third_party/six.BUILD
 tensorflow/third_party/snappy.BUILD
 tensorflow/third_party/sqlite.BUILD
-tensorflow/third_party/sycl/crosstool/BUILD
 tensorflow/third_party/systemlibs/BUILD
 tensorflow/third_party/systemlibs/BUILD.tpl
 tensorflow/third_party/systemlibs/absl_py.BUILD

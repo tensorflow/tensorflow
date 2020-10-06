@@ -18,13 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import warnings
 
 import six
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import saving_utils
@@ -41,7 +42,6 @@ from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -61,10 +61,6 @@ sequential = LazyLoader(
 # pylint:enable=g-inconsistent-quotes
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions=('Please use `model.save(..., save_format="tf")` or '
-                  '`tf.keras.models.save_model(..., save_format="tf")`.'))
 @keras_export(v1=['keras.experimental.export_saved_model'])
 def export_saved_model(model,
                        saved_model_path,
@@ -130,6 +126,10 @@ def export_saved_model(model,
     ValueError: If the input signature cannot be inferred from the model.
     AssertionError: If the SavedModel directory already exists and isn't empty.
   """
+  warnings.warn('`tf.keras.experimental.export_saved_model` is deprecated'
+                'and will be removed in a future version. '
+                'Please use `model.save(..., save_format="tf")` or '
+                '`tf.keras.models.save_model(..., save_format="tf")`.')
   if serving_only:
     save_lib.save(
         model,
@@ -206,7 +206,7 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
 
   has_saved_vars = False
   if model.optimizer:
-    if isinstance(model.optimizer, (optimizers.TFOptimizer,
+    if isinstance(model.optimizer, (optimizer_v1.TFOptimizer,
                                     optimizer_v2.OptimizerV2)):
       _export_mode(mode_keys.ModeKeys.TRAIN, has_saved_vars, **export_args)
       has_saved_vars = True
@@ -372,10 +372,6 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
   return True
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions=('The experimental save and load functions have been  '
-                  'deprecated. Please switch to `tf.keras.models.load_model`.'))
 @keras_export(v1=['keras.experimental.load_from_saved_model'])
 def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras Model from a SavedModel created by `export_saved_model()`.
@@ -413,6 +409,9 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
   Returns:
     a keras.Model instance.
   """
+  warnings.warn('`tf.keras.experimental.load_from_saved_model` is deprecated'
+                'and will be removed in a future version. '
+                'Please switch to `tf.keras.models.load_model`.')
   # restore model topology from json string
   model_json_filepath = os.path.join(
       compat.as_bytes(saved_model_path),

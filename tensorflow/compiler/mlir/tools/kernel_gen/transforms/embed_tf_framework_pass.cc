@@ -72,7 +72,7 @@ class EmbedTFFrameworkPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> > createEmbedTFFrameworkPass() {
+std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass() {
   return std::make_unique<EmbedTFFrameworkPass>();
 }
 

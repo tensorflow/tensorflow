@@ -1,5 +1,11 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 package(
@@ -24,7 +30,7 @@ cc_library(
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/profiler/internal:profiler_interface",
+        ":profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
@@ -47,20 +53,110 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        "//tensorflow/core/profiler/internal:profiler_interface",
+        ":profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
         "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
-        ":profiler_utils",
-        "//tensorflow/core/profiler/internal:profiler_factory",
+        ":profiler_lock",
+        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
+        "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
     ]),
     alwayslink = True,
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "local_profiler_headers",
+    visibility = [
+        "//tensorflow/core/profiler/rpc:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
+    ],
+    deps = [":local_profiler"],
+)
+
+cc_library(
+    name = "local_profiler",
+    hdrs = ["local_profiler.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "@com_google_absl//absl/memory",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        ":profiler_interface",
+    ] + if_static([
+        ":local_profiler_impl",
+    ]),
+)
+
+cc_library(
+    name = "local_profiler_impl",
+    srcs = ["local_profiler.cc"],
+    hdrs = ["local_profiler.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        ":profiler_interface",
+        ":profiler_lock",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
+        "//tensorflow/core/profiler/lib:profiler_factory",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:derived_timeline",
+        "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "profiler_factory",
+    hdrs = ["profiler_factory.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+    ] + if_static([
+        ":profiler_factory_impl",
+    ]),
+)
+
+cc_library(
+    name = "profiler_factory_impl",
+    srcs = [
+        "profiler_factory.cc",
+        "profiler_factory.h",
+    ],
+    visibility = [
+        "//tensorflow/core/profiler:__pkg__",
+    ],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "profiler_interface",
+    hdrs = ["profiler_interface.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
 )
 
 tf_cuda_library(
@@ -98,7 +194,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
-        "//tensorflow/core/profiler/internal:traceme_recorder",
+        "//tensorflow/core/profiler/internal/cpu:traceme_recorder",
     ]),
 )
 
@@ -159,14 +255,29 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
-        "//tensorflow/core/profiler/internal:annotation_stack",
+        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
     ]),
 )
 
+tf_cc_test(
+    name = "scoped_annotation_test",
+    size = "small",
+    srcs = ["scoped_annotation_test.cc"],
+    deps = [
+        ":scoped_annotation",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
-    name = "profiler_utils",
-    srcs = ["profiler_utils.cc"],
-    hdrs = ["profiler_utils.h"],
+    name = "profiler_lock",
+    srcs = ["profiler_lock.cc"],
+    hdrs = ["profiler_lock.h"],
     visibility = ["//tensorflow/core/profiler:internal"],
 )
 
@@ -175,6 +286,7 @@ filegroup(
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
+        "profiler_interface.h",
         "profiler_session.cc",
         "profiler_session.h",
         "scoped_annotation.h",

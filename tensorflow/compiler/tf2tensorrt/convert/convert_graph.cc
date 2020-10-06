@@ -733,6 +733,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   segment_options.use_implicit_batch = params.use_implicit_batch;
+  if (segment_options.use_implicit_batch)
+    segment_options.maximum_batch_size = params.max_batch_size;
   segment_options.allow_dynamic_non_batch_dim =
       AllowDynamicNonBatchDimension(params);
 

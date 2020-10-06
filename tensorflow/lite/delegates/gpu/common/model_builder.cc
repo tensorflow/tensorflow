@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -82,6 +83,13 @@ class TFLiteOperationParser {
   virtual absl::Status IsSupported(const TfLiteContext* context,
                                    const TfLiteNode* tflite_node,
                                    const TfLiteRegistration* registration) = 0;
+
+  // Return the value ids in the graph that correspond to the updated values of
+  // the variable input tensor.
+  virtual absl::flat_hash_map<int, ValueId>
+  GetNewValueIdsForVariableInputNodes() {
+    return absl::flat_hash_map<int, ValueId>();
+  }
 };
 
 HW ToHW(int32_t h, int32_t w) { return HW(h > 0 ? h : 1, w > 0 ? w : 1); }
@@ -442,7 +450,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 5));
     const int runtime_inputs =
         GetNumberOfRuntimeInputsForNode(context, tflite_node);
     if (runtime_inputs > 2) {
@@ -497,52 +505,12 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   }
 };
 
-class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    const TfLiteTransposeConvParams* tf_options;
-    RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
-    RETURN_IF_ERROR(
-        CheckStrides(tf_options->stride_height, tf_options->stride_width));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    auto* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::CONVOLUTION_TRANSPOSED);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    const TfLiteTransposeConvParams* tf_options;
-    auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
-
-    ConvolutionTransposedAttributes attr;
-    attr.stride = status.ok()
-                      ? HW(tf_options->stride_height, tf_options->stride_width)
-                      : HW(1, 1);
-
-    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
-    reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
-
-    UpdatePadding(status.ok() ? tf_options->padding : kTfLitePaddingUnknown,
-                  graph->FindInputs(node->id)[0]->tensor.shape, &attr);
-
-    node->operation.attributes = std::move(attr);
-    return absl::OkStatus();
-  }
-};
-
 class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 6));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
@@ -923,13 +891,11 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
 
     FullyConnectedAttributes attr;
     RETURN_IF_ERROR(GetFullyConnectedAttributes(1, 2, reader, &attr));
+    const int weights_width = attr.weights.shape.i;
 
-    Tensor<HW, DataType::FLOAT32> weights;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &weights));
     auto input = graph->FindInputs(node->id)[0];
     int batch_size = input->tensor.shape.b;
-    if (input->tensor.shape.DimensionsProduct() / batch_size !=
-        weights.shape.w) {
+    if (input->tensor.shape.DimensionsProduct() / batch_size != weights_width) {
       return absl::UnimplementedError(
           "Amount of input data should match weights width");
     }
@@ -941,7 +907,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       Value* reshaped_value = graph->NewValue();
       reshaped_value->tensor.type = DataType::FLOAT32;
       reshaped_value->tensor.shape =
-          BHWC(input->tensor.shape.b, 1, 1, weights.shape.w);
+          BHWC(input->tensor.shape.b, 1, 1, weights_width);
       RETURN_IF_ERROR(graph->SetProducer(reshape->id, reshaped_value->id));
       reshape->operation.type = ToString(OperationType::RESHAPE);
       ReshapeAttributes attr;
@@ -996,18 +962,39 @@ class HardSwishOperationParser : public TFLiteOperationParser {
 //                 /      \
 //           new_state1    activation0
 //
+// For full LSTM cells, see this blog post:
+// https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+// In addition to Peephole connections and Combined Input Forget Gates (CIFG)
+// described in that post, this code also adds the following optional features:
+// - Configurable activations (sigmoid or TANH)
+// - L2 Normalization of gates: https://arxiv.org/abs/1607.06450
+// - Output projection:
+//     https://www.isca-speech.org/archive/interspeech_2014/i14_0338.html
+// - Configurable clipping of cell state and output state.
 class LSTMOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     const TfLiteLSTMParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     switch (tf_options->kernel_type) {
-      case kTfLiteLSTMFullKernel:
-        // TODO(b/157166356): Add check for input/output tensor counts.
+      case kTfLiteLSTMFullKernel: {
+        const int inputs = NumInputs(tflite_node);
+        if (inputs != 20 && inputs != 24) {
+          return absl::InternalError(
+              absl::StrCat("Expected 20 or 24 input tensors, but node has ",
+                           inputs, " input(s)."));
+        }
+        const int runtime_outputs = NumOutputs(tflite_node);
+        if (runtime_outputs != 1) {
+          return absl::InternalError(
+              absl::StrCat("Expected 1 output tensor, but node has ",
+                           runtime_outputs, " output(s)."));
+        }
         return CheckFullParameters(tf_options);
+      }
       case kTfLiteLSTMBasicKernel:
         RETURN_IF_ERROR(
             CheckInputsConstsOutputs(context, tflite_node, /*runtime_inputs=*/3,
@@ -1027,6 +1014,11 @@ class LSTMOperationParser : public TFLiteOperationParser {
       case kTfLiteLSTMBasicKernel:
         return ParseBasic(tflite_node, registration, graph, reader, tf_options);
     }
+  }
+
+  absl::flat_hash_map<int, ValueId> GetNewValueIdsForVariableInputNodes()
+      final {
+    return new_variable_input_value_map_;
   }
 
  private:
@@ -1101,14 +1093,24 @@ class LSTMOperationParser : public TFLiteOperationParser {
                          const TfLiteRegistration* registration,
                          GraphFloat32* graph, ObjectReader* reader,
                          const TfLiteLSTMParams* tf_options) {
-    return absl::UnimplementedError(
-        "Full LSTM support is not yet implemented.");
+    // Invoke full LSTM parser
+    RETURN_IF_ERROR(ParseLSTMAttributes(tflite_node, registration, graph,
+                                        reader, tf_options,
+                                        &new_variable_input_value_map_));
+    return absl::OkStatus();
   }
 
   absl::Status CheckFullParameters(const TfLiteLSTMParams* tf_options) {
-    return absl::UnimplementedError(
-        "Full LSTM support is not yet implemented.");
+    if (tf_options->activation != kTfLiteActSigmoid &&
+        tf_options->activation != kTfLiteActTanh) {
+      return absl::UnimplementedError(
+          "Only sigmoid or tanh activation is supported.");
+    }
+
+    return absl::OkStatus();
   }
+
+  absl::flat_hash_map<int, ValueId> new_variable_input_value_map_;
 };
 
 class MulOperationParser : public TFLiteOperationParser {
@@ -1120,8 +1122,11 @@ class MulOperationParser : public TFLiteOperationParser {
     if (tflite_node->inputs->size != 2) {
       return absl::UnimplementedError("MUL requires two input tensors.");
     }
-    auto input0 = tflite::GetInput(context, tflite_node, 0);
-    auto input1 = tflite::GetInput(context, tflite_node, 1);
+    const TfLiteTensor* input0 = GetInput(context, tflite_node, 0);
+    const TfLiteTensor* input1 = GetInput(context, tflite_node, 1);
+    if (input0 == nullptr || input1 == nullptr) {
+      return absl::InvalidArgumentError("At least one input tensor is null");
+    }
     if (input0->dims->size == input1->dims->size) {
       // this code checks that at least one input of Mul not smaller in all
       // dimensions. Sometimes Mul used for matrix-vector multiplication that we
@@ -1336,7 +1341,10 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    auto pad_tensor = tflite::GetInput(context, tflite_node, 1);
+    const TfLiteTensor* pad_tensor = GetInput(context, tflite_node, 1);
+    if (pad_tensor == nullptr) {
+      return absl::InvalidArgumentError("Padding tensor was null");
+    }
     if (pad_tensor->dims->size != 2) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Invalid paddings tensor dimension: expected 2 dim, got ",
@@ -1725,6 +1733,15 @@ class SliceOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    if (tflite_node->inputs->size < 3) {
+      return absl::UnimplementedError("SLICE requires 3 inputs.");
+    }
+    const TfLiteTensor* input = GetInput(context, tflite_node, 0);
+    if (input->dims->size != 3 && input->dims->size != 4) {
+      return absl::UnimplementedError(
+          "SLICE supports for 3 or 4 dimensional tensors only.");
+    }
+
     return absl::OkStatus();
   }
 
@@ -1738,6 +1755,9 @@ class SliceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->ReadValue(0, &input));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
 
+    const TfLiteTensor* tfl_input = reader->GetInputTensor(0);
+    const int input_dims = tfl_input->dims->size;
+
     SliceAttributes attr;
     attr.strides = BHWC(1, 1, 1, 1);
     Tensor<Linear, DataType::INT32> starts, sizes;
@@ -1746,36 +1766,65 @@ class SliceOperationParser : public TFLiteOperationParser {
     if (starts.data.size() != sizes.data.size()) {
       return absl::InvalidArgumentError("Starts amount != sizes amount.");
     }
-    const auto& in_shape = input->tensor.shape;
-    if (starts.data.size() == 4) {
-      sizes.data[0] =
-          sizes.data[0] != -1 ? sizes.data[0] : in_shape.b - starts.data[0];
-      sizes.data[1] =
-          sizes.data[1] != -1 ? sizes.data[1] : in_shape.h - starts.data[1];
-      sizes.data[2] =
-          sizes.data[2] != -1 ? sizes.data[2] : in_shape.w - starts.data[2];
-      sizes.data[3] =
-          sizes.data[3] != -1 ? sizes.data[3] : in_shape.c - starts.data[3];
-      attr.starts =
-          BHWC(starts.data[0], starts.data[1], starts.data[2], starts.data[3]);
-      attr.ends =
-          BHWC(starts.data[0] + sizes.data[0], starts.data[1] + sizes.data[1],
-               starts.data[2] + sizes.data[2], starts.data[3] + sizes.data[3]);
-    } else if (starts.data.size() == 3) {
-      sizes.data[0] =
-          sizes.data[0] != -1 ? sizes.data[0] : in_shape.h - starts.data[0];
-      sizes.data[1] =
-          sizes.data[1] != -1 ? sizes.data[1] : in_shape.w - starts.data[1];
-      sizes.data[2] =
-          sizes.data[2] != -1 ? sizes.data[2] : in_shape.c - starts.data[2];
-      attr.starts = BHWC(0, starts.data[0], starts.data[1], starts.data[2]);
-      attr.ends =
-          BHWC(in_shape.b, starts.data[0] + sizes.data[0],
-               starts.data[1] + sizes.data[1], starts.data[2] + sizes.data[2]);
+    BHWC bhwc_starts(0, 0, 0, 0);
+    BHWC bhwc_sizes = input->tensor.shape;
+    if (input_dims == 4) {
+      // input in BHWC layout
+      if (starts.data.size() == 4) {
+        bhwc_starts.b = starts.data[0];
+        bhwc_starts.h = starts.data[1];
+        bhwc_starts.w = starts.data[2];
+        bhwc_starts.c = starts.data[3];
+        bhwc_sizes.b = sizes.data[0];
+        bhwc_sizes.h = sizes.data[1];
+        bhwc_sizes.w = sizes.data[2];
+        bhwc_sizes.c = sizes.data[3];
+      } else if (starts.data.size() == 3) {
+        // if input is 4D(BHWC) and args 3D, we assume that args in HWC layout
+        bhwc_starts.h = starts.data[0];
+        bhwc_starts.w = starts.data[1];
+        bhwc_starts.c = starts.data[2];
+        bhwc_sizes.h = sizes.data[0];
+        bhwc_sizes.w = sizes.data[1];
+        bhwc_sizes.c = sizes.data[2];
+      } else {
+        return absl::UnimplementedError(
+            "Slicing is supported for 3 or 4 dimensional tensors only.");
+      }
+    } else if (input_dims == 3) {
+      // input in BWC layout
+      if (starts.data.size() == 3) {
+        bhwc_starts.b = starts.data[0];
+        bhwc_starts.w = starts.data[1];
+        bhwc_starts.c = starts.data[2];
+        bhwc_sizes.b = sizes.data[0];
+        bhwc_sizes.w = sizes.data[1];
+        bhwc_sizes.c = sizes.data[2];
+      } else {
+        return absl::UnimplementedError(
+            "Slicing is supported for 3 or 4 dimensional tensors only.");
+      }
     } else {
       return absl::UnimplementedError(
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
+    const auto& in_shape = input->tensor.shape;
+    if (bhwc_sizes.b == -1) {
+      bhwc_sizes.b = in_shape.b - bhwc_starts.b;
+    }
+    if (bhwc_sizes.h == -1) {
+      bhwc_sizes.h = in_shape.h - bhwc_starts.h;
+    }
+    if (bhwc_sizes.w == -1) {
+      bhwc_sizes.w = in_shape.w - bhwc_starts.w;
+    }
+    if (bhwc_sizes.c == -1) {
+      bhwc_sizes.c = in_shape.c - bhwc_starts.c;
+    }
+    attr.starts = bhwc_starts;
+    attr.ends =
+        BHWC(bhwc_starts.b + bhwc_sizes.b, bhwc_starts.h + bhwc_sizes.h,
+             bhwc_starts.w + bhwc_sizes.w, bhwc_starts.c + bhwc_sizes.c);
     RETURN_IF_ERROR(UpdateIfNegative(in_shape, &attr));
 
     auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
@@ -1902,6 +1951,15 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     const TfLiteStridedSliceParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckOptionsSupport(tf_options));
+
+    if (tflite_node->inputs->size < 4) {
+      return absl::UnimplementedError("STRIDED_SLICE requires 4 inputs.");
+    }
+    const TfLiteTensor* input = GetInput(context, tflite_node, 0);
+    if (input->dims->size != 3 && input->dims->size != 4) {
+      return absl::UnimplementedError(
+          "STRIDED_SLICE supports for 3 or 4 dimensional tensors only.");
+    }
     return absl::OkStatus();
   }
 
@@ -1921,6 +1979,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     bool read_without_batch = tmp.data.size() == 3;
     bool read_with_batch = tmp.data.size() == 4;
     if (!read_without_batch && !read_with_batch) {
+      // Error: Must be catched in IsSupported()
       return absl::UnimplementedError(
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
@@ -2072,12 +2131,13 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   }
 };
 
-class TransposeConvOperationParser : public TFLiteOperationParser {
+// Builtin op version of TRANSPOSE_CONV.
+class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     const TfLiteTransposeConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -2086,8 +2146,8 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
     return absl::OkStatus();
   }
 
-  // TFLite's TRANSPOSE_CONV expects 3 input (output shape, weights, and input)
-  // and allows configurable padding & stride.
+  // TFLite's TRANSPOSE_CONV expects 3-4 input tensors (output shape, weights,
+  // input, and an optional bias) and allows configurable padding & stride.
   // TODO(impjdi): Translate output_shape to attr.adjacent.
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
@@ -2107,10 +2167,48 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
                       ? HW(tf_options->stride_height, tf_options->stride_width)
                       : HW(1, 1);
     RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
-
-    // TFLite does not support bias.
+    reader->ReadTensor(3, &attr.bias).IgnoreError();  // bias is optional
 
     UpdatePadding(tf_options->padding,
+                  graph->FindInputs(node->id)[0]->tensor.shape, &attr);
+    node->operation.attributes = std::move(attr);
+    return absl::OkStatus();
+  }
+};
+
+// Custom op version of TRANSPOSE_CONV.
+class TransposeConvCustomOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    const TfLiteTransposeConvParams* tf_options;
+    RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
+    RETURN_IF_ERROR(
+        CheckStrides(tf_options->stride_height, tf_options->stride_width));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    auto* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::CONVOLUTION_TRANSPOSED);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    const TfLiteTransposeConvParams* tf_options;
+    auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
+
+    ConvolutionTransposedAttributes attr;
+    attr.stride = status.ok()
+                      ? HW(tf_options->stride_height, tf_options->stride_width)
+                      : HW(1, 1);
+    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
+
+    UpdatePadding(status.ok() ? tf_options->padding : kTfLitePaddingUnknown,
                   graph->FindInputs(node->id)[0]->tensor.shape, &attr);
     node->operation.attributes = std::move(attr);
     return absl::OkStatus();
@@ -2657,12 +2755,12 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinTranspose:
       return std::make_unique<TransposeOperationParser>();
     case kTfLiteBuiltinTransposeConv:
-      return std::make_unique<TransposeConvOperationParser>();
+      return std::make_unique<TransposeConvBuiltinOperationParser>();
 
     case kTfLiteBuiltinCustom:
       const absl::string_view custom_name = registration->custom_name;
       if (custom_name == "Convolution2DTransposeBias") {
-        return std::make_unique<Convolution2DTransposeBiasParser>();
+        return std::make_unique<TransposeConvCustomOperationParser>();
       }
       if (custom_name == "MaxPoolingWithArgmax2D") {
         return std::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
@@ -2803,6 +2901,44 @@ absl::Status PrecreateIOTensors(
   return absl::OkStatus();
 }
 
+absl::Status CopyVariableTensorOutputs(
+    TfLiteNode* tflite_node, TfLiteRegistration* registration,
+    GraphFloat32* graph, ObjectReader& reader,
+    const absl::flat_hash_map<int, ValueId>& new_variable_tensor_values) {
+  absl::flat_hash_map<int, ValueId> new_variable_tensor_values_copy(
+      new_variable_tensor_values);
+  // Retrieve the final value id for the variable input tensors.
+  for (int i = 0; i < tflite_node->inputs->size; i++) {
+    int tensor_idx = tflite_node->inputs->data[i];
+    Value* value;
+    if (!reader.ReadValueByTensorIdx(tensor_idx, &value).ok()) continue;
+    if (value->tensor.is_variable_input) {
+      if (new_variable_tensor_values_copy.find(i) ==
+          new_variable_tensor_values_copy.end()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(GetOpNameByRegistration(*registration),
+                         " did not provide a new value for the variable input "
+                         "tensor with index ",
+                         tensor_idx));
+      } else {
+        Node* node = graph->NewNode();
+        node->operation.type = ToString(OperationType::COPY);
+        RETURN_IF_ERROR(graph->AddConsumer(
+            node->id, new_variable_tensor_values_copy.at(i)));
+        RETURN_IF_ERROR(reader.AddUpdate(node, i));
+        new_variable_tensor_values_copy.erase(
+            new_variable_tensor_values_copy.find(i));
+      }
+    }
+  }
+  if (!new_variable_tensor_values_copy.empty()) {
+    return absl::InvalidArgumentError(
+        "More input variable tensors asked to be copied than present on the "
+        "node");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status BuildModel(TfLiteContext* context,
                         const TfLiteDelegateParams* delegate_params,
                         GraphFloat32* graph,
@@ -2833,6 +2969,7 @@ absl::Status BuildModel(TfLiteContext* context,
     tflite_nodes.push_back(i);
   }
   absl::flat_hash_map<int, Value*> tensor_to_value;
+  std::vector<ValueId> variable_inputs_to_value_id;
   RETURN_IF_ERROR(PrecreateIOTensors(context, graph,
                                      delegate_params->input_tensors,
                                      quant_conversion_map, &tensor_to_value));
@@ -2852,6 +2989,23 @@ absl::Status BuildModel(TfLiteContext* context,
     if (!status.ok()) {
       return absl::InternalError(absl::StrCat(
           GetOpNameByRegistration(*registration), ": ", status.message()));
+    }
+
+    absl::flat_hash_map<int, ValueId> new_value_for_variable_input_tensors =
+        operations[i]->GetNewValueIdsForVariableInputNodes();
+
+    RETURN_IF_ERROR(
+        CopyVariableTensorOutputs(tflite_node, registration, graph, reader,
+                                  new_value_for_variable_input_tensors));
+  }
+
+  // Variable input tensors expect to be unchanged throughout model execution.
+  // They need to be an output of the graph in order to have them unchanged.
+  for (auto value_id : variable_inputs_to_value_id) {
+    if (!graph->IsGraphOutput(value_id)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Variable input tensors must be a graph output. Value ",
+                       value_id, " is not a graph output"));
     }
   }
   return absl::OkStatus();

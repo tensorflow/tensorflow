@@ -510,6 +510,29 @@ TEST(Model, InsertNodeAfter) {
   EXPECT_THAT(graph.nodes(), ElementsAre(node1, new_node1, node2, new_node2));
 }
 
+TEST(BatchMatchingTest, EmptyGraph) {
+  GraphFloat32 graph;
+  ASSERT_TRUE(IsBatchMatchesForAllValues(graph));
+}
+
+TEST(BatchMatchingTest, AllMatch) {
+  GraphFloat32 graph;
+  Value* a = graph.NewValue();
+  Value* b = graph.NewValue();
+  a->tensor.shape = BHWC(1, 1, 1, 1);
+  b->tensor.shape = BHWC(1, 1, 1, 1);
+  ASSERT_TRUE(IsBatchMatchesForAllValues(graph));
+}
+
+TEST(BatchMatchingTest, NotAllMatch) {
+  GraphFloat32 graph;
+  Value* a = graph.NewValue();
+  Value* b = graph.NewValue();
+  a->tensor.shape = BHWC(1, 1, 1, 1);
+  b->tensor.shape = BHWC(2, 1, 1, 1);
+  ASSERT_FALSE(IsBatchMatchesForAllValues(graph));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite

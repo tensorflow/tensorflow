@@ -119,7 +119,7 @@ class TrtConversionParams(
         "rewriter_config_template", "max_workspace_size_bytes",
         "precision_mode", "minimum_segment_size", "is_dynamic_op",
         "maximum_cached_engines", "use_calibration", "max_batch_size",
-        "allow_build_at_runtime"
+        "allow_build_at_runtime", "allow_mixed_precision_on_unconverted_ops"
     ])):
   """Parameters that are used for TF-TRT conversion.
 
@@ -154,12 +154,16 @@ class TrtConversionParams(
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
     max_batch_size: max size for the input batch. This parameter is only
-      effective when is_dynamic_op=False which is not supported in TF 2.0.
+      effective when use_implicit_batch is true.
     allow_build_at_runtime: whether to build TensorRT engines during runtime.
       If no TensorRT engine can be found in cache that can handle the given
       inputs during runtime, then a new TensorRT engine is built at runtime if
       allow_build_at_runtime=True, and otherwise native TF is used. This
       argument is only effective if is_dynamic_op=True.
+    allow_mixed_precision_on_unconverted_ops: whether to allow TensorFlow to
+      use mixed precision on the operations which are not converted to inside
+      a TensorRT engine. This argument has a default value of True, and is
+      only effective if the requested `precision_mode` is lower than FP32.
   """
 
   def __new__(cls,
@@ -171,13 +175,13 @@ class TrtConversionParams(
               maximum_cached_engines=1,
               use_calibration=True,
               max_batch_size=1,
-              allow_build_at_runtime=True):
-    return super(TrtConversionParams,
-                 cls).__new__(cls, rewriter_config_template,
-                              max_workspace_size_bytes, precision_mode,
-                              minimum_segment_size, is_dynamic_op,
-                              maximum_cached_engines, use_calibration,
-                              max_batch_size, allow_build_at_runtime)
+              allow_build_at_runtime=True,
+              allow_mixed_precision_on_unconverted_ops=True):
+    return super(TrtConversionParams, cls).__new__(
+        cls, rewriter_config_template, max_workspace_size_bytes, precision_mode,
+        minimum_segment_size, is_dynamic_op, maximum_cached_engines,
+        use_calibration, max_batch_size, allow_build_at_runtime,
+        allow_mixed_precision_on_unconverted_ops)
 
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
@@ -247,6 +251,12 @@ def _check_conversion_params(conversion_params, is_v2=False):
          "if is_dynamic_op=False, therefore assuming "
          "allow_build_at_runtime=False. If building TensorRT engines "
          "at runtime is desired, set is_dynamic_op=True."))
+
+  if not conversion_params.allow_mixed_precision_on_unconverted_ops:
+    tf_logging.warn("Mixed precision on OPs not converted by TF-TRT has been "
+                    "deactivated. We recommend setting: "
+                    "`allow_mixed_precision_on_unconverted_ops=True` for "
+                    "performance reasons.")
 
 
 def _check_trt_version_compatibility():
@@ -341,12 +351,19 @@ def get_tensorrt_rewriter_config(conversion_params,
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
     optimizer.parameter_map[
         "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
-    if not is_v2:
-      optimizer.parameter_map[
-          "max_batch_size"].i = conversion_params.max_batch_size
+    optimizer.parameter_map[
+        "max_batch_size"].i = conversion_params.max_batch_size
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
+
+  if (conversion_params.allow_mixed_precision_on_unconverted_ops and
+      conversion_params.precision_mode != TrtPrecisionMode.FP32):
+    rewriter_config_with_trt.auto_mixed_precision = \
+        rewriter_config_pb2.RewriterConfig.ON
+  else:
+    rewriter_config_with_trt.auto_mixed_precision = \
+        rewriter_config_pb2.RewriterConfig.OFF
 
   # Disabling optimizers should happen after CopyFrom the template
   # otherwise the template can overwrite the disablement.
@@ -367,6 +384,7 @@ def get_tensorrt_rewriter_config(conversion_params,
         rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
     rewriter_config_with_trt.pin_to_host_optimization = off
     rewriter_config_with_trt.auto_parallel.enable = False
+    rewriter_config_with_trt.auto_mixed_precision = off
 
   return rewriter_config_with_trt
 
@@ -440,7 +458,8 @@ class TrtGraphConverter(object):
                minimum_segment_size=3,
                is_dynamic_op=False,
                maximum_cached_engines=1,
-               use_calibration=True):
+               use_calibration=True,
+               allow_mixed_precision_on_unconverted_ops=True):
     """Initialize the converter.
 
     Args:
@@ -479,6 +498,10 @@ class TrtGraphConverter(object):
         will occur. Please note that accuracy may be negatively affected if
         there is a mismatch between which tensors TRT quantizes and which
         tensors were trained with fake quantization.
+      allow_mixed_precision_on_unconverted_ops: whether to allow TensorFlow to
+        use mixed precision on the operations which are not converted to inside
+        a TensorRT engine. This argument has a default value of True, and is
+        only effective if the requested `precision_mode` is lower than FP32.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -538,7 +561,10 @@ class TrtGraphConverter(object):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         max_batch_size=max_batch_size,
-        allow_build_at_runtime=True)
+        allow_build_at_runtime=True,
+        allow_mixed_precision_on_unconverted_ops=
+          allow_mixed_precision_on_unconverted_ops
+    )
     _check_conversion_params(self._conversion_params)
 
   def _run_conversion(self):

@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016-2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/image/resize_bilinear_op.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -229,6 +230,59 @@ __global__ void ResizeBilinearGradKernel(const int32 nthreads,
 }
 
 template <typename T>
+__global__ void ResizeBilinearDeterministicGradKernel(
+    const int32 nthreads, const float* __restrict__ input_grad,
+    float height_scale, float inverse_height_scale, float width_scale,
+    float inverse_width_scale, int batch, int original_height,
+    int original_width, int channels, int resized_height, int resized_width,
+    float offset, T* __restrict__ output_grad) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
+    // out_idx = c + channels * (x + original_width * (y + original_height * b))
+    int idx = out_idx;
+    const int c = idx % channels;
+    idx /= channels;
+    const int out_x_center = idx % original_width;
+    idx /= original_width;
+    const int out_y_center = idx % original_height;
+    const int b = idx / original_height;
+
+    int in_y_start = max(
+        0, __float2int_ru((out_y_center - 1 + offset) * inverse_height_scale -
+                          offset));
+    const float out_y_start = (in_y_start + offset) * height_scale - offset;
+    int in_x_start =
+        max(0, __float2int_ru(
+                   (out_x_center - 1 + offset) * inverse_width_scale - offset));
+    const float out_x_start = (in_x_start + offset) * width_scale - offset;
+    T acc = 0;
+    // For clarity, prior to C++17, while loops are preferable to for loops here
+    float out_y = out_y_start;
+    int in_y = in_y_start;
+    while (out_y < out_y_center + 1 && in_y < resized_height) {
+      float out_x = out_x_start;
+      int in_x = in_x_start;
+      while (out_x < out_x_center + 1 && in_x < resized_width) {
+        int in_idx =
+            ((b * resized_height + in_y) * resized_width + in_x) * channels + c;
+        // Clamping to zero is necessary because out_x and out_y can be negative
+        // due to half-pixel adjustments to out_y_start and out_x_start.
+        // Clamping to height/width is necessary when upscaling.
+        float out_y_clamped = fmaxf(0, fminf(out_y, original_height - 1));
+        float out_x_clamped = fmaxf(0, fminf(out_x, original_width - 1));
+        float y_lerp = (1 - fabsf(out_y_clamped - out_y_center));
+        float x_lerp = (1 - fabsf(out_x_clamped - out_x_center));
+        acc += static_cast<T>(input_grad[in_idx] * y_lerp * x_lerp);
+        out_x += width_scale;
+        in_x++;
+      }
+      out_y += height_scale;
+      in_y++;
+    }
+    output_grad[out_idx] = acc;
+  }
+}
+
+template <typename T>
 __global__ void LegacyResizeBilinearKernel(
     const int32 nthreads, const T* __restrict__ images, float height_scale,
     float width_scale, int batch, int in_height, int in_width, int channels,
@@ -394,6 +448,17 @@ struct ResizeBilinear<GPUDevice, T> {
   }
 };
 
+bool RequireDeterminism() {
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
+}
+
 // Partial specialization of ResizeBilinearGrad functor for a GPUDevice.
 template <typename T>
 struct ResizeBilinearGrad<GPUDevice, T> {
@@ -413,31 +478,45 @@ struct ResizeBilinearGrad<GPUDevice, T> {
     int total_count;
     GpuLaunchConfig config;
 
-    // Initialize output_grad with all zeros.
     total_count = batch * original_height * original_width * channels;
     if (total_count == 0) return;
     config = GetGpuLaunchConfig(total_count, d);
-    TF_CHECK_OK(GpuLaunchKernel(
-        SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
-        config.virtual_thread_count, output_grad.data()));
 
-    // Accumulate.
-    total_count = batch * resized_height * resized_width * channels;
-    config = GetGpuLaunchConfig(total_count, d);
-    if (half_pixel_centers) {
+    if (RequireDeterminism()) {
+      // The scale values below should never be zero, enforced by
+      // ImageResizerGradientState
+      float inverse_height_scale = 1 / height_scale;
+      float inverse_width_scale = 1 / width_scale;
+      float offset = half_pixel_centers ? 0.5 : 0;
       TF_CHECK_OK(GpuLaunchKernel(
-          ResizeBilinearGradKernel<T>, config.block_count,
+          ResizeBilinearDeterministicGradKernel<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          input_grad.data(), height_scale, width_scale, batch, original_height,
-          original_width, channels, resized_height, resized_width,
-          output_grad.data()));
+          input_grad.data(), height_scale, inverse_height_scale, width_scale,
+          inverse_width_scale, batch, original_height, original_width, channels,
+          resized_height, resized_width, offset, output_grad.data()));
     } else {
+      // Initialize output_grad with all zeros.
       TF_CHECK_OK(GpuLaunchKernel(
-          LegacyResizeBilinearGradKernel<T>, config.block_count,
-          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          input_grad.data(), height_scale, width_scale, batch, original_height,
-          original_width, channels, resized_height, resized_width,
-          output_grad.data()));
+          SetZero<T>, config.block_count, config.thread_per_block, 0,
+          d.stream(), config.virtual_thread_count, output_grad.data()));
+      // Accumulate.
+      total_count = batch * resized_height * resized_width * channels;
+      config = GetGpuLaunchConfig(total_count, d);
+      if (half_pixel_centers) {
+        TF_CHECK_OK(GpuLaunchKernel(
+            ResizeBilinearGradKernel<T>, config.block_count,
+            config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+            input_grad.data(), height_scale, width_scale, batch,
+            original_height, original_width, channels, resized_height,
+            resized_width, output_grad.data()));
+      } else {
+        TF_CHECK_OK(GpuLaunchKernel(
+            LegacyResizeBilinearGradKernel<T>, config.block_count,
+            config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+            input_grad.data(), height_scale, width_scale, batch,
+            original_height, original_width, channels, resized_height,
+            resized_width, output_grad.data()));
+      }
     }
   }
 };

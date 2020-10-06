@@ -9,13 +9,12 @@ load(
     "tf_copts",
     "tf_py_test",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 cc_library(
     name = "transform_utils",
@@ -25,6 +24,7 @@ cc_library(
     hdrs = [
         "transform_utils.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [

@@ -1217,3 +1217,11 @@ func @testWhileDropOutputShapes(tensor<*xf32>) -> (tensor<*xf32>) {
 
   return %1 : tensor<*xf32>
 }
+
+// CHECK-LABEL: testNMSV3ToNMSV4
+func @testNMSV3ToNMSV4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xi32> {
+  %max_size = constant dense<2> : tensor<i32>
+  // CHECK: "tf.NonMaxSuppressionV4"
+  %0 = "tf.NonMaxSuppressionV3"(%arg0, %arg1, %max_size, %arg2, %arg3): (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>)
+  return %0 : tensor<2xi32>
+}

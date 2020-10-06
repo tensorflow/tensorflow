@@ -526,6 +526,136 @@ class DefFunctionTest(xla_test.XLATestCase):
           b.backing_device) if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
+  def testGetCompilerIrConstants(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('TPU generates different HLO')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        return array_ops.transpose(a, b)
+
+      a = array_ops.ones([3, 4, 3], dtype=dtypes.float32)
+      b = constant_op.constant([0, 2, 1], dtype=dtypes.int32)
+
+      self.assertIn('{1,2,0}',
+                    f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo'))
+
+  @test_util.disable_mlir_bridge('TODO(b/168732524): MLIR bridge does not '
+                                 ' optimize single-element tuples to scalars')
+  def testGetCompilerIrResourceVars(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      v = variables.Variable([3.1, 3.2])
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        v.assign_add(a * b)
+
+      a = random_ops.random_normal([2])
+      b = random_ops.random_normal([2])
+
+      self.assertIn('input_output_alias={ {}: (2, {}, may-alias) }',
+                    f.experimental_get_compiler_ir(a, b)('optimized_hlo'))
+
+  def testGetCompilerIrNotCompiled(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function
+      def f(x):
+        return x + 1
+
+      a = random_ops.random_normal([10, 10])
+      with self.assertRaisesRegex(ValueError,
+                                  'marked with experimental_compile'):
+        f.experimental_get_compiler_ir(a)()
+
+  def testGetCompilerIrNested(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def fn(x, a):
+        return x + a
+
+      @def_function.function(experimental_compile=False)
+      def fn2(x, a):
+        fn.experimental_get_compiler_ir(x, a)()
+        return fn(x, a)
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      with self.assertRaisesRegex(TypeError, '"Graph" tensor'):
+        fn2(inputs, 1)
+
+  def testGetCompilerIrKwargs(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      v = variables.Variable([0.1, 0.1])
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        return (a + b) * v
+
+      a = constant_op.constant([1.1, 1.1])
+      b = constant_op.constant([2.2, 2.2])
+
+      self.assertIn('multiply',
+                    f.experimental_get_compiler_ir(b=a, a=b)(stage='hlo'))
+
+  def testGetCompilerIrDot(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        return a + b
+
+      a = constant_op.constant([1.1, 1.1])
+      b = constant_op.constant([2.2, 2.2])
+
+      self.assertIn(
+          'label',
+          f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo_dot'))
+
+  def testGetCompilerIrNoDevicePlacement(self):
+    if 'gpu' not in self.device.lower():
+      self.skipTest('Testing get_compiler_ir on GPUs without placement')
+
+    @def_function.function(experimental_compile=True)
+    def f(a, b):
+      return a + b
+
+    a = constant_op.constant([1.1, 1.1])
+    b = constant_op.constant([2.2, 2.2])
+
+    self.assertIn(
+        'label',
+        f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo_dot'))
+
+  def testGetCompilerIrNonTensors(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(l):
+        return l[0] + l[1]
+
+      l = [constant_op.constant(1.1), constant_op.constant(2.2)]
+
+      self.assertIn('tuple',
+                    f.experimental_get_compiler_ir(l)())
+
+  def testConstantOnWrongDevice(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      s = random_ops.random_uniform([2], 1, 10, dtypes.int32)
+      l = random_ops.random_normal([s[0] * s[1]])
+
+      @def_function.function(experimental_compile=True)
+      def f(l):
+        return array_ops.reshape(l, s)
+
+      self.assertIn('tuple',
+                    f.experimental_get_compiler_ir(l)())
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

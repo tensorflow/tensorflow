@@ -29,6 +29,13 @@ def import_graphdef(graphdef, pass_pipeline):
       pass_pipeline.encode('utf-8'))
 
 
+def import_function(concrete_function, pass_pipeline):
+  return ImportFunction(
+      str(concrete_function.function_def).encode('utf-8'),
+      str(concrete_function.graph.as_graph_def().library).encode('utf-8'),
+      pass_pipeline.encode('utf-8'))
+
+
 def experimental_convert_saved_model_to_mlir(saved_model_path, exported_names,
                                              show_debug_info):
   return ExperimentalConvertSavedModelToMlir(

@@ -119,14 +119,10 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     }
   }
 
-  // Get performance slowdown in seconds of prefetching current BufferInterval
-  // causing to other BufferIntervals.
-  float alternate_mem_slowdown =
-      GetInstructionElapsedDueToMemorySlowdown(interval.size);
-
-  // Divide by the size of the buffer to prioritize smaller buffers that will
-  // give the largest alternate memory benefit.
-  return (alternate_mem_benefit - alternate_mem_slowdown) / interval.size;
+  // Penalize larger buffers by dividing the benefit by the square root of the
+  // size. Empirically, we observed this resulted in better performance compared
+  // to dividing by the size.
+  return alternate_mem_benefit / std::sqrt(interval.size);
 }
 
 int MemorySpaceAssignmentCostAnalysis::CalculateWhileLoopNestLevel(
@@ -1033,6 +1029,12 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
                                      interval.buffer->index())) > 0) {
       VLOG(3) << "Skip " << interval.buffer->ToShortString()
               << " because it is cross-program prefetched.";
+      continue;
+    }
+
+    if (interval.size > available_heap_size()) {
+      VLOG(3) << "Skip " << interval.buffer->ToShortString()
+              << " because the buffer is larger than the heap size.";
       continue;
     }
 
@@ -3339,6 +3341,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                   last_use_instruction, parameter_time, last_use_time,
                   absl::StrCat(indent_string, "  ")));
             } else {
+              last_use_time = std::min(last_use_time, end_time);
               TF_RETURN_IF_ERROR(add_allocation_and_verify(
                   parameter_time, last_use_time, chunk, value));
             }
@@ -3357,12 +3360,13 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
         TF_RETURN_IF_ERROR(split_conditional_buffer(
             last_use_instruction, time_bound.start, time_bound.end, " "));
       } else if (!value->uses().empty()) {
+        last_use_time = std::min(last_use_time, time_bound.end);
         VLOG(3) << " buffer: " << buffer.ToString()
                 << " value: " << value->ToShortString() << ": ("
-                << time_bound.start << ", " << time_bound.end
+                << time_bound.start << ", " << last_use_time
                 << ") off: " << chunk.offset << ", size: " << chunk.size;
         TF_RETURN_IF_ERROR(add_allocation_and_verify(
-            time_bound.start, time_bound.end, chunk, value));
+            time_bound.start, last_use_time, chunk, value));
       }
     }
   }

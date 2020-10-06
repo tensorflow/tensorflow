@@ -143,7 +143,8 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
   // TODO(b/27458679) Parallelize instructions which are skipped here.
   auto opcode = instruction->opcode();
   if (llvm_ir::MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
-      instruction->shape().IsTuple() || opcode == HloOpcode::kRng) {
+      instruction->shape().IsTuple() || opcode == HloOpcode::kRng ||
+      opcode == HloOpcode::kConstant) {
     return 1;
   }
 

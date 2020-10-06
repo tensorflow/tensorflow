@@ -18,14 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import atexit
 import collections
 import os
+import threading
+import time
 
 from absl.testing import parameterized
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import multi_process_runner
@@ -35,21 +38,28 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import collective_ops
 from tensorflow.python.util import nest
 
 CollectiveCommunication = cross_device_ops_lib.CollectiveCommunication
 ReduceOp = reduce_util.ReduceOp
+IndexedSlicesValue = indexed_slices.IndexedSlicesValue
+IndexedSlices = indexed_slices.IndexedSlices
 
 
-def make_per_replica_value(value_fn, devices):
+def make_per_replica_value(value, devices):
   """Creates a `PerReplica` object whose values reside in `devices`.
 
   Args:
-    value_fn: a callable that takes one argument (`device_idx`) and should
-      return the value that is going to be created on devices[device_idx].
+    value: a tensor-convertible value or a `IndexedSlicesValue`, or a callable
+      that takes one argument (`device_idx`) and should return the value that is
+      going to be created on devices[device_idx].
     devices: a list of device strings to create `PerReplica` values on.
 
   Returns:
@@ -57,11 +67,11 @@ def make_per_replica_value(value_fn, devices):
   """
   values = []
   for device_idx, device in enumerate(devices):
-    v = value_fn(device_idx)
-    if isinstance(v, indexed_slices.IndexedSlicesValue):
+    v = value(device_idx) if callable(value) else value
+    if isinstance(v, IndexedSlicesValue):
       with ops.device(device):
         values.append(
-            indexed_slices.IndexedSlices(
+            IndexedSlices(
                 values=array_ops.identity(v.values),
                 indices=array_ops.identity(v.indices),
                 dense_shape=array_ops.identity(v.dense_shape)))
@@ -100,7 +110,7 @@ class MultiProcessPoolRunner():
 # expensive initialization cost of TensorFlow in new processes.
 #
 # Note that they have to be globals and can't be owned by test classes because
-# usually proc_func usually captures the test class instance, and test class
+# usually fn usually captures the test class instance, and test class
 # instance can't be pickled if it has mpr as a member (it is not allowed to
 # pickle Process objects).
 # TODO(crccw): Use `num_workers` combination once it is ready.
@@ -116,16 +126,6 @@ def get_global_mpr(num_processes):
   else:
     raise ValueError("get_global_mpr: num_processes must be 1 or 2, got %d" %
                      num_processes)
-
-
-# Shutdown the runners gracefully to avoid the processes getting SIGTERM and
-# make tsan happy.
-def _shutdown_at_exit():
-  global_mpr_2p.runner.shutdown()
-  global_mpr_1p.runner.shutdown()
-
-
-atexit.register(_shutdown_at_exit)
 
 
 class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
@@ -187,7 +187,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     """
     if isinstance(value, ops.Tensor):
       return [value]
-    elif isinstance(value, indexed_slices.IndexedSlices):
+    elif isinstance(value, IndexedSlices):
       return [value]
     elif isinstance(value, value_lib.Mirrored):
       return value.values
@@ -344,27 +344,27 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = [
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[1.], [2.]], indices=[0, 1], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[3.], [4.]], indices=[1, 2], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[5.], [6.]], indices=[7, 8], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[7.], [8.]], indices=[3, 2], dense_shape=[10, 1]),
     ]
     inputs = inputs_data[0:group_size]
 
     if group_size == 1:
-      expect = indexed_slices.IndexedSlices(
+      expect = IndexedSlices(
           values=[[1.], [2.]], indices=[0, 1], dense_shape=[10, 1])
     elif group_size == 2:
-      expect = indexed_slices.IndexedSlices(
+      expect = IndexedSlices(
           values=[[1.], [2.], [3.], [4.]],
           indices=[0, 1, 1, 2],
           dense_shape=[10, 1])
     elif group_size == 4:
-      expect = indexed_slices.IndexedSlices(
+      expect = IndexedSlices(
           values=[[1.], [2.], [3.], [4.], [5.], [6.], [7.], [8.]],
           indices=[0, 1, 1, 2, 7, 8, 3, 2],
           dense_shape=[10, 1])
@@ -374,12 +374,11 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
   def testAllReduceSparseVariableLength(self):
     # One device per process, 2 processes, 2 replicas in total.
     inputs = [
-        indexed_slices.IndexedSlicesValue(
-            values=[[1.]], indices=[0], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(values=[[1.]], indices=[0], dense_shape=[10, 1]),
+        IndexedSlicesValue(
             values=[[2.], [3.], [4.]], indices=[0, 1, 2], dense_shape=[10, 1]),
     ]
-    expect = indexed_slices.IndexedSlices(
+    expect = IndexedSlices(
         values=[[1.], [2.], [3.], [4.]],
         indices=[0, 0, 1, 2],
         dense_shape=[10, 1])
@@ -455,58 +454,315 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = ([
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[1.], [2.]], indices=[0, 1], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[3.], [4.]], indices=[1, 2], dense_shape=[5, 1])
     ], [
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[5.], [6.]], indices=[1, 2], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[7.], [8.]], indices=[0, 1], dense_shape=[5, 1])
     ], [
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[9.], [10.]], indices=[3, 4], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[11.], [12.]], indices=[3, 4], dense_shape=[5, 1])
     ], [
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[13.], [14.]], indices=[8, 9], dense_shape=[10, 1]),
-        indexed_slices.IndexedSlicesValue(
+        IndexedSlicesValue(
             values=[[15.], [16.]], indices=[3, 4], dense_shape=[5, 1])
     ])
     inputs = inputs_data[0:group_size]
 
     if group_size == 1:
       expect = [
-          indexed_slices.IndexedSlices(
+          IndexedSlices(
               values=[[1.], [2.]], indices=[0, 1], dense_shape=[10, 1]),
-          indexed_slices.IndexedSlicesValue(
+          IndexedSlicesValue(
               values=[[3.], [4.]], indices=[1, 2], dense_shape=[5, 1])
       ]
     if group_size == 2:
       expect = [
-          indexed_slices.IndexedSlices(
+          IndexedSlices(
               values=[[1.], [2.], [5.], [6.]],
               indices=[0, 1, 1, 2],
               dense_shape=[10, 1]),
-          indexed_slices.IndexedSlices(
+          IndexedSlices(
               values=[[3.], [4.], [7.], [8.]],
               indices=[1, 2, 3, 4],
               dense_shape=[5, 1])
       ]
     elif group_size == 4:
       expect = [
-          indexed_slices.IndexedSlices(
+          IndexedSlices(
               values=[[1.], [2.], [5.], [6.], [9.], [10.], [13.], [14.]],
               indices=[0, 1, 1, 2, 3, 4, 8, 9],
               dense_shape=[10, 1]),
-          indexed_slices.IndexedSlices(
+          IndexedSlices(
               values=[[3.], [4.], [7.], [8.], [11.], [12.], [15.], [16.]],
               indices=[1, 2, 0, 1, 3, 4, 3, 4],
               dense_shape=[5, 2])
       ]
       self.batch_reduce_and_verify(inputs, expect, options)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=[1, 2],
+          required_gpus=[0, 1, 2],
+          axis=[0, 1, 2],
+          func_mode=["eager", "func_graph"],
+          communication=[
+              CollectiveCommunication.NCCL,
+              CollectiveCommunication.AUTO,
+              CollectiveCommunication.RING
+          ]))
+  def testAllGatherSameShape(self, num_processes, required_gpus, communication,
+                             func_mode, axis):
+
+    def replica_fn():
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus,
+                                                    communication)
+      value = constant_op.constant([[[1, 2], [1, 2]]], dtype=dtypes.float32)
+
+      def gather_fn():
+        per_replica_value = make_per_replica_value(value, devices)
+        gathered_values = collective._gather(
+            per_replica_value, per_replica_value, axis=axis)
+        gathered_values = self.as_list(gathered_values)
+        # Skip checking devices in eager. In eager the device attribute doesn't
+        # reflect the actual device of the tensor.
+        if not context.executing_eagerly():
+          self.assertAllEqual(devices, [v.device for v in gathered_values])
+        return [ops.convert_to_tensor(v) for v in gathered_values]
+
+      group_size = num_processes * (required_gpus or 1)
+      expect = array_ops.concat([value] * group_size, axis=axis)
+      per_replica_expect = [ops.convert_to_tensor(expect)] * len(devices)
+
+      if func_mode == "eager":
+        result = gather_fn()
+        self.assertAllClose(result, per_replica_expect)
+
+      if func_mode == "func_graph":
+        result = def_function.function(gather_fn)()
+        self.assertAllClose(result, per_replica_expect)
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=1,
+          required_gpus=2,
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ]))
+  def testMultiThreadedCollectiveLaunchNoInterleave(self, num_processes,
+                                                    required_gpus,
+                                                    communication):
+
+    def replica_fn():
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus,
+                                                    communication)
+
+      # We would like to simulate the following sequence:
+      #   thread-0  device0                 device1
+      #   thread-1          device0 device1
+      # If the kernel launch sequence is as-is the program will deadlock since
+      # NCCL requires the launch order to be same on each device.
+      v0 = make_per_replica_value(1.0, devices)
+      v1 = make_per_replica_value(2.0, devices)
+
+      # Add a delay to collective_ops.all_reduce according to the input tensors
+      # index in `sequence.`
+      sequence = [v0.values[0], v1.values[0], v1.values[1], v0.values[1]]
+      all_reduce = collective_ops.all_reduce
+
+      def delayed_all_reduce(input_tensor, *args, **kwargs):
+        for idx, v in enumerate(sequence):
+          if input_tensor is v:
+            time.sleep(idx)
+            break
+        return all_reduce(input_tensor, *args, **kwargs)
+
+      with test.mock.patch.object(collective_ops, "all_reduce",
+                                  delayed_all_reduce):
+        # We only use NCCL for batch reduce with two or more values, so we use
+        # two values here.
+
+        def thread_fn():
+          reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM,
+                                            [(v0, v0), (v0, v0)])
+          self.assertAllEqual(reduced[0].values, [2.0, 2.0])
+          self.assertAllEqual(reduced[1].values, [2.0, 2.0])
+
+        t = threading.Thread(target=thread_fn)
+        t.start()
+        reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v1, v1),
+                                                                     (v1, v1)])
+        self.assertAllEqual(reduced[0].values, [4.0, 4.0])
+        self.assertAllEqual(reduced[1].values, [4.0, 4.0])
+        t.join()
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=1,
+          required_gpus=2,
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ]))
+  def testInputsAreFunctionArgs(self, num_processes, required_gpus,
+                                communication):
+
+    def replica_fn():
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus,
+                                                    communication)
+
+      @def_function.function
+      def reduce_fn(v):
+        # Function inputs don't have device placement.
+        self.assertEqual(v.values[0].device, "")
+        self.assertEqual(v.values[1].device, "")
+        # We only use NCCL for batch reduce with two or more values, so we use
+        # two values here.
+        reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v, v),
+                                                                     (v, v)])
+        self.assertEqual(reduced[0].values[0].device, devices[0])
+        self.assertEqual(reduced[0].values[1].device, devices[1])
+        self.assertEqual(reduced[1].values[0].device, devices[0])
+        self.assertEqual(reduced[1].values[1].device, devices[1])
+        # Returning Mirrored only evaluates the primary value, which causes
+        # hanging,
+        return [reduced[0].values, reduced[1].values]
+
+      v = make_per_replica_value(1.0, devices)
+      reduced = reduce_fn(v)
+      self.assertAllClose(reduced, [[2.0, 2.0], [2.0, 2.0]])
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=2,
+          required_gpus=[0, 1],
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutReduceDense(self, num_processes, communication, required_gpus):
+
+    def replica_fn():
+      collective, devices, task_id = self.make_collective(
+          num_processes, required_gpus, communication)
+      if task_id != 0:
+        return
+
+      v = make_per_replica_value(1.0, devices)
+      hints = collective_util.Hints(timeout_seconds=1)
+
+      @def_function.function
+      def reduce_dense():
+        collective.reduce(reduce_util.ReduceOp.SUM, v, v, hints)
+
+      # The collective should time out because we only launch it on worker-0,
+      # while there're three workers in total.
+      with self.assertRaises(errors.DeadlineExceededError):
+        reduce_dense()
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=2,
+          required_gpus=[0, 1],
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutBatchReduceDense(self, num_processes, communication,
+                                  required_gpus):
+
+    def replica_fn():
+      collective, devices, task_id = self.make_collective(
+          num_processes, required_gpus, communication)
+      if task_id != 0:
+        return
+
+      v = make_per_replica_value(1.0, devices)
+      hints = collective_util.Hints(timeout_seconds=1)
+
+      @def_function.function
+      def batch_reduce_dense():
+        collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v, v), (v, v)],
+                                hints)
+
+      # The collective should time out because we only launch it on worker-0,
+      # while there're two workers in total.
+      with self.assertRaises(errors.DeadlineExceededError):
+        batch_reduce_dense()
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=2,
+          required_gpus=[0, 1],
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutReduceSparse(self, num_processes, communication,
+                              required_gpus):
+
+    def replica_fn():
+      collective, devices, task_id = self.make_collective(
+          num_processes, required_gpus, communication)
+      if task_id != 0:
+        return
+
+      v = make_per_replica_value(
+          IndexedSlicesValue(
+              values=[[4., 6.]], indices=[1], dense_shape=[5, 2]), devices)
+      hints = collective_util.Hints(timeout_seconds=1)
+
+      @def_function.function
+      def reduce_sparse():
+        collective.reduce(reduce_util.ReduceOp.SUM, v, v, hints)
+
+      # The collective should time out because we only launch it on worker-0,
+      # while there're two workers in total.
+      with self.assertRaises(errors.DeadlineExceededError):
+        reduce_sparse()
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=2,
+          required_gpus=[0, 1],
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutBatchReduceSparse(self, num_processes, required_gpus,
+                                   communication):
+
+    def replica_fn():
+      collective, devices, task_id = self.make_collective(
+          num_processes, required_gpus, communication)
+      if task_id != 0:
+        return
+
+      v = make_per_replica_value(
+          IndexedSlicesValue(
+              values=[[4., 6.]], indices=[1], dense_shape=[5, 2]), devices)
+      hints = collective_util.Hints(timeout_seconds=1)
+
+      @def_function.function
+      def batch_reduce_sparse():
+        collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v, v), (v, v)],
+                                hints)
+
+      # The collective should time out because we only launch it on worker-0,
+      # while there're two workers in total.
+      with self.assertRaises(errors.DeadlineExceededError):
+        batch_reduce_sparse()
+
+    get_global_mpr(num_processes).run(replica_fn)
 
 
 if __name__ == "__main__":

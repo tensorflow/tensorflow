@@ -70,6 +70,9 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
     // eg: For num_dims=3, [0, 1, 2] is the same as [-3, -2, -1]  */
     int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
     TFLITE_DCHECK(current >= 0 && current < num_dims);
+    if (current < 0 || current >= num_dims) {
+      return false;
+    }
     bool is_dup = false;
     for (int j = 0; j < *out_num_axis; ++j) {
       if (out_axis[j] == current) {
@@ -129,6 +132,11 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
                           bool keep_dims, int* temp_index, int* resolved_axis,
                           T init_value,
                           T reducer(const T current, const T in)) {
+  // Return early when input shape has zero dim.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
+  }
+
   // Reset output data.
   if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
                                output_data)) {

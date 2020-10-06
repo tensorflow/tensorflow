@@ -15,8 +15,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -31,6 +29,7 @@ tf_py_test(
     tags = [
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":get_config_samples",
         "//tensorflow/python:client_testlib",
@@ -58,6 +57,7 @@ tpu_py_test(
         "automatic_outside_compilation_test.py",
     ],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -127,6 +127,7 @@ tf_py_test(
     name = "graph_util_test",
     srcs = ["graph_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -153,6 +154,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -266,6 +268,7 @@ tf_py_test(
         "nomsan",  # TODO(b/149948895): Re-enable.
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -297,6 +300,7 @@ cuda_py_test(
     name = "summary_ops_test",
     size = "small",
     srcs = ["summary_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -313,6 +317,7 @@ tf_py_test(
     name = "saved_model_test",
     size = "small",
     srcs = ["saved_model_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -357,6 +362,7 @@ tf_py_test(
     size = "small",
     srcs = ["serialization_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -388,6 +394,7 @@ tf_py_test(
         "no_windows",
         "nomac",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -415,6 +422,7 @@ tf_py_test(
     srcs = ["tracking_util_test.py"],
     python_version = "PY3",
     tags = ["notsan"],  # b/74395663
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:checkpoint_management",

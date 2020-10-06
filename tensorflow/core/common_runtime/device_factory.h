@@ -123,7 +123,6 @@ class Registrar {
   //
   // The default priority values for built-in devices is:
   // GPU: 210
-  // SYCL: 200
   // GPUCompatibleCPU: 70
   // ThreadPoolDevice: 60
   // Default: 50

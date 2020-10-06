@@ -30,57 +30,6 @@ limitations under the License.
 
 namespace tflite {
 
-namespace internal {
-
-constexpr size_t kMaxScratchBuffersPerOp = 8;
-
-// A helper class to encapsulate the implementation of APIs in Context.
-// context->impl_ points to an instance of this class.
-// Check tensorflow/lite/c/common.h for detailed descriptions.
-// TODO(b/16157777): Consider rolling this class into MicroInterpreter.
-class ContextHelper {
- public:
-  explicit ContextHelper(ErrorReporter* error_reporter,
-                         MicroAllocator* allocator, const Model* model);
-
-  // Functions that will be assigned to function pointers on TfLiteContext:
-  static void* AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes);
-  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
-                                                  size_t bytes,
-                                                  int* buffer_idx);
-  static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
-  static void ReportOpError(struct TfLiteContext* context, const char* format,
-                            ...);
-  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
-                                 int tensor_idx);
-  static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
-                                         int tensor_idx);
-  // Commits all scratch buffer allocations to MicroAllocator.
-  TfLiteStatus CommitScratchBuffers();
-
-  // Sets the current node index to assist with scratch buffer allocations:
-  void SetNodeIndex(int idx);
-
-  // Sets the pointer to a list of TfLiteEvalTensor instances.
-  void SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors);
-  // Sets the pointer to scratch buffer handle, which is needed by
-  // `GetScratchBuffer`.
-  void SetScratchBufferHandles(void* scratch_buffer_handle);
-
- private:
-  MicroAllocator* allocator_ = nullptr;
-  ErrorReporter* error_reporter_ = nullptr;
-  const Model* model_ = nullptr;
-  TfLiteEvalTensor* eval_tensors_ = nullptr;
-  void* scratch_buffer_handles_ = nullptr;
-  int current_node_idx_ = -1;
-
-  size_t scrach_buffer_sizes_[kMaxScratchBuffersPerOp];
-  size_t scratch_buffer_count_ = 0;
-};
-
-}  // namespace internal
-
 class MicroInterpreter {
  public:
   // The lifetime of the model, op resolver, tensor arena, error reporter and
@@ -193,6 +142,19 @@ class MicroInterpreter {
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
 
+  // Static functions that are bound to the TfLiteContext instance:
+  static void* AllocatePersistentBuffer(TfLiteContext* Context, size_t bytes);
+  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* context,
+                                                  size_t bytes,
+                                                  int* buffer_idx);
+  static void* GetScratchBuffer(TfLiteContext* context, int buffer_idx);
+  static void ReportOpError(struct TfLiteContext* context, const char* format,
+                            ...);
+  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
+                                 int tensor_idx);
+  static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
+                                         int tensor_idx);
+
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
@@ -204,9 +166,9 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status_;
 
-  const SubGraph* subgraph_;
-  TfLiteEvalTensor* eval_tensors_;
-  internal::ContextHelper context_helper_;
+  const SubGraph* subgraph_ = nullptr;
+  TfLiteEvalTensor* eval_tensors_ = nullptr;
+  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
 
   // TODO(b/160894903): Clean these pointers up when all APIs are updated to new
   // TfLiteEvalTensor buffers.
