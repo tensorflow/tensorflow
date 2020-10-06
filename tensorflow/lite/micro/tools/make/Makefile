@@ -90,17 +90,47 @@ TAG_DEFINES := $(foreach TAG,$(TAGS),-D$(shell echo $(TAG) | tr [a-z] [A-Z] | tr
 
 OPTIMIZATION_LEVEL := -O3
 
-CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
-               -Wshadow -Wunused-variable -Wmissing-field-initializers \
-               -Wunused-function -Wswitch -Wvla
-# TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
-CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY \
-	    $(CC_WARNINGS) $(OPTIMIZATION_LEVEL) $(TAG_DEFINES)
-CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS) $(OPTIMIZATION_LEVEL) \
-            $(TAG_DEFINES)
+CC_WARNINGS := \
+  -Werror \
+  -Wsign-compare \
+  -Wdouble-promotion \
+  -Wshadow \
+  -Wunused-variable \
+  -Wmissing-field-initializers \
+  -Wunused-function \
+  -Wswitch \
+  -Wvla \
+  -Wall \
+  -Wextra \
+  -Wstrict-aliasing \
+  -Wno-unused-parameter
+
+COMMON_FLAGS := \
+  -fno-unwind-tables \
+  -ffunction-sections \
+  -fdata-sections \
+  -fmessage-length=0 \
+  -DTF_LITE_STATIC_MEMORY \
+  $(OPTIMIZATION_LEVEL) \
+  $(CC_WARNINGS) \
+  $(TAG_DEFINES)
+
+CXXFLAGS := \
+  -std=c++11 \
+  -fno-rtti \
+  -fno-exceptions \
+  -fno-threadsafe-statics \
+  $(COMMON_FLAGS)
+
+CCFLAGS  := \
+	-std=c11 \
+	$(COMMON_FLAGS)
+
 ARFLAGS := -r
 
-LDFLAGS += -Wl,--fatal-warnings
+LDFLAGS += \
+  -Wl,--fatal-warnings \
+  -Wl,--gc-sections
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
