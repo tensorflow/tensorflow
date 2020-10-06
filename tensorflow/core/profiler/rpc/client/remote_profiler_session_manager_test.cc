@@ -100,7 +100,8 @@ TEST(RemoteProfilerSessionManagerTest, LongSession) {
   auto server = StartServer(duration, &service_addresses);
   options.add_service_addresses(service_addresses);
   absl::Time approx_start = absl::Now();
-  absl::Duration grace = absl::Seconds(2);
+  // Empirically determined value.
+  absl::Duration grace = absl::Seconds(20);
   absl::Duration max_duration = duration + grace;
   options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
   options.set_session_creation_timestamp_ns(absl::ToUnixNanos(approx_start));

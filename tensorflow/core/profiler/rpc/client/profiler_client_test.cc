@@ -125,7 +125,7 @@ TEST(RemoteProfilerSession, LongDuration) {
 
   absl::Time approx_start = absl::Now();
   // Empirically determined value.
-  absl::Duration grace = absl::Seconds(2);
+  absl::Duration grace = absl::Seconds(20);
   absl::Duration max_duration = duration + grace;
   const absl::Time deadline = approx_start + max_duration;
 
