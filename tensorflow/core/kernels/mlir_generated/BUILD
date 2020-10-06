@@ -163,6 +163,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "ceil",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -186,6 +187,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "cos",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -198,6 +200,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "exp",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -210,6 +213,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "floor",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -232,6 +236,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "invert",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -245,6 +250,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "isfinite",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -257,6 +263,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "log",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -269,6 +276,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "logicalnot",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = ["i1"],
@@ -277,6 +285,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "neg",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -299,6 +308,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "rsqrt",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -311,6 +321,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "sign",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -326,6 +337,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "sqrt",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
