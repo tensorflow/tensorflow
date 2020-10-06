@@ -296,10 +296,6 @@ h# Release 2.4.0
 
     *   `tf.debugging.assert_shapes()` now works on `SparseTensor`s (#36268).
 
-*    `TensorRT`
-    *    Add parameter allow_mixed_precision_on_unconverted_ops to
-         TrtConversionParams.
-
 *   `tf.print`:
 
     *   Bug fix in `tf.print()` with `OrderedDict` where if an `OrderedDict`
