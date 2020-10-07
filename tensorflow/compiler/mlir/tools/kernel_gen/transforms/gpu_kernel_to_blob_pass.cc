@@ -112,7 +112,7 @@ class GpuKernelToBlobPass
     }
 
     std::string libdevice_dir = tensorflow::RocdlRoot();
-    return xla::gpu::amdgpu::CompileToHsaco(llvmModule.get(), arch_, config,
+    return xla::gpu::amdgpu::CompileToHsaco(llvmModule.get(), arch, config,
                                             libdevice_dir);
 
 #elif GOOGLE_CUDA
