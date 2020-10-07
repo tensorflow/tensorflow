@@ -19,53 +19,70 @@ ifneq ($(filter cortex-%-generic,$(TARGET)),)
     TARGET_SPECIFIC_FLAGS += -D__DSP_PRESENT=1 -D__FPU_PRESENT=1
     FLOAT=hard
     TARGET_ARCH := cortex-m55
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m55+nodsp+nofp-generic))
     CORE=M55
     ARM_LDFLAGS := -Wl,--cpu=8.1-M.Main.mve.no_dsp.no_fp
     TARGET_SPECIFIC_FLAGS +=
     TARGET_ARCH := cortex-m55+nodsp+nofp
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m55+nofp-generic))
     CORE=M55
     ARM_LDFLAGS := -Wl,--cpu=8.1-M.Main.mve.no_fp
     TARGET_SPECIFIC_FLAGS += -D__DSP_PRESENT=1
     TARGET_ARCH := cortex-m55+nofp
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m33+nodsp-generic))
     CORE=M33
     ARM_LDFLAGS := -Wl,--cpu=Cortex-M33.no_dsp.no_fp
     TARGET_SPECIFIC_FLAGS +=
     TARGET_ARCH := cortex-m33+nodsp
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m33-generic))
     CORE=M33
     ARM_LDFLAGS := -Wl,--cpu=Cortex-M33
     TARGET_SPECIFIC_FLAGS += -D__DSP_PRESENT=1 -D__FPU_PRESENT=1 -D__VTOR_PRESENT=1 -D__FPU_USED=1
     FLOAT=hard
     TARGET_ARCH := cortex-m33
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m0-generic))
     CORE=M0
     ARM_LDFLAGS := -Wl,--cpu=Cortex-M0
     TARGET_SPECIFIC_FLAGS +=
     TARGET_ARCH := cortex-m0
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m3-generic))
     CORE=M3
     ARM_LDFLAGS := -Wl,--cpu=Cortex-M3
     TARGET_SPECIFIC_FLAGS +=
     TARGET_ARCH := cortex-m3
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m4-generic))
     CORE=M4
     ARM_LDFLAGS := -Wl,--cpu=Cortex-M4.no_fp
     TARGET_SPECIFIC_FLAGS+=
     TARGET_ARCH := cortex-m4
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
+  else ifeq ($(TARGET),$(filter $(TARGET),cortex-m4+fp-generic))
+    CORE=M4
+    ARM_LDFLAGS := -Wl,--cpu=Cortex-M4
+    TARGET_SPECIFIC_FLAGS+=
+    FLOAT=hard
+    TARGET_ARCH := cortex-m4+fp
+    GCC_TARGET_ARCH := cortex-m4
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m7+fp-generic))
     CORE=M7
-    ARM_LDFLAGS := -Wl,--cpu=Cortex-M7.fp
+    ARM_LDFLAGS := -Wl,--cpu=Cortex-M7
     TARGET_SPECIFIC_FLAGS +=
     FLOAT=hard
     TARGET_ARCH := cortex-m7+fp
+    GCC_TARGET_ARCH :=  cortex-m7
   else ifeq ($(TARGET),$(filter $(TARGET),cortex-m7-generic))
     CORE=M7
     ARM_LDFLAGS := -Wl,--cpu=Cortex-M7.no_fp
     TARGET_SPECIFIC_FLAGS +=
     TARGET_ARCH := cortex-m7
+    GCC_TARGET_ARCH := $(TARGET_ARCH)
   else
     $(error "$(TARGET) not supported")
   endif
@@ -79,6 +96,10 @@ ifneq ($(filter cortex-%-generic,$(TARGET)),)
     FLAGS_ARMC = \
       --target=arm-arm-none-eabi \
       -mcpu=$(TARGET_ARCH)
+    ifeq ($(BUILD_TYPE), release)
+       FLAGS_ARMC += -Wno-unused-private-field
+    endif
+
     CXXFLAGS += $(FLAGS_ARMC)
     CCFLAGS += $(FLAGS_ARMC)
     LDFLAGS += $(ARM_LDFLAGS)
@@ -95,14 +116,14 @@ ifneq ($(filter cortex-%-generic,$(TARGET)),)
     CC_TOOL   := arm-none-eabi-gcc
     AR_TOOL   := arm-none-eabi-gcc-ar
     LD        := arm-none-eabi-ld
-    ifneq ($(filter cortex-m55%,$(TARGET_ARCH)),)
-      $(error Micro architecure support is not available yet for $(TARGET_ARCH))
+    ifneq ($(filter cortex-m55%,$(GCC_TARGET_ARCH)),)
+      $(error Micro architecure support is not available yet for $(GCC_TARGET_ARCH))
     else
-      FLAGS_GCC = -mcpu=$(TARGET_ARCH)
+      FLAGS_GCC = -mcpu=$(GCC_TARGET_ARCH)
     endif
     CXXFLAGS += $(FLAGS_GCC)
     CCFLAGS += $(FLAGS_GCC)
-    LDFLAGS += -Wl,--gc-sections
+    LDFLAGS +=
   endif
 
   PLATFORM_FLAGS = \
@@ -111,13 +132,18 @@ ifneq ($(filter cortex-%-generic,$(TARGET)),)
     -mfloat-abi=$(FLOAT) \
     -funsigned-char \
     -mlittle-endian \
+    -Wno-type-limits \
     -fno-function-sections \
     -MD \
     -DCPU_$(CORE)=1 \
     $(TARGET_SPECIFIC_FLAGS)
 
+  ifneq ($(BUILD_TYPE), release)
+    PLATFORM_FLAGS += -DTF_LITE_MCU_DEBUG_LOG
+  endif
+
   # Common + C/C++ flags
-  CXXFLAGS += $(PLATFORM_FLAGS) -fno-rtti
+  CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
 
   TEST_SCRIPT :=

@@ -13,14 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Implementation for the DebugLog() function that prints to the debug logger on
+// an generic Cortex-M device.
+
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 #include "tensorflow/lite/micro/debug_log.h"
 
-#ifdef DEBUG
-#include <cstdio>
-#endif
+#include "tensorflow/lite/micro/cortex_m_gcc_generic/debug_log_callback.h"
 
-extern "C" void DebugLog(const char* s) {
-#ifdef DEBUG
-  fprintf(stderr, "%s", s);
+static DebugLogCallback debug_log_callback = nullptr;
+
+void RegisterDebugLogCallback(void (*cb)(const char* s)) {
+  debug_log_callback = cb;
+}
+
+void DebugLog(const char* s) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+  if (debug_log_callback != nullptr) {
+    debug_log_callback(s);
+  }
 #endif
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

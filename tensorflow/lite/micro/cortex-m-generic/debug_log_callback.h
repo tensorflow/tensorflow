@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_MICRO_CORTEX_M_GCC_GENERIC_DEBUG_LOG_CALLBACK_H_
-#define TENSORFLOW_LITE_MICRO_CORTEX_M_GCC_GENERIC_DEBUG_LOG_CALLBACK_H_
+#ifndef TENSORFLOW_LITE_MICRO_CORTEX_M_GENERIC_DEBUG_LOG_CALLBACK_H_
+#define TENSORFLOW_LITE_MICRO_CORTEX_M_GENERIC_DEBUG_LOG_CALLBACK_H_
 
 // The application layer must implement and register a callback before calling
 // the network in a way similar to
@@ -46,4 +46,4 @@ void RegisterDebugLogCallback(DebugLogCallback callback);
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_MICRO_CORTEX_M_GCC_GENERIC_DEBUG_LOG_CALLBACK_H_
+#endif  // TENSORFLOW_LITE_MICRO_CORTEX_M_GENERIC_DEBUG_LOG_CALLBACK_H_

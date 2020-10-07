@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,23 +24,21 @@ cd "${ROOT_DIR}"
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
-TARGET=cortex_m_gcc_generic
-
 # TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn TARGET=${TARGET} CORTEX_M_CORE=M4F third_party_downloads
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS="cmsis-nn armgcc" TARGET=cortex-m4-generic microlite
 
 # Build for Cortex-M4 (no FPU) without CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} CORTEX_M_CORE=M4 microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS=armgcc TARGET=cortex-m4-generic microlite
 
 # Build for Cortex-M4F (FPU present) without CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} CORTEX_M_CORE=M4F microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS=armgcc TARGET=cortex-m4+fp-generic microlite
 
 # Build for Cortex-M4 (no FPU) with CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn TARGET=${TARGET} CORTEX_M_CORE=M4 microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS="cmsis-nn armgcc" TARGET=cortex-m4-generic microlite
 
 # Build for Cortex-M4 (FPU present) with CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn TARGET=${TARGET} CORTEX_M_CORE=M4F microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS="cmsis-nn armgcc" TARGET=cortex-m4+fp-generic microlite

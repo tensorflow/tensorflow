@@ -128,9 +128,11 @@ CCFLAGS  := \
 
 ARFLAGS := -r
 
+ifeq ($(filter armclang,$(ALL_TAGS)),)
 LDFLAGS += \
   -Wl,--fatal-warnings \
   -Wl,--gc-sections
+endif
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
