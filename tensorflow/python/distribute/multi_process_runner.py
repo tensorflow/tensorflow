@@ -1145,11 +1145,12 @@ def run(fn,
 _barrier = None
 
 
-def barrier():
+def get_barrier():
   if _barrier is None:
     raise ValueError(
-        'barrier is not defined. It is likely because you are calling barrier()'
-        'in the main process. barrier() can only be called in the subprocesses.'
+        'barrier is not defined. It is likely because you are calling '
+        'get_barrier() in the main process. get_barrier() can only be called '
+        'in the subprocesses.'
     )
   return _barrier
 

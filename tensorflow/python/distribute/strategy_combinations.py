@@ -124,10 +124,10 @@ def _get_multi_worker_mirrored_creator(required_gpus):
     # collectives may hang if any worker launches collectives before the chief
     # creates the strategy.
     try:
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
     except ValueError:
       # If the creator is called in the main process,
-      # multi_process_runner.barrier() raises ValueError, which is safe to
+      # multi_process_runner.get_barrier() raises ValueError, which is safe to
       # ignore.
       pass
     return strategy

@@ -54,7 +54,7 @@ def fn_that_returns_args_and_kwargs(*args, **kwargs):
 
 
 def fn_with_barrier():
-  return multi_process_runner.barrier()
+  return multi_process_runner.get_barrier()
 
 
 def fn_that_returns_pid():
@@ -296,7 +296,7 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_barrier_called_in_main_process(self):
     with self.assertRaises(ValueError):
-      multi_process_runner.barrier()
+      multi_process_runner.get_barrier()
 
   def test_stdout_available_when_timeout(self):
 
