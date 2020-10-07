@@ -603,8 +603,8 @@ class InferenceBuilderImpl : public InferenceBuilder {
         absl::make_unique<TensorTieFactory>(environment_, context_.get());
 #endif
 
-    inputs_ = LinkTensors(graph, graph.inputs());
-    outputs_ = LinkTensors(graph, graph.outputs());
+    inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
+    outputs_ = LinkTensors(context_->GetOutputIds(), AccessType::WRITE);
     return absl::OkStatus();
   }
 
@@ -721,15 +721,13 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   // Links internal tensors with external user-facing objects.
-  std::vector<TensorTieDef> LinkTensors(const GraphFloat32& graph,
-                                        const std::vector<Value*>& values) {
+  std::vector<TensorTieDef> LinkTensors(const std::vector<ValueId>& ids,
+                                        AccessType access) {
     std::vector<TensorTieDef> links;
-    links.reserve(values.size());
-    for (const auto& value : values) {
-      TensorObjectDef def = TensorToDef(*context_->GetTensor(value->id));
-      AccessType access =
-          graph.IsGraphInput(value->id) ? AccessType::READ : AccessType::WRITE;
-      links.push_back({value->id, access, def, def});
+    links.reserve(ids.size());
+    for (const auto& id : ids) {
+      TensorObjectDef def = TensorToDef(*context_->GetTensor(id));
+      links.push_back({id, access, def, def});
     }
     return links;
   }
