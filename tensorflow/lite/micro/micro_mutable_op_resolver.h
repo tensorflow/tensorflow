@@ -160,8 +160,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
 
   TfLiteStatus AddDepthwiseConv2D() {
     return AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
-                      tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
-                      ParseDepthwiseConv2D);
+                      Register_DEPTHWISE_CONV_2D(), ParseDepthwiseConv2D);
   }
 
   TfLiteStatus AddDequantize() {

@@ -32,6 +32,7 @@ namespace tflite {
 // have their Register function declarations in the tflite namespace.
 
 TfLiteRegistration Register_CONV_2D();
+TfLiteRegistration Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration Register_SHAPE();
 
 namespace ops {
@@ -47,7 +48,6 @@ TfLiteRegistration Register_CEIL();
 TfLiteRegistration* Register_CIRCULAR_BUFFER();
 TfLiteRegistration Register_CONCATENATION();
 TfLiteRegistration Register_COS();
-TfLiteRegistration Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration Register_DEQUANTIZE();
 TfLiteRegistration Register_EQUAL();
 TfLiteRegistration Register_FLOOR();
