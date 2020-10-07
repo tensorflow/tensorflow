@@ -43,8 +43,8 @@ Here are the core requirements that a platform needs to run the framework:
     embedded world as it is elsewhere. We made the decision to require it since
     one of the main goals of TFL Micro is to share as much code as possible with
     the wider TensorFlow codebase, and since that relies on C++11 features, we
-    need compatibility to achieve it. We only use a small, sane, subset of C++
-    though, so don't worry about having to deal with template metaprogramming or
+    need compatibility to achieve it. We only use a small subset of C++ though,
+    so don't worry about having to deal with template metaprogramming or
     similar challenges!
 
 -   Debug logging. The core network operations don't need any I/O functions, but
