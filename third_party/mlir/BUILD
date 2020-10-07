@@ -680,6 +680,7 @@ cc_library(
         ":VectorToLLVM",
         ":VectorToROCDL",
         ":VectorToSCF",
+        ":VectorToSPIRV",
     ],
 )
 
@@ -1455,6 +1456,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "VectorToSPIRV",
+    srcs = [
+        "lib/Conversion/PassDetail.h",
+        "lib/Conversion/VectorToSPIRV/VectorToSPIRV.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/VectorToSPIRV/ConvertVectorToSPIRV.h",
+        "include/mlir/Conversion/VectorToSPIRV/ConvertVectorToSPIRVPass.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":Pass",
+        ":SPIRVDialect",
+        ":SPIRVLowering",
+        ":Transforms",
+        ":VectorOps",
+    ],
+)
+
 gentbl(
     name = "GPUToROCDLTGen",
     strip_include_prefix = "lib/Conversion/GPUToROCDL",
@@ -1593,6 +1615,7 @@ cc_library(
         ":StandardToSPIRVTransforms",
         ":Support",
         ":Transforms",
+        ":VectorToSPIRV",
     ],
 )
 
@@ -3077,6 +3100,7 @@ cc_library(
         ":VectorToLLVM",
         ":VectorToROCDL",
         ":VectorToSCF",
+        ":VectorToSPIRV",
     ],
 )
 
@@ -3142,6 +3166,7 @@ cc_library(
     name = "mlir_c_runner_utils",
     srcs = [
         "lib/ExecutionEngine/CRunnerUtils.cpp",
+        "lib/ExecutionEngine/SparseUtils.cpp",
     ],
     hdrs = [
         "include/mlir/ExecutionEngine/CRunnerUtils.h",
