@@ -71,8 +71,9 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
-  pm.addPass(mlir::mhlo::createLegalizeTFPass(false));
   if (gpu_binary_only) {
+    pm.addPass(mlir::mhlo::createLegalizeTFPass(
+        /*allow_partial_conversion=*/false, /*legalize_chlo=*/true));
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateMaterializeBroadcastsPass());
     pm.addNestedPass<mlir::FuncOp>(
@@ -84,7 +85,10 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   } else {
+    pm.addPass(mlir::mhlo::createLegalizeTFPass(
+        /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
     pm.addPass(mlir::createTransformUnrankedHloPass());
+    pm.addPass(mlir::mhlo::createChloLegalizeToHloPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
     pm.addPass(mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
