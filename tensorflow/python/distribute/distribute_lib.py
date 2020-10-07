@@ -3193,7 +3193,7 @@ class ReplicaContext(object):
     def grad_wrapper(*xs):
       ys = self.merge_call(batch_all_gather, args=xs)
       # The gradient of an all-gather is itself an all-gather.
-      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
+      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
@@ -3344,6 +3344,10 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     # TODO(josh11b): Use destinations?
     del reduce_op, destinations, experimental_hints
+    return value
+
+  def _gather_to_implementation(self, value, destinations, axis, experimental_hints):
+    del destinations, axis, experimental_hints
     return value
 
   def _update(self, var, fn, args, kwargs, group):

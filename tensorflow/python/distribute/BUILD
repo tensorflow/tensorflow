@@ -788,6 +788,7 @@ py_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -811,6 +812,7 @@ py_test(
     python_version = "PY3",
     deps = [
         ":combinations",
+        ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
@@ -825,6 +827,7 @@ py_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":central_storage_strategy",
@@ -835,6 +838,7 @@ py_library(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":one_device_strategy",
+        ":test_util",
         ":tpu_strategy",
         "//tensorflow/python:config",
         "//tensorflow/python:platform",
@@ -856,6 +860,7 @@ distribute_py_test(
         ":combinations",
         ":reduce_util",
         ":strategy_combinations",
+        ":test_util",
         "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/eager:context",
@@ -946,6 +951,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":reduce_util",
         ":strategy_combinations",
+        ":test_util",
         ":values",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
@@ -1233,6 +1239,7 @@ distribute_py_test(
         ":combinations",
         ":distribute_lib",
         ":strategy_combinations",
+        ":test_util",
         ":tpu_strategy",
         ":tpu_values",
         ":values",
@@ -1285,6 +1292,7 @@ distribute_py_test(
     deps = [
         ":combinations",
         ":strategy_combinations",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -1330,23 +1338,6 @@ distribute_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
-    name = "strategy_reduce_test",
-    srcs = ["strategy_reduce_test.py"],
-    main = "strategy_reduce_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1713,6 +1704,7 @@ distribute_py_test(
         ":reduce_util",
         ":strategy_combinations",
         ":strategy_test_lib",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -1758,16 +1750,21 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
+        ":multi_process_runner",
         ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:context",
     ],
 )
 
 distribute_py_test(
     name = "test_util_test",
     srcs = ["test_util_test.py"],
+    disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
     ],

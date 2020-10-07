@@ -195,6 +195,9 @@ class PjRtClient {
     return absl::optional<std::string>();
   }
 
+  // Returns a backend-specific HLO cost analysis visitor.
+  virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis();
+
  protected:
   friend class PjRtBuffer;
   virtual void EnqueueCrossHostReceive(

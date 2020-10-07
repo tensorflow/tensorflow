@@ -36,6 +36,7 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)/CMSIS/NN/Source/FullyConnectedFunctions/arm_fully_connected_mat_q7_vec_q15.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/FullyConnectedFunctions/arm_fully_connected_q7.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/FullyConnectedFunctions/arm_fully_connected_mat_q7_vec_q15_opt.c \
+      $(CMSIS_PATH)/CMSIS/NN/Source/SVDFunctions/arm_svdf_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConcatenationFunctions/arm_concatenation_s8_z.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConcatenationFunctions/arm_concatenation_s8_x.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConcatenationFunctions/arm_concatenation_s8_w.c \

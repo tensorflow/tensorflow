@@ -274,9 +274,13 @@ void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
+
+  // TODO(b/159127949): Stack and TensorArray decomposition passes do not handle
+  // region based control flow yet. So convert back to functional control flow.
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
   pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
@@ -324,7 +328,7 @@ Status ConvertMLIRToXlaComputation(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   mlir::PassManager tf2xla(module_op.getContext());
-  SetCrashReproducer(tf2xla);
+  applyTensorflowAndCLOptions(tf2xla);
   CreateConvertMlirToXlaHloPipeline(tf2xla, device_type,
                                     custom_legalization_passes);
 
@@ -513,7 +517,7 @@ Status CompileGraphToXlaHlo(
   }
 
   mlir::PassManager pm(module_op.getContext());
-  SetCrashReproducer(pm);
+  applyTensorflowAndCLOptions(pm);
   mlir::TF::StandardPipelineOptions tf_options;
   mlir::TF::CreateTFStandardPipeline(pm, tf_options);
   {

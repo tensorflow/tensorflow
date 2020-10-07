@@ -297,6 +297,8 @@ add_library(tensorflow-lite
   ${TFLITE_KERNEL_SRCS}
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
+  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
+  ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
 )
 target_include_directories(tensorflow-lite
   PUBLIC

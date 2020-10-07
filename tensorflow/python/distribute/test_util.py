@@ -20,8 +20,12 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import values
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -56,3 +60,38 @@ def _gather(strategy, value):
   inputs = [array_ops.expand_dims_v2(v, axis=0) for v in value._values]
   return strategy._gather(values.PerReplica(inputs), axis=0)
   # pylint: enable=protected-access
+
+
+def set_logical_devices_to_at_least(device, num):
+  """Create logical devices of at least a given number."""
+  if num < 1:
+    raise ValueError("`num` must be at least 1 not %r" % (num,))
+  physical_devices = config.list_physical_devices(device)
+  if not physical_devices:
+    raise RuntimeError("No {} found".format(device))
+  if len(physical_devices) >= num:
+    return
+  # By default each physical device corresponds to one logical device. We create
+  # multiple logical devices for the last physical device so that we have `num`
+  # logical devices.
+  num = num - len(physical_devices) + 1
+  logical_devices = []
+  for _ in range(num):
+    if device.upper() == "GPU":
+      logical_devices.append(
+          context.LogicalDeviceConfiguration(memory_limit=2048))
+    else:
+      logical_devices.append(context.LogicalDeviceConfiguration())
+  # Create logical devices from the the last device since sometimes the first
+  # GPU is the primary graphic card and may has less memory available.
+  config.set_logical_device_configuration(physical_devices[-1], logical_devices)
+
+
+def main(enable_v2_behavior=True):
+  """All-in-one main function for tf.distribute tests."""
+  if enable_v2_behavior:
+    v2_compat.enable_v2_behavior()
+  else:
+    v2_compat.disable_v2_behavior()
+  # TODO(b/131360402): configure default logical devices.
+  multi_process_runner.test_main()

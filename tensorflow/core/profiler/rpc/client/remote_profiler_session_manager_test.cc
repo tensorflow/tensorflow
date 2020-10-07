@@ -14,14 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
 
-#include "absl/strings/str_format.h"
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client_test_util.h"
-#include "tensorflow/core/profiler/rpc/profiler_server.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -84,7 +89,7 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   absl::Duration elapsed = absl::Now() - approx_start;
   EXPECT_THAT(elapsed, DurationNear(absl::Seconds(0)));
   ASSERT_EQ(responses.size(), 1);
-  EXPECT_EQ(responses.back().status.code(), error::DEADLINE_EXCEEDED);
+  EXPECT_TRUE(errors::IsDeadlineExceeded(responses.back().status));
   EXPECT_FALSE(responses.back().profile_response->empty_trace());
   EXPECT_EQ(responses.back().profile_response->tool_data_size(), 0);
 }
@@ -100,7 +105,8 @@ TEST(RemoteProfilerSessionManagerTest, LongSession) {
   auto server = StartServer(duration, &service_addresses);
   options.add_service_addresses(service_addresses);
   absl::Time approx_start = absl::Now();
-  absl::Duration grace = absl::Seconds(2);
+  // Empirically determined value.
+  absl::Duration grace = absl::Seconds(20);
   absl::Duration max_duration = duration + grace;
   options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
   options.set_session_creation_timestamp_ns(absl::ToUnixNanos(approx_start));

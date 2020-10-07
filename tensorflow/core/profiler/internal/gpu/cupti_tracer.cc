@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/profiler/internal/annotation_stack.h"
+#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 
 namespace tensorflow {
 namespace profiler {

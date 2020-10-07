@@ -29,6 +29,7 @@ limitations under the License.
 // Ops in this file are sorted alphabetically.
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 
 def TF_AbsOp : TF_Op<"Abs", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the absolute value of a tensor.";
@@ -296,6 +297,33 @@ Equivalent to np.angle.
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_AnonymousIteratorOp : TF_Op<"AnonymousIterator", []> {
+  let summary = "A container for an iterator resource.";
+
+  let arguments = (ins
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle
+  );
+}
+
+def TF_AnonymousIteratorV2Op : TF_Op<"AnonymousIteratorV2", []> {
+  let summary = "A container for an iterator resource.";
+
+  let arguments = (ins
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+}
+
 def TF_AnonymousMemoryCacheOp : TF_Op<"AnonymousMemoryCache", []> {
   let summary = "";
 
@@ -303,6 +331,21 @@ def TF_AnonymousMemoryCacheOp : TF_Op<"AnonymousMemoryCache", []> {
 
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_DatasetMemoryCacheAlloc]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+}
+
+def TF_AnonymousMultiDeviceIteratorOp : TF_Op<"AnonymousMultiDeviceIterator", []> {
+  let summary = "A container for a multi device iterator resource.";
+
+  let arguments = (ins
+    Confined<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle,
     TF_VariantTensor:$deleter
   );
 }
@@ -2484,6 +2527,17 @@ is the same, though it is cleaner to use `tf.io.decode_image`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_DeleteIteratorOp : TF_Op<"DeleteIterator", []> {
+  let summary = "A container for an iterator resource.";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorFree]>:$handle,
+    TF_VariantTensor:$deleter
+  );
+
+  let results = (outs);
+}
+
 def TF_DeleteMemoryCacheOp : TF_Op<"DeleteMemoryCache", []> {
   let summary = "";
 
@@ -2493,6 +2547,20 @@ def TF_DeleteMemoryCacheOp : TF_Op<"DeleteMemoryCache", []> {
   );
 
   let results = (outs);
+}
+
+def TF_DeleteMultiDeviceIteratorOp : TF_Op<"DeleteMultiDeviceIterator", []> {
+  let summary = "A container for an iterator resource.";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorFree]>:$multi_device_iterator,
+    Arg<Variadic<TF_ResourceTensor>, "", [TF_DatasetIteratorRead]>:$iterators,
+    TF_VariantTensor:$deleter
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
 }
 
 def TF_DeleteRandomSeedGeneratorOp : TF_Op<"DeleteRandomSeedGenerator", []> {
@@ -2716,6 +2784,19 @@ Computes the gradients of depthwise convolution with respect to the input.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_DeserializeIteratorOp : TF_Op<"DeserializeIterator", []> {
+  let summary = [{
+Converts the given variant tensor to an iterator and stores it in the given resource.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorWrite]>:$resource_handle,
+    TF_VariantTensor:$serialized
+  );
+
+  let results = (outs);
 }
 
 def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
@@ -4964,11 +5045,58 @@ tf.math.is_nan(x) ==> [False, True, False, True, False]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_IteratorOp : TF_Op<"Iterator", []> {
+  let summary = "A container for an iterator resource.";
+
+  let arguments = (ins
+    StrAttr:$shared_name,
+    StrAttr:$container,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle
+  );
+}
+
+def TF_IteratorFromStringHandleOp : TF_Op<"IteratorFromStringHandle", []> {
+  let summary = [{
+Converts the given string representing a handle to an iterator to a resource.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$string_handle,
+
+    DefaultValuedAttr<TypeArrayAttr, "{}">:$output_types,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$resource_handle
+  );
+}
+
+def TF_IteratorFromStringHandleV2Op : TF_Op<"IteratorFromStringHandleV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_StrTensor:$string_handle,
+
+    DefaultValuedAttr<TypeArrayAttr, "{}">:$output_types,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$resource_handle
+  );
+}
+
 def TF_IteratorGetNextOp : TF_Op<"IteratorGetNext", []> {
   let summary = "Gets the next output from the given iterator .";
 
   let arguments = (ins
-    TF_ResourceTensor:$iterator
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$iterator
   );
 
   let results = (outs
@@ -4977,6 +5105,74 @@ def TF_IteratorGetNextOp : TF_Op<"IteratorGetNext", []> {
 
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
   TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_IteratorGetNextAsOptionalOp : TF_Op<"IteratorGetNextAsOptional", []> {
+  let summary = [{
+Gets the next output from the given iterator as an Optional variant.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$iterator,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$optional
+  );
+}
+
+def TF_IteratorGetNextSyncOp : TF_Op<"IteratorGetNextSync", []> {
+  let summary = "Gets the next output from the given iterator.";
+
+  let description = [{
+This operation is a synchronous version IteratorGetNext. It should only be used
+in situations where the iterator does not block the calling thread, or where
+the calling thread is not a member of the thread pool used to execute parallel
+operations (e.g. in eager mode).
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$iterator
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_IteratorToStringHandleOp : TF_Op<"IteratorToStringHandle", []> {
+  let summary = [{
+Converts the given `resource_handle` representing an iterator to a string.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead]>:$resource_handle
+  );
+
+  let results = (outs
+    TF_StrTensor:$string_handle
+  );
+}
+
+def TF_IteratorV2Op : TF_Op<"IteratorV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    StrAttr:$shared_name,
+    StrAttr:$container,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle
+  );
 }
 
 def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
@@ -5583,6 +5779,24 @@ A 2-D example:
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_MakeIteratorOp : TF_Op<"MakeIterator", []> {
+  let summary = [{
+Makes a new iterator from the given `dataset` and stores it in `iterator`.
+  }];
+
+  let description = [{
+This operation may be executed multiple times. Each execution will reset the
+iterator in `iterator` to the first element of `dataset`.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$dataset,
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorWrite]>:$iterator
+  );
+
+  let results = (outs);
 }
 
 def TF_MatMulOp : TF_Op<"MatMul", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
@@ -6908,6 +7122,82 @@ Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MultiDeviceIteratorOp : TF_Op<"MultiDeviceIterator", []> {
+  let summary = "Creates a MultiDeviceIterator resource.";
+
+  let arguments = (ins
+    Confined<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
+    StrAttr:$shared_name,
+    StrAttr:$container,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle
+  );
+}
+
+def TF_MultiDeviceIteratorFromStringHandleOp : TF_Op<"MultiDeviceIteratorFromStringHandle", []> {
+  let summary = [{
+Generates a MultiDeviceIterator resource from its provided string handle.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$string_handle,
+
+    DefaultValuedAttr<TypeArrayAttr, "{}">:$output_types,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$multi_device_iterator
+  );
+}
+
+def TF_MultiDeviceIteratorGetNextFromShardOp : TF_Op<"MultiDeviceIteratorGetNextFromShard", []> {
+  let summary = "Gets next element for the provided shard number.";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$multi_device_iterator,
+    TF_Int32Tensor:$shard_num,
+    TF_Int64Tensor:$incarnation_id
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_MultiDeviceIteratorInitOp : TF_Op<"MultiDeviceIteratorInit", []> {
+  let summary = "Initializes the multi device iterator with the given dataset.";
+
+  let arguments = (ins
+    TF_VariantTensor:$dataset,
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorWrite]>:$multi_device_iterator,
+    TF_Int64Tensor:$max_buffer_size
+  );
+
+  let results = (outs
+    TF_Int64Tensor:$incarnation_id
+  );
+}
+
+def TF_MultiDeviceIteratorToStringHandleOp : TF_Op<"MultiDeviceIteratorToStringHandle", []> {
+  let summary = "Produces a string handle for the given MultiDeviceIterator.";
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead]>:$multi_device_iterator
+  );
+
+  let results = (outs
+    TF_StrTensor:$string_handle
+  );
+}
+
 def TF_MultinomialOp : TF_Op<"Multinomial", [TF_CannotDuplicate]> {
   let summary = "Draws samples from a multinomial distribution.";
 
@@ -7360,6 +7650,44 @@ output =
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_OneShotIteratorOp : TF_Op<"OneShotIterator", []> {
+  let summary = [{
+Makes a "one-shot" iterator that can be iterated only once.
+  }];
+
+  let description = [{
+A one-shot iterator bundles the logic for defining the dataset and
+the state of the iterator in a single op, which allows simple input
+pipelines to be defined without an additional initialization
+("MakeIterator") step.
+
+One-shot iterators have the following limitations:
+
+* They do not support parameterization: all logic for creating the underlying
+  dataset must be bundled in the `dataset_factory` function.
+* They are not resettable. Once a one-shot iterator reaches the end of its
+  underlying dataset, subsequent "IteratorGetNext" operations on that
+  iterator will always produce an `OutOfRange` error.
+
+For greater flexibility, use "Iterator" and "MakeIterator" to define
+an iterator using an arbitrary subgraph, which may capture tensors
+(including fed values) as parameters, and which may be reset multiple
+times by rerunning "MakeIterator".
+  }];
+
+  let arguments = (ins
+    SymbolRefAttr:$dataset_factory,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    StrAttr:$container,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle
+  );
 }
 
 def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
@@ -10352,6 +10680,22 @@ Computes gradients for the scaled exponential linear (Selu) operation.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SerializeIteratorOp : TF_Op<"SerializeIterator", []> {
+  let summary = [{
+Converts the given `resource_handle` representing an iterator to a variant tensor.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead]>:$resource_handle,
+
+    DefaultValuedAttr<I64Attr, "0">:$external_state_policy
+  );
+
+  let results = (outs
+    TF_VariantTensor:$serialized
+  );
+}
+
 def TF_ShapeOp : TF_Op<"Shape", [NoSideEffect]> {
   let summary = "Returns the shape of a tensor.";
 
@@ -10829,7 +11173,7 @@ block size.
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
+def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
   let description = [{
@@ -10858,6 +11202,12 @@ precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_SpaceToDepthOp : TF_Op<"SpaceToDepth", [NoSideEffect]> {
@@ -11402,7 +11752,7 @@ def TF_StackV2Op : TF_Op<"StackV2", []> {
   );
 }
 
-def TF_StatelessMultinomialOp : TF_Op<"StatelessMultinomial", [NoSideEffect]> {
+def TF_StatelessMultinomialOp : TF_Op<"StatelessMultinomial", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Draws samples from a multinomial distribution.";
 
   let arguments = (ins
@@ -11420,7 +11770,82 @@ def TF_StatelessMultinomialOp : TF_Op<"StatelessMultinomial", [NoSideEffect]> {
   TF_DerivedResultTypeAttr output_dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_StatelessRandomNormalOp : TF_Op<"StatelessRandomNormal", [NoSideEffect]> {
+def TF_StatelessParameterizedTruncatedNormalOp : TF_Op<"StatelessParameterizedTruncatedNormal", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$seed,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$means,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$stddevs,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$minvals,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$maxvals
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr S = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_StatelessRandomBinomialOp : TF_Op<"StatelessRandomBinomial", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = [{
+Outputs deterministic pseudorandom random numbers from a binomial distribution.
+  }];
+
+  let description = [{
+Outputs random values from a binomial distribution.
+
+The outputs are a deterministic function of `shape`, `seed`, `counts`, and `probs`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$seed,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$counts,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$probs
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr S = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatelessRandomGammaV2Op : TF_Op<"StatelessRandomGammaV2", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = [{
+Outputs deterministic pseudorandom random numbers from a gamma distribution.
+  }];
+
+  let description = [{
+Outputs random values from a gamma distribution.
+
+The outputs are a deterministic function of `shape`, `seed`, and `alpha`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$seed,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$alpha
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_StatelessRandomNormalOp : TF_Op<"StatelessRandomNormal", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Outputs deterministic pseudorandom values from a normal distribution.
   }];
@@ -11445,7 +11870,34 @@ The outputs are a deterministic function of `shape` and `seed`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_StatelessRandomUniformOp : TF_Op<"StatelessRandomUniform", [NoSideEffect]> {
+def TF_StatelessRandomPoissonOp : TF_Op<"StatelessRandomPoisson", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = [{
+Outputs deterministic pseudorandom random numbers from a Poisson distribution.
+  }];
+
+  let description = [{
+Outputs random values from a Poisson distribution.
+
+The outputs are a deterministic function of `shape`, `seed`, and `lam`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$seed,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$lam
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Rtype = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_StatelessRandomUniformOp : TF_Op<"StatelessRandomUniform", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Outputs deterministic pseudorandom random values from a uniform distribution.
   }];
@@ -11471,7 +11923,32 @@ The outputs are a deterministic function of `shape` and `seed`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_StatelessRandomUniformIntOp : TF_Op<"StatelessRandomUniformInt", [NoSideEffect]> {
+def TF_StatelessRandomUniformFullIntOp : TF_Op<"StatelessRandomUniformFullInt", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = [{
+Outputs deterministic pseudorandom random integers from a uniform distribution.
+  }];
+
+  let description = [{
+The generated values are uniform integers covering the whole range of `dtype`.
+
+The outputs are a deterministic function of `shape` and `seed`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$seed
+  );
+
+  let results = (outs
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatelessRandomUniformIntOp : TF_Op<"StatelessRandomUniformInt", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Outputs deterministic pseudorandom random integers from a uniform distribution.
   }];
@@ -11498,7 +11975,7 @@ The outputs are a deterministic function of `shape`, `seed`, `minval`, and `maxv
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_StatelessTruncatedNormalOp : TF_Op<"StatelessTruncatedNormal", [NoSideEffect]> {
+def TF_StatelessTruncatedNormalOp : TF_Op<"StatelessTruncatedNormal", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Outputs deterministic pseudorandom values from a truncated normal distribution.
   }];

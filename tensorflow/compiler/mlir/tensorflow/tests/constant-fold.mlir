@@ -502,3 +502,12 @@ func @fold_conv() -> tensor<1x520x520x1xf32> {
   // CHECK: tf.Const
   // CHECK-NOT: tf.DepthwiseConv2dNative
 }
+
+// CHECK-LABEL: DontFoldNoConstantFold
+func @DontFoldNoConstantFold() -> tensor<8xf32> {
+  %0 = "tf.Const"() {value = dense<[8]> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.Const"() {value = dense<[2, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: tf.StatelessRandomUniform
+  %2 = "tf.StatelessRandomUniform"(%0, %1) : (tensor<1xi32>, tensor<2xi32>) -> tensor<8xf32>
+  return %2 : tensor<8xf32>
+}

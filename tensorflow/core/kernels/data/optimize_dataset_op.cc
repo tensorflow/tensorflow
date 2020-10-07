@@ -83,7 +83,9 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     // The map that stores the live experiment names and for how much percentage
     // of the Borg jobs, the experiments will be randomly turned on.
     // clang-format off
-    absl::flat_hash_map<string, uint64> live_experiments;
+    absl::flat_hash_map<string, uint64> live_experiments = {
+        {"enable_gradient_descent", 1}
+    };
     // clang-format on
     auto hash_func = [](const string& str) { return Hash64(str); };
     optimizations = SelectOptimizations(
@@ -112,15 +114,13 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
   // clang-format on
 
-  // Add the graduated experiments to the optimization list. Also log and
-  // record.
+  // Add the graduated experiments to the optimization list and log them.
   for (auto& experiment : graduated_experiments) {
     if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
         optimizations.end()) {
       optimizations.push_back(experiment);
     }
     VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
-    metrics::RecordTFDataExperiment(experiment);
   }
 
   // If there are no optimizations to be applied, directly return the input.

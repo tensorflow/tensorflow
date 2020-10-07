@@ -1013,6 +1013,7 @@ cc_library(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tf_cc_tests(
@@ -1714,6 +1715,13 @@ bzl_library(
     srcs = [
         "build_config_root.bzl",
     ] + tf_platform_alias("build_config_root.bzl"),
+    visibility = [
+        "//learning/brain/google/xla/tests:__pkg__",
+        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
+        "//nlp/deleuze:__pkg__",
+        "//nlp/projects/minmt:__pkg__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 bzl_library(

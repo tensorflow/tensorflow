@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 using llvm::ArrayRef;
 using mlir::Builder;
@@ -271,18 +272,18 @@ StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
     return std::string("tfl.basic_lstm");
   }
 
-  if (op_code.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
     return std::string("tfl.custom");
   }
-  if (op_code.builtin_code == tflite::BuiltinOperator_IF) {
+  if (builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
   }
-  if (op_code.builtin_code == tflite::BuiltinOperator_WHILE) {
+  if (builtin_code == tflite::BuiltinOperator_WHILE) {
     return std::string("tf.While");
   }
 
-  llvm::StringRef op_name(
-      tflite::EnumNameBuiltinOperator(op_code.builtin_code));
+  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
   return llvm::Twine("tfl.", op_name.lower()).str();
 }
 
@@ -637,7 +638,8 @@ StatusOr<Operation*> ConvertOp(
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
-  if (op_code.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
     auto status = mlir::CustomOptionsToAttributes(
         op_code.custom_code, op.custom_options, builder, loc, &attrs);
     if (!status.ok()) {

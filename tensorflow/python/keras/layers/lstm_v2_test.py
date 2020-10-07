@@ -36,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
@@ -796,6 +797,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
 
+  @test_util.enable_output_all_intermediates
   def test_v1_session_behavior(self):
     with ops.get_default_graph().as_default():
       # See b/139132348 for more details.
@@ -842,8 +844,9 @@ class LSTMV2Test(keras_parameterized.TestCase):
     model.predict(inputs)
 
   # TODO (b/169895267): test with xla_gpu is disabled.
-  @testing_utils.run_v2_only
   def test_deepcopy(self):
+    if not context.executing_eagerly():
+      self.skipTest('v2-only test')
     original_layer = rnn.LSTM(5)
     copied_layer = copy.deepcopy(original_layer)
     self.assertEqual(copied_layer.units, 5)

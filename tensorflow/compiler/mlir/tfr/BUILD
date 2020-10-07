@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
@@ -225,4 +226,24 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
+)
+
+tf_python_pybind_extension(
+    name = "tfr_wrapper",
+    srcs = ["python/tfr_wrapper.cc"],
+    module_name = "tfr_wrapper",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tfr",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:pybind11_status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@pybind11",
+    ],
 )

@@ -69,9 +69,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
                     llvm::ArrayRef<uint32_t> tile_sizes,
                     llvm::ArrayRef<uint32_t> unroll_factors) {
   mlir::PassManager pm(module.getContext());
-  applyPassManagerCLOptions(pm);
-  // TODO(b/169357508): renable when pipeline is serializable.
-  //  SetCrashReproducer(pm);
+  applyTensorflowAndCLOptions(pm);
 
   pm.addPass(mlir::mhlo::createLegalizeTFPass(false));
   if (gpu_binary_only) {
@@ -178,9 +176,7 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
                       llvm::StringRef gpu_binary_attr_name,
                       int32_t architecture) {
   mlir::PassManager pm(module.getContext());
-  applyPassManagerCLOptions(pm);
-  // TODO(b/169357508): renable when pipeline is serializable.
-  //  SetCrashReproducer(pm);
+  applyTensorflowAndCLOptions(pm);
 
   auto& kernel_pm = pm.nest<mlir::gpu::GPUModuleOp>();
   if (gpu_binary_only) {

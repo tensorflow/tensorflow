@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows", "if_tpu")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_libtpu", "if_not_windows")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -506,6 +506,7 @@ def tf_proto_library(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_go_proto = False,
         create_grpc_library = False,
         make_default_target_header_only = False,
         exports = [],
@@ -522,6 +523,7 @@ def tf_proto_library(
         create_java_proto,
         create_grpc_library,
         cc_stubby_versions,
+        create_go_proto,
     )
 
     native.proto_library(
@@ -814,4 +816,4 @@ def if_llvm_system_z_available(then, otherwise = []):
     })
 
 def tf_tpu_dependencies():
-    return if_tpu(["//tensorflow/core/tpu/kernels"])
+    return if_libtpu(["//tensorflow/core/tpu/kernels"])

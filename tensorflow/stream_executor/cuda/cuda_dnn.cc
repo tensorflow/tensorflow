@@ -318,6 +318,16 @@ port::Status CudnnSupport::Init() {
       return port::Status(port::error::INTERNAL, error);
     }
 
+    // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+    cudnnOpsInferVersionCheck();
+    cudnnOpsTrainVersionCheck();
+    cudnnCnnInferVersionCheck();
+    cudnnCnnTrainVersionCheck();
+    cudnnAdvInferVersionCheck();
+    cudnnAdvTrainVersionCheck();
+#endif
+
     cudnn_.reset(new CudnnAccess(cudnn_handle));
     return port::Status::OK();
   }

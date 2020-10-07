@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -28,6 +27,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.collective_all_reduce_strategy import CollectiveAllReduceStrategy
 from tensorflow.python.distribute.tpu_strategy import TPUStrategy
 from tensorflow.python.eager import def_function
@@ -51,27 +51,6 @@ from tensorflow.python.util import nest
         mode=['eager']))
 class StrategyTest(test.TestCase, parameterized.TestCase):
 
-  def testSimpleReduce(self, strategy):
-    per_replica_value = strategy.experimental_distribute_values_from_function(
-        lambda _: array_ops.ones((), dtypes.float32))
-
-    def fn_eager():
-
-      return strategy.reduce(
-          reduce_util.ReduceOp.SUM, value=per_replica_value, axis=None)
-
-    fn_graph = def_function.function(fn_eager)
-    # Run reduce under the strategy scope to explicitly enter
-    # strategy default_device scope.
-    with strategy.scope():
-      self.assertEqual(fn_eager().numpy(), 1.0 * strategy.num_replicas_in_sync)
-      self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
-
-    # Run reduce without a strategy scope to implicitly enter
-    # strategy default_device scope.
-    self.assertEqual(fn_eager().numpy(), 1.0 * strategy.num_replicas_in_sync)
-    self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
-
   def testCaptureReplicaId(self, strategy):
     m = {}
 
@@ -92,6 +71,53 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ] + strategy_combinations.all_strategies,
+        mode=['eager']))
+class ReduceTest(test.TestCase, parameterized.TestCase):
+
+  def testBasic(self, strategy):
+    per_replica_value = strategy.experimental_distribute_values_from_function(
+        lambda _: array_ops.ones((), dtypes.float32))
+
+    def fn_eager():
+
+      return strategy.reduce(
+          reduce_util.ReduceOp.SUM, value=per_replica_value, axis=None)
+
+    fn_graph = def_function.function(fn_eager)
+    # Run reduce under the strategy scope to explicitly enter
+    # strategy default_device scope.
+    with strategy.scope():
+      self.assertEqual(fn_eager().numpy(), 1.0 * strategy.num_replicas_in_sync)
+      self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
+
+    # Run reduce without a strategy scope to implicitly enter
+    # strategy default_device scope.
+    self.assertEqual(fn_eager().numpy(), 1.0 * strategy.num_replicas_in_sync)
+    self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
+
+  def testAxis(self, strategy):
+
+    @def_function.function
+    def fn():
+      return constant_op.constant([1., 2.])
+
+    x = strategy.run(fn)
+
+    x_m = strategy.reduce(reduce_util.ReduceOp.MEAN, x, axis=0)
+    self.assertEqual(1.5, x_m)
+    x_s = strategy.reduce(reduce_util.ReduceOp.SUM, x, axis=0)
+    self.assertEqual(3 * strategy.num_replicas_in_sync, x_s)
+
+
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.default_strategy,
+            strategy_combinations.one_device_strategy,
+            strategy_combinations.one_device_strategy_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
@@ -215,8 +241,13 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
   def testGatherRaiseDiffShapeAtNonAxis(self, strategy, pure_eager):
     """Different at non-`axis`-th dimension : [1, 1], [1, 2], 0th -> raise error."""
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
+
+    if strategy.num_replicas_in_sync <= 1:
+      self.skipTest('Test for more than 1 replica only.')
+
     def value_fn(ctx):
       return constant_op.constant(
           1, shape=(1, ctx.replica_id_in_sync_group + 1))
@@ -261,7 +292,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     """Different rank: [1,], [1, 2] -> raise error."""
     if strategy.num_replicas_in_sync <= 1:
       self.skipTest('Test for more than 1 replicas.')
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
     def value_fn(ctx):
       return array_ops.ones(shape=(range(1, ctx.replica_id_in_sync_group + 2)))
@@ -285,6 +317,9 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         strategy=[
+            strategy_combinations.default_strategy,
+            strategy_combinations.one_device_strategy,
+            strategy_combinations.one_device_strategy_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
@@ -311,7 +346,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
 
     all_value = [value_on_replica for _ in range(strategy.num_replicas_in_sync)]
     expect = array_ops.concat(all_value, axis=axis)
-    expected_result = [expect] * _get_num_devices_per_worker(strategy)
+    expected_result = [expect] * _get_num_replicas_per_client(strategy)
 
     self.assertAllClose(result, expected_result)
 
@@ -386,7 +421,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
     if not pure_eager:
       run = def_function.function(run)
 
-    expected_result = [expect] * _get_num_devices_per_worker(strategy)
+    expected_result = [expect] * _get_num_replicas_per_client(strategy)
     result = strategy.experimental_local_results(
         strategy.run(run, args=(per_replica_value,)))
     self.assertAllEqual(result, expected_result)
@@ -420,7 +455,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
     if not pure_eager:
       run = def_function.function(run)
 
-    expected_result = [expect] * _get_num_devices_per_worker(strategy)
+    expected_result = [expect] * _get_num_replicas_per_client(strategy)
     result = strategy.experimental_local_results(
         strategy.run(run, args=(per_replica_value,)))
     self.assertAllEqual(result, expected_result)
@@ -446,7 +481,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
       #    1, shape=(1, sum(range(strategy.num_replicas_in_sync + 1))))
       raise ValueError('Add your own expect according to num_replicas_in sync')
 
-    expected_per_replica_1 = [expect_1] * _get_num_devices_per_worker(strategy)
+    expected_per_replica_1 = [expect_1] * _get_num_replicas_per_client(strategy)
 
     value_2 = constant_op.constant([[[1, 2], [1, 2]]])
 
@@ -462,7 +497,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
       #    [value_2 for _ in range(strategy.num_replicas_in_sync)], axis=axis)
       raise ValueError('Add your own expect according to num_replicas_in sync')
 
-    expected_per_replica_2 = [expect_2] * _get_num_devices_per_worker(strategy)
+    expected_per_replica_2 = [expect_2] * _get_num_replicas_per_client(strategy)
 
     def run(value):
       value_1 = array_ops.identity(value)
@@ -494,7 +529,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
 
     all_value = [single_value for _ in range(strategy.num_replicas_in_sync)]
     expect = array_ops.concat(all_value, axis=axis)
-    expected_per_replica = [expect] * _get_num_devices_per_worker(strategy)
+    expected_per_replica = [expect] * _get_num_replicas_per_client(strategy)
 
     result = strategy.run(run)
     for gathered_result in result:
@@ -504,8 +539,12 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
 
   def testAllGatherRaiseDiffShapeAtNonAxis(self, strategy, pure_eager):
     """Different at non-`axis`-th dimension : [2, 1], [1, 1], all_gather(...axis=1...) -> raise error."""
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
+
+    if strategy.num_replicas_in_sync <= 1:
+      self.skipTest('Test for more than 1 replica only.')
 
     def value_fn(ctx):
       return constant_op.constant(
@@ -548,7 +587,8 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
     """Different rank: [1,], [1, 2] -> raise error."""
     if strategy.num_replicas_in_sync <= 1:
       self.skipTest('Test for more than 1 replicas.')
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
     def value_fn(ctx):
       return array_ops.ones(shape=(range(1, ctx.replica_id_in_sync_group + 2)))
@@ -578,10 +618,12 @@ def _make_indexed_slices(values, indices, dense_shape):
   return tensor
 
 
-def _get_num_devices_per_worker(strategy):
-  """Returns the number of workers in the current cluster for multi-worker."""
-  resolver = strategy.cluster_resolver
-  return max(nest.flatten(resolver.num_accelerators())[0], 1)
+def _get_num_replicas_per_client(strategy):
+  if isinstance(strategy, CollectiveAllReduceStrategy):
+    resolver = strategy.cluster_resolver
+    return max(nest.flatten(resolver.num_accelerators())[0], 1)
+  else:
+    return strategy.num_replicas_in_sync
 
 
 @combinations.generate(
@@ -734,5 +776,4 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
-  combinations.main()
+  test_util.main()

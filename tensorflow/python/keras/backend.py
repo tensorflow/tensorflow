@@ -1207,11 +1207,10 @@ def placeholder(shape=None,
     if ndim:
       shape = (None,) * ndim
   if keras_tensor.keras_tensors_enabled():
-    spec = tensor_spec.TensorSpec(
-        shape=shape, dtype=dtype, name=name)
     if sparse:
       spec = sparse_tensor.SparseTensorSpec(
           shape=shape, dtype=dtype)
+      x = keras_tensor.SparseKerasTensor(spec, name=name)
     elif ragged:
       ragged_rank = 0
       for i in range(1, len(shape)):
@@ -1224,7 +1223,11 @@ def placeholder(shape=None,
       spec = ragged_tensor.RaggedTensorSpec(
           shape=shape, dtype=dtype, ragged_rank=ragged_rank)
 
-    x = keras_tensor.KerasTensor(spec, name=name)
+      x = keras_tensor.RaggedKerasTensor(spec, name=name)
+    else:
+      spec = tensor_spec.TensorSpec(
+          shape=shape, dtype=dtype, name=name)
+      x = keras_tensor.KerasTensor(spec, name=name)
   else:
     with get_graph().as_default():
       if sparse:
@@ -1817,6 +1820,8 @@ def moving_average_update(x, value, momentum):
 def dot(x, y):
   """Multiplies 2 tensors (and/or variables) and returns a tensor.
 
+  This operation corresponds to `numpy.dot(a, b, out=None)`.
+
   Arguments:
       x: Tensor or variable.
       y: Tensor or variable.
@@ -1826,6 +1831,7 @@ def dot(x, y):
 
   Examples:
 
+  If inputs `x` and `y` are 2-D arrays, then it is equivalent to `tf.matmul`.
   >>> x = tf.keras.backend.placeholder(shape=(2, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
@@ -1838,6 +1844,8 @@ def dot(x, y):
   >>> xy
   <KerasTensor: shape=(32, 28, 4) dtype=float32 ...>
 
+  If `x` is an N-D array and `y` is an M-D array (where M>=2), it is a sum
+  product over the last axis of `x` and the second-to-last axis of `y`.
   >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
   >>> y = tf.keras.backend.ones((4, 3, 5))
   >>> xy = tf.keras.backend.dot(x, y)

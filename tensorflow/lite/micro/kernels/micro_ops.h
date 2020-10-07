@@ -17,10 +17,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 
-namespace tflite {
-namespace ops {
-namespace micro {
-
 // Forward declaration of all micro op kernel registration methods. These
 // registrations are included with the standard `BuiltinOpResolver`.
 //
@@ -28,6 +24,17 @@ namespace micro {
 // needed. In such cases, the client can selectively add only the registrations
 // their model requires, using a custom `(Micro)MutableOpResolver`. Selective
 // registration in turn allows the linker to strip unused kernels.
+
+namespace tflite {
+
+// TFLM is incrementally moving towards a flat tflite namespace
+// (https://abseil.io/tips/130). Any new ops (or cleanup of existing ops should
+// have their Register function declarations in the tflite namespace.
+
+TfLiteRegistration Register_SHAPE();
+
+namespace ops {
+namespace micro {
 
 TfLiteRegistration Register_ABS();
 TfLiteRegistration Register_ADD();

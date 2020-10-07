@@ -439,8 +439,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":recurrent",
-        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
     ],
 )
 
@@ -930,6 +930,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

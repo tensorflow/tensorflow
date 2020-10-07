@@ -131,13 +131,13 @@ size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
 }
 
 size_t SimpleMemoryAllocator::GetAvailableMemory(size_t alignment) const {
-  uint8_t* const aligned_head = AlignPointerUp(head_, alignment);
+  uint8_t* const aligned_temp = AlignPointerUp(temp_, alignment);
   uint8_t* const aligned_tail = AlignPointerDown(tail_, alignment);
-  return aligned_tail - aligned_head;
+  return aligned_tail - aligned_temp;
 }
 
 size_t SimpleMemoryAllocator::GetUsedBytes() const {
-  return GetBufferSize() - (tail_ - head_);
+  return GetBufferSize() - (tail_ - temp_);
 }
 
 size_t SimpleMemoryAllocator::GetBufferSize() const {

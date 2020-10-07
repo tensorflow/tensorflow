@@ -1524,9 +1524,11 @@ StatusOr<int64> CompressInstruction(MemoryUsageTracker* memory_tracker,
 
   HloInstruction* compressed = computation->AddInstruction(
       HloInstruction::CreateUnary(compact_shape, HloOpcode::kCopy, best));
+  compressed->SetAndSanitizeName(best->name() + ".remat_compressed");
 
   HloInstruction* uncompressed = computation->AddInstruction(
       HloInstruction::CreateUnary(best->shape(), HloOpcode::kCopy, compressed));
+  uncompressed->SetAndSanitizeName(best->name() + ".remat_uncompressed");
 
   Item* compressed_item = instruction_list->CreateItem(compressed);
   compressed_item->placed = true;

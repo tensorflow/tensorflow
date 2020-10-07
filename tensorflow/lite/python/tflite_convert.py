@@ -29,6 +29,7 @@ from six.moves import zip
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import keras
@@ -128,6 +129,10 @@ def _convert_tf1_model(flags):
   Raises:
     ValueError: Invalid flags.
   """
+  # Register custom opdefs before converter object creation.
+  if flags.custom_opdefs:
+    register_custom_opdefs(_parse_array(flags.custom_opdefs))
+
   # Create converter.
   converter = _get_tflite_converter(flags)
   if flags.inference_type:
@@ -176,8 +181,7 @@ def _convert_tf1_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
-  if flags.custom_opdefs:
-    converter._custom_opdefs = _parse_array(flags.custom_opdefs)  # pylint: disable=protected-access
+
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
     converter.target_spec.supported_ops = set()

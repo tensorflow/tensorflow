@@ -14,13 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#endif
 
 namespace tensorflow {
 namespace profiler {

@@ -138,17 +138,17 @@ func @op_string_operand_string_result(%arg0: tensor<!tf.string>) -> tensor<i32> 
   return %0 : tensor<i32>
 }
 
-// Test that a tf.IfRegion op with a captured string operand is marked for outside compilation.
+// Test that operations inside tf.IfRegion op are corrected marked for outside
+// compilation.
 
-// CHECK-LABEL: func @if_region_captured_string
-func @if_region_captured_string(%arg0: tensor<i1>, %arg1: tensor<!tf.string>) -> tensor<f32> {
+// CHECK-LABEL: func @ops_inside_tf_if_outside_compiled
+func @ops_inside_tf_if_outside_compiled(%arg0: tensor<i1>, %arg1: tensor<!tf.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ( {
-    // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
-    // CHECK-NOT: _xla_outside_compilation
-    // CHECK: "tf.IfRegion"
-    // CHECK: "tf.StringToNumber"
-    // CHECK-NOT: _xla_outside_compilation
-    // CHECK: _xla_outside_compilation = "auto1", is_stateless = true
+    // CHECK:      "tf.Const"() {value = dense<1> : tensor<i32>}
+    // CHECK-NOT:  _xla_outside_compilation
+    // CHECK:      "tf.IfRegion"
+    // CHECK:        "tf.StringToNumber"
+    // CHECK-SAME:   _xla_outside_compilation
     %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.IfRegion"(%arg0) ( {
       %3 = "tf.StringToNumber"(%arg1) {out_type = f32} : (tensor<!tf.string>) -> tensor<f32>
@@ -163,7 +163,8 @@ func @if_region_captured_string(%arg0: tensor<i1>, %arg1: tensor<!tf.string>) ->
   return %0 : tensor<f32>
 }
 
-// Test that ops with string results/operands inside a tf.IfRegion branch are marked for outside compilation.
+// Test that ops with string results/operands inside a tf.IfRegion branch are
+// marked for outside compilation.
 
 // CHECK-LABEL: func @if_region_string_op
 func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
@@ -191,7 +192,8 @@ func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32
   return %0 : tensor<f32>
 }
 
-// Test that ops with string results/operands inside a nested tf.IfRegion branch are marked for outside compilation.
+// Test that ops with string results/operands inside a nested tf.IfRegion branch
+// are marked for outside compilation.
 
 // CHECK-LABEL: func @nested_if_region_string_op
 func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
@@ -231,16 +233,17 @@ func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> ten
   return %0 : tensor<f32>
 }
 
-// Test that a tf.WhileRegion op with a captured string operand is marked for outside compilation.
+// Test that ops inside tf.WhileRegion op are correct marked for outside
+// compilation.
 
-// CHECK-LABEL: func @while_region_captured_string
-func @while_region_captured_string(%arg0: tensor<i32>, %arg1: tensor<!tf.string>) -> tensor<f32> {
+// CHECK-LABEL: func @ops_inside_while_outside_compiled
+func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!tf.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ( {
-    // CHECK: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+    // CHECK:     "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
     // CHECK-NOT: _xla_outside_compilation
-    // CHECK: "tf.WhileRegion"
-    // CHECK: "tf.StringToNumber"
-    // CHECK: _xla_outside_compilation = "auto1", is_stateless = true
+    // CHECK:     "tf.WhileRegion"
+    // CHECK:       "tf.StringToNumber"
+    // CHECK-SAME:   _xla_outside_compilation
     %1 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
     %2:2 = "tf.WhileRegion"(%1, %arg0) ( {
       ^bb0(%carg0: tensor<f32>, %carg1: tensor<i32>):

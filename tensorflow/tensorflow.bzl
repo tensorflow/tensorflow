@@ -261,8 +261,8 @@ def if_nccl(if_true, if_false = []):
         "//conditions:default": if_true,
     })
 
-def if_tpu(if_true, if_false = []):
-    """Shorthand for select()ing whether to build for TPUs."""
+def if_libtpu(if_true, if_false = []):
+    """Shorthand for select()ing whether to build support for using TPUs via libtpu.so"""
     return select({
         str(Label("//tensorflow:with_tpu_support")): if_true,
         "//conditions:default": if_false,
@@ -328,7 +328,7 @@ def tf_copts(
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
         if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
-        if_tpu(["-DLIBTFTPU"]) +
+        if_libtpu(["-DLIBTPU_ON_GCE"], []) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
@@ -2767,7 +2767,8 @@ def tf_python_pybind_extension(
         deps = [],
         defines = [],
         visibility = None,
-        testonly = None):
+        testonly = None,
+        compatible_with = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
@@ -2787,6 +2788,7 @@ def tf_python_pybind_extension(
         visibility = visibility,
         link_in_framework = True,
         testonly = testonly,
+        compatible_with = compatible_with,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):

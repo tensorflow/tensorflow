@@ -21,11 +21,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 
@@ -41,7 +44,7 @@ inline std::unique_ptr<ProfilerServer> StartServer(
   profiler_server->StartProfilerServer(port);
 
   DCHECK(service_addresses);
-  *service_addresses = absl::StrFormat("localhost:%d", port);
+  *service_addresses = absl::StrCat("localhost:", port);
 
   if (request) {
     request->set_duration_ms(absl::ToInt64Milliseconds(duration));

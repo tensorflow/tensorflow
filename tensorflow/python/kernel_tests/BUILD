@@ -817,6 +817,7 @@ cuda_py_test(
     name = "matrix_solve_ls_op_test",
     size = "medium",
     srcs = ["matrix_solve_ls_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1810,6 +1811,7 @@ cuda_py_test(
     name = "bitcast_op_test",
     size = "small",
     srcs = ["bitcast_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1841,6 +1843,7 @@ cuda_py_test(
     name = "constant_op_test",
     size = "small",
     srcs = ["constant_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2096,6 +2099,7 @@ cuda_py_test(
     name = "dynamic_stitch_op_test",
     size = "small",
     srcs = ["dynamic_stitch_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_grad",
@@ -2683,6 +2687,7 @@ cuda_py_test(
         "no_windows",
         "no_windows_gpu",
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3604,6 +3609,7 @@ cuda_py_test(
         "no_oss",  # b/117185141.
         "nomsan",  # TODO(b/117236102): Re-enable in msan build.
     ],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

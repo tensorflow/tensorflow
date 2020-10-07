@@ -1488,7 +1488,7 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
     double best_delta = -1.0L;
     Parameter* best_parameter = nullptr;
     for (auto& pair : parameters) {
-      if (pair.second->value == pair.second->max) {
+      if (pair.second->value >= pair.second->max) {
         continue;
       }
       pair.second->value++;

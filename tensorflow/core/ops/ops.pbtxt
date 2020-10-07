@@ -44436,6 +44436,20 @@ op {
     }
   }
   attr {
+    name: "reader_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "writer_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "reader_func"
     type: "func"
   }

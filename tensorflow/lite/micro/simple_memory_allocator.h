@@ -69,6 +69,11 @@ class SimpleMemoryAllocator {
   // arena (lowest address).
   virtual void ResetTempAllocations();
 
+  // TODO(b/169834500): Consider renaming or dropping the head methods.
+  // GetBufferHead() will return the start of the head section. The GetHead()
+  // method currently returns the end address of the head section. This can
+  // easily lead to misuse by placing things at the end of the head section by
+  // calling GetHead().
   uint8_t* GetHead() const;
   uint8_t* GetBufferHead() const;
   uint8_t* GetTail() const;
@@ -76,9 +81,12 @@ class SimpleMemoryAllocator {
   size_t GetHeadUsedBytes() const;
   size_t GetTailUsedBytes() const;
 
-  // Returns the number of bytes available with a given alignment.
+  // Returns the number of bytes available with a given alignment. This number
+  // takes in account any temporary allocations.
   size_t GetAvailableMemory(size_t alignment) const;
 
+  // Returns the number of used bytes in the allocator. This number takes in
+  // account any temporary allocations.
   size_t GetUsedBytes() const;
 
  private:

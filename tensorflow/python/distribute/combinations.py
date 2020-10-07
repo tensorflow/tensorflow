@@ -40,12 +40,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-
-FLAGS = flags.FLAGS
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(rchao): Rename `distribution` parameter to `strategy` or
@@ -118,13 +118,11 @@ class ClusterParameters(combinations_lib.ParameterModifier):
 class DistributionCombination(combinations_lib.TestCombination):
   """Sets up distribution strategy for tests."""
 
-  XLA_TEST = re.search(r"(test_xla|test_xla_gpu)$", sys.argv[0])
-
   def should_execute_combination(self, kwargs):
     distributions = [
         v for v in kwargs.values() if isinstance(v, NamedDistribution)
     ]
-    if self.XLA_TEST and any(d.no_xla for d in distributions):
+    if test_util.is_xla_enabled() and any(d.no_xla for d in distributions):
       return (
           False,
           "n/a: skipping strategy combination with no_xla=True in XLA tests")
@@ -228,7 +226,7 @@ class TPUCombination(combinations_lib.TestCombination):
                                   [d.required_tpu or 0 for d in distributions])
     use_cloud_tpu = any([kwargs.get("use_cloud_tpu")] +
                         [d.use_cloud_tpu for d in distributions])
-    tpu = hasattr(FLAGS, "tpu") and FLAGS.tpu or ""
+    tpu = hasattr(flags.FLAGS, "tpu") and flags.FLAGS.tpu or ""
 
     if not number_of_required_tpus and TPUCombination.TPU_TEST:
       return (False, "Test that doesn't require TPUs.")
@@ -318,15 +316,16 @@ def concat(*combined):
   return result
 
 
+@tf_export("__internal__.distribute.combinations.generate", v1=[])
 def generate(combinations, test_combinations=()):
   # pylint: disable=g-doc-args,g-doc-return-or-yield
-  """Distributed adapter of `framework.combinations_lib.generate`.
+  """Distributed adapter of `tf.__internal__.test.combinations.generate`.
 
   All tests with distributed strategy should use this one instead of
-  `framework.test_combinations.generate`. This function has support of strategy
-  combinations, GPU/TPU and multi worker support.
+  `tf.__internal__.test.combinations.generate`. This function has support of
+  strategy combinations, GPU/TPU and multi worker support.
 
-  See `framework.test_combinations_lib.generate` for usage.
+  See `tf.__internal__.test.combinations.generate` for usage.
   """
   # pylint: enable=g-doc-args,g-doc-return-or-yield
   default_combinations = (
@@ -362,11 +361,6 @@ def generate(combinations, test_combinations=()):
 combine = combinations_lib.combine
 times = combinations_lib.times
 NamedObject = combinations_lib.NamedObject
-
-
-def main():
-  """Tests must call this main()."""
-  return multi_process_runner.test_main()
 
 
 # Identifies whether we're in the main process or worker processes.

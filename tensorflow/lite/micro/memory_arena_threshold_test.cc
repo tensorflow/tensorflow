@@ -49,11 +49,11 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 // Run this test with '--copt=-DTF_LITE_STATIC_MEMORY' to get optimized memory
 // runtime values:
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kKeywordModelTotalSize = 14336;
-constexpr int kKeywordModelTailSize = 13664;
+constexpr int kKeywordModelTotalSize = 14128;
+constexpr int kKeywordModelTailSize = 13456;
 #else
-constexpr int kKeywordModelTotalSize = 14704;
-constexpr int kKeywordModelTailSize = 14032;
+constexpr int kKeywordModelTotalSize = 14496;
+constexpr int kKeywordModelTailSize = 13824;
 #endif
 constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
@@ -68,11 +68,11 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kTestConvModelTotalSize = 9552;
-constexpr int kTestConvModelTailSize = 1808;
+constexpr int kTestConvModelTotalSize = 9568;
+constexpr int kTestConvModelTailSize = 1824;
 #else
-constexpr int kTestConvModelTotalSize = 9712;
-constexpr int kTestConvModelTailSize = 1968;
+constexpr int kTestConvModelTotalSize = 9728;
+constexpr int kTestConvModelTailSize = 1984;
 #endif
 constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
