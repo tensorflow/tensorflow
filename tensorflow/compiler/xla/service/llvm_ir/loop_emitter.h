@@ -71,11 +71,13 @@ class LoopEmitter {
   // specifies the element, will return multiple indices if the loop is
   // unrolled.
   std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock() {
-    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"", b_->getInt64Ty());
+    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"", b_->getInt64Ty(),
+                                         /*base_index*/ nullptr);
   }
 
   virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      absl::string_view loop_name, llvm::Type* index_type);
+      absl::string_view loop_name, llvm::Type* index_type,
+      llvm::Value* base_index);
 
   // Emits a complete loop nest for every element in the given shape.
   Status EmitLoop(absl::string_view loop_name = "",

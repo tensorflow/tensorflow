@@ -86,6 +86,12 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
+# pylint: disable=g-inconsistent-quotes
+metrics_mod = generic_utils.LazyLoader(
+    "metrics_mod", globals(),
+    "tensorflow.python.keras.metrics")
+# pylint: enable=g-inconsistent-quotes
+
 # Prefix that is added to the TF op layer names.
 _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
@@ -96,9 +102,11 @@ _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
 
 keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
                                           'keras layers usage', 'method')
+keras_models_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/models', 'keras model usage', 'method')
 keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                        'keras api usage', 'method')
-keras_model_gauge = monitoring.BoolGauge(
+keras_premade_model_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
@@ -304,7 +312,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                dynamic=False,
                **kwargs):
     keras_api_gauge.get_cell('layer').set(True)
-    keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+    if getattr(self, '_is_model_for_instrumentation', False):
+      keras_models_gauge.get_cell(self.__class__.__name__).set(True)
+    else:
+      keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -1602,7 +1613,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     ['max', 'min']
 
     Returns:
-      A list of tensors.
+      A list of `Metric` objects.
     """
     collected_metrics = []
     for layer in self._flatten_layers():
@@ -1620,11 +1631,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     class MyMetricLayer(tf.keras.layers.Layer):
       def __init__(self):
         super(MyMetricLayer, self).__init__(name='my_metric_layer')
-        self.mean = metrics_module.Mean(name='metric_1')
+        self.mean = tf.keras.metrics.Mean(name='metric_1')
 
       def call(self, inputs):
         self.add_metric(self.mean(x))
-        self.add_metric(math_ops.reduce_sum(x), name='metric_2')
+        self.add_metric(tf.reduce_sum(x), name='metric_2')
         return inputs
     ```
 
@@ -1716,7 +1727,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         elif metric_obj:
           self._metrics.append(metric_obj)
         else:
-          from tensorflow.python.keras import metrics as metrics_mod  # pylint:disable=g-import-not-at-top
           # Build the metric object with the value's dtype if it defines one
           metric_obj = metrics_mod.Mean(
               name=name, dtype=getattr(value, 'dtype', None))
@@ -2798,9 +2808,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       pass
 
     # Keep track of metric instance created in subclassed layer.
-    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
     for val in nest.flatten(value):
-      if isinstance(val, metrics_module.Metric) and hasattr(self, '_metrics'):
+      if isinstance(val, metrics_mod.Metric) and hasattr(self, '_metrics'):
         self._metrics.append(val)
 
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
@@ -2877,7 +2886,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           continue
         seen_object_ids.add(layer_or_container_id)
 
-        if isinstance(layer_or_container, Layer):
+        if (isinstance(layer_or_container, Layer) and
+            not isinstance(layer_or_container, metrics_mod.Metric)):
           yield layer_or_container
           # Introspect recursively through sublayers.
           if recursive:

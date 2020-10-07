@@ -53,6 +53,7 @@ cc_library(
         "reshape.cc",
         "resize_nearest_neighbor.cc",
         "round.cc",
+        "shape.cc",
         "split.cc",
         "split_v.cc",
         "strided_slice.cc",

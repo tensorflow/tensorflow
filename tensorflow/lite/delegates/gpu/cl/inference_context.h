@@ -89,6 +89,9 @@ class InferenceContext {
   absl::Status GetOutputTensor(ValueId id, CLCommandQueue* queue,
                                TensorFloat32* result);
 
+  const std::vector<ValueId>& GetInputIds() const { return input_ids_; }
+  const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
+
  private:
   enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
 

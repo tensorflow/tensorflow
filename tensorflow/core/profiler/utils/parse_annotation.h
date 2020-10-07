@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PARSE_ANNOTATION_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_PARSE_ANNOTATION_H_
+#ifndef TENSORFLOW_CORE_PROFILER_UTILS_PARSE_ANNOTATION_H_
+#define TENSORFLOW_CORE_PROFILER_UTILS_PARSE_ANNOTATION_H_
 
 #include <vector>
 
@@ -43,4 +43,4 @@ std::vector<Annotation> ParseAnnotationStack(
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PARSE_ANNOTATION_H_
+#endif  // TENSORFLOW_CORE_PROFILER_UTILS_PARSE_ANNOTATION_H_

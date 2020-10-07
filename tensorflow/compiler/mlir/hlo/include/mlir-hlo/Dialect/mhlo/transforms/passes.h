@@ -63,7 +63,7 @@ std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 
 /// Lowers trigonometric operations from the standard dialect to approximations
-// that do not use intrinsics.
+/// that do not use intrinsics.
 std::unique_ptr<OperationPass<FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
 

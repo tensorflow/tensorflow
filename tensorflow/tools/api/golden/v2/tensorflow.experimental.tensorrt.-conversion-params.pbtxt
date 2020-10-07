@@ -8,10 +8,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "allow_mixed_precision_on_unconverted_ops"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "is_dynamic_op"
     mtype: "<type \'property\'>"
   }

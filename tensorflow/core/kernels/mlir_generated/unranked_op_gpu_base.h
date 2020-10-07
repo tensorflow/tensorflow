@@ -13,37 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <array>
-#include <cstdint>
-#include <string>
-#include <vector>
+#ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
+#define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
-#include "mlir/ExecutionEngine/RunnerUtils.h"  // from @llvm-project
-#include "tensorflow/core/framework/allocation_description.pb.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor.h"
-
-// TODO(b/169547730): Automatically generate these declarations.
-extern "C" ::UnrankedMemRefType<Eigen::half> _mlir_ciface_abs_unranked_f16(
-    tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<Eigen::half>* arg);
-extern "C" ::UnrankedMemRefType<float> _mlir_ciface_abs_unranked_f32(
-    tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<float>* arg);
-extern "C" ::UnrankedMemRefType<double> _mlir_ciface_abs_unranked_f64(
-    tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<double>* arg);
-extern "C" ::UnrankedMemRefType<int32> _mlir_ciface_abs_unranked_i32(
-    tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<int32>* arg);
-extern "C" ::UnrankedMemRefType<int64> _mlir_ciface_abs_unranked_i64(
-    tensorflow::OpKernelContext* ctx, ::UnrankedMemRefType<int64>* arg);
 
 namespace tensorflow {
-namespace {
+
+// Returns a pointer to an allocated MlirTensorBuffer that takes ownership of
+// pre-allocated memory.
+TensorBuffer* GetMlirTensorBuffer(const void* ptr, size_t size,
+                                  Allocator* allocator);
 
 template <typename ElemType>
 ::UnrankedMemRefType<ElemType> ConvertTensorToDescriptor(const Tensor& tensor) {
@@ -70,35 +51,6 @@ template <typename ElemType>
   return result;
 }
 
-// A simple TensorBuffer implementation that allows us to create Tensors that
-// take ownership of pre-allocated memory.
-template <typename ElemType>
-class MlirTensorBuffer : public TensorBuffer {
- public:
-  MlirTensorBuffer(const void* ptr, TensorShape shape, Allocator* allocator)
-      : TensorBuffer(const_cast<void*>(ptr)),
-        size_(sizeof(ElemType) * shape.num_elements()),
-        allocator_(allocator) {}
-
-  ~MlirTensorBuffer() override {
-    if (data()) {
-      allocator_->DeallocateRaw(data());
-    }
-  }
-
-  size_t size() const override { return size_; }
-
-  TensorBuffer* root_buffer() override { return this; }
-
-  void FillAllocationDescription(AllocationDescription* proto) const override {
-    proto->set_allocated_bytes(size_);
-  }
-
- private:
-  size_t size_;
-  Allocator* allocator_;
-};
-
 template <typename ElemType>
 Tensor ConvertDescriptorToTensor(
     ::UnrankedMemRefType<ElemType> unranked_descriptor, DataType tf_data_type,
@@ -109,8 +61,9 @@ Tensor ConvertDescriptorToTensor(
   for (int i = 0; i < unranked_descriptor.rank; ++i) {
     result_shape.AddDim(pointers[3 + i]);
   }
-  auto* buffer =
-      new MlirTensorBuffer<ElemType>(base_ptr, result_shape, allocator);
+  TensorBuffer* buffer = GetMlirTensorBuffer(
+      base_ptr, sizeof(ElemType) * result_shape.num_elements(), allocator);
+
   // Tensor takes ownership of the buffer.
   Tensor tensor{tf_data_type, result_shape, buffer};
   // When Tensor is constructed, its ref-counter is incremented. We need to
@@ -119,9 +72,7 @@ Tensor ConvertDescriptorToTensor(
   return tensor;
 }
 
-}  // namespace
-
-#define MLIR_FUNCTION(data_type) _mlir_ciface_abs_unranked_##data_type
+#define MLIR_FUNCTION(data_type) _mlir_ciface_abs_##data_type
 
 // Generates a class derived from OpKernel with Compute function that converts
 // input tensors to unranked memref descriptors and calls mlir-generated
@@ -129,6 +80,10 @@ Tensor ConvertDescriptorToTensor(
 // MlirTensorBuffer to take ownership of pre-allocated memory.
 #define REGISTER_AND_GENERATE_KERNEL(kernel_name, type_name, data_type,     \
                                      tf_data_type)                          \
+  extern "C" ::UnrankedMemRefType<data_type> MLIR_FUNCTION(type_name)(      \
+      tensorflow::OpKernelContext * ctx,                                    \
+      ::UnrankedMemRefType<data_type> * arg);                               \
+                                                                            \
   namespace {                                                               \
   class MlirUnranked##kernel_name##type_name##Op : public OpKernel {        \
    public:                                                                  \
@@ -157,10 +112,6 @@ Tensor ConvertDescriptorToTensor(
       Name(#kernel_name).Device(DEVICE_GPU).TypeConstraint<data_type>("T"), \
       MlirUnranked##kernel_name##type_name##Op);
 
-REGISTER_AND_GENERATE_KERNEL(Abs, f16, Eigen::half, DT_HALF);
-REGISTER_AND_GENERATE_KERNEL(Abs, f32, float, DT_FLOAT);
-REGISTER_AND_GENERATE_KERNEL(Abs, f64, double, DT_DOUBLE);
-REGISTER_AND_GENERATE_KERNEL(Abs, i32, int32, DT_INT32);
-REGISTER_AND_GENERATE_KERNEL(Abs, i64, int64, DT_INT64);
-
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_

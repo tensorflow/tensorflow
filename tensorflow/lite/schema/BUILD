@@ -1,7 +1,20 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# This is the package group declaration to which targets for TensorFlow Lite
+# Flatbuffer schema utilities.
+#
+# Its usage should be rare, and is often abused by tools that are doing
+# Flatbuffer creation/manipulation in unofficially supported ways.
+package_group(
+    name = "utils_friends",
+    packages = [
+        "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/lite/...",
+    ] + tflite_schema_utils_friends(),
+)
 
 package(
     default_visibility = [
@@ -113,6 +126,19 @@ cc_test(
         "//tensorflow/core/platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
+    ],
+)
+
+cc_library(
+    name = "schema_utils",
+    srcs = ["schema_utils.cc"],
+    hdrs = ["schema_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [":utils_friends"],
+    deps = [
+        ":schema_fbs",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "@flatbuffers",
     ],
 )
 

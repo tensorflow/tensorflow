@@ -39,6 +39,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -612,4 +613,4 @@ class PSStrategySaveAndLoadTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

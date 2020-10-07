@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -12,10 +13,10 @@ cc_library(
     hdrs = ["host_tracer_utils.h"],
     visibility = ["//tensorflow/core/profiler:friends"],
     deps = [
+        ":traceme_recorder",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/internal:parse_annotation",
-        "//tensorflow/core/profiler/internal:traceme_recorder",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:parse_annotation",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_utils",
@@ -29,12 +30,12 @@ cc_library(
     srcs = ["host_tracer.cc"],
     deps = [
         ":host_tracer_utils",
+        ":traceme_recorder",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/internal:profiler_factory",
-        "//tensorflow/core/profiler/internal:profiler_interface",
-        "//tensorflow/core/profiler/internal:traceme_recorder",
+        "//tensorflow/core/profiler/lib:profiler_factory",
+        "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
@@ -54,7 +55,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -66,6 +67,76 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "traceme_recorder",
+    hdrs = ["traceme_recorder.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core:lib",
+    ] + if_static([
+        ":traceme_recorder_impl",
+    ]),
+)
+
+cc_library(
+    name = "traceme_recorder_impl",
+    srcs = [
+        "traceme_recorder.cc",
+        "traceme_recorder.h",
+    ],
+    visibility = [
+        "//tensorflow/core/profiler:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+    alwayslink = True,
+)
+
+tf_cc_test(
+    name = "traceme_recorder_test",
+    srcs = ["traceme_recorder_test.cc"],
+    deps = [
+        ":traceme_recorder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "annotation_stack",
+    hdrs = ["annotation_stack.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_static([
+        ":annotation_stack_impl",
+    ]),
+)
+
+cc_library(
+    name = "annotation_stack_impl",
+    srcs = [
+        "annotation_stack.cc",
+        "annotation_stack.h",
+    ],
+    visibility = [
+        "//tensorflow/core/profiler:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "python_tracer",
     srcs = ["python_tracer.cc"],
     copts = ["-fexceptions"],
@@ -74,8 +145,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/internal:profiler_factory",
-        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/lib:profiler_factory",
+        "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/python/profiler/internal:python_hooks",
     ],
@@ -91,8 +162,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/internal:profiler_factory",
-        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/lib:profiler_factory",
+        "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",

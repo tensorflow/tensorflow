@@ -153,6 +153,7 @@ py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",

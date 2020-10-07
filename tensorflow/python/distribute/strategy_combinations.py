@@ -27,11 +27,11 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import one_device_strategy as one_device_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
-from tensorflow.python.framework import config
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
@@ -246,27 +246,9 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
 graph_and_eager_modes = ["graph", "eager"]
 
 
-# This function should be called in a test's `setUp` method with the
-# maximum value needed in any test.
+# TODO(crccw): remove after tf-nightly picks up the new API.
 def set_virtual_cpus_to_at_least(num_virtual_cpus):
-  """Create virtual CPU devices if they haven't yet been created."""
-  if num_virtual_cpus < 1:
-    raise ValueError("`num_virtual_cpus` must be at least 1 not %r" %
-                     (num_virtual_cpus,))
-  physical_devices = config.list_physical_devices("CPU")
-  if not physical_devices:
-    raise RuntimeError("No CPUs found")
-  configs = config.get_logical_device_configuration(physical_devices[0])
-  if configs is None:
-    logical_devices = [
-        context.LogicalDeviceConfiguration() for _ in range(num_virtual_cpus)
-    ]
-    config.set_logical_device_configuration(physical_devices[0],
-                                            logical_devices)
-  else:
-    if len(configs) < num_virtual_cpus:
-      raise RuntimeError("Already configured with %d < %d virtual CPUs" %
-                         (len(configs), num_virtual_cpus))
+  test_util.set_logical_devices_to_at_least("CPU", num_virtual_cpus)
 
 
 strategies_minus_tpu = [

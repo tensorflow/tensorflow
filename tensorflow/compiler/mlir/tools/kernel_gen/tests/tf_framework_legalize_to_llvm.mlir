@@ -55,7 +55,7 @@ func @alloc_raw(%ctx: !tf_framework.op_kernel_context,
 
 // -----
 
-// CHECK: llvm.func @_mlir_ciface_tf_dealloc_raw(!llvm.ptr<i8>)
+// CHECK: llvm.func @_mlir_ciface_tf_dealloc_raw(!llvm.ptr<i8>, !llvm.ptr<i8>)
 
 // CHECK-LABEL: llvm.func @dealloc_raw(
 // CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,

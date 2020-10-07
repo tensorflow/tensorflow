@@ -59,6 +59,14 @@ cc_library(
 )
 
 cc_library(
+    name = "format_utils",
+    hdrs = ["format_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "html_utils",
     hdrs = ["html_utils.h"],
     deps = [
@@ -469,6 +477,27 @@ cc_library(
     hdrs = ["file_system_utils.h"],
     deps = [
         "//tensorflow/core/platform",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "parse_annotation",
+    srcs = ["parse_annotation.cc"],
+    hdrs = ["parse_annotation.h"],
+    visibility = ["//tensorflow/core/profiler:friends"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "parse_annotation_test",
+    srcs = ["parse_annotation_test.cc"],
+    deps = [
+        ":parse_annotation",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
     ],
 )
