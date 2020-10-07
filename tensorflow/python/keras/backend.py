@@ -2428,6 +2428,9 @@ def abs(x):
 def sqrt(x):
   """Element-wise square root.
 
+     This function clips tensor values to a specified min(0) and max(inf)
+     before taking sqrt.
+
   Arguments:
       x: Tensor or variable.
 
