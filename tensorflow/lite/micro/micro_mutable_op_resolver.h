@@ -303,8 +303,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddQuantize() {
-    return AddBuiltin(BuiltinOperator_QUANTIZE,
-                      tflite::ops::micro::Register_QUANTIZE(), ParseQuantize);
+    return AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(),
+                      ParseQuantize);
   }
 
   TfLiteStatus AddReduceMax() {

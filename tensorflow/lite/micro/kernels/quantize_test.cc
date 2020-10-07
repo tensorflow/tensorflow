@@ -35,8 +35,7 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   // Version 1 of quantize supports int8_t and uint8_t quantization.
-  const TfLiteRegistration registration =
-      tflite::ops::micro::Register_QUANTIZE();
+  const TfLiteRegistration registration = Register_QUANTIZE();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
                              /*builtin_data=*/nullptr, micro_test::reporter);
