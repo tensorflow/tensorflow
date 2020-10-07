@@ -1225,8 +1225,8 @@ Status EagerContext::UpdateRemoteMaster(
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
       return errors::InvalidArgument(
-          "Failed to update remote remote master context due to invalid ",
-          "context id. Request id = ", context_id,
+          "Failed to update remote master context due to invalid context id. ",
+          "Request id = ", context_id,
           " but current id = ", context_id_);
     }
   }

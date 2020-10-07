@@ -289,7 +289,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
   // configured with only 16 threads. Furthermore, because the
   // threadpool may execute the closures in an arbitrary order, we
   // must use RecvAsync below. Otherwise, blocking Recv() may run
-  // before all all the Send() and deadlock.
+  // before all the Send() and deadlock.
   static const int N = 100;
   random::PhiloxRandom philox(testing::RandomSeed(), 17);
   random::SimplePhilox rnd(&philox);

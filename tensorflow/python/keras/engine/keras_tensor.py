@@ -96,8 +96,8 @@ class KerasTensor(object):
   placeholders.
 
   In rare cases (such as when directly manipulating shapes using Keras layers),
-  the layer may be able to partially infer the value of of the output in
-  addition to just inferring the signature.
+  the layer may be able to partially infer the value of the output in addition
+  to just inferring the signature.
   When this happens, the returned KerasTensor will also contain the inferred
   value information. Follow-on layers can use this information.
   during their own output signature inference.

@@ -204,7 +204,7 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, transposed_weights,
                                               transposed_weights_shape_array));
 
-  // Transpose the weights from from OHWI order to HWOI order.
+  // Transpose the weights from OHWI order to HWOI order.
   TransposeParams transpose_params;
   transpose_params.perm_count = 4;
   transpose_params.perm[0] = 1;

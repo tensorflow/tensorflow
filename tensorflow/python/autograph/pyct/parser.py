@@ -339,7 +339,7 @@ def parse(src, preamble_len=0, single_node=True):
     nodes = nodes[preamble_len:]
   if single_node:
     if len(nodes) != 1:
-      raise ValueError('expected exactly one node node, found {}'.format(nodes))
+      raise ValueError('expected exactly one node, found {}'.format(nodes))
     return nodes[0]
   return nodes
 

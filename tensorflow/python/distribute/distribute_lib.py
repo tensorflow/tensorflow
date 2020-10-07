@@ -1262,7 +1262,7 @@ class StrategyBase(object):
 
     with self.scope():
       # tf.distribute supports Eager functions, so AutoGraph should not be
-      # applied when when the caller is also in Eager mode.
+      # applied when the caller is also in Eager mode.
       fn = autograph.tf_convert(
           fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)

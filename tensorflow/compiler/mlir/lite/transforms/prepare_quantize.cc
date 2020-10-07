@@ -113,8 +113,8 @@ class PrepareQuantizePass
   }
 
   // Get the min and max values from the quantization specification for the
-  // current function function and argument index. Uses default values if
-  // the function is specified in the `quantize_allowlist`.
+  // current function and argument index. Uses default values if the function
+  // is specified in the `quantize_allowlist`.
   std::pair<llvm::Optional<double>, llvm::Optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {

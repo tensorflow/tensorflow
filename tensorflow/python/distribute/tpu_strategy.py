@@ -338,8 +338,8 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Adds annotation that `tensor` will be split across logical devices.
 
     This adds an annotation to tensor `tensor` specifying that operations on
-    `tensor` will be be split among multiple logical devices. Tensor `tensor`
-    will be split across dimensions specified by `partition_dimensions`.
+    `tensor` will be split among multiple logical devices. Tensor `tensor` will
+    be split across dimensions specified by `partition_dimensions`.
     The dimensions of `tensor` must be divisible by corresponding value in
     `partition_dimensions`.
 

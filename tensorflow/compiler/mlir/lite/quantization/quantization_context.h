@@ -118,7 +118,7 @@ class QuantizeContext {
   //   - use the first one in the collection,
   // - use the single input if it is ready, or,
   // - use the single output if it is ready, or,
-  // - use use the first ready one in the collection.
+  // - use the first ready one in the collection.
   QuantParams GetQuantParamsForSameScaleConstraint(Operation *op);
 
   // Propagate `params` to all the quantizable port of the `op`. The adjcent

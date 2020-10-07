@@ -153,7 +153,7 @@ class WhereCPUOp : public OpKernel {
 
     // TODO(ebrevdo): Replace single-threaded copy with a
     // multithreaded block copy by getting block counts above instead
-    // of a global NumTrue, then having each block filled in in
+    // of a global NumTrue, then having each block filled in
     // separate threads below.
     int64 found_true = 0;
 

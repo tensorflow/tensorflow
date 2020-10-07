@@ -120,7 +120,7 @@ namespace {
 //   return %read
 // }
 //
-// will be be transformed to:
+// will be transformed to:
 //
 // func @cluster_with_loop() {
 //   %0 = "tf.VarHandleOp"() ...
@@ -347,7 +347,7 @@ LogicalResult RegionResourceHoister::Analyze() {
       // If the user is not in one of the regions, we are not interested in it.
       // Since all the sub-regions within this region (i.e., regions attached to
       // op's in this region) have themselves gone through lifting, all resource
-      // users are expected to be operations in this region and and not embedded
+      // users are expected to be operations in this region and not embedded
       // within other sub-regions attached to op's in this region. So the check
       // for whether a user is in one of the regions attached to this op is
       // straightforward.

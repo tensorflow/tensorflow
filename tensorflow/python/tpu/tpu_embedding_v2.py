@@ -1466,8 +1466,8 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
   Note that TPU specific options (such as `max_sequence_length`) in the
   configuration objects will be ignored.
 
-  In the following example we take take a trained model (see the documentation
-  for `tf.tpu.experimental.embedding.TPUEmbedding` for the context) and create a
+  In the following example we take a trained model (see the documentation for
+  `tf.tpu.experimental.embedding.TPUEmbedding` for the context) and create a
   saved model with a serving function that will perform the embedding lookup and
   pass the results to your model:
 

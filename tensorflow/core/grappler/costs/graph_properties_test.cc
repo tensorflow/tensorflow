@@ -1132,7 +1132,7 @@ TEST_F(GraphPropertiesTest, PackWithIdentityInput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   // Same to PackWithConstInput test case, but a, b, c, and d are Identity ops
   // from Const.
-  // If output_tensors_as_shape is not not set for those Shape ops or Pack op
+  // If output_tensors_as_shape is not set for those Shape ops or Pack op
   // doesn't take input_tensors_as_shape, Fill op's input doesn't have value;
   // hence, its output shape becomes unknown.
   Output a0 = ops::Const(s.WithOpName("a0"), 1, {});

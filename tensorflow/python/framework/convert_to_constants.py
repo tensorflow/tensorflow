@@ -786,7 +786,7 @@ class _FunctionConverterData(_ConverterData):
       func: ConcreteFunction.
       lower_control_flow: Boolean indicating whether or not to lower control
         flow ops such as If and While.
-      aggressive_inlining: Boolean indicating whether or not to to aggressive
+      aggressive_inlining: Boolean indicating whether or not to do aggressive
         function inlining (might be unsafe if function has stateful ops, not
         properly connected to control outputs).
       variable_names_allowlist: The set of variable names to convert (by
@@ -918,7 +918,7 @@ def _run_inline_graph_optimization(func, lower_control_flow,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops not
       properly connected to control outputs).
 
@@ -1057,7 +1057,7 @@ def convert_variables_to_constants_v2(func,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops, not
       properly connected to control outputs). (default False)
 
@@ -1090,7 +1090,7 @@ def convert_variables_to_constants_v2_as_graph(func,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops, not
       properly connected to control outputs).
 

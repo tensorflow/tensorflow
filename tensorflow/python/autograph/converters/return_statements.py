@@ -41,7 +41,7 @@ class _RewriteBlock(object):
 
 
 class ConditionalReturnRewriter(converter.Base):
-  """Rewrites a a pattern where it's unobvious that all paths return a value.
+  """Rewrites a pattern where it's unobvious that all paths return a value.
 
   This rewrite allows avoiding intermediate None return values.
 

@@ -45,8 +45,8 @@ enum class IOStructure {
 
   // For inputs:
   //   Source code runs computations using 'vec4 value_N' declared by
-  //   the compiler, where where N is an index of the input. Each value comes
-  //   from inputs using coordinates set by GlobalInvocationID and a dispatch
+  //   the compiler, where N is an index of the input. Each value comes from
+  //   inputs using coordinates set by GlobalInvocationID and a dispatch
   //   method, therefore, source code should not explicitly read values.
   //
   // For outputs:

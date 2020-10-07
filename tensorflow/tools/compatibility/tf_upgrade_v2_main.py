@@ -159,7 +159,7 @@ Simple usage:
           "single file.")
     if args.in_place and args.output_file:
       raise ValueError(
-          "--outfile argument is invalid when when converting in place")
+          "--outfile argument is invalid when converting in place")
     output_file = args.input_file if args.in_place else args.output_file
     files_processed, report_text, errors = process_file(
         args.input_file, output_file, upgrade)
@@ -172,7 +172,7 @@ Simple usage:
           "file tree.")
     if args.in_place and args.output_tree:
       raise ValueError(
-          "--outtree argument is invalid when when converting in place")
+          "--outtree argument is invalid when converting in place")
     output_tree = args.input_tree if args.in_place else args.output_tree
     files_processed, report_text, errors = upgrade.process_tree(
         args.input_tree, output_tree, args.copy_other_files)

@@ -696,7 +696,7 @@ TEST(CAPI, ExecuteAddForwardAsync) {
       /*tfrt*/ false);
 }
 #ifdef PLATFORM_GOOGLE
-// TODO(b/153349425): Add add forwarding tests for TFRT
+// TODO(b/153349425): Add forwarding tests for TFRT
 TEST(CAPI, ExecuteAddTfrt) {
   ExecuteAdd(
       /*async=*/false,

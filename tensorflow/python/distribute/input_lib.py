@@ -1505,7 +1505,7 @@ class _SingleWorkerDatasetIteratorBase(object):
     """Get next element from the underlying iterator.
 
     Runs the iterator get_next() within a device scope. Since this doesn't use
-    get_next_as_optional(), is is considerably faster than get_next_as_list()
+    get_next_as_optional(), it is considerably faster than get_next_as_list()
     (but can only be used when the shapes are static).
 
     Args:

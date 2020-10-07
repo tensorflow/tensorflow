@@ -46,7 +46,7 @@ enum JPEGErrors {
 };
 
 // Prevent bad compiler behavior in ASAN mode by wrapping most of the
-// arguments in a struct struct.
+// arguments in a struct.
 class FewerArgsForCompiler {
  public:
   FewerArgsForCompiler(int datasize, const UncompressFlags& flags, int64* nwarn,

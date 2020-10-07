@@ -4860,7 +4860,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
     array([[0.0+1.j],
            [4.0+0.j]])>
 
-  Note: In order to support complex complex, please provide an input tensor
+  Note: In order to support complex type, please provide an input tensor
   of `complex64` or `complex128`.
 
   Args:

@@ -291,7 +291,7 @@ void rb_abort(ringbuf_t *rb) {
 }
 
 /**
- * Reset the ringbuffer and keep keep rb_write aborted.
+ * Reset the ringbuffer and keep rb_write aborted.
  * Note that we are taking lock before even toggling `abort_write` variable.
  * This serves a special purpose to not allow this abort to be mixed with
  * rb_write.

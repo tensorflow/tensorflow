@@ -309,7 +309,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // 2. The op inputs at these indices are compile time constants.
   //
   // These compile time consts do not appear as _Args in the cond/body functions
-  // and are replaced by kConstant nodes instead. As as result, the compiled
+  // and are replaced by kConstant nodes instead. As a result, the compiled
   // body function does not have matching input and output shape. We fix this
   // by rewriting the body computation (see body_wrapper below) to output
   // just the non compile-time-const values and later pad up the while output

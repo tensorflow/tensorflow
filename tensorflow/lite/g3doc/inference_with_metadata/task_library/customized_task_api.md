@@ -110,7 +110,7 @@ To build an API object,you must provide the following information by extending
                                   std::vector<QaAnswer>, // OutputType
                                   const std::string&, const std::string& // InputTypes
                                   > {
-      // Convert API input into into tensors
+      // Convert API input into tensors
       absl::Status BertQuestionAnswerer::Preprocess(
         const std::vector<TfLiteTensor*>& input_tensors, // input tensors of the model
         const std::string& context, const std::string& query // InputType of the API

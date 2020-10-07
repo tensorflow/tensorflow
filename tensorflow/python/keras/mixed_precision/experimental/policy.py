@@ -382,9 +382,8 @@ class Policy(object):
       dtype = dtypes.as_dtype(name).name
     except TypeError:
       error = ("Cannot convert value %s to a mixed precision Policy. "
-               "Valid policies include include 'mixed_float16', "
-               "'mixed_bfloat16', and the name of any dtype such as "
-               "'float32'." % (name,))
+               "Valid policies include 'mixed_float16', 'mixed_bfloat16', "
+               "and the name of any dtype such as 'float32'." % (name,))
       # six.raise_from suppresses the original TypeError from being raised
       six.raise_from(ValueError(error), None)
     return dtype, dtype

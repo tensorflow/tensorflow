@@ -575,7 +575,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeState *state,
 //   - use the first one in the collection,
 // - use the single input if it is ready, or,
 // - use the single output if it is ready, or,
-// - use use the first ready one in the collection.
+// - use the first ready one in the collection.
 QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
     Operation *op) {
   // Two vector to collect Non-empty operands and results states.

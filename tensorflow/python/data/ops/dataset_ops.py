@@ -765,8 +765,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     There is also a deprecated way to call `from_generator` by either with
     `output_types` argument alone or together with `output_shapes` argument.
     In this case the output of the function will be assumed to consist of
-    `tf.Tensor` objects with with the types defined by `output_types` and with
-    the shapes which are either unknown or defined by `output_shapes`.
+    `tf.Tensor` objects with the types defined by `output_types` and with the
+    shapes which are either unknown or defined by `output_shapes`.
 
     Note: The current implementation of `Dataset.from_generator()` uses
     `tf.numpy_function` and inherits the same constraints. In particular, it
@@ -2842,7 +2842,7 @@ def get_legacy_output_types(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
-    A nested structure of `tf.DType` objects objects matching the structure of
+    A nested structure of `tf.DType` objects matching the structure of
     dataset / iterator elements and specifying the shape of the individual
     components.
   """

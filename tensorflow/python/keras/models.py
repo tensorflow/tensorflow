@@ -594,7 +594,7 @@ def clone_and_build_model(
     optimizer_config=None):
   """Clone a `Model` and build/compile it with the same settings used before.
 
-  This function can be be run in the same graph or in a separate graph from the
+  This function can be run in the same graph or in a separate graph from the
   model. When using a separate graph, `in_place_reset` must be `False`.
 
   Note that, currently, the clone produced from this function may not work with

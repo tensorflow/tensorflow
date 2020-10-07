@@ -96,7 +96,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       "uses routines from libdevice.",
       hlo_module_config);
 
-  // GetCudaRootCandidates always includes ".", but but if everything fails, we
+  // GetCudaRootCandidates always includes ".", but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }

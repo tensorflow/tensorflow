@@ -1355,7 +1355,7 @@ class NNAPIOpBuilder {
     if (tensor->allocation_type == kTfLiteMmapRo) {
       if (IsQuantized(tensor_type) && need_int8_conversion &&
           nn_type != ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL) {
-        // We need to to add a tensor and convert the weights into uint8.
+        // We need to add a tensor and convert the weights into uint8.
         // Currently this is only needed for fully_connected. The new_tensor is
         // needed for lifetime management for the converted weights.
         int new_tensor_index = -1;

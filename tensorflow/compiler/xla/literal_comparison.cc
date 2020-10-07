@@ -625,7 +625,7 @@ class NearComparator {
   // Callback to invoke on miscompare.
   MiscompareCallback miscompare_callback_;
 
-  // Number of element element mismatches encountered so far.
+  // Number of element mismatches encountered so far.
   int64 num_mismatches_ = 0;
 
   // Number of elements with a nan mismatch.

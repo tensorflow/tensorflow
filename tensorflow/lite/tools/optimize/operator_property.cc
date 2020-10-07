@@ -571,7 +571,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         property.outputs = {{0, {}}};
         property.intermediates = {
             // Without layer normalization, intermediate tensors 0, 1, 2, 3 are
-            // not used and and their quantization parameters are ignored.
+            // not used and their quantization parameters are ignored.
             {0, {}},
             {1, {}},
             {2, {}},

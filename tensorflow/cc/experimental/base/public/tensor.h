@@ -76,7 +76,7 @@ class Tensor {
   // unknown rank.
   int dims() const;
 
-  // Returns the number of elements in in demension `d`.
+  // Returns the number of elements in dimension `d`.
   // REQUIRES: `0 <= d < dims()`
   int64_t dim_size(int d) const;
 

@@ -1109,7 +1109,7 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     custom_objects: Optional dictionary mapping names (strings) to custom
       classes or functions to be considered during deserialization.
     created_layers: Optional dictionary mapping names to Layer objects. Any
-      layer not in this dictionary will be be created and added to the dict.
+      layer not in this dictionary will be created and added to the dict.
       This function will add new nodes to all layers (excluding InputLayers),
       instead of re-using pre-existing nodes in the layers.
 

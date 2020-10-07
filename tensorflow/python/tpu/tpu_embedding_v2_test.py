@@ -152,7 +152,7 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     second_checkpoint = util.Checkpoint(model=self.second_mid_level)
     second_checkpoint.restore(_get_tmpdir('restore', 'save-1'))
 
-    # Call retrieve here as a way to check what the TPU contains contains.
+    # Call retrieve here as a way to check what the TPU contains.
     # Calling the retrieve ops directly might make for a cleaner separation of
     # test and module, though.
     self.second_mid_level._retrieve_variables()
