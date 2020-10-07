@@ -16,20 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_FORMAT_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_FORMAT_UTILS_H_
 
+#include <stdio.h>
+
 #include <string>
 
-#include "absl/strings/str_format.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace profiler {
+namespace internal {
+
+inline std::string FormatDouble(const char* fmt, double d) {
+  constexpr int kBufferSize = 32;
+  char buffer[kBufferSize];
+  int result = snprintf(buffer, kBufferSize, fmt, d);
+  DCHECK(result > 0 && result < kBufferSize);
+  return std::string(buffer);
+}
+
+}  // namespace internal
 
 // Formats d with one digit after the decimal point.
-inline std::string OneDigit(double d) { return absl::StrFormat("%.1f", d); }
+inline std::string OneDigit(double d) {
+  return internal::FormatDouble("%.1f", d);
+}
 
 // Formats d with maximum precision to allow parsing the result back to the same
 // number.
 inline std::string MaxPrecision(double d) {
-  return absl::StrFormat("%.17g", d);
+  return internal::FormatDouble("%.17g", d);
 }
 
 }  // namespace profiler

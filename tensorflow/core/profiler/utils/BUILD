@@ -63,7 +63,7 @@ cc_library(
     name = "format_utils",
     hdrs = ["format_utils.h"],
     deps = [
-        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/core:lib",
     ],
 )
 
