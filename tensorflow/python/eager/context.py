@@ -39,6 +39,7 @@ from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
@@ -335,19 +336,6 @@ class _TensorCacheDeleter(object):
       del _tensor_caches_map[self._context_id]
 
 
-# If the below import is made available through the BUILD rule, then this
-# function is overridden and will instead return True and cause Tensorflow
-# graphs to run with TFRT.
-def is_tfrt_enabled():
-  return None
-
-
-try:
-  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top
-except:  # pylint: disable=bare-except
-  pass
-
-
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
@@ -423,10 +411,10 @@ class Context(object):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
-      execution_mode = ASYNC if is_tfrt_enabled() else SYNC
+      execution_mode = ASYNC if tfrt_utils.enabled() else SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
-    self._use_tfrt = is_tfrt_enabled()
+    self._use_tfrt = tfrt_utils.enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
