@@ -702,7 +702,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
-  
+
   See also `tf.shape`.
 
   Returns a 0-D `Tensor` representing the number of elements in `input`
@@ -5297,8 +5297,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
   tf.Tensor([ 0 9  0 10  11  0  0 12], shape=(8,), dtype=int32)
 
   The length (first axis) of `updates` must equal the length of the `indices`:
-  `num_updates`. This is the the number of updates being inserted. Each
-  scalar update is inserted into `tensor` at the indexed location.
+  `num_updates`. This is the number of updates being inserted. Each scalar
+  update is inserted into `tensor` at the indexed location.
 
   For a higher rank input `tensor` scalar updates can be inserted by using an
   `index_depth` that matches `tf.rank(tensor)`:
@@ -6175,7 +6175,7 @@ def _with_nonzero_rank(data):
 @dispatch.add_dispatch_support
 def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-builtin
   """Repeat elements of `input`.
-  
+
   See also `tf.concat`, `tf.stack`, `tf.tile`.
 
   Args:

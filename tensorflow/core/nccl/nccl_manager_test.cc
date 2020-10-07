@@ -855,7 +855,7 @@ TYPED_TEST(NcclManagerTest, Abort) {
   using TestCase = typename TestFixture::TestCase;
   int num_nodes = 2;
   std::vector<NodeState> nodes(num_nodes);
-  // First do a normal all-reduce to simulate the the case when there're
+  // First do a normal all-reduce to simulate the case when there're
   // multiple communicators.
   this->RunMultiNodeAllReduceTest(nodes, /* num_ranks_per_node */ 1);
 

@@ -130,4 +130,4 @@ The regular expression used in this script is configured with a standard
 *   `base`: Base regular expression to clean up the log, this is set to clean up
     the ANSI color codes in GDB
 *   `custom`: A series of other regular expressions (the script will run them in
-    order) to extract the information from the the log
+    order) to extract the information from the log

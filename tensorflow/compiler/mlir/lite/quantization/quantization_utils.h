@@ -430,7 +430,7 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 // if it is using signed int symmetric quantization.
 //
 // Note that this method may broadcast min and max to match the dimension length
-// of `input_type`, if the the `quant_dim` is valid. On the other hand, the
+// of `input_type`, if the `quant_dim` is valid. On the other hand, the
 // symmetry of min and max is not adjusted by this method. The QAT workflow
 // should set min/max correctly (and use `narrow_range`=true, `is_signed`=true)
 // if symmetric quantization is required.

@@ -164,12 +164,12 @@ results we have to train our model on black and white images too, so we pass in
 the `--input_grayscale` flag to enable that preprocessing.
 - The `--learning_rate`, `--label_smoothing`, `--learning_rate_decay_factor`,
 `--num_epochs_per_decay`, `--moving_average_decay` and `--batch_size` are all
-parameters that control how weights are updated during the the training
-process. Training deep networks is still a bit of a dark art, so these exact
-values we found through experimentation for this particular model. You can try
-tweaking them to speed up training or gain a small boost in accuracy, but we
-can't give much guidance for how to make those changes, and it's easy to get
-combinations where the training accuracy never converges.
+parameters that control how weights are updated during the training process.
+Training deep networks is still a bit of a dark art, so these exact values we
+found through experimentation for this particular model. You can try tweaking
+them to speed up training or gain a small boost in accuracy, but we can't give
+much guidance for how to make those changes, and it's easy to get combinations
+where the training accuracy never converges.
 - The `--max_number_of_steps` defines how long the training should continue.
 There's no good way to figure out this threshold in advance, you have to
 experiment to tell when the accuracy of the model is no longer improving to

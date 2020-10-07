@@ -295,7 +295,7 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64 dim,
 //  [1,2,2,3,4,4] and subtract it with 1:
 //  [0,1,1,2,3,3]
 //
-// 4.Use the the result of cumsum as gather indicies to rearrange the original
+// 4.Use the result of cumsum as gather indicies to rearrange the original
 // data. Feed the original input [a,b,c,d,P,P] and indices into gather.
 //
 //  operand [a,b,c,d,P,P], indices [0,1,1,2,3,3]

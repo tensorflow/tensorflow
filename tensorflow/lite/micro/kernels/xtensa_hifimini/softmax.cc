@@ -55,8 +55,8 @@ constexpr int kMaxExponentValue = (1 << kExpFractionalBits);
 TfLiteStatus Softmax(OpData op_data, const RuntimeShape& input_shape,
                      const int8_t* input_data, const RuntimeShape& output_shape,
                      int16_t* output_data) {
-  // The last dimension is depth.  Outer size is the the total input size
-  // divided by depth.
+  // The last dimension is depth.  Outer size is the total input size divided
+  // by depth.
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);

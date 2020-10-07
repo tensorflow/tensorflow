@@ -1109,7 +1109,7 @@ class PForConfig(object):
     concrete_function = def_function.function(fn).get_concrete_function(
         *tensor_specs)
 
-    # Creates PlaceholderWithDefault and IdentityN nodes corresponding the the
+    # Creates PlaceholderWithDefault and IdentityN nodes corresponding the
     # reduction.
     pl_outputs = []
     with ops.control_dependencies(args):

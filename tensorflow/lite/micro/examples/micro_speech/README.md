@@ -220,7 +220,7 @@ generate_micro_speech_esp_project`
 
 ### Building the example
 
-Go the the example project directory `cd
+Go to the example project directory `cd
 tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf`
 
 Then build with `idf.py` `idf.py build`

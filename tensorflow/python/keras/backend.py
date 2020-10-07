@@ -6452,9 +6452,9 @@ class ContextValueCache(weakref.WeakKeyDictionary):
 
   This class is similar to defaultdict, where values may be produced by the
   default factory specified during initialization. This class also has a default
-  value for the key (when key is `None`) -- the key is set to the the current
-  graph or eager context. The default factories for key and value are only used
-  in `__getitem__` and `setdefault`. The `.get()` behavior remains the same.
+  value for the key (when key is `None`) -- the key is set to the current graph
+  or eager context. The default factories for key and value are only used in
+  `__getitem__` and `setdefault`. The `.get()` behavior remains the same.
 
   This object will return the value of the current graph or closest parent graph
   if the current graph is a function. This is to reflect the fact that if a
