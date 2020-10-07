@@ -142,6 +142,8 @@ py_library(
         ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
+        ":multi_process_runner",
+        ":multi_worker_test_base",
         ":one_device_strategy",
         ":sharded_variable",
         "//tensorflow/python/distribute/client",

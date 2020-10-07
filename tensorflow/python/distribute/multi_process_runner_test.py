@@ -81,15 +81,15 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr_result = multi_process_runner.run(
         fn_that_adds_task_type_in_return_data,
         multi_worker_test_base.create_cluster_spec(
-            num_workers=2, num_ps=3, has_eval=1))
+            num_workers=2, num_ps=3, has_chief=True))
 
-    job_count_dict = {'worker': 2, 'ps': 3, 'evaluator': 1}
+    job_count_dict = {'worker': 2, 'ps': 3, 'chief': 1}
     for data in mpr_result.return_value:
       job_count_dict[data] -= 1
 
     self.assertEqual(job_count_dict['worker'], 0)
     self.assertEqual(job_count_dict['ps'], 0)
-    self.assertEqual(job_count_dict['evaluator'], 0)
+    self.assertEqual(job_count_dict['chief'], 0)
 
   def test_multi_process_runner_error_propagates_from_subprocesses(self):
     runner = multi_process_runner.MultiProcessRunner(
@@ -210,7 +210,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         fn,
         multi_worker_test_base.create_cluster_spec(
-            has_chief=True, num_workers=2, num_ps=2, has_eval=True),
+            has_chief=True, num_workers=2, num_ps=2),
         return_output=True)
     mpr._dependence_on_chief = False
 
@@ -221,7 +221,7 @@ class MultiProcessRunnerTest(test.TestCase):
 
     list_to_assert = mpr_result.stdout
 
-    for job in ['chief', 'evaluator']:
+    for job in ['chief']:
       for iteration in range(5):
         self.assertTrue(
             any('(logging) {}-0, i: {}'.format(job, iteration) in line

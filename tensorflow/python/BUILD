@@ -263,6 +263,8 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
     ],
 )
 
