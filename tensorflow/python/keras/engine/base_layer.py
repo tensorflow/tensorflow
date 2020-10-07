@@ -3101,9 +3101,10 @@ class TensorFlowOpLayer(Layer):
                trainable=True,
                dtype=None):
     # Pass autocast=False, as if inputs are cast, input types might not match
-    # Operation type.
+    # Operation type.   
+    name = backend.unique_object_name(_TF_OP_LAYER_NAME_PREFIX + name)
     super(TensorFlowOpLayer, self).__init__(
-        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
+        name=name, trainable=trainable, dtype=dtype,
         autocast=False)
     if isinstance(node_def, dict):
       self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
