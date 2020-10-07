@@ -35,6 +35,7 @@ TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration Register_QUANTIZE();
 TfLiteRegistration Register_SHAPE();
+TfLiteRegistration Register_SOFTMAX();
 
 namespace ops {
 namespace micro {
@@ -82,7 +83,6 @@ TfLiteRegistration Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration Register_ROUND();
 TfLiteRegistration Register_RSQRT();
 TfLiteRegistration Register_SIN();
-TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPLIT();
 TfLiteRegistration Register_SPLIT_V();
 TfLiteRegistration Register_SQRT();

@@ -353,8 +353,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddSoftmax() {
-    return AddBuiltin(BuiltinOperator_SOFTMAX,
-                      tflite::ops::micro::Register_SOFTMAX(), ParseSoftmax);
+    return AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
+                      ParseSoftmax);
   }
 
   TfLiteStatus AddSplit() {
