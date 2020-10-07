@@ -30,7 +30,8 @@ class MlirBridgePass : public MlirOptimizationPass {
   llvm::StringRef name() const override { return "bridge"; }
 
   bool IsEnabled(const ConfigProto& config_proto) const override {
-    return config_proto.experimental().enable_mlir_bridge();
+    return config_proto.experimental().enable_mlir_bridge() ||
+           tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge;
   }
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule

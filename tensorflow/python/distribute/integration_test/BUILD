@@ -9,7 +9,6 @@ package(
 distribute_py_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
-    disable_mlir_bridge = False,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lookup_ops",
