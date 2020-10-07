@@ -6771,8 +6771,6 @@ void TestConvertResize(OpConverterTest* test) {
   typedef typename EnumToDataType<dtype>::Type CType;
 
   std::vector<ResizeTestParams<CType>> params {
-// TODO(b/162442839): Enable the test parameters for TRT 7.1.3.x.
-#if !IS_TRT_VERSION_GE(7, 1, 3, 0)
     {
         /*input_dims=*/{1, 2, 1},       // H, W, C
         /*output_resize_dims=*/{2, 3},  // H_out, W_out
@@ -6784,7 +6782,6 @@ void TestConvertResize(OpConverterTest* test) {
         /*expected_bilinear_output_values=*/
         CastTestVector<float, CType>({2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f}),
     },
-#endif
     {
       /*input_dims=*/{1, 2, 1},           // H, W, C
           /*output_resize_dims=*/{2, 3},  // H_out, W_out
@@ -6797,6 +6794,13 @@ void TestConvertResize(OpConverterTest* test) {
           CastTestVector<float, CType>({2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f}),
     }
   };
+
+// This use case is not supported as of TRT version 7.1
+#if IS_TRT_VERSION_GE(7, 1, 0, 0)
+  if (OpType == ops::ResizeBilinear) {
+    params.erase(params.begin());
+  }
+#endif
 
   for (int i = 0; i < params.size(); ++i) {
     test->Reset();
@@ -6840,7 +6844,7 @@ TEST_F(OpConverterTest, ConvertResize) {
     // First input is weight, should fail.
     Reset();
     NodeDef node_def =
-        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, true);
     AddTestWeights<float>("input", {1, 2}, {1, 2});
     AddTestWeights<int>("size", {1, 2}, {1, 2});
     RunValidationAndConversion(
@@ -6852,7 +6856,7 @@ TEST_F(OpConverterTest, ConvertResize) {
     // output dimension is a tensor, should fail.
     Reset();
     NodeDef node_def =
-        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, true);
     AddTestTensor("input", {1, 2});
     AddTestTensor("size", {1, 2});
     RunValidationAndConversion(
