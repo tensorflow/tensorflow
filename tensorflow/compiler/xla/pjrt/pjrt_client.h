@@ -563,8 +563,10 @@ class PjRtBuffer {
     return GetBufferWithHold(ScopedHold::kExternalReference);
   }
 
-  // Copies the buffer to device `dst_device`. Returns an error if the buffer is
-  // already on dst_device.
+  // Copies the buffer to device `dst_device`, performing a d2d transfer when
+  // `dst_device` is sharing the same Client, and performing a d2h and h2d copy
+  // if `dst_device` lives on a different Client.
+  // Returns an error if the buffer is already on dst_device.
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(PjRtDevice* dst_device);
 
   // Copies the buffer to the remote device encoded in serialized_descriptor.

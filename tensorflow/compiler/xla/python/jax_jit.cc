@@ -298,7 +298,6 @@ class CompiledFunction {
   // to `Call`.
   // A function taking no arguments and returning the default device and whether
   // jax.jit has been committed to it.
-  // TODO(jblespiau): Finish the d2d transparent copy support.
   const py::function get_jax_enable_x64_;
   const py::function get_jax_disable_jit_;
   const py::function get_device_;
@@ -344,6 +343,34 @@ CompiledFunction::~CompiledFunction() {
 }
 
 namespace {
+
+// The equivalent of the Python jax/lazy.py::is_trivial:
+// return (type(lexpr.input) is ArrayVar and
+//         lexpr.dims == tuple(range(len(lexpr.shape))))
+//
+// Expects *only* instances of `DeviceArray`.
+bool HasTrivialLazyExpr(py::handle device_array) {
+  static const auto* lazy_module =
+      new py::module(py::module::import("jax.lazy"));
+
+  auto lexpr = py::getattr(device_array, "_lazy_expr");
+  auto input = py::getattr(lexpr, "input");
+  if (!input.get_type().is(lazy_module->attr("ArrayVar"))) {
+    return false;
+  }
+  py::tuple dims = py::cast<py::tuple>(lexpr.attr("dims"));
+  py::tuple shape = py::cast<py::tuple>(lexpr.attr("shape"));
+
+  for (int i = 0; i < shape.size(); ++i) {
+    if (dims[i].is_none()) {
+      return false;
+    }
+    if (py::cast<int>(dims[i]) != i) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // The resulting information of the parsing and conversion of the arguments.
 struct ParsedArgumentsAsBuffers {
@@ -519,7 +546,7 @@ const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
 // Returns `OkStatus()` on success. Returning an error should lead to calling
 // the Python fallback.
 Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
-                            xla::PjRtDevice* default_device,
+                            xla::PjRtDevice* default_device, bool is_committed,
                             ParsedArgumentsAsBuffers& arguments) {
   std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
   auto& keep_alive = arguments.keep_alive;
@@ -535,44 +562,47 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   static const auto* numpy_module = new py::module(py::module::import("numpy"));
   const auto& array = numpy_module->attr("array");
 
-  // TODO(phawkins): consider device stickiness.
-  // We first check whether any `DeviceArray` is present and whether they are
-  // attached to any specific device. See also
+  // When the jitted function is not committed, we first check whether any
+  // sticky `DeviceArray` is present and on which device they live. See also:
   // https://github.com/google/jax/pull/1884
   // https://github.com/google/jax/pull/1916 for the rationale why the
   // computation follows the data locality.
   // It's also similar to PyTorch's behavior.
   xla::PjRtDevice* data_device = nullptr;
-  for (py::handle arg : arguments.flat_dynamic_args) {
-    // We specically only deal with DeviceArray (not ShardedDeviceArray).
-    // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
-    if (arg.get_type().is(device_array)) {
-      xla::PyBuffer* buffer;
-      try {
-        // This can fail, e.g. when device_buffer is a `DeviceConstant`.
-        buffer = py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
-      } catch (const py::cast_error& e) {
-        return InvalidArgument(
-            "%s",
-            absl::StrCat("[jaxjit] Unsupported subclass of `DeviceArray`: "
-                         "`device_buffer` field is of type ",
-                         py::cast<std::string>(
-                             arg.attr("device_buffer").get_type().str()),
-                         " while a `PyBuffer` was expected."
+  if (is_committed) {
+    data_device = default_device;
+  } else {
+    for (py::handle arg : arguments.flat_dynamic_args) {
+      // We specically only deal with DeviceArray (not ShardedDeviceArray).
+      // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
+      if (arg.get_type().is(device_array)) {
+        xla::PyBuffer* buffer;
+        if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
+          continue;
+        }
+        try {
+          // This can fail, e.g. when device_buffer is a `DeviceConstant`.
+          buffer = py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
+        } catch (const py::cast_error& e) {
+          return InvalidArgument(
+              "%s",
+              absl::StrCat("[jaxjit] Unsupported subclass of `DeviceArray`: "
+                           "`device_buffer` field is of type ",
+                           py::cast<std::string>(
+                               arg.attr("device_buffer").get_type().str()),
+                           " while a `PyBuffer` was expected."
 
-                         ));
-      }
-      xla::PjRtDevice* device = buffer->buffer()->device();
-      if (data_device && (device != data_device)) {
-        return InvalidArgument(
-            "%s",
-            absl::StrCat(
-                "Arguments to a jit-compiled function must be colocated on the "
-                "same device. Arguments were found to be on the two following "
-                "different devices: ",
-                device->DebugString(), " and ", data_device->DebugString()));
-      } else {
-        data_device = device;
+                           ));
+        }
+        xla::PjRtDevice* device = buffer->buffer()->device();
+        if (data_device && (device != data_device)) {
+          throw std::invalid_argument(absl::StrCat(
+              "primitive arguments must be colocated on the same device ("
+              "C++ jax.jit). Arguments are on devices: ",
+              device->DebugString(), " and ", data_device->DebugString()));
+        } else {
+          data_device = device;
+        }
       }
     }
   }
@@ -585,13 +615,26 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   xla::PjRtClient* pjrt_client = data_device->client();
 
   for (py::handle arg : arguments.flat_dynamic_args) {
-    // We do not support here d2d transparent transfers.
-    // We assumes all the `DeviceArray` are already on the correct and shared
-    // device.
     if (arg.get_type().is(device_array)) {
-      xla::PyBuffer* buffer =
-          py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
-      arg_buffers.push_back(buffer->buffer());
+      if (!HasTrivialLazyExpr(arg)) {
+        return InvalidArgument(
+            "Non-trivial lazy expression not supported in C++. "
+            "It will fallback to Python.");
+      }
+
+      PyBuffer* buffer = py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
+      if (buffer->device().contents == data_device) {
+        arg_buffers.push_back(buffer->buffer());
+      } else {
+        // source and target platforms are the same, but different device.
+        // Perform a device-to-device copy.
+        // buffers from different XLA backends are passed through the host.
+        std::unique_ptr<PjRtBuffer> copied_buffer =
+            ValueOrThrow(buffer->buffer()->CopyToDevice(data_device));
+        arg_buffers.push_back(copied_buffer.get());
+        keep_alive.emplace_back(std::move(copied_buffer));
+      }
+
       ArgSignature sig;
       sig.dtype = buffer->shape().element_type();
       sig.shape.assign(buffer->shape().dimensions().begin(),
@@ -719,7 +762,6 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
 
       jax_enable_x64_ = py::cast<bool>(get_jax_enable_x64_());
       jax_disable_jit_ = py::cast<bool>(get_jax_disable_jit_());
-
       if (!default_device_) {
         py::object device_and_is_committed = get_device_();
         default_pydevice_ = py::cast<ClientAndPtr<PjRtDevice>>(
@@ -732,8 +774,6 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     }
   }
   CHECK(default_device_);
-  CHECK(jax_enable_x64_);
-
   if (JitIsDisabled()) {
     return fun_(*args, **kwargs);
   }
@@ -743,7 +783,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
   if (!ConvertArgsToBuffers(jax_enable_x64_.value(), *default_pyclient_,
-                            default_device_, arguments)
+                            default_device_, is_committed_, arguments)
            .ok()) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
@@ -762,6 +802,10 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     if (cache_entry->fall_back_to_python) {
       return py::cast<py::tuple>(out_and_fastpath_data)[0];
     }
+    // As we have already computed the results, we can return it.
+    // It's even *required* e.g. if there are donated arguments, because
+    // otherwise the buffer which has been donated already will be invalid.
+    return py::cast<py::tuple>(out_and_fastpath_data)[0];
   }
   CHECK(cache_entry);
   if (cache_entry->fall_back_to_python) {
@@ -802,6 +846,7 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
       });
 
   // Only for testing purposes
+  jitlib.def("_is_trivial", &HasTrivialLazyExpr);
   jitlib.def("_ScalarToBuffer", [](py::handle scalar, bool jax_enable_x64,
                                    std::shared_ptr<xla::PyClient> client) {
     xla::PjRtClient* pjrt_client = client->pjrt_client();
