@@ -30,6 +30,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["util_test.py"],
     shard_count = 3,
+    tags = ["notsan"],  # TODO(b/170335592): re-enable.
     xla_enable_strict_auto_jit = False,  # TODO(b/144920376)
     deps = [
         "//tensorflow/python:array_ops",
@@ -62,6 +63,7 @@ cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["beta_test.py"],
+    tags = ["notsan"],  # TODO(b/170335592): re-enable.
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client",
@@ -114,6 +116,7 @@ cuda_py_test(
     name = "dirichlet_test",
     size = "small",
     srcs = ["dirichlet_test.py"],
+    tags = ["notsan"],  # TODO(b/170335592): re-enable.
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -192,6 +195,7 @@ cuda_py_test(
 cuda_py_test(
     name = "multinomial_test",
     srcs = ["multinomial_test.py"],
+    tags = ["notsan"],  # TODO(b/170335592): re-enable.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -216,6 +220,7 @@ cuda_py_test(
         # disable to avoid false positives from scipy.
         "nomsan",
         "noasan",  #b/168810473
+        "notsan",  # TODO(b/170335592): re-enable.
     ],
     deps = [
         "//tensorflow/python:client_testlib",
