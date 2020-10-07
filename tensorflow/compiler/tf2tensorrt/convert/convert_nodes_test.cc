@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -6797,7 +6798,7 @@ void TestConvertResize(OpConverterTest* test) {
 
 // This use case is not supported as of TRT version 7.1
 #if IS_TRT_VERSION_GE(7, 1, 0, 0)
-  if (OpType == ops::ResizeBilinear) {
+  if (std::is_same<OpType, ops::ResizeBilinear>::value) {
     params.erase(params.begin());
   }
 #endif
