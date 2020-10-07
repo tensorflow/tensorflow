@@ -876,30 +876,13 @@ class CopyRemover {
   // We cannot use LiveRangeStrictlyBefore because HloValue::uses() is not
   // updated as copies are removed.
   bool LiveRangeBefore(const ValueNode& a, const ValueNode& b) {
-    VLOG(3) << "Checking live range of " << *a.value << " WRT " << *b.value;
-    bool is_live_range_before = [&] {
-      if (a.uses.empty()) {
-        VLOG(2) << "Empty uses for " << *a.value;
-        return ordering_.IsDefinedBefore(*a.value, *b.value);
-      }
-      for (const HloUse* use : a.uses) {
-        VLOG(3) << "Checking use " << *use << " against " << *b.value;
-        if (!ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_)) {
-          VLOG(2) << "Use " << *use << " is NOT before " << *b.value;
-          return false;
-        }
-        VLOG(3) << "Use " << *use << " is before " << *b.value;
-      }
-      return true;
-    }();
-    if (is_live_range_before) {
-      VLOG(2) << "  Live range of " << a.value->ToShortString() << " is before "
-              << b.value->ToShortString();
-    } else {
-      VLOG(2) << "  Live range of " << a.value->ToShortString()
-              << " is not before " << b.value->ToShortString();
+    if (a.uses.empty()) {
+      VLOG(2) << "Empty uses for " << *a.value;
+      return ordering_.IsDefinedBefore(*a.value, *b.value);
     }
-    return is_live_range_before;
+    return absl::c_all_of(a.uses, [&](const HloUse* use) {
+      return ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_);
+    });
   }
 
   // Returns whether 'node' is the last node in its list.
