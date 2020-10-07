@@ -6,6 +6,8 @@ TENSORFLOW_API_INIT_FILES = [
     "__init__.py",
     "__internal__/__init__.py",
     "__internal__/decorator/__init__.py",
+    "__internal__/distribute/__init__.py",
+    "__internal__/distribute/combinations/__init__.py",
     "__internal__/test/__init__.py",
     "__internal__/test/combinations/__init__.py",
     "__internal__/tracking/__init__.py",

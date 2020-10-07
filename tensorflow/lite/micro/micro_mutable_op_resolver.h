@@ -36,8 +36,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   explicit MicroMutableOpResolver(ErrorReporter* error_reporter = nullptr)
       : error_reporter_(error_reporter) {}
 
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
     if (op == BuiltinOperator_CUSTOM) return nullptr;
 
@@ -347,6 +345,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_RSQRT(), ParseRsqrt);
   }
 
+  TfLiteStatus AddShape() {
+    return AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE(), ParseShape);
+  }
+
   TfLiteStatus AddSin() {
     return AddBuiltin(BuiltinOperator_SIN, tflite::ops::micro::Register_SIN(),
                       ParseSin);
@@ -406,6 +408,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int GetRegistrationLength() { return registrations_len_; }
 
  private:
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
                           const TfLiteRegistration& registration,
                           MicroOpResolver::BuiltinParseFunction parser) {

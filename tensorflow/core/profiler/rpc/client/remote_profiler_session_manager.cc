@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -129,8 +128,7 @@ Status RemoteProfilerSessionManager::Init() {
     clients_.push_back(std::move(client));
   }
 
-  LOG(INFO) << absl::StrFormat("Issued Profile gRPC to %u clients",
-                               clients_.size());
+  LOG(INFO) << "Issued Profile gRPC to " << clients_.size() << " clients";
   return Status::OK();
 }
 

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
 
-#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/platform.h"
@@ -100,7 +99,8 @@ TEST(RemoteProfilerSessionManagerTest, LongSession) {
   auto server = StartServer(duration, &service_addresses);
   options.add_service_addresses(service_addresses);
   absl::Time approx_start = absl::Now();
-  absl::Duration grace = absl::Seconds(2);
+  // Empirically determined value.
+  absl::Duration grace = absl::Seconds(20);
   absl::Duration max_duration = duration + grace;
   options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
   options.set_session_creation_timestamp_ns(absl::ToUnixNanos(approx_start));

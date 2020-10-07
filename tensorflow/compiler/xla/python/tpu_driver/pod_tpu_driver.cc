@@ -17,6 +17,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/grpc_tpu_driver.h"
@@ -78,7 +79,11 @@ class CombinedEvent : public PodEvent {
  public:
   explicit CombinedEvent(PodTpuDriver* driver, int64_t operation_id,
                          std::vector<std::shared_ptr<Event>> events)
-      : PodEvent(driver, operation_id), events_(events) {}
+      : PodEvent(driver, operation_id), events_(events) {
+    for (auto& event : events_) {
+      event->AddCallback([this](Status s) { IncrementAndCheckComplete(s); });
+    }
+  }
 
   xla::Status Await() override {
     for (auto& event : events_) {
@@ -89,9 +94,10 @@ class CombinedEvent : public PodEvent {
 
   absl::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) override {
-    // TODO(frankchn): This might extend the timeout.
     for (auto& event : events_) {
+      auto start_time = absl::Now();
       auto status = event->AwaitWithTimeout(duration);
+      duration -= absl::Now() - start_time;
       if (status == absl::nullopt) {
         return absl::nullopt;
       } else {
@@ -102,12 +108,41 @@ class CombinedEvent : public PodEvent {
   }
 
   void AddCallback(std::function<void(Status)> callback) override {
-    // TODO(frankchn): This may return before every event is done.
-    events_[0]->AddCallback(std::move(callback));
+    absl::MutexLock l(&mu_);
+    if (events_completed_ == events_.size()) {
+      callback(event_status_);
+    } else {
+      callbacks_.push_back(std::move(callback));
+    }
   }
 
  private:
+  void IncrementAndCheckComplete(Status s) {
+    std::vector<std::function<void(Status)>> callbacks;
+    {
+      absl::MutexLock l(&mu_);
+
+      event_status_ = s;
+      events_completed_++;
+      if (events_completed_ == events_.size()) {
+        // Copy callbacks to a temporary to be invoked outside the mutex.
+        callbacks.assign(callbacks_.begin(), callbacks_.end());
+        callbacks_.clear();
+      } else {
+        return;
+      }
+    }
+
+    for (const auto& callback : callbacks) {
+      callback(event_status_);
+    }
+  }
+
+  absl::Mutex mu_;
   std::vector<std::shared_ptr<Event>> events_;
+  std::vector<std::function<void(Status)>> callbacks_ ABSL_GUARDED_BY(mu_);
+  int64_t events_completed_ ABSL_GUARDED_BY(mu_) = 0;
+  Status event_status_;
 };
 
 class PodBufferHandle : public BufferHandle {
@@ -196,6 +231,14 @@ class PodTpuDriver : public TpuDriver {
         event_thread_(tensorflow::Env::Default(), "grpc_pod_event_thread") {
     std::vector<std::string> workers = absl::StrSplit(
         absl::StripPrefix(config.worker(), kPodTpuDriverPrefix), ',');
+
+    int worker_count = 0;
+
+    // Flag for environments where local core # == all cores in TPU system #,
+    // which means that we are connecting to separate TPU systems or we are in
+    // a test environment.
+    bool in_local_core_environment = false;
+
     for (const auto& worker : workers) {
       TpuDriverConfig worker_config(config_);
       *(worker_config.mutable_worker()) = absl::StrCat("grpc://", worker);
@@ -204,7 +247,15 @@ class PodTpuDriver : public TpuDriver {
 
       SystemInfo driver_info;
       tpu_driver->QuerySystemInfo(&driver_info);
-      drivers_.insert({driver_info.host_id(), std::move(tpu_driver)});
+
+      if (driver_info.core_count() == driver_info.local_core_size()) {
+        drivers_.insert({worker_count, std::move(tpu_driver)});
+        in_local_core_environment = true;
+      } else {
+        drivers_.insert({driver_info.host_id(), std::move(tpu_driver)});
+      }
+
+      worker_count++;
     }
 
     absl::flat_hash_set<std::tuple<int, int, int>> processed_chips;
@@ -231,9 +282,13 @@ class PodTpuDriver : public TpuDriver {
     }
 
     // Process all the unique chips that we have seen.
+    int core_count = 0;
     for (auto& tpu_chip : *pod_info_.mutable_tpu_chip()) {
       for (auto& tpu_core : *tpu_chip.mutable_core()) {
         int current_core = tpu_core.id();
+        if (in_local_core_environment) {
+          current_core = core_count;
+        }
 
         core_to_driver_.insert(
             {current_core, drivers_[tpu_chip.host_id()].get()});
@@ -243,6 +298,8 @@ class PodTpuDriver : public TpuDriver {
         tpu_core.set_id(current_core);
         tpu_core.set_core_on_host_index(current_core);
         *(pod_info_.add_local_core()) = tpu_core;
+
+        core_count++;
       }
 
       // We are setting host_id to zero because we want this to look like one

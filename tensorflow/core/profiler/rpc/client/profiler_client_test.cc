@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
@@ -125,7 +124,7 @@ TEST(RemoteProfilerSession, LongDuration) {
 
   absl::Time approx_start = absl::Now();
   // Empirically determined value.
-  absl::Duration grace = absl::Seconds(2);
+  absl::Duration grace = absl::Seconds(20);
   absl::Duration max_duration = duration + grace;
   const absl::Time deadline = approx_start + max_duration;
 

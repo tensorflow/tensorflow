@@ -83,7 +83,9 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     // The map that stores the live experiment names and for how much percentage
     // of the Borg jobs, the experiments will be randomly turned on.
     // clang-format off
-    absl::flat_hash_map<string, uint64> live_experiments;
+    absl::flat_hash_map<string, uint64> live_experiments = {
+        {"enable_gradient_descent", 1}
+    };
     // clang-format on
     auto hash_func = [](const string& str) { return Hash64(str); };
     optimizations = SelectOptimizations(

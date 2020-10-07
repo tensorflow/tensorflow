@@ -349,6 +349,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "ragged_keras_tensor_test",
+    size = "small",
+    srcs = ["ragged_keras_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    tfrt_enabled = True,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "input_spec_test",
     size = "small",
     srcs = ["input_spec_test.py"],

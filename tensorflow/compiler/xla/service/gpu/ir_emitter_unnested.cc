@@ -1623,9 +1623,10 @@ Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  CollectivePermuteConfig config = GetCollectivePermuteConfig(hlo);
   AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
-      GetThunkInfo(hlo), GetAllocationSlice(*hlo->operand(0)),
-      GetAllocationSlice(*hlo)));
+      GetThunkInfo(hlo), std::move(config),
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo)));
   return Status::OK();
 }
 
@@ -1657,9 +1658,9 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
           *crs, crs->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
       tuple_element_buffers.push_back(buffers[i].destination_buffer);
     }
+    NcclAllReduceConfig config = GetNcclAllReduceConfig(crs);
     auto all_reduce_thunk = absl::make_unique<NcclAllReduceThunk>(
-        GetThunkInfo(crs),
-        /*replica_count=*/hlo_module_config_.replica_count(),
+        GetThunkInfo(crs), std::move(config),
         /*buffers=*/std::move(buffers));
     if (crs->shape().IsTuple()) {
       std::vector<std::unique_ptr<Thunk>> thunks;
@@ -2251,11 +2252,19 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
       IrEmitterUnnested::Create(hlo_module_config_, body, ir_emitter_context_));
   TF_RETURN_IF_ERROR(body->Accept(ir_emitter_body.get()));
 
+  const auto* index_map = ir_emitter_context_->profile_index_map();
+  absl::optional<size_t> condition_profile_index, body_profile_index;
+  if (index_map) {
+    condition_profile_index = index_map->GetProfileIndexFor(*condition);
+    body_profile_index = index_map->GetProfileIndexFor(*body);
+  }
+
   return std::unique_ptr<Thunk>(new WhileThunk(
       GetThunkInfo(hlo),
       GetAllocationSlice(*condition->root_instruction()),  // cond result
       ir_emitter_condition->ConsumeThunkSequence(),
-      ir_emitter_body->ConsumeThunkSequence()));
+      ir_emitter_body->ConsumeThunkSequence(), condition_profile_index,
+      body_profile_index));
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
@@ -2271,8 +2280,15 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
       IrEmitterUnnested::Create(hlo_module_config_, body, ir_emitter_context_));
   TF_RETURN_IF_ERROR(body->Accept(ir_emitter_body.get()));
 
+  const auto* index_map = ir_emitter_context_->profile_index_map();
+  absl::optional<size_t> body_profile_index;
+  if (index_map) {
+    body_profile_index = index_map->GetProfileIndexFor(*body);
+  }
+
   return std::unique_ptr<Thunk>(new ForThunk(
-      GetThunkInfo(hlo), loop_limit, ir_emitter_body->ConsumeThunkSequence()));
+      GetThunkInfo(hlo), loop_limit, ir_emitter_body->ConsumeThunkSequence(),
+      body_profile_index));
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(
@@ -2284,7 +2300,15 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(
 
   std::vector<BufferAllocation::Slice> branch_operands;
   std::vector<ThunkSequence> branch_thunks;
-  for (int j = 0; j < hlo->branch_count(); ++j) {
+  std::vector<absl::optional<size_t>> branch_profile_indices;
+
+  int branch_count = hlo->branch_count();
+  branch_thunks.reserve(branch_count);
+  branch_profile_indices.reserve(branch_count);
+
+  const auto* index_map = ir_emitter_context_->profile_index_map();
+
+  for (int j = 0; j < branch_count; ++j) {
     branch_operands.emplace_back(GetAllocationSlice(*hlo->operand(j + 1)));
     HloComputation* branch_computation = hlo->branch_computation(j);
     TF_ASSIGN_OR_RETURN(
@@ -2293,17 +2317,25 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(
                                   ir_emitter_context_));
     TF_CHECK_OK(branch_computation->Accept(ir_emitter.get()));
     branch_thunks.push_back(std::move(*ir_emitter->ConsumeThunkSequence()));
+
+    absl::optional<size_t> profile_index;
+    if (index_map) {
+      profile_index = index_map->GetProfileIndexFor(*branch_computation);
+    }
+    branch_profile_indices.push_back(profile_index);
   }
 
+  ConditionalThunkConfig config = GetConditionalThunkConfig(
+      hlo, std::move(branch_thunks), std::move(branch_profile_indices));
   return std::unique_ptr<Thunk>(new ConditionalThunk(
-      GetThunkInfo(hlo), GetAllocationSlice(*hlo->operand(0)), branch_operands,
-      std::move(branch_thunks)));
+      GetThunkInfo(hlo), std::move(config),
+      GetAllocationSlice(*hlo->operand(0)), branch_operands));
 }
 
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk,
-    int unroll_factor) {
+    int unroll_factor, bool few_waves) {
   VLOG(3) << bindings_.ToString();
 
   bool multi_output = hlo.shape().IsTuple();
@@ -2314,7 +2346,8 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
           << ShapeUtil::HumanStringWithLayout(hlo.shape())
           << " for unroll_factor " << unroll_factor;
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
+      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor,
+      few_waves);
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
   if (!multi_output) {
@@ -2400,8 +2433,27 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
 
   std::unique_ptr<KernelThunk> kernel_thunk =
       BuildKernelThunk(&hlo, /*implements_whole_instruction=*/true);
+
+  // Check if we want to schedule grid size that has fewer SM waves.
+  // This speed up computations in some cases.
+  bool few_waves = false;
+  auto few_waves_allow_instr = [](const HloInstruction* instr) {
+    return instr->IsElementwise() || instr->opcode() == HloOpcode::kParameter ||
+           // We need to make the codegen broadcast aware before enabling
+           // more broadcast pattern.
+           (instr->opcode() == HloOpcode::kBroadcast &&
+            instr->dimensions().empty());
+  };
+  if (hlo.opcode() == HloOpcode::kFusion) {
+    few_waves =
+        absl::c_all_of(hlo.fused_instructions_computation()->instructions(),
+                       few_waves_allow_instr);
+  } else {
+    few_waves = few_waves_allow_instr(&hlo);
+  }
+
   Status emit_status = EmitTargetElementLoopInThunk(
-      hlo, body_emitter, kernel_thunk.get(), unroll_factor);
+      hlo, body_emitter, kernel_thunk.get(), unroll_factor, few_waves);
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
 
   return emit_status;
