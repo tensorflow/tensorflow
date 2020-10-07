@@ -18,6 +18,7 @@ cc_library(
     srcs = ["diagnostics.cc"],
     hdrs = ["diagnostics.h"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
@@ -119,6 +120,7 @@ cc_library(
     srcs = ["tf_op_utils.cc"],
     hdrs = ["tf_op_utils.h"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
         "@com_google_absl//absl/strings",
     ],
