@@ -61,7 +61,7 @@ class ConvolutionThunk : public Thunk {
   BufferAllocation::Slice tuple_result_buffer_;
 
   // Convolution config
-  GpuConvConfig config_;
+  const GpuConvConfig config_;
 };
 
 }  // namespace gpu

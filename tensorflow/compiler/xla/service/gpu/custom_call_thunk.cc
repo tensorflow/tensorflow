@@ -24,12 +24,12 @@ namespace gpu {
 CustomCallThunk::CustomCallThunk(
     ThunkInfo thunk_info, void* call_target,
     std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices,
-    ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque)
+    ShapeTree<BufferAllocation::Slice> result_slices, const std::string& opaque)
     : Thunk(Thunk::kCustomCall, thunk_info),
       call_target_(call_target),
       operand_slices_(std::move(operand_slices)),
       result_slices_(std::move(result_slices)),
-      opaque_(std::move(opaque)) {}
+      opaque_(opaque) {}
 
 // For each leaf in a preorder traversal of `slices`, appends its device address
 // to `buffers`.
