@@ -265,6 +265,7 @@ cc_library(
         ":target_util",
         ":thunk",
         ":thunk_emitter",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/xla:hlo_utils",

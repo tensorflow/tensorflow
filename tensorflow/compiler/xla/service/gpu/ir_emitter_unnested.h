@@ -58,7 +58,6 @@ struct MlirBufferSlice : public BufferSlice {
 
 struct MlirEmitterInput {
   mlir::Operation* op;
-  absl::string_view name;
   Thunk::ThunkInfo thunk_info;
   MlirBufferSlice extra_slice;
 };
