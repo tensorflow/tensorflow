@@ -337,6 +337,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
+    python_version = "PY3",
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
