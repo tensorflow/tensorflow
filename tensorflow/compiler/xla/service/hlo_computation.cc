@@ -315,6 +315,8 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   (*inst_it->second)->set_parent(nullptr);
   to_be_deleted_.emplace_back(inst_it->second->release());
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
+  // Clear all operands to avoid Null operands.
+  to_be_deleted_.back()->RemoveAllOperands();
   to_be_deleted_.back()->MarkAsDead();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);
