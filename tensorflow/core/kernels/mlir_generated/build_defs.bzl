@@ -47,7 +47,7 @@ def _gen_kernel_gpu_bin_impl(ctx):
 
     gpu_bins = []
     for arch in ctx.attr.gpu_archs:
-        # TODO(b/152737872): 'compute_' should generate both SASS and PTX.
+        # TODO(b/170283783): 'compute_' should generate both SASS and PTX.
         arch = arch.replace("compute_", "sm_")
         filename = "%s.%s.bin" % (name, arch)
         gpu_bin = ctx.actions.declare_file(filename)
@@ -57,8 +57,7 @@ def _gen_kernel_gpu_bin_impl(ctx):
             executable = ctx.executable._tool,
             arguments = cmd_args + [
                 "--tile_sizes=%s" % tile_sizes,
-                # For ROCM, remove the "gfx" prefix. For CUDA, remove the "sm_" prefix.
-                "--arch=%s" % arch[3:],
+                "--arch=%s" % arch,
                 "--input=%s" % ctx.file.mlir_op.path,
                 "--output=%s" % gpu_bin.path,
             ],
@@ -289,24 +288,13 @@ def if_mlir_unranked_kernels_enabled(if_true, if_false = []):
 
 def _gen_unranked_kernel_fatbin_impl(ctx):
     name = ctx.attr.name
-    tile_sizes = ctx.attr.tile_size.replace("x", ",")
     cmd_args = []
     if ctx.attr.unroll_factors:
         cmd_args.append("--unroll_factors=%s" % ctx.attr.unroll_factors)
     if ctx.attr.extra_args:
         cmd_args.extend(ctx.attr.extra_args)
-
-    gpu_bins = []
-    archs_trimmed = []
-    for arch in ctx.attr.gpu_archs:
-        # TODO(b/169066682): Add support for the 'sm_'/'compute_' distinction.
-        arch = arch.replace("compute_", "sm_")
-
-        # For ROCM, remove the "gfx" prefix. For CUDA, remove the "sm_" prefix.
-        archs_trimmed.append(arch[3:])
-    arch_flag = ",".join(archs_trimmed)
-
-    filename = "%s.a" % (name)
+    tile_sizes = ctx.attr.tile_size.replace("x", ",")
+    arch_flag = ",".join(ctx.attr.gpu_archs)
     gpu_bin = ctx.outputs.output
     ctx.actions.run(
         inputs = [ctx.file.mlir_op],

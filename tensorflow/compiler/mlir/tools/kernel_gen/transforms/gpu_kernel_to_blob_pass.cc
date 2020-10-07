@@ -51,7 +51,7 @@ class GpuKernelToBlobPass
     : public GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
-                      llvm::ArrayRef<uint32_t> architectures,
+                      llvm::ArrayRef<std::string> architectures,
                       bool generate_fatbin) {
     blob_annotation_ = blob_annotation.str();
     architectures_ = architectures;
@@ -100,9 +100,19 @@ class GpuKernelToBlobPass
       return InternalError("Fatbins are not yet supported for ROCm.");
     }
 
-    uint32_t arch = architectures_.front();
+    // Parse ROCm architecture.
+    absl::string_view consumable_arch(architectures_.front());
+    if (!absl::ConsumePrefix(&consumable_arch, "gfx")) {
+      return InternalError(
+          "Could not parse ROCm architecture prefix (expected gfx)");
+    }
+    uint32_t arch;
+    if (!absl::SimpleAtoi(consumable_arch, &arch)) {
+      return InternalError("Could not parse ROCm architecture number");
+    }
+
     std::string libdevice_dir = tensorflow::RocdlRoot();
-    return xla::gpu::amdgpu::CompileToHsaco(llvmModule.get(), arch, config,
+    return xla::gpu::amdgpu::CompileToHsaco(llvmModule.get(), arch_, config,
                                             libdevice_dir);
 
 #elif GOOGLE_CUDA
@@ -125,9 +135,26 @@ class GpuKernelToBlobPass
     std::vector<tensorflow::se::CubinOrPTXImage> images;
     TF_ASSIGN_OR_RETURN(std::string libdevice_dir, GetLibdeviceDir(config));
     auto gpu_asm_opts = xla::gpu::PtxOptsFromConfig(config);
-    for (uint32_t arch : architectures_) {
-      int32_t cc_major = arch / 10;
-      int32_t cc_minor = arch % 10;
+    for (const std::string& arch_str : architectures_) {
+      // Parse CUDA architecture.
+      absl::string_view consumable_arch(arch_str);
+      bool is_compute_profile;
+      if (absl::ConsumePrefix(&consumable_arch, "compute_")) {
+        is_compute_profile = true;
+      } else if (absl::ConsumePrefix(&consumable_arch, "sm_")) {
+        is_compute_profile = false;
+      } else {
+        return InternalError(
+            "Could not parse cuda architecture prefix (expected sm_ or "
+            "compute_)");
+      }
+      uint32_t arch;
+      if (!absl::SimpleAtoi(consumable_arch, &arch)) {
+        return InternalError("Could not parse cuda architecture number");
+      }
+
+      uint32_t cc_major = arch / 10;
+      uint32_t cc_minor = arch % 10;
       // Module may be changed by CompileToPtx.
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       TF_ASSIGN_OR_RETURN(
@@ -135,7 +162,6 @@ class GpuKernelToBlobPass
           xla::gpu::nvptx::CompileToPtx(llvm_module_copy.get(),
                                         std::make_pair(cc_major, cc_minor),
                                         config, libdevice_dir, enable_fusion));
-      // TODO(b/169066682): If compute_XX profile, collect PTX image here.
       VLOG(1) << ptx;
       TF_ASSIGN_OR_RETURN(std::vector<uint8_t> gpu_asm,
                           tensorflow::se::CompileGpuAsm(
@@ -143,12 +169,19 @@ class GpuKernelToBlobPass
 
       if (!generate_fatbin_) {
         // Skip fatbin generation and return the first and only GPU machine
-        // code.
+        // code. This is currently only used for `tf_to_gpu_binary` and will
+        // eventually disappear.
         return gpu_asm;
       }
 
-      // Collect cubin image.
+      // Collect cubin (and ptx image if requested).
       images.push_back({absl::StrCat("sm_", arch), std::move(gpu_asm)});
+      if (is_compute_profile) {
+        std::vector<uint8_t> ptx_bytes;
+        std::copy(ptx.begin(), ptx.end(), std::back_inserter(ptx_bytes));
+        images.push_back(
+            {absl::StrCat("compute_", arch), std::move(ptx_bytes)});
+      }
     }
 
     // TODO(b/169870789): Revisit the use of fatbins.
@@ -183,7 +216,7 @@ class GpuKernelToBlobPass
 }  // namespace
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
-    mlir::StringRef blob_annotation, ArrayRef<uint32_t> architectures,
+    mlir::StringRef blob_annotation, ArrayRef<std::string> architectures,
     bool generate_fatbin) {
   return std::make_unique<GpuKernelToBlobPass>(blob_annotation, architectures,
                                                generate_fatbin);

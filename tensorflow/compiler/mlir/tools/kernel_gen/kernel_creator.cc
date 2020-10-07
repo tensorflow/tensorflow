@@ -174,7 +174,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
 Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
                       llvm::ArrayRef<uint32_t> same_shape,
                       llvm::StringRef gpu_binary_attr_name,
-                      llvm::ArrayRef<uint32_t> architectures,
+                      llvm::ArrayRef<std::string> architectures,
                       bool generate_fatbin) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
@@ -203,8 +203,8 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
 
 StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
-    llvm::ArrayRef<uint32_t> architectures, llvm::ArrayRef<uint32_t> tile_sizes,
-    llvm::ArrayRef<uint32_t> same_shape,
+    llvm::ArrayRef<std::string> architectures,
+    llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
     llvm::ArrayRef<uint32_t> unroll_factors, bool generate_fatbin) {
   mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);

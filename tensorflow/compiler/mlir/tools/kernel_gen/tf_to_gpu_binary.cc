@@ -35,7 +35,7 @@ namespace kernel_gen {
 namespace {
 
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-                int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
+                std::string architecture, llvm::ArrayRef<uint32_t> tile_sizes,
                 llvm::ArrayRef<uint32_t> same_shape,
                 llvm::ArrayRef<uint32_t> unroll_factors) {
   // Read TF code.
@@ -69,9 +69,9 @@ int main(int argc, char** argv) {
   llvm::cl::opt<std::string> output_file(
       "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
       llvm::cl::init("foo.bin"));
-  llvm::cl::opt<int32_t> architecture(
-      "arch", llvm::cl::desc("target architecture (e.g. 50 for sm_50)"),
-      llvm::cl::init(50));
+  llvm::cl::opt<std::string> architecture(
+      "arch", llvm::cl::desc("target architecture (e.g. sm_50)"),
+      llvm::cl::init("sm_50"));
   llvm::cl::list<uint32_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
       llvm::cl::CommaSeparated);

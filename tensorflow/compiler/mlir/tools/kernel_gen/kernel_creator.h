@@ -38,7 +38,7 @@ namespace kernel_gen {
 // false, lowers the host side to LLVM Dialect.
 xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
-    llvm::ArrayRef<uint32_t> architectures = {75},
+    llvm::ArrayRef<std::string> architectures = {"sm_75"},
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
     llvm::ArrayRef<uint32_t> same_shape = {},
     llvm::ArrayRef<uint32_t> unroll_factors = {}, bool generate_fatbin = true);

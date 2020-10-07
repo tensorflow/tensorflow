@@ -53,7 +53,7 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let options = [
     Option<"blob_annotation_", "blob-annotation", "std::string",
            /*default=*/"", "Blob attribute name">,
-    ListOption<"architectures_", "arch", "uint32_t", "GPU architectures">,
+    ListOption<"architectures_", "arch", "std::string", "GPU architectures">,
     Option<"generate_fatbin_", "generate-fatbin", "bool", /*default=*/"true",
            "Bundle machine code for the different architectures in one "
            "fatbin.">,
