@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_builder.h"
 
-#include "external/coremltools/mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_factory.h"
