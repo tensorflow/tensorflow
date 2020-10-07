@@ -31,6 +31,7 @@ namespace tflite {
 // (https://abseil.io/tips/130). Any new ops (or cleanup of existing ops should
 // have their Register function declarations in the tflite namespace.
 
+TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_SHAPE();
 
 namespace ops {
@@ -44,7 +45,6 @@ TfLiteRegistration Register_AVERAGE_POOL_2D();
 TfLiteRegistration Register_CEIL();
 // TODO(b/160234179): Change custom OPs to also return by value.
 TfLiteRegistration* Register_CIRCULAR_BUFFER();
-TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_CONCATENATION();
 TfLiteRegistration Register_COS();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();

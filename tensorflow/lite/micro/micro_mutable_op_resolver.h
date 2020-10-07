@@ -150,8 +150,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddConv2D() {
-    return AddBuiltin(BuiltinOperator_CONV_2D,
-                      tflite::ops::micro::Register_CONV_2D(), ParseConv2D);
+    return AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(), ParseConv2D);
   }
 
   TfLiteStatus AddCos() {
@@ -465,7 +464,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int num_buitin_ops_ = 0;
 
   ErrorReporter* error_reporter_;
-
 };
 
 };  // namespace tflite
