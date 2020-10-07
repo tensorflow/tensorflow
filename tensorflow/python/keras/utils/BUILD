@@ -56,21 +56,34 @@ py_library(
     name = "data_utils",
     srcs = ["data_utils.py"],
     srcs_version = "PY2AND3",
-    deps = [":generic_utils"],
+    deps = [
+        ":generic_utils",
+        ":io_utils",
+        ":tf_inspect",
+    ],
 )
 
 py_library(
     name = "engine_utils",
     srcs = [
         "conv_utils.py",
-        "io_utils.py",
         "losses_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":data_utils",
+        ":io_utils",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/ops/losses:loss_reduction",
+    ],
+)
+
+py_library(
+    name = "io_utils",
+    srcs = ["io_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "@six_archive//:six",
     ],
 )
 
@@ -99,6 +112,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":tf_contextlib",
+        ":tf_inspect",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
