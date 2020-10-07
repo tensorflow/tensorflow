@@ -42,6 +42,12 @@ auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
     // Power of 2 with bucket count 20 (> 17 minutes)
     {monitoring::Buckets::Exponential(1000, 2, 20)});
 
+auto* graph_pending_queue_length_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/core/graph_pending_queue_length_histogram",
+     "The number of pending (ready but not running) tasks in graph executor."},
+    // Power of 1.5 with bucket count 30 (> 191k)
+    {monitoring::Buckets::Exponential(1, 1.5, 30)});
+
 auto* graph_run_input_tensor_bytes = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_input_tensor_bytes",
      "The size of input tensors in bytes."},
@@ -250,6 +256,12 @@ void UpdateGraphExecTime(const uint64 running_time_usecs) {
     graph_run_time_usecs_cell->IncrementBy(running_time_usecs);
     graph_run_time_usecs_histogram_cell->Add(running_time_usecs);
   }
+}
+
+void UpdateGraphPendingQueueLength(uint64 len) {
+  static auto* graph_pending_queue_length_cell =
+      graph_pending_queue_length_histogram->GetCell();
+  graph_pending_queue_length_cell->Add(len);
 }
 
 void UpdateGraphOptimizationPassTime(const string& pass_name,

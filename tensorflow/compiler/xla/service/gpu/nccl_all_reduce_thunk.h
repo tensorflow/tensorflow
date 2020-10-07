@@ -91,7 +91,7 @@ class NcclAllReduceThunk : public Thunk {
   static bool CanImplement(const HloInstruction* crs);
 
  private:
-  NcclAllReduceConfig config_;
+  const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
 };
 

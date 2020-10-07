@@ -1,4 +1,5 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -17,6 +18,7 @@ py_library(
     srcs = [
         "interpreter.py",
     ],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -128,6 +130,7 @@ py_library(
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
+        "//tensorflow/lite/python/keras/saving:saving_utils",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/keras",

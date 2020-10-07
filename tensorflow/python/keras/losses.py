@@ -183,7 +183,7 @@ class Loss(object):
     Returns:
       Loss values with the shape `[batch_size, d0, .. dN-1]`.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""

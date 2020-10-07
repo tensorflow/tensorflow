@@ -1438,4 +1438,4 @@ def _make_index_slices(values, indices, dense_shape=None):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  ds_test_util.main()

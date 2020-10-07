@@ -169,6 +169,46 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_client",
+    srcs = ["tpu_client.cc"],
+    hdrs = ["tpu_client.h"],
+    visibility = [
+        "//learning/brain/research/jax:__subpackages__",
+        "//learning/deepmind/tensorflow/tensorfn:__subpackages__",
+        "//learning/pathways:__subpackages__",
+    ],
+    deps = [
+        ":local_device_state",
+        ":pjrt_client",
+        ":tracked_device_buffer",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
+        "//tensorflow/core/tpu:tpu_on_demand_compiler",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
+        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
+        "//tensorflow/stream_executor/tpu:tpu_executor_interface",
+        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "//tensorflow/stream_executor/tpu:tpu_topology_external",
+        "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "interpreter_device",
     srcs = ["interpreter_device.cc"],
     hdrs = ["interpreter_device.h"],

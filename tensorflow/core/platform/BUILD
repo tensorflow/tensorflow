@@ -1013,6 +1013,7 @@ cc_library(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tf_cc_tests(

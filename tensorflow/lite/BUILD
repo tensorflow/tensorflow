@@ -673,6 +673,7 @@ cc_library(
 cc_library(
     name = "stateful_error_reporter",
     hdrs = ["stateful_error_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = ["//tensorflow/lite/core/api"],
 )
 

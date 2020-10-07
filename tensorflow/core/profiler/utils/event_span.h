@@ -197,6 +197,9 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
 // Returns the name of the given EventType.
 std::string PrintEventType(EventType event_type);
 
+// Returns the label of the given EventType.
+std::string PrintEventTypeLabel(EventType event_type);
+
 // Returns a string that prints the given EventTypeSpan.
 std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span);
 
