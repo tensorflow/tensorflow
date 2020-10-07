@@ -5334,7 +5334,7 @@ def fractional_max_pool_v2(value,
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
       ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
-  if(isinstance(pooling_ratio, list)):
+  if(isinstance(pooling_ratio,(list,tuple))):
     if(pooling_ratio[0] != 1.0 or pooling_ratio[-1] != 1.0):
       raise ValueError(
           "The first and last elements of pooling ratio must be 1.0."
@@ -5345,8 +5345,7 @@ def fractional_max_pool_v2(value,
             "pooling_ratio should be >= 1.0."
         )
   elif(
-      isinstance(pooling_ratio, int) or isinstance(pooling_ratio, float)
-  ):
+      isinstance(pooling_ratio,(int,float))):
     if pooling_ratio < 1.0: 
       raise ValueError(
           "pooling_ratio should be >= 1.0."
