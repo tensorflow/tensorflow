@@ -503,7 +503,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
     input_data = self._GenerateUniqueRandomInputTensor(input_shape)
     # Add some randomness to make input_data not so 'integer'
     input_data += self._PRNG.random_sample(input_shape)
-    pooling_ratio = [1, math.sqrt(13), math.sqrt(7), 1]
+    pooling_ratio = (1, math.sqrt(13), math.sqrt(7), 1)
     output_shape = [int(a / b) for a, b in zip(input_shape, pooling_ratio)]
     overlapping = True
     pseudo_random = False
