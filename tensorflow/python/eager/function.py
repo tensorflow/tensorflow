@@ -2281,10 +2281,16 @@ class ConcreteFunction(object):
       lines.append("  Args:")
       lines.extend(arg_details)
     lines.append("  Returns:")
+
+    def spec_from_value(value):
+      # For loaded function, structured_outputs are already specs.
+      if isinstance(value, type_spec.TypeSpec):
+        return value
+      return type_spec.type_spec_from_value(value)
+
     lines.append("    {}".format(
         pretty_print_spec(
-            nest.map_structure(type_spec.type_spec_from_value,
-                               self.structured_outputs))))
+            nest.map_structure(spec_from_value, self.structured_outputs))))
 
     return "\n".join(lines)
 
