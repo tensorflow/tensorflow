@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -370,7 +371,7 @@ REGISTER_OP("TensorListFromTensor")
                                   &tensor_shape_except_first_dim));
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});
+                 {element_shape, element_dtype, ST_TENSOR_LIST}});
       return Status::OK();
     });
 
@@ -410,7 +411,7 @@ REGISTER_OP("TensorListReserve")
       TF_RETURN_IF_ERROR(c->GetAttribute("element_dtype", &element_dtype));
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});
+                 {element_shape, element_dtype, ST_TENSOR_LIST}});
       return Status::OK();
     });
 
@@ -482,7 +483,7 @@ REGISTER_OP("TensorListSetItem")
         c->set_output_handle_shapes_and_types(0, *handle_data);
       } else {
         c->set_output_handle_shapes_and_types(
-            0, {{c->UnknownShape(), element_dtype}});
+            0, {{c->UnknownShape(), element_dtype, ST_TENSOR_LIST}});
       }
       return Status::OK();
     });
@@ -533,8 +534,8 @@ REGISTER_OP("TensorListScatter")
       shape_inference::ShapeHandle element_shape;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
           2, &element_shape));
-      c->set_output_handle_shapes_and_types(0,
-                                            {{element_shape, element_dtype}});
+      c->set_output_handle_shapes_and_types(
+          0, {{element_shape, element_dtype, ST_TENSOR_LIST}});
       c->set_output(0, c->Scalar());
       return Status::OK();
     });
@@ -553,8 +554,8 @@ REGISTER_OP("TensorListScatterV2")
       shape_inference::ShapeHandle element_shape;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
           2, &element_shape));
-      c->set_output_handle_shapes_and_types(0,
-                                            {{element_shape, element_dtype}});
+      c->set_output_handle_shapes_and_types(
+          0, {{element_shape, element_dtype, ST_TENSOR_LIST}});
       c->set_output(0, c->Scalar());
       return Status::OK();
     });
@@ -581,8 +582,8 @@ REGISTER_OP("TensorListScatterIntoExistingList")
         TF_RETURN_IF_ERROR(VerifyHandleData(c, *handle_data, element_dtype));
         element_shape = GetElementShapeFromHandleData(*handle_data);
       }
-      c->set_output_handle_shapes_and_types(0,
-                                            {{element_shape, element_dtype}});
+      c->set_output_handle_shapes_and_types(
+          0, {{element_shape, element_dtype, ST_TENSOR_LIST}});
       c->set_output(0, c->Scalar());
       return Status::OK();
     });
@@ -607,7 +608,7 @@ REGISTER_OP("TensorListConcatLists")
       bool handle_data_b_nonempty = handle_data_b && !handle_data_b->empty();
       if (!(handle_data_a_nonempty || handle_data_b_nonempty)) {
         c->set_output_handle_shapes_and_types(
-            0, {{c->UnknownShape(), element_dtype}});
+            0, {{c->UnknownShape(), element_dtype, ST_TENSOR_LIST}});
         return Status::OK();
       }
       shape_inference::ShapeAndType list_shape_type_a =

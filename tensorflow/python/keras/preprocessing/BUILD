@@ -13,8 +13,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -31,6 +29,7 @@ py_library(
         ":sequence",
         ":text",
         ":timeseries",
+        "//tensorflow/python/keras/utils:all_utils",
     ],
 )
 

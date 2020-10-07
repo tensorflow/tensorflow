@@ -571,7 +571,6 @@ cc_library(
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",

@@ -18,21 +18,18 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 
-#include "absl/strings/str_cat.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -248,22 +245,25 @@ bool IsResourceHandleAnonymous(VarHandleOp handle) {
 // Returns a string unique identifier for a non-anonymous VarHandleOp.
 std::string GetVarHandleStringId(VarHandleOp handle) {
   auto device = handle.getAttrOfType<StringAttr>("device");
-  return absl::StrCat(handle.container().str(), "/", handle.shared_name().str(),
-                      "/", device ? device.getValue().str() : std::string(""));
+  return llvm::join(
+      llvm::ArrayRef<llvm::StringRef>{
+          handle.container(), handle.shared_name(),
+          device ? device.getValue() : llvm::StringRef()},
+      "/");
 }
 
 // Finds a unique ID for a VarHandleOp's output. If it is anonymous, always
 // creates a new ID; otherwise, tries to reuse the existing ID for the
 // referenced variable if it exists, or creates a new one if not.
-int64_t GetOrCreateIdForVarHandle(VarHandleOp handle, int64_t* next_id,
-                                  llvm::StringMap<int64_t>* name_id_map) {
+int64_t GetOrCreateIdForVarHandle(VarHandleOp handle, int64_t& next_id,
+                                  llvm::StringMap<int64_t>& name_id_map) {
   // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(handle)) return (*next_id)++;
+  if (IsResourceHandleAnonymous(handle)) return next_id++;
 
   auto name = GetVarHandleStringId(handle);
-  auto emplace_res = name_id_map->try_emplace(name, *next_id);
+  auto emplace_res = name_id_map.try_emplace(name, next_id);
   // New ID created, increment next_id.
-  if (emplace_res.second) ++(*next_id);
+  if (emplace_res.second) ++next_id;
   return emplace_res.first->second;
 }
 
@@ -343,8 +343,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
       AddValueUniqueIDMapping(
           var_handle.resource(),
-          GetOrCreateIdForVarHandle(var_handle, &next_unique_id,
-                                    &var_handle_name_id_map));
+          GetOrCreateIdForVarHandle(var_handle, next_unique_id,
+                                    var_handle_name_id_map));
     } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
       for (auto result : filter_resources(op->getResults()))
         PropagateInputToOutput(op->getOperand(result.getResultNumber()),

@@ -29,6 +29,7 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -807,7 +808,7 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
       Output (N+2)-D dense tensor with shape `output_shape`.
   """
   inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
-  output_flat = K.sparse_ops.sparse_tensor_dense_mat_mul(
+  output_flat = sparse_ops.sparse_tensor_dense_mat_mul(
       kernel_idxs, kernel, kernel_shape, inputs_flat, adjoint_b=True)
   output_flat_transpose = K.transpose(output_flat)
 

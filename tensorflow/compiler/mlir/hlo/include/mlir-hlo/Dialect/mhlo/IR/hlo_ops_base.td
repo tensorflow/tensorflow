@@ -127,6 +127,17 @@ class BASE_HLO_AbsOp {
   }];
 }
 
+class BASE_HLO_CbrtOp {
+  string summary = "Cubic root operator";
+
+  string description = [{
+    Returns element-wise cubic root of the operand.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_CeilOp {
   string summary = "Ceil operator";
 
@@ -1333,6 +1344,19 @@ class BASE_HLO_WhileOp {
     true.
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
+  }];
+}
+
+class BASE_HLO_BitcastOp {
+  string summary = "Bitcast operator";
+
+  string description = [{
+    This op changes the shape of the input in the way that the physical
+    arranggment of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
   }];
 }
 

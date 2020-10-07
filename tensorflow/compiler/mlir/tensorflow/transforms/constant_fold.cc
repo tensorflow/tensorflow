@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -72,7 +73,8 @@ LogicalResult ConstantFoldFallbackHook(
     SmallVectorImpl<OpFoldResult>& results) {  // NOLINT
   // Instructions with side effects should not be constant folded to preserve
   // the original semantics.
-  if (inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
+  if (inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
+      inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
     return failure();
 
   // If any of the result types are variants, don't try to constant fold them.

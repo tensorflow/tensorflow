@@ -66,6 +66,28 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "pod_stats_proto",
+    srcs = ["pod_stats.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":diagnostics_proto",
+    ],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "pod_viewer_proto",
+    srcs = ["pod_viewer.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":diagnostics_proto",
+        ":pod_stats_proto",
+        ":op_stats_proto",
+    ],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
     name = "steps_db_proto",
     srcs = ["steps_db.proto"],
     cc_api_version = 2,

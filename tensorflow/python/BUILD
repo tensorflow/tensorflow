@@ -70,8 +70,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 # Description:
 
 py_library(
@@ -2196,7 +2194,7 @@ py_library(
 )
 
 # Including this as a dependency will result in tests to use TFRT.
-# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
+# TODO(b/170139514): Add a curated list of TFRT native ops.
 py_library(
     name = "is_tfrt_test_true",
     srcs = ["framework/is_tfrt_test_true.py"],
@@ -2500,7 +2498,6 @@ tf_py_test(
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -2822,13 +2819,13 @@ tf_py_test(
     main = "framework/test_util_test.py",
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":control_flow_ops",
         ":errors",
         ":framework_combinations",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":lookup_ops",
         ":platform_test",
         ":random_ops",
         ":resource_variable_ops",
@@ -3506,7 +3503,6 @@ tf_py_test(
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -4457,7 +4453,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/stateful_random_ops_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
     deps = [
@@ -5071,6 +5066,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/gradient_checker_v2_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5316,7 +5312,6 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 24,
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5334,7 +5329,6 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5368,7 +5362,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_xent_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -6121,9 +6114,9 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
-        "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/internal/cpu:annotation_stack_impl",  # profiler
+        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
@@ -6340,7 +6333,6 @@ tf_py_test(
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6517,7 +6509,6 @@ tf_py_test(
     srcs = ["framework/convert_to_constants_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":control_flow_v2_toggles",
@@ -6706,7 +6697,6 @@ tf_py_test(
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6721,7 +6711,6 @@ tf_py_test(
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6736,7 +6725,6 @@ tf_py_test(
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",

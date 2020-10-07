@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -85,6 +86,10 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 // initialized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64* rng_state, se::DeviceMemoryBase buffer);
+
+StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
+    CudnnConvKind kind);
+StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
 
 }  // namespace gpu
 }  // namespace xla

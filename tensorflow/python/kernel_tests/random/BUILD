@@ -143,7 +143,6 @@ cuda_py_test(
     srcs = ["random_gamma_test.py"],
     shard_count = 4,
     tags = ["nozapfhahn"],
-    tfrt_enabled = True,
     deps = [
         ":util",
         "//tensorflow/python:array_ops",

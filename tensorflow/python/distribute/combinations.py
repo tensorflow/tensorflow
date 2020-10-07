@@ -40,6 +40,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
@@ -87,28 +88,42 @@ class ClusterParameters(combinations_lib.ParameterModifier):
           raise ValueError("Only support one NamedDistribution for multi worker"
                            "tests.")
         strategy = v
+
+    if strategy:
+      has_chief = strategy.has_chief
+      num_workers = strategy.num_workers
+      runner = strategy.runner
+      if "has_chief" in kwargs and kwargs["has_chief"] != has_chief:
+        raise ValueError(
+            "both has_chief and strategy specified but are not compatible")
+      if "num_workers" in kwargs and kwargs["num_workers"] != num_workers:
+        raise ValueError(
+            "both num_workers and strategy specified but are not compatible")
+    else:
+      has_chief = kwargs.get("has_chief", False)
+      num_workers = kwargs.get("num_workers", 1)
+      runner = None
+
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.
     update = {}
     if "has_chief" in requested_parameters:
-      update["has_chief"] = strategy.has_chief if strategy else False
+      update["has_chief"] = has_chief
     if "num_workers" in requested_parameters:
-      update["num_workers"] = strategy.num_workers if strategy else 1
+      update["num_workers"] = num_workers
     if "runner" in requested_parameters:
-      update["runner"] = strategy.runner if strategy else None
+      update["runner"] = runner
     return update
 
 
 class DistributionCombination(combinations_lib.TestCombination):
   """Sets up distribution strategy for tests."""
 
-  XLA_TEST = re.search(r"(test_xla|test_xla_gpu)$", sys.argv[0])
-
   def should_execute_combination(self, kwargs):
     distributions = [
         v for v in kwargs.values() if isinstance(v, NamedDistribution)
     ]
-    if self.XLA_TEST and any(d.no_xla for d in distributions):
+    if test_util.is_xla_enabled() and any(d.no_xla for d in distributions):
       return (
           False,
           "n/a: skipping strategy combination with no_xla=True in XLA tests")

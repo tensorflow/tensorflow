@@ -4189,9 +4189,18 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     VLOG(3) << "Sink broadcast through slice";
     VLOG(3) << "Original slice: " << slice->ToString();
     VLOG(3) << "Original broadcast: " << broadcast->ToString();
-    TF_ASSIGN_OR_RETURN(auto new_slice,
-                        MakeSliceHlo(broadcast_operand, new_slice_starts,
-                                     new_slice_limits, new_slice_strides));
+    auto new_slice_shape = broadcast_operand->shape();
+    for (int64 i = 0; i < broadcast_operand->shape().rank(); ++i) {
+      int64 size_i = (new_slice_limits[i] - new_slice_starts[i] +
+                      new_slice_strides[i] - 1) /
+                     new_slice_strides[i];
+      new_slice_shape.set_dimensions(i, size_i);
+    }
+    simplifier_->UpdateLayout(&new_slice_shape);
+    HloComputation* computation = broadcast_operand->parent();
+    auto new_slice = computation->AddInstruction(HloInstruction::CreateSlice(
+        new_slice_shape, broadcast_operand, new_slice_starts, new_slice_limits,
+        new_slice_strides));
     auto new_broadcast = HloInstruction::CreateBroadcast(
         slice->shape(), new_slice, broadcast->dimensions());
     VLOG(3) << "New slice: " << slice->ToString();
@@ -4291,9 +4300,15 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     VLOG(3) << "Original broadcast: " << operand->ToString();
     HloInstruction* new_dynamic_slice = broadcast_operand;
     if (!new_slice_sizes.empty()) {
-      TF_ASSIGN_OR_RETURN(
-          new_dynamic_slice,
-          MakeDynamicSliceHlo(broadcast_operand, new_indices, new_slice_sizes));
+      auto new_ds_shape = broadcast_operand->shape();
+      for (int64 i = 0; i < broadcast_operand->shape().rank(); ++i) {
+        new_ds_shape.set_dimensions(i, new_slice_sizes[i]);
+      }
+      simplifier_->UpdateLayout(&new_ds_shape);
+      HloComputation* computation = broadcast_operand->parent();
+      new_dynamic_slice =
+          computation->AddInstruction(HloInstruction::CreateDynamicSlice(
+              new_ds_shape, broadcast_operand, new_indices, new_slice_sizes));
     }
     auto new_broadcast = HloInstruction::CreateBroadcast(
         dynamic_slice->shape(), new_dynamic_slice, operand->dimensions());

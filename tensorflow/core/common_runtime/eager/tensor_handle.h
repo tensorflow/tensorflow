@@ -221,8 +221,9 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   void Poison(Status status, const Device* d);
 
   // TODO(b/154282629): Consider moving it to EagerContext.
+  // Copies to the tensor on the given device `d`, or to host iff `d` is null.
   Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
-                      tensorflow::Tensor* output);
+                      tensorflow::Tensor* output) const;
 
   Status InferenceShape(
       shape_inference::InferenceContext* const inference_context,

@@ -416,6 +416,10 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
 
   LogicalResult matchAndRewrite(TFL::MulOp mul_op,
                                 PatternRewriter &rewriter) const override {
+    // If we are broadcasting on the lhs then don't fold the multiply as it
+    // would increase the amount of compute done by the fully connected op.
+    if (mul_op.lhs().getType() != mul_op.getType()) return failure();
+
     // Mul.
     DenseElementsAttr cst;
     Value constant_val = mul_op.rhs();

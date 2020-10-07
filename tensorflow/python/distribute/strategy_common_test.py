@@ -51,7 +51,33 @@ from tensorflow.python.util import nest
         mode=['eager']))
 class StrategyTest(test.TestCase, parameterized.TestCase):
 
-  def testSimpleReduce(self, strategy):
+  def testCaptureReplicaId(self, strategy):
+    m = {}
+
+    @def_function.function
+    def f():
+      return ds_context.get_replica_context().replica_id_in_sync_group
+
+    @def_function.function
+    def g():
+      # Make g() a stateful function so it's traced twice.
+      if m.get('v', None) is None:
+        m['v'] = variables.Variable(0.)
+      return strategy.run(f)
+
+    g()
+
+
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ] + strategy_combinations.all_strategies,
+        mode=['eager']))
+class ReduceTest(test.TestCase, parameterized.TestCase):
+
+  def testBasic(self, strategy):
     per_replica_value = strategy.experimental_distribute_values_from_function(
         lambda _: array_ops.ones((), dtypes.float32))
 
@@ -72,21 +98,18 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(fn_eager().numpy(), 1.0 * strategy.num_replicas_in_sync)
     self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
 
-  def testCaptureReplicaId(self, strategy):
-    m = {}
+  def testAxis(self, strategy):
 
     @def_function.function
-    def f():
-      return ds_context.get_replica_context().replica_id_in_sync_group
+    def fn():
+      return constant_op.constant([1., 2.])
 
-    @def_function.function
-    def g():
-      # Make g() a stateful function so it's traced twice.
-      if m.get('v', None) is None:
-        m['v'] = variables.Variable(0.)
-      return strategy.run(f)
+    x = strategy.run(fn)
 
-    g()
+    x_m = strategy.reduce(reduce_util.ReduceOp.MEAN, x, axis=0)
+    self.assertEqual(1.5, x_m)
+    x_s = strategy.reduce(reduce_util.ReduceOp.SUM, x, axis=0)
+    self.assertEqual(3 * strategy.num_replicas_in_sync, x_s)
 
 
 @combinations.generate(

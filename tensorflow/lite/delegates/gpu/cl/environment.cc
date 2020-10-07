@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 
@@ -26,59 +25,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-
-std::string GetKernelOneLayerTextureArray() {
-  return R"(
-
-__kernel void main_function(__write_only image2d_array_t dst) {
-  int X = (int)(get_global_id(0));
-  int Y = (int)(get_global_id(1));
-
-  write_imagef(dst, (int4)(X, Y, 0, 0), (float4)(2.0, 2.0, 2.0, 2.0));
-}
-)";
-}
-
-// Some Adreno < 600 have bug with one layer texture array. b/131099086
-// If we have one layer texture array and will write smt from kernel to this
-// texture, we will get zeroes instead of actual values.
-// The same kernel will work, if we use texture array with more than one layer.
-// With help of this code we can detect this bug.
-absl::Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
-                                                      bool* result) {
-  // No bug on Adreno 6xx
-  if (env->device().info_.adreno_info.gpu_version >= 600) {
-    *result = true;
-    return absl::OkStatus();
-  }
-  CLKernel kernel;
-  RETURN_IF_ERROR(env->program_cache()->GetOrCreateCLKernel(
-      GetKernelOneLayerTextureArray(), "main_function", env->context(),
-      env->device(), &kernel));
-
-  Tensor tensor;
-  const BHWC shape(1, 4, 4, 4);
-  RETURN_IF_ERROR(CreateTensor(
-      env->context(), shape,
-      {DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY, Layout::HWC},
-      &tensor));
-  RETURN_IF_ERROR(kernel.SetMemory(0, tensor.GetMemoryPtr()));
-  RETURN_IF_ERROR(env->queue()->DispatchImplicit(kernel, {4, 4, 1}, {4, 4, 1}));
-  TensorFloat32 tensor_gpu;
-  tensor_gpu.shape = shape;
-  tensor_gpu.data.resize(shape.DimensionsProduct());
-  RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
-
-  *result = true;
-  for (int i = 0; i < 64; ++i) {
-    if (tensor_gpu.data[i] != 2.0) {
-      *result = false;
-      break;
-    }
-  }
-  return absl::OkStatus();
-}
-
 absl::Status CreateEnvironment(Environment* result, bool shared,
                                cl_context_properties egl_context,
                                cl_context_properties egl_display) {
@@ -99,16 +45,7 @@ absl::Status CreateEnvironment(Environment* result, bool shared,
   *result = Environment(std::move(gpu), std::move(context), std::move(queue),
                         std::move(profiling_queue));
 
-  if (result->device().IsAdreno() && result->device().SupportsTextureArray()) {
-    bool supports_one_layer;
-    RETURN_IF_ERROR(
-        CheckKernelSupportOfOneLayerTextureArray(result, &supports_one_layer));
-    if (!supports_one_layer) {
-      result->GetDevicePtr()->DisableOneLayerTextureArray();
-    }
-  }
-
-  return absl::OkStatus();
+  return result->Init();
 }
 
 }  // namespace
@@ -141,10 +78,12 @@ Environment& Environment::operator=(Environment&& environment) {
 
 absl::Status Environment::Init() {
   if (device().IsAdreno() && device().SupportsTextureArray()) {
-    bool supports_one_layer;
-    RETURN_IF_ERROR(
-        CheckKernelSupportOfOneLayerTextureArray(this, &supports_one_layer));
-    if (!supports_one_layer) {
+    // Some Adreno < 600 have bug with one layer texture array. b/131099086
+    // If we have one layer texture array and will write smt from kernel to this
+    // texture, we will get zeroes instead of actual values.
+    // The same kernel will work, if we use texture array with more than one
+    // layer.
+    if (device().info_.adreno_info.gpu_version < 600) {
       GetDevicePtr()->DisableOneLayerTextureArray();
     }
   }

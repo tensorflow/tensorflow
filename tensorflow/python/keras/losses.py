@@ -1288,7 +1288,7 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   >>> assert loss.shape == (2,)
   >>> y_true = np.maximum(y_true, 1e-7)
   >>> y_pred = np.maximum(y_pred, 1e-7)
-  >>> assert np.array_equal(
+  >>> assert np.allclose(
   ...     loss.numpy(),
   ...     np.mean(
   ...         np.square(np.log(y_true + 1.) - np.log(y_pred + 1.)), axis=-1))

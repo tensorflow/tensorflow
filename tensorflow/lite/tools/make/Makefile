@@ -75,7 +75,6 @@ endif
 
 ifeq ($(HOST_ARCH),x86_64)
   ifeq ($(HOST_OS),linux)
-    $(warning we got here)
     CXXFLAGS += -DTFLITE_HAVE_CPUINFO
   endif
 endif
@@ -138,6 +137,7 @@ $(wildcard tensorflow/lite/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
+$(wildcard tensorflow/lite/schema/schema_utils.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/*.c) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/x86/*.c) \

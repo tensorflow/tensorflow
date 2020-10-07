@@ -191,6 +191,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
@@ -333,11 +334,15 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     # TF Lite builds in other build systems should "opt in" to cpufinfo.
-    copts = tflite_copts() + ["-DTFLITE_HAVE_CPUINFO"],
+    copts = tflite_copts() + select({
+        "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
+    }),
     deps = [
         ":tflite_with_ruy",
         ":op_macros",
-        "@cpuinfo//:cpuinfo_with_unstripped_include_path",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
         # gemmlowp_context_ and ruy_context_ members.
@@ -346,7 +351,13 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/kernels/internal:compatibility",
-    ],
+    ] + select({
+        # This select must match the similar select in `copts`
+        "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["@cpuinfo//:cpuinfo_with_unstripped_include_path"],
+    }),
 )
 
 cc_library(

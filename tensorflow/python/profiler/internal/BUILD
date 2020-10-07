@@ -131,7 +131,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/python:pybind11_status",
-        "@com_github_grpc_grpc//:grpc++_public_hdrs",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@pybind11",
