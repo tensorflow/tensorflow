@@ -824,7 +824,6 @@ cuda_py_test(
     tags = [
         "no_oss",
     ],
-    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -843,7 +842,6 @@ cuda_py_test(
         "no_cuda11",
         "no_oss",
     ],
-    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
