@@ -1303,7 +1303,7 @@ class TFOpLambda(Layer):
         get_canonical_name_for_symbol(self.function,
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
-    if 'name' in kwargs:
+    if 'name' not in kwargs:
       kwargs['name'] = K.unique_object_name(
           'tf.' + self.symbol, zero_based=True)
     kwargs['autocast'] = False
@@ -1434,7 +1434,7 @@ class KerasOpDispatcher(dispatch.GlobalOpDispatcher):
         isinstance(x, keras_tensor.KerasTensor)
         for x in nest.flatten([args, kwargs])):
       kwargs_name = {}
-      if 'name' not in kwargs:
+      if 'name' in kwargs:
         kwargs_name = {'name': kwargs["name"]}
       return TFOpLambda(op, **kwargs_name)(*args, **kwargs)
     else:
