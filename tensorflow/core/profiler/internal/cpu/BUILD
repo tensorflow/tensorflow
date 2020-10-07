@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -11,6 +12,7 @@ cc_library(
     name = "host_tracer_utils",
     srcs = ["host_tracer_utils.cc"],
     hdrs = ["host_tracer_utils.h"],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:friends"],
     deps = [
         ":traceme_recorder",
@@ -28,6 +30,7 @@ cc_library(
 cc_library(
     name = "host_tracer",
     srcs = ["host_tracer.cc"],
+    copts = tf_profiler_copts(),
     deps = [
         ":host_tracer_utils",
         ":traceme_recorder",
@@ -69,6 +72,7 @@ tf_cc_test(
 cc_library(
     name = "traceme_recorder",
     hdrs = ["traceme_recorder.h"],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
@@ -84,6 +88,7 @@ cc_library(
         "traceme_recorder.cc",
         "traceme_recorder.h",
     ],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/python:__pkg__",
@@ -110,6 +115,7 @@ tf_cc_test(
 cc_library(
     name = "annotation_stack",
     hdrs = ["annotation_stack.h"],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "@com_google_absl//absl/strings",
@@ -125,6 +131,7 @@ cc_library(
         "annotation_stack.cc",
         "annotation_stack.h",
     ],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/python:__pkg__",
@@ -139,7 +146,7 @@ cc_library(
 cc_library(
     name = "python_tracer",
     srcs = ["python_tracer.cc"],
-    copts = ["-fexceptions"],
+    copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/core:lib",
@@ -156,6 +163,7 @@ cc_library(
 cc_library(
     name = "metadata_collector",
     srcs = ["metadata_collector.cc"],
+    copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_debug_info_manager",

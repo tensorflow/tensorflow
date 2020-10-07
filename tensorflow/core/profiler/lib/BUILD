@@ -1,12 +1,9 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = [
@@ -46,6 +43,7 @@ cc_library(
         "profiler_session.cc",
         "profiler_session.h",
     ],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/python:__pkg__",
@@ -100,6 +98,7 @@ cc_library(
     name = "local_profiler_impl",
     srcs = ["local_profiler.cc"],
     hdrs = ["local_profiler.h"],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         ":profiler_interface",
@@ -138,6 +137,7 @@ cc_library(
         "profiler_factory.cc",
         "profiler_factory.h",
     ],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/core/profiler:__pkg__",
     ],
@@ -152,6 +152,7 @@ cc_library(
 cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
+    copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -278,6 +279,7 @@ cc_library(
     name = "profiler_lock",
     srcs = ["profiler_lock.cc"],
     hdrs = ["profiler_lock.h"],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
 )
 
