@@ -75,8 +75,8 @@ class ProcessFunctionLibraryRuntime {
   ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
     // registered in it, which may call ReleaseHandle in this class again to
-    // release their sub-function. These circular calls may casue segfault
-    // since the flr_map_ may has already been deleted. Explicitly releasing
+    // release their sub-function. These circular calls may cause segfault
+    // since the flr_map_ may have already been deleted. Explicitly releasing
     // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
     flr_map_.reset();
   }
