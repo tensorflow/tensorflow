@@ -160,7 +160,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
-  Status EmitSortFromMlir(MlirEmitterInput input);
+  Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
