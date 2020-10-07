@@ -677,12 +677,13 @@ class InferenceBuilderImpl : public InferenceBuilder {
     if (GetRelativeImportance(options, InferencePriority::MIN_LATENCY,
                               InferencePriority::MIN_MEMORY_USAGE) ==
         PriorityImportance::HIGHER) {
-      preferred_storage_types = {GetFastestStorageType(environment_->device()),
-                                 TensorStorageType::BUFFER};
-    } else {
       preferred_storage_types = {
-          GetStorageTypeWithMinimalMemoryConsumption(environment_->device()),
+          GetFastestStorageType(environment_->device().GetInfo()),
           TensorStorageType::BUFFER};
+    } else {
+      preferred_storage_types = {GetStorageTypeWithMinimalMemoryConsumption(
+                                     environment_->device().GetInfo()),
+                                 TensorStorageType::BUFFER};
     }
 
     for (TensorStorageType storage_type : preferred_storage_types) {
