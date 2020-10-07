@@ -1433,7 +1433,9 @@ class KerasOpDispatcher(dispatch.GlobalOpDispatcher):
     if any(
         isinstance(x, keras_tensor.KerasTensor)
         for x in nest.flatten([args, kwargs])):
-      kwargs_name = {'name': kwargs["name"]}
+      kwargs_name = {}
+      if 'name' not in kwargs:
+        kwargs_name = {'name': kwargs["name"]}
       return TFOpLambda(op, **kwargs_name)(*args, **kwargs)
     else:
       return self.NOT_SUPPORTED
