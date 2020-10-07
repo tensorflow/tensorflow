@@ -328,6 +328,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
