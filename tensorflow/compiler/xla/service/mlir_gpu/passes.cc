@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
@@ -53,6 +54,21 @@ struct FusionOpRemoverPass : FusionOpRemoverPassBase<FusionOpRemoverPass> {
     });
   }
 };
+
+template <typename EffectTy>
+bool HasEffectsOnValue(mlir::Value value, mlir::Operation* op) {
+  auto mem_effects_interface =
+      mlir::dyn_cast_or_null<mlir::MemoryEffectOpInterface>(op);
+  if (!mem_effects_interface) {
+    return false;
+  }
+  llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
+  mem_effects_interface.getEffects(effects);
+  return llvm::any_of(effects,
+                      [op](const mlir::MemoryEffects::EffectInstance& effect) {
+                        return mlir::isa<EffectTy>(effect.getEffect());
+                      });
+}
 
 struct StoreForwardingPass : StoreForwardingPassBase<StoreForwardingPass> {
   mlir::StoreOp findStore(mlir::Operation* op,
@@ -87,10 +103,9 @@ struct StoreForwardingPass : StoreForwardingPassBase<StoreForwardingPass> {
     while (auto subviewOp = mlir::dyn_cast_or_null<mlir::SubViewOp>(defOp)) {
       defOp = subviewOp.source().getDefiningOp();
     }
-    if (auto allocOp = mlir::dyn_cast_or_null<mlir::AllocOp>(defOp)) {
-      return allocOp.getOperation();
-    }
-    return nullptr;
+    return HasEffectsOnValue<mlir::MemoryEffects::Allocate>(memref, defOp)
+               ? defOp
+               : nullptr;
   }
 
   // Retrieves AllocOp from the cache or actually looks for it.
@@ -101,7 +116,7 @@ struct StoreForwardingPass : StoreForwardingPassBase<StoreForwardingPass> {
     if (allocOpIt != memrefToAllocOp->end()) {
       return allocOpIt->second;
     }
-    auto allocOp = SearchAllocOp(memref);
+    mlir::Operation* allocOp = SearchAllocOp(memref);
     memrefToAllocOp->insert({memref, allocOp});
     return allocOp;
   }
@@ -169,13 +184,18 @@ struct DeadTempBufferRemovalPass
 
   void runOnFunction() override {
     llvm::SmallVector<mlir::Operation*, 8> dead_ops;
-    getFunction().walk([&](mlir::AllocOp allocOp) {
-      if (!operationConsideredDead(allocOp)) {
+    getFunction().walk([&](mlir::Operation* op) {
+      if (op->getNumResults() != 1 ||
+          !HasEffectsOnValue<mlir::MemoryEffects::Allocate>(op->getResult(0),
+                                                            op)) {
+        return;
+      }
+      if (!operationConsideredDead(op)) {
         return;
       }
 
       // TODO(herhut): There should be a generic helper for this.
-      recursiveErase(allocOp, &dead_ops);
+      recursiveErase(op, &dead_ops);
     });
     for (auto op : dead_ops) {
       op->erase();
