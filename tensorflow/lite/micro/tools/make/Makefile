@@ -354,11 +354,9 @@ $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
-# These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
-# based on platforms or architectures should happen within these files, to
-# keep this main makefile focused on the sources and dependencies.
-include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+# The target-specific makefile must have a name that is exactly
+# TARGET_makefile.inc
+include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
 
 # Load dependencies for optimized kernel implementations.
 include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
