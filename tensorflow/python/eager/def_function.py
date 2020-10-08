@@ -776,7 +776,7 @@ class Function(object):
   # TODO: Remove this private method after updating all its uses
   # A good moment to do this could be when the experimental label is removed 
   def _get_tracing_count(self):
-    return self.experimental_get_tracing_count
+    return self.experimental_get_tracing_count()
 
   def experimental_get_tracing_count(self):
     """Returns the number of times the function has been traced.
