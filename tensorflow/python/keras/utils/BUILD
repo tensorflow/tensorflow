@@ -305,7 +305,6 @@ tf_py_test(
     srcs = ["composite_tensor_support_test.py"],
     python_version = "PY3",
     shard_count = 8,
-    tags = ["no_windows"],  # b/135752236
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
