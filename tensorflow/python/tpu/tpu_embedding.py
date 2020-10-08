@@ -23,6 +23,8 @@ import copy
 import math
 import re
 
+from typing import Optional
+
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
@@ -360,9 +362,15 @@ VariablesAndOps = collections.namedtuple(
 class _OptimizationParameters(object):
   """Parameters common to all optimizations."""
 
-  def __init__(self, learning_rate, use_gradient_accumulation, clip_weight_min,
-               clip_weight_max, weight_decay_factor,
-               multiply_weight_decay_factor_by_learning_rate):
+  def __init__(
+      self,
+      learning_rate: float,
+      use_gradient_accumulation: bool,
+      clip_weight_min: Optional[float],
+      clip_weight_max: Optional[float],
+      weight_decay_factor: Optional[float],
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool],
+  ):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
     self.clip_weight_min = clip_weight_min
@@ -392,14 +400,16 @@ class AdagradParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               initial_accumulator=0.1,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      initial_accumulator: float = 0.1,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -434,16 +444,18 @@ class ProximalAdagradParameters(_OptimizationParameters):
   for more details.
   """
 
-  def __init__(self,
-               learning_rate,
-               initial_accumulator=0.1,
-               l1_regularization_strength=0.0,
-               l2_regularization_strength=0.0,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      initial_accumulator: float = 0.1,
+      l1_regularization_strength: float = 0.0,
+      l2_regularization_strength: float = 0.0,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -502,18 +514,20 @@ class AdamParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               beta1=0.9,
-               beta2=0.999,
-               epsilon=1e-08,
-               lazy_adam=True,
-               sum_inside_sqrt=True,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      beta1: float = 0.9,
+      beta2: float = 0.999,
+      epsilon: float = 1e-08,
+      lazy_adam: bool = True,
+      sum_inside_sqrt: bool = True,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Adam.
 
     Args:
@@ -579,20 +593,22 @@ class FtrlParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               learning_rate_power=-0.5,
-               initial_accumulator_value=0.1,
-               l1_regularization_strength=0.0,
-               l2_regularization_strength=0.0,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None,
-               multiply_linear_by_learning_rate=False,
-               beta=0,
-               allow_zero_accumulator=False):
+  def __init__(
+      self,
+      learning_rate: float,
+      learning_rate_power: float = -0.5,
+      initial_accumulator_value: float = 0.1,
+      l1_regularization_strength: float = 0.0,
+      l2_regularization_strength: float = 0.0,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+      multiply_linear_by_learning_rate: bool = False,
+      beta: float = 0,
+      allow_zero_accumulator: bool = False,
+  ):
     """Optimization parameters for Ftrl.
 
     Implements FTRL as described in the following [paper](
@@ -673,19 +689,21 @@ class ProximalYogiParameters(_OptimizationParameters):
   """
   # pylint: enable=line-too-long
 
-  def __init__(self,
-               learning_rate=0.01,
-               beta1=0.9,
-               beta2=0.999,
-               epsilon=1e-3,
-               l1_regularization_strength=0.0,
-               l2_regularization_strength=0.0,
-               initial_accumulator_value=1e-6,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float = 0.01,
+      beta1: float = 0.9,
+      beta2: float = 0.999,
+      epsilon: float = 1e-3,
+      l1_regularization_strength: float = 0.0,
+      l2_regularization_strength: float = 0.0,
+      initial_accumulator_value: float = 1e-6,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Proximal Yogi.
 
     Args:
@@ -755,15 +773,17 @@ class MomentumParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               momentum,
-               use_nesterov=False,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      momentum: float,
+      use_nesterov: bool = False,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for momentum.
 
     Args:
@@ -820,16 +840,18 @@ class RMSPropParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               rho,
-               momentum,
-               epsilon,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      rho: float,
+      momentum: float,
+      epsilon: float,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for RMS prop.
 
     Args:
@@ -881,12 +903,14 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for stochastic gradient descent.
 
     Args:
