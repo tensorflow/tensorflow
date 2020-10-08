@@ -1485,6 +1485,7 @@ tf_xla_py_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:image_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
     ],

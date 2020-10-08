@@ -875,6 +875,7 @@ py_library(
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":distribute_coordinator",
         ":multi_process_runner",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",

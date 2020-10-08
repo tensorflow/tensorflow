@@ -3633,7 +3633,6 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras/engine:base_layer_utils",
     ],
 )
 
@@ -4445,6 +4444,7 @@ py_library(
         ":math_ops",
         ":random_ops_gen",
         ":random_seed",
+        ":stateless_random_ops",
     ],
 )
 
@@ -4486,10 +4486,10 @@ py_library(
     srcs = ["ops/stateless_random_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":dtypes",
         ":framework_ops",
         ":math_ops",
-        ":random_ops",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
     ],
