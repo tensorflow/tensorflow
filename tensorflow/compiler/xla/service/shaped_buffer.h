@@ -45,6 +45,7 @@ class ShapedBuffer {
   // ShapedBuffer.
   ShapedBuffer(Shape on_device_shape, const se::Platform* platform,
                int device_ordinal);
+
   // TODO(b/170310047): remove this overload.
   ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
                const se::Platform* platform, int device_ordinal);
@@ -100,13 +101,17 @@ class ShapedBuffer {
   // Reset the shape of this shaped buffer and underlying buffer structure.
   //
   // Precondition: EqualStructure(this->on_device_shape_, on_device_shape).
-  void set_shapes(const Shape& on_host_shape, const Shape& on_device_shape) {
+  void set_shapes(const Shape& on_device_shape) {
     CHECK(ShapeUtil::EqualStructure(on_device_shape, on_device_shape_))
         << "Structures are not the same. new: " << on_device_shape
         << ", old: " << on_device_shape_;
     on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape);
     on_device_shape_ = on_device_shape;
     buffers_.replace_shape_ptr(&on_device_shape_);
+  }
+  // TODO(b/170310047): remove this overload.
+  void set_shapes(const Shape& on_host_shape, const Shape& on_device_shape) {
+    set_shapes(on_device_shape);
   }
 
   // Returns the underlying ShapeTree containing all the device addresses in the

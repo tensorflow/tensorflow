@@ -31,10 +31,6 @@ limitations under the License.
 
 namespace xla {
 
-ShapedBuffer::ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
-                           const se::Platform* platform, int device_ordinal)
-    : ShapedBuffer(on_device_shape, platform, device_ordinal) {}
-
 ShapedBuffer::ShapedBuffer(Shape on_device_shape, const se::Platform* platform,
                            int device_ordinal)
     : on_device_shape_(std::move(on_device_shape)),
@@ -43,6 +39,10 @@ ShapedBuffer::ShapedBuffer(Shape on_device_shape, const se::Platform* platform,
       buffers_(&on_device_shape_) {
   on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape_);
 }
+
+ShapedBuffer::ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
+                           const se::Platform* platform, int device_ordinal)
+    : ShapedBuffer(on_device_shape, platform, device_ordinal) {}
 
 ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
     : on_host_shape_(std::move(s.on_host_shape_)),
@@ -90,12 +90,11 @@ void ShapedBuffer::clear() {
 }
 
 string ShapedBuffer::ToString() const {
-  string s = absl::StrCat(
-      "ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
-      "), on-host shape=" + ShapeUtil::HumanStringWithLayout(on_host_shape()),
-      ", on-device shape=" +
-          ShapeUtil::HumanStringWithLayout(on_device_shape()),
-      ":\n");
+  string s =
+      absl::StrCat("ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
+                   "), on-device shape=" +
+                       ShapeUtil::HumanStringWithLayout(on_device_shape()),
+                   ":\n");
   ShapeUtil::ForEachSubshape(
       on_device_shape(),
       [this, &s](const Shape& subshape, const ShapeIndex& index) {
@@ -118,20 +117,19 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
   return out;
 }
 
-ScopedShapedBuffer::ScopedShapedBuffer(Shape on_host_shape,
-                                       Shape on_device_shape,
-                                       se::DeviceMemoryAllocator* allocator,
-                                       int device_ordinal)
-    : ShapedBuffer(std::move(on_device_shape), allocator->platform(),
-                   device_ordinal),
-      allocator_(allocator) {}
-
 ScopedShapedBuffer::ScopedShapedBuffer(Shape on_device_shape,
                                        se::DeviceMemoryAllocator* allocator,
                                        int device_ordinal)
     : ShapedBuffer(std::move(on_device_shape), allocator->platform(),
                    device_ordinal),
       allocator_(allocator) {}
+
+ScopedShapedBuffer::ScopedShapedBuffer(Shape on_host_shape,
+                                       Shape on_device_shape,
+                                       se::DeviceMemoryAllocator* allocator,
+                                       int device_ordinal)
+    : ScopedShapedBuffer(std::move(on_device_shape), allocator,
+                         device_ordinal) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
                                        se::DeviceMemoryAllocator* allocator)
