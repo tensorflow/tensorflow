@@ -112,14 +112,16 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
   FullyConnectedThreadData thread_data[n_th];
 
   // load weights & bias scratch buffers(if necessary)
-  size_t weights_load_offset = 0;
-  size_t biases_load_offset = 0;
+  size_t weights_dest_offset = 0;
+  size_t weights_src_offset = 0;
+  size_t biases_dest_offset = 0;
+  size_t biases_src_offset = 0;
   size_t weights_fetch_size;
-  size_t bias_fetch_size;
+  // size_t bias_fetch_size;
   int8_t *sW, *tW;  // sW points to the head of the weights scratch space, tW
                     // points to the head of the fetched weights which equals sW
                     // for the first fetch but not for subsequent fetches
-  int16_t *sBSO,
+  int8_t *sBSO,
       *tBSO;  // sBSO points to the head of the BSO scratch space, tBSO
               // points to the head of the fetched BSO which equals sBSO for
               // the first fetch but not for subsequent fetches
@@ -130,37 +132,30 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
     TFLITE_DCHECK(sW != nullptr);
   }
   if (op->bias_scratch_index >= 0) {
-    sBSO = static_cast<int16_t*>(
+    sBSO = static_cast<int8_t*>(
         context->GetScratchBuffer(context, op->bias_scratch_index));
     TFLITE_DCHECK(sBSO != nullptr);
   }
-
-  weights_fetch_size = std::min(
-      (size_t)(changrp_len * op->execution_plan.GetWeightsScratchSize() /
-               (op->execution_plan.changrps[n_th - 1].start +
-                op->execution_plan.changrps[n_th - 1].size)),
-      op->execution_plan.GetWeightsScratchSize());
-
-  bias_fetch_size =
-      std::min((size_t)(changrp_len * op->execution_plan.GetBiasScratchSize() /
-                        (op->execution_plan.changrps[n_th - 1].start +
-                         op->execution_plan.changrps[n_th - 1].size)),
-               op->execution_plan.GetBiasScratchSize());
 
   for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
     const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
 
     // offset into the temp W and BSO pointers based on how many bytes we
     // have loaded since the last JoinTasks
-    tW = sW + weights_load_offset;
-    tBSO = (int16_t*)((int8_t*)sBSO + biases_load_offset);
+    tW = sW + weights_dest_offset;
+    tBSO = sBSO + biases_dest_offset;
 
     // fetch the weights and biases
-    weights_load_offset += dispatcher->FetchWeights(
-        &tW, weights->data.int8, weights_fetch_size, changrp);
+    weights_fetch_size = C_in * changrp.size;
+    dispatcher->FetchBuffer(&tW, &weights->data.int8[weights_src_offset],
+                            weights_fetch_size);
+    weights_dest_offset += weights_fetch_size;
+    weights_src_offset += weights_fetch_size;
 
-    biases_load_offset +=
-        dispatcher->FetchBiases(&tBSO, bso->data.i16, bias_fetch_size, changrp);
+    dispatcher->FetchBuffer((int8_t**)&tBSO, &bso->data.int8[biases_src_offset],
+                            bso_changrp_bytes);
+    biases_dest_offset += bso_changrp_bytes;
+    biases_src_offset += bso_changrp_bytes;
 
     thread_data[i_th].Y = &output->data.int8[changrp.start];
     thread_data[i_th].X = input->data.int8;
@@ -176,8 +171,8 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
     if (i_th == n_th) {
       dispatcher->JoinTasks();
       i_th = 0;
-      weights_load_offset = 0;
-      biases_load_offset = 0;
+      weights_dest_offset = 0;
+      biases_dest_offset = 0;
     }
   }
   dispatcher->JoinTasks();  // finish up any added tasks
