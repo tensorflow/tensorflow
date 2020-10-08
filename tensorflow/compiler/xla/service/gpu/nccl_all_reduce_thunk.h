@@ -53,7 +53,8 @@ struct NcclAllReduceConfig {
   std::unique_ptr<AuxData> aux_data;
 };
 
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr);
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr,
+                                           int64 replica_count);
 
 // Thunk that performs a NCCL-based All-Reduce among CUDA GPU-based replicas.
 class NcclAllReduceThunk : public Thunk {

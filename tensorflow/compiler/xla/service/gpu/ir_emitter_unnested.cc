@@ -1652,7 +1652,8 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
           *crs, crs->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
       tuple_element_buffers.push_back(buffers[i].destination_buffer);
     }
-    NcclAllReduceConfig config = GetNcclAllReduceConfig(crs);
+    NcclAllReduceConfig config =
+        GetNcclAllReduceConfig(crs, hlo_module_config_.replica_count());
     auto all_reduce_thunk = absl::make_unique<NcclAllReduceThunk>(
         GetThunkInfo(crs), std::move(config),
         /*buffers=*/std::move(buffers));
