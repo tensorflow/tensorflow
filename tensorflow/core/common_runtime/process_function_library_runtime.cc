@@ -730,13 +730,24 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       function_name, function_key, ret_node_names.size(),
       lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
+  // Do not run function/graph optimization passes for component functions,
+  // since they have already processed the main function.
+  const bool should_run_optimization_passes = !options.is_component_function;
+  if (!should_run_optimization_passes) {
+    VLOG(1) << "Skipping function/graph optimization passes when instantiating "
+               "component function "
+            << function_name;
+  }
+
   // Mapping from a function body node name to the control output name.
   std::unordered_map<string, string> node_name_to_control_ret;
 
   bool control_rets_updated = false;
-  TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-      *dev_set, options.config_proto, &graph, &data->lib_def_,
-      &control_ret_node_names, &control_rets_updated));
+  if (should_run_optimization_passes) {
+    TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
+        *dev_set, options.config_proto, &graph, &data->lib_def_,
+        &control_ret_node_names, &control_rets_updated));
+  }
 
   if (control_rets_updated) {
     // Function graph pass may have resulted in different nodes/node names for
@@ -761,17 +772,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.device_set = dev_set.get();
   optimization_options.is_function_graph = true;
 
-  // Do not run graph optimization passes for component functions, since they
-  // have already processed the main function.
-  bool should_run_graph_passes = !options.is_component_function;
-  if (!should_run_graph_passes) {
-    VLOG(1) << "Skipping graph optimization passes when instantiating "
-               "component function "
-            << function_name;
-  }
-
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
-  if (should_run_graph_passes) {
+  if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
   }
@@ -786,7 +788,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(placer.Run());
 
   DumpGraph("Before running POST_PLACEMENT passes", graph.get());
-  if (should_run_graph_passes) {
+  if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   }
@@ -807,7 +809,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
-  if (should_run_graph_passes) {
+  if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
   }
@@ -845,7 +847,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we
   // run the passes here.
-  if (should_run_graph_passes) {
+  if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   }
