@@ -91,9 +91,7 @@ struct ArgSignature {
 template <typename H>
 H AbslHashValue(H h, const ArgSignature& s) {
   h = H::combine(std::move(h), s.dtype);
-  if (!s.shape.empty()) {
-    h = H::combine_contiguous(std::move(h), &s.shape.front(), s.shape.size());
-  }
+  h = H::combine_contiguous(std::move(h), s.shape.data(), s.shape.size());
   return h;
 }
 
@@ -178,11 +176,11 @@ H AbslHashValue(H h, const CallSignature& s) {
   // TODO(jblespiau): We should either ban non-hashable objects from jit or we
   // should hash them by object identity.
   h = H::combine_contiguous(std::move(h),
-                            &s.dynamic_positional_args_treedef.front(),
+                            s.dynamic_positional_args_treedef.data(),
                             s.dynamic_positional_args_treedef.size());
-  h = H::combine_contiguous(std::move(h), &s.keyword_args.front(),
+  h = H::combine_contiguous(std::move(h), s.keyword_args.data(),
                             s.keyword_args.size());
-  h = H::combine_contiguous(std::move(h), &s.dynamic_args_signatures.front(),
+  h = H::combine_contiguous(std::move(h), s.dynamic_args_signatures.data(),
                             s.dynamic_args_signatures.size());
   h = H::combine(std::move(h), s.device);
   return h;
