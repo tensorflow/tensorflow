@@ -2003,7 +2003,7 @@ xla_test(
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests
         # unless they're also tagged "guitar".
-        "noguitar",  # TODO(b/170316839): re-enable.
+        "guitar",
         "manual",
         "multi_gpu",
         "no_oss",
