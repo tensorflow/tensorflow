@@ -191,6 +191,7 @@ cc_library(
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
     deps = [
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
