@@ -556,13 +556,13 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
     return std::make_shared<PyClient>(std::move(client));
   });
@@ -572,7 +572,7 @@ PYBIND11_MODULE(xla_extension, m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(
-            std::shared_ptr<PjRtClient> client,
+            std::unique_ptr<PjRtClient> client,
             GetNvidiaGpuClient(asynchronous, allocator_config,
                                std::move(distributed_client), node_id));
         return std::make_shared<PyClient>(std::move(client));
