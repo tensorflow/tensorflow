@@ -106,7 +106,8 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
   // The on-host and on-device shape should always be the same for the generic
   // transfer manager.
   TF_RET_CHECK(ShapeUtil::Equal(device_buffer.on_device_shape(),
-                                device_buffer.on_host_shape()));
+                                device_buffer.on_host_shape()))
+      << device_buffer.ToString();
 
   TF_RET_CHECK(
       ShapeUtil::Compatible(literal.shape(), device_buffer.on_host_shape()));
