@@ -82,7 +82,6 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
   const int input_depth = input_shape.Dims(3);
-  const int input_depth_iters = input_depth / 2;
 
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
@@ -106,7 +105,7 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
           ae_q56s acc_56 = AE_ZEROQ56();
 
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+            for (int filter_x = 0; filter_x < filter_width; filter_x += 2) {
               const int in_x = in_x_origin + dilation_width_factor * filter_x;
               const int in_y = in_y_origin + dilation_height_factor * filter_y;
               const bool is_point_inside_image =
@@ -119,10 +118,10 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
                 // with intrinsics:
                 int input_idx =
                     ((batch * input_height + in_y) * input_width + in_x) *
-                        input_depth -
+                        input_depth * 2 -
                     2;
                 const int8_t* input_vals_offset_ptr = input_data + input_idx;
-                for (int i = 0; i < input_depth_iters; ++i) {
+                for (int i = 0; i < input_depth; i += 2) {
                   // Load signed 2x 8bit values and right shift into 24bit
                   // alignment:
                   ae_p24x2s input_vals_24x2;
@@ -139,7 +138,7 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
                       ((out_channel * filter_height + filter_y) * filter_width +
                        filter_x) *
                           filter_depth +
-                      (i * 2) - 2;
+                      i - 2;
                   const int8_t* filter_vals_offset_ptr =
                       filter_data + filter_idx;
 
@@ -171,9 +170,10 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
           ae_p24x2s acc_24x2 = AE_TRUNCP24Q48(acc_56);
 
           // Apply quantized multiplier and accumulate result at 48bit
-          // alignment:
-          acc_56 = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-              acc_24x2, output_multiplier[out_channel],
+          // alignment. Convert the (unsigned) 32-bit multiplier down to a
+          // 24-bit multiplier.
+          acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
+              acc_24x2, output_multiplier[out_channel] >> 8,
               output_shift[out_channel]);
 
           // Add output offset, cap activation, and assign to the output:
