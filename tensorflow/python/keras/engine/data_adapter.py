@@ -959,12 +959,6 @@ def select_data_adapter(x, y):
         "Failed to find data adapter that can handle "
         "input: {}, {}".format(
             _type_name(x), _type_name(y)))
-  elif len(adapter_cls) > 1:
-    raise RuntimeError(
-        "Data adapters should be mutually exclusive for "
-        "handling inputs. Found multiple adapters {} to handle "
-        "input: {}, {}".format(
-            adapter_cls, _type_name(x), _type_name(y)))
   # Instrument the data adapter usage before returning it
   keras_data_adapter_gauge.get_cell(adapter_cls[0].__name__).set(True)
   return adapter_cls[0]
