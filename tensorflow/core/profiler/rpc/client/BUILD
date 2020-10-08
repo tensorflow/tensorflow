@@ -2,12 +2,11 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_client_deps", "tf_profiler_copts")
 
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_profiler_client_deps",
     "tf_protos_profiler_service",
 )
 
