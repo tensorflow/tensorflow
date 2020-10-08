@@ -182,22 +182,22 @@ class SparseXentTest(test.TestCase):
           np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
           np.array([0, 3]).astype(label_dtype))
 
-  def testBfloat(self):
+  def testBfloat16(self):
     for label_dtype in np.int32, np.int64:
       np_features = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]
               ).astype(np.float32)
       np_labels = np.array([0, 3]).astype(label_dtype)
       np_loss, np_backprop = self._npXent(np_features, np_labels)
 
-      bf_np_features = math_ops.cast(np_features, dtypes.bfloat16)
-      bf_np_loss = math_ops.cast(np_loss, dtypes.bfloat16)
-      bf_np_backprop = math_ops.cast(np_backprop, dtypes.bfloat16)
+      casted_features = math_ops.cast(np_features, dtypes.bfloat16)
+      casted_loss = math_ops.cast(np_loss, dtypes.bfloat16)
+      casted_backprop = math_ops.cast(np_backprop, dtypes.bfloat16)
       with self.cached_session(use_gpu=False) as sess:
         loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
-          bf_np_features, np_labels)
+          casted_features, np_labels)
         tf_loss, tf_backprop = self.evaluate([loss, backprop])
-      self.assertAllCloseAccordingToType(bf_np_loss, tf_loss)
-      self.assertAllCloseAccordingToType(bf_np_backprop, tf_backprop)
+      self.assertAllCloseAccordingToType(casted_loss, tf_loss)
+      self.assertAllCloseAccordingToType(casted_backprop, tf_backprop)
 
   def testHalf(self):
     for label_dtype in np.int32, np.int64:
