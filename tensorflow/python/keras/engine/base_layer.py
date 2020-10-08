@@ -2438,6 +2438,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           generic_utils.to_snake_case(self.__class__.__name__),
           zero_based=zero_based)
     else:
+      backend.observe_object_name(name)
       self._name = name
 
   def _get_existing_metric(self, name=None):
