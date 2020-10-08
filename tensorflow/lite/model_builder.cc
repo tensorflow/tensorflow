@@ -21,6 +21,7 @@ limitations under the License.
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -168,6 +169,23 @@ string FlatBufferModel::GetMinimumRuntime() const {
     }
   }
   return "";
+}
+
+string FlatBufferModel::GetModelEndianness() const {
+  // If no endianness info is found in metadata, set to host endianness by default.
+  string host_endianness = (tensorflow::port::kLittleEndian) ? "little" : "big";
+  if (!model_ || !model_->metadata()) return host_endianness;
+
+  for (int i = 0; i < model_->metadata()->size(); ++i) {
+    auto metadata = model_->metadata()->Get(i);
+    if (metadata->name()->str() == "model_endianness") {
+      auto buf = metadata->buffer();
+      auto* buffer = (*model_->buffers())[buf];
+      auto* array = buffer->data();
+      return string(reinterpret_cast<const char*>(array->data()), array->size());
+    }
+  }
+  return host_endianness;
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {

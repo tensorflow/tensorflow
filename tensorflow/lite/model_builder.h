@@ -148,6 +148,11 @@ class FlatBufferModel {
   // reported minimum.
   std::string GetMinimumRuntime() const;
 
+  // Return the endianness of the serialized flatbuffer. If the endianness is
+  // different from the host machine endianness, the tensors need to be
+  // byte-swapped during interpreter initialization.
+  string GetModelEndianness() const;
+
   /// Returns true if the model identifier is correct (otherwise false and
   /// reports an error).
   bool CheckModelIdentifier() const;

@@ -92,6 +92,7 @@ class InterpreterBuilder {
 
   bool has_flex_op_ = false;
   int num_fp32_tensors_ = 0;
+  bool need_to_swap_bytes_ = false;
 };
 
 }  // namespace tflite

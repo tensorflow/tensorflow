@@ -471,6 +471,16 @@ void ExportModelVersionBuffer(
       min_runtime.size()));
 }
 
+// Export a string buffer that contains the model's endianness information.
+void ExportEndiannessBuffer(
+    const bool is_little_endian, std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
+    FlatBufferBuilder* builder) {
+  const std::string endianness = (is_little_endian) ? "little" : "big";
+  buffers_to_write->push_back(builder->CreateVector(
+      reinterpret_cast<const uint8_t*>(endianness.data()),
+      endianness.size()));
+}
+
 tensorflow::Status Export(
     const Model& model, std::string* output_file_contents,
     const ExportParams& params,
@@ -634,7 +644,12 @@ tensorflow::Status Export(
       CreateMetadata(builder, builder.CreateString("min_runtime_version"),
                      buffers_to_write.size());
   ExportModelVersionBuffer(model, &buffers_to_write, &builder);
-  std::vector<flatbuffers::Offset<Metadata>> metadatas = {metadata};
+  // Write endianness information of the model into metadata.
+  auto metadata_endianness =
+      CreateMetadata(builder, builder.CreateString("model_endianness"),
+                     buffers_to_write.size());
+  ExportEndiannessBuffer(tensorflow::port::kLittleEndian, &buffers_to_write, &builder);
+  std::vector<flatbuffers::Offset<Metadata>> metadatas = {metadata, metadata_endianness};
 
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);
   auto description = builder.CreateString("TOCO Converted.");

@@ -21,6 +21,7 @@ limitations under the License.
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -480,6 +481,20 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           if (size_t size = array->size()) {
             *buffer_size = size;
             *buffer_data = reinterpret_cast<const char*>(array->data());
+            if (need_to_swap_bytes_) {
+              switch (type) {
+                case kTfLiteFloat32: {
+                  int32_t *p = reinterpret_cast<int32_t*>(const_cast<uint8_t*>(array->data()));
+                  for (size_t i = 0; i < size; i+=4, ++p) *p = flatbuffers::EndianSwap(*p);
+                  break;
+                }
+                default:
+                  TF_LITE_REPORT_ERROR(
+                    error_reporter_,
+                    "Unsupported data type %s", type);
+                  return kTfLiteError;
+              }
+            }
             return kTfLiteOk;
           }
         }
@@ -600,6 +615,13 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (BuildLocalIndexToRegistrationMapping() != kTfLiteOk) {
     error_reporter_->Report("Registration failed.\n");
     return cleanup_and_error();
+  }
+
+  // Check whether the model and host machine have the same endianness.
+  const std::string model_endianness = FlatBufferModel::BuildFromModel(model_)->GetModelEndianness();
+  const std::string host_endianness = (tensorflow::port::kLittleEndian) ? "little" : "big";
+  if (model_endianness != host_endianness) {
+    need_to_swap_bytes_ = true;
   }
 
   // Flatbuffer model schemas define a list of opcodes independent of the graph.

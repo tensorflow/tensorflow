@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -1283,6 +1284,10 @@ Translator::CreateMetadataVector() {
   // cause any waste of space if the actual string is shorter than 16 bytes.
   metadata.push_back(
       BuildMetadata("min_runtime_version", std::string(16, '\0')));
+  // Export a string buffer that contains the model's endianness information.
+  std::string endianness = (tensorflow::port::kLittleEndian) ? "little" : "big";
+  metadata.push_back(
+      BuildMetadata("model_endianness", endianness));
   return builder_.CreateVector(metadata);
 }
 
