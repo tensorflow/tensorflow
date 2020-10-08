@@ -1662,14 +1662,14 @@ inline void ComputeInterpolationValues(const int32 value, const int32 scale_10,
   *upper_bound = std::min(*scaled_value / (1 << 10) + 1, input_size - 1);
 }
 
-// Same as above but takes int8 as input and output.
-inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
-                           const RuntimeShape& unextended_input_shape,
-                           const int8_t* input_data,
-                           const RuntimeShape& unextended_output_size_shape,
-                           const int32* output_size_data,
-                           const RuntimeShape& unextended_output_shape,
-                           int8_t* output_data) {
+// Same as above but doesn't use any floating-point for the resize
+template <typename T>
+inline void ResizeBilinearInteger(
+    const tflite::ResizeBilinearParams& op_params,
+    const RuntimeShape& unextended_input_shape, const T* input_data,
+    const RuntimeShape& unextended_output_size_shape,
+    const int32* output_size_data, const RuntimeShape& unextended_output_shape,
+    T* output_data) {
   // If half_pixel_centers is True, align_corners must be False.
   TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
@@ -1743,8 +1743,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
               (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
           const int64_t output_20 =
               output_20_ll + output_20_lu + output_20_rl + output_20_ru;
-          const int8_t interpolation =
-              static_cast<int8_t>((output_20 + (1 << 19)) / (1 << 20));
+          const T interpolation =
+              static_cast<T>((output_20 + (1 << 19)) / (1 << 20));
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
