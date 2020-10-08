@@ -20,6 +20,7 @@ VALID_LIBS = [
     "com_googlesource_code_re2",
     "curl",
     "cython",
+    "dill_archive",
     "double_conversion",
     "enum34_archive",
     "flatbuffers",
