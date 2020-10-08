@@ -153,6 +153,9 @@ class ExecutionOutput {
                   std::vector<se::OwningDeviceMemory> to_be_released)
       : result_(std::move(result)),
         to_be_released_(std::move(to_be_released)) {}
+  ExecutionOutput(Shape on_device_shape, se::DeviceMemoryAllocator* allocator,
+                  int device_ordinal)
+      : result_(std::move(on_device_shape), allocator, device_ordinal) {}
   ExecutionOutput(Shape on_host_shape, Shape on_device_shape,
                   se::DeviceMemoryAllocator* allocator, int device_ordinal)
       : result_(std::move(on_host_shape), std::move(on_device_shape), allocator,
