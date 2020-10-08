@@ -994,10 +994,9 @@ table OperatorCode {
   // parameters are introduced into an op.
   version:int = 1;
 
-  // This field is introduced for resolving op builtin code shortage problem
-  // (the original BuiltinOperator enum field was represented as a byte).
+  // This field is introduced for resolving op builtin code shortage problem.
   // This field will be used when the value of the extended builtin_code field
-  // has greater than BulitinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
+  // is greater than BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
   builtin_code:BuiltinOperator;
 }
 
