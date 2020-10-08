@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/error_reporter.h"
+#include "tensorflow/lite/model.h"
 
 namespace tflite {
 

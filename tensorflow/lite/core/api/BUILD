@@ -3,7 +3,7 @@ load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -24,7 +24,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/c:common",
@@ -34,18 +33,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
     ],
-)
-
-cc_library(
-    name = "verifier",
-    hdrs = ["verifier.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
-    ],
-    deps = [":api"],
 )
 
 cc_test(
