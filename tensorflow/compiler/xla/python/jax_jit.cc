@@ -538,6 +538,14 @@ const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
   return nullptr;
 }
 
+bool IsFloat0(py::array arg) {
+  static const auto* dtypes_module =
+      new py::module(py::module::import("jax.dtypes"));
+  static const auto* float0_dtype =
+      new py::handle(dtypes_module->attr("float0"));
+  return float0_dtype->is(arg.attr("dtype"));
+}
+
 // Converts flattened arguments contained in ParsedArgumentsAsBuffers in
 // place. If arguments are `DeviceArray`, they must all be on the same `Device`.
 //
@@ -617,7 +625,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
       if (!HasTrivialLazyExpr(arg)) {
         return InvalidArgument(
             "Non-trivial lazy expression not supported in C++. "
-            "It will fallback to Python.");
+            "Falling back to Python.");
       }
 
       PyBuffer* buffer = py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
@@ -643,6 +651,11 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
       // TODO(jblespiau): Can we improve this call? Do we need the underlying
       // GlobalPyRefManager() and co?
       py::array numpy_array = py::cast<py::array>(arg);
+      if (IsFloat0(numpy_array)) {
+        return InvalidArgument(
+            "float0 numpy arrays not supported in C++. "
+            "It will fallback to Python.");
+      }
       // If jax_enable_x64 is not set, we need to coerce 32 bits types.
       // Note that this is calling back to Python!
       if (!jax_enable_x64) {
@@ -844,6 +857,7 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
       });
 
   // Only for testing purposes
+  jitlib.def("_is_float0", &IsFloat0);
   jitlib.def("_is_trivial", &HasTrivialLazyExpr);
   jitlib.def("_ScalarToBuffer", [](py::handle scalar, bool jax_enable_x64,
                                    std::shared_ptr<xla::PyClient> client) {
