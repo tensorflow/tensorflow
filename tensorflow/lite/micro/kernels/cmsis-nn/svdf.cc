@@ -30,9 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace svdf {
 namespace {
 
 struct OpData {
@@ -49,6 +46,17 @@ struct OpData {
   int input_zero_point;
   int output_zero_point;
 };
+
+// Input tensors.
+constexpr int kInputTensor = 0;
+constexpr int kWeightsFeatureTensor = 1;
+constexpr int kWeightsTimeTensor = 2;
+constexpr int kBiasTensor = 3;
+// This is a variable tensor, and will be modified by this op.
+constexpr int kInputActivationStateTensor = 4;
+
+// Output tensor.
+constexpr int kOutputTensor = 0;
 
 /**
  * This version of SVDF is specific to TFLite Micro. It contains the following
@@ -115,7 +123,8 @@ static inline void ApplyTimeWeightsBiasAndActivation(
   for (int b = 0; b < batch_size; ++b) {
     float* output_ptr_batch = output_ptr + b * num_units;
     for (int i = 0; i < num_units; ++i) {
-      *output_ptr_batch = ActivationValFloat(activation, *output_ptr_batch);
+      *output_ptr_batch =
+          tflite::ops::micro::ActivationValFloat(activation, *output_ptr_batch);
       ++output_ptr_batch;
     }
   }
@@ -268,19 +277,6 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
       &bias_dims, (int32_t*)tflite::micro::GetTensorData<int32_t>(bias_tensor),
       &output_dims, output_data);
 }
-
-}  // namespace
-
-// Input tensors.
-constexpr int kInputTensor = 0;
-constexpr int kWeightsFeatureTensor = 1;
-constexpr int kWeightsTimeTensor = 2;
-constexpr int kBiasTensor = 3;
-// This is a variable tensor, and will be modified by this op.
-constexpr int kInputActivationStateTensor = 4;
-
-// Output tensor.
-constexpr int kOutputTensor = 0;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -464,19 +460,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace svdf
+}  // namespace
 
 TfLiteRegistration Register_SVDF() {
-  return {/*init=*/svdf::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/svdf::Prepare,
-          /*invoke=*/svdf::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite
