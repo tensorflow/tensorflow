@@ -458,6 +458,9 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   def _support_per_replica_values(self):
     return False
 
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
