@@ -75,6 +75,9 @@ _python_eager_context_create_counter = monitoring.Counter(
     "/tensorflow/api/python/eager_context_create_counter",
     "Counter for number of eager contexts created in Python.")
 
+# Re-exporting through context.
+is_tfrt_enabled = tfrt_utils.enabled
+
 
 class _EagerTensorCache(object):
   """Simple cache which evicts items based on length in a FIFO manner."""
