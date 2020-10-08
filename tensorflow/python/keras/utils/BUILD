@@ -314,6 +314,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -375,6 +376,7 @@ tf_py_test(
     python_version = "PY3",
     tfrt_enabled = True,
     deps = [
+        ":layer_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",
