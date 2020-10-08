@@ -42,6 +42,7 @@ VALID_LIBS = [
     "pybind11",
     "six_archive",
     "snappy",
+    "tblib_archive",
     "termcolor_archive",
     "wrapt",
     "zlib",
