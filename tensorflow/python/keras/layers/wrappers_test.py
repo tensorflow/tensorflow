@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -572,6 +573,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       model.compile(loss='mse', optimizer='sgd')
       model.fit(x, y, epochs=1, batch_size=1)
 
+  @test_util.enable_output_all_intermediates
   def test_bidirectional_statefulness(self):
     # Bidirectional and stateful
     rnn = keras.layers.SimpleRNN
