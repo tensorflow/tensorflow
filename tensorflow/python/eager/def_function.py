@@ -773,6 +773,11 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
+  # TODO: Remove this private method after updating all its uses
+  # A good moment to do this could be when the experimental label is removed 
+  def _get_tracing_count(self):
+    return self.experimental_get_tracing_count
+
   def experimental_get_tracing_count(self):
     """Returns the number of times the function has been traced.
 
