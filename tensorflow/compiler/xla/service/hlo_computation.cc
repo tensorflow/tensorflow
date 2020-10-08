@@ -93,10 +93,13 @@ HloComputation::HloComputation(
 }
 
 HloInstruction* HloComputation::AddInstruction(
-    std::unique_ptr<HloInstruction> instruction) {
+    std::unique_ptr<HloInstruction> instruction, const std::string& new_name) {
   CHECK(instruction->opcode() != HloOpcode::kParameter)
       << "Parameter instructions cannot be added to a computation after "
       << "it has been built";
+  if (!new_name.empty()) {
+    instruction->SetAndSanitizeName(new_name);
+  }
   return AddInstructionInternal(std::move(instruction));
 }
 
