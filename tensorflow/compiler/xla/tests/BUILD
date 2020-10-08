@@ -6,7 +6,14 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "genrule")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -1917,9 +1924,14 @@ xla_test(
     name = "concat_test",
     srcs = ["concat_test.cc"],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -1927,9 +1939,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
 )

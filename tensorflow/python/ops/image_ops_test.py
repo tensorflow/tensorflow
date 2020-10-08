@@ -2549,7 +2549,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.shape)
 
 
-class ResizeImagesV2Test(test_util.TensorFlowTestCase):
+class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   METHODS = [
       image_ops.ResizeMethod.BILINEAR, image_ops.ResizeMethod.NEAREST_NEIGHBOR,
@@ -2594,7 +2594,6 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
       return False
 
   @test_util.disable_xla("align_corners=False not supported by XLA")
-  @test_util.run_deprecated_v1
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
     single_shape = [6, 4, 1]
@@ -2632,7 +2631,6 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
         self.assertAllEqual(single_shape, newshape)
 
   # half_pixel_centers unsupported in ResizeBilinear
-  @test_util.run_deprecated_v1
   @test_util.disable_xla("b/127616992")
   def testTensorArguments(self):
     img_shape = [1, 6, 4, 1]
@@ -2643,16 +2641,17 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
         127, 127, 64, 64, 127, 127, 64, 64, 64, 64, 127, 127, 64, 64, 127, 127,
         50, 50, 100, 100, 50, 50, 100, 100
     ]
-    new_size = array_ops.placeholder(dtypes.int32, shape=(2))
+    def resize_func(t, new_size, method):
+      return image_ops.resize_images_v2(t, new_size, method)
 
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
     for method in self.METHODS:
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True):
         image = constant_op.constant(img_np, shape=img_shape)
-        y = image_ops.resize_images_v2(image, new_size, method)
+        y = resize_func(image, [6, 4], method)
         yshape = array_ops.shape(y)
-        resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
+        resized, newshape = self.evaluate([y, yshape])
         self.assertAllEqual(img_shape, newshape)
         if method in self.INTERPOLATING_METHODS:
           self.assertAllClose(resized, img_np, atol=1e-5)
@@ -2661,9 +2660,9 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True):
         img_single = img_np.reshape(single_shape)
         image = constant_op.constant(img_single, shape=single_shape)
-        y = image_ops.resize_images_v2(image, new_size, self.METHODS[0])
+        y = resize_func(image, [6, 4], self.METHODS[0])
         yshape = array_ops.shape(y)
-        resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
+        resized, newshape = self.evaluate([y, yshape])
         self.assertAllEqual(single_shape, newshape)
         if method in self.INTERPOLATING_METHODS:
           self.assertAllClose(resized, img_single, atol=1e-5)
@@ -2671,49 +2670,72 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
     # Incorrect shape.
     with self.assertRaises(ValueError):
       new_size = constant_op.constant(4)
-      _ = image_ops.resize_images_v2(image, new_size,
-                                     image_ops.ResizeMethod.BILINEAR)
+      _ = resize_func(image, new_size, image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
       new_size = constant_op.constant([4])
-      _ = image_ops.resize_images_v2(image, new_size,
-                                     image_ops.ResizeMethod.BILINEAR)
+      _ = resize_func(image, new_size, image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
       new_size = constant_op.constant([1, 2, 3])
-      _ = image_ops.resize_images_v2(image, new_size,
-                                     image_ops.ResizeMethod.BILINEAR)
+      _ = resize_func(image, new_size, image_ops.ResizeMethod.BILINEAR)
 
     # Incorrect dtypes.
     with self.assertRaises(ValueError):
       new_size = constant_op.constant([6.0, 4])
-      _ = image_ops.resize_images_v2(image, new_size,
-                                     image_ops.ResizeMethod.BILINEAR)
+      _ = resize_func(image, new_size, image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
-      _ = image_ops.resize_images_v2(image, [6, 4.0],
-                                     image_ops.ResizeMethod.BILINEAR)
+      _ = resize_func(image, [6, 4.0], image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
-      _ = image_ops.resize_images_v2(image, [None, 4],
-                                     image_ops.ResizeMethod.BILINEAR)
+      _ = resize_func(image, [None, 4], image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
-      _ = image_ops.resize_images_v2(image, [6, None],
-                                     image_ops.ResizeMethod.BILINEAR)
+      _ = resize_func(image, [6, None], image_ops.ResizeMethod.BILINEAR)
 
-  @test_util.run_deprecated_v1
-  def testReturnDtype(self):
-    target_shapes = [[6, 4], [3, 2],
-                     [
-                         array_ops.placeholder(dtypes.int32),
-                         array_ops.placeholder(dtypes.int32)
-                     ]]
-    for nptype in self.TYPES:
-      image = array_ops.placeholder(nptype, shape=[1, 6, 4, 1])
-      for method in self.METHODS:
-        for target_shape in target_shapes:
-          y = image_ops.resize_images_v2(image, target_shape, method)
-          if method == image_ops.ResizeMethod.NEAREST_NEIGHBOR:
-            expected_dtype = image.dtype
-          else:
-            expected_dtype = dtypes.float32
-          self.assertEqual(y.dtype, expected_dtype)
+  def testReturnDtypeV1(self):
+    # Shape inference in V1.
+    with ops.Graph().as_default():
+      target_shapes = [[6, 4], [3, 2],
+                       [
+                           array_ops.placeholder(dtypes.int32),
+                           array_ops.placeholder(dtypes.int32)
+                       ]]
+      for nptype in self.TYPES:
+        image = array_ops.placeholder(nptype, shape=[1, 6, 4, 1])
+        for method in self.METHODS:
+          for target_shape in target_shapes:
+            y = image_ops.resize_images_v2(image, target_shape, method)
+            if method == image_ops.ResizeMethod.NEAREST_NEIGHBOR:
+              expected_dtype = image.dtype
+            else:
+              expected_dtype = dtypes.float32
+            self.assertEqual(y.dtype, expected_dtype)
+
+  @parameterized.named_parameters([("_RunEagerly", True), ("_RunGraph", False)])
+  def testReturnDtypeV2(self, run_func_eagerly):
+    if not context.executing_eagerly() and run_func_eagerly:
+      # Skip running tf.function eagerly in V1 mode.
+      self.skipTest("Skip test that runs tf.function eagerly in V1 mode.")
+    else:
+
+      @def_function.function
+      def test_dtype(image, target_shape, target_method):
+        y = image_ops.resize_images_v2(image, target_shape, target_method)
+        if method == image_ops.ResizeMethod.NEAREST_NEIGHBOR:
+          expected_dtype = image.dtype
+        else:
+          expected_dtype = dtypes.float32
+
+        self.assertEqual(y.dtype, expected_dtype)
+
+      target_shapes = [[6, 4],
+                       [3, 2],
+                       [tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+                        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)]]
+
+      for nptype in self.TYPES:
+        image = tensor_spec.TensorSpec(shape=[1, 6, 4, 1], dtype=nptype)
+        for method in self.METHODS:
+          for target_shape in target_shapes:
+            with test_util.run_functions_eagerly(run_func_eagerly):
+              test_dtype.get_concrete_function(image, target_shape, method)
 
   # half_pixel_centers not supported by XLA
   @test_util.disable_xla("b/127616992")
@@ -2951,52 +2973,54 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
             value[use_gpu] = self.evaluate(out_op)
         self.assertAllClose(value[True], value[False], rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    self._assertShapeInference([50, 60, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([55, 66, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([59, 69, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([50, 69, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([59, 60, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([None, 60, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([None, 66, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([None, 69, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([50, None, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([55, None, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([59, None, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([None, None, 3], [55, 66], [55, 66, 3])
-    self._assertShapeInference([50, 60, None], [55, 66], [55, 66, None])
-    self._assertShapeInference([55, 66, None], [55, 66], [55, 66, None])
-    self._assertShapeInference([59, 69, None], [55, 66], [55, 66, None])
-    self._assertShapeInference([50, 69, None], [55, 66], [55, 66, None])
-    self._assertShapeInference([59, 60, None], [55, 66], [55, 66, None])
-    self._assertShapeInference([None, None, None], [55, 66], [55, 66, None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      self._assertShapeInference([50, 60, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([55, 66, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([59, 69, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([50, 69, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([59, 60, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([None, 69, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([50, None, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([55, None, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([59, None, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([None, None, 3], [55, 66], [55, 66, 3])
+      self._assertShapeInference([50, 60, None], [55, 66], [55, 66, None])
+      self._assertShapeInference([55, 66, None], [55, 66], [55, 66, None])
+      self._assertShapeInference([59, 69, None], [55, 66], [55, 66, None])
+      self._assertShapeInference([50, 69, None], [55, 66], [55, 66, None])
+      self._assertShapeInference([59, 60, None], [55, 66], [55, 66, None])
+      self._assertShapeInference([None, None, None], [55, 66], [55, 66, None])
 
-  @test_util.run_deprecated_v1
   def testNameScope(self):
-    with self.cached_session(use_gpu=True):
-      single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
-      y = image_ops.resize_images(single_image, [55, 66])
-      self.assertTrue(y.op.name.startswith("resize"))
+    # Testing name scope requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True):
+        single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
+        y = image_ops.resize_images(single_image, [55, 66])
+        self.assertTrue(y.op.name.startswith("resize"))
 
   def _ResizeImageCall(self, x, max_h, max_w, preserve_aspect_ratio,
                        use_tensor_inputs):
     if use_tensor_inputs:
       target_max = ops.convert_to_tensor([max_h, max_w])
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
-      target_max = [max_h, max_w]
+      target_max = (max_h, max_w)
       x_tensor = x
-      feed_dict = {}
 
-    y = image_ops.resize_images(
-        x_tensor,
-        ops.convert_to_tensor(target_max),
-        preserve_aspect_ratio=preserve_aspect_ratio)
+    def resize_func(t,
+                    target_max=target_max,
+                    preserve_aspect_ratio=preserve_aspect_ratio):
+      return image_ops.resize_images(
+          t, ops.convert_to_tensor(target_max),
+          preserve_aspect_ratio=preserve_aspect_ratio)
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(resize_func(x_tensor))
 
   def _assertResizeEqual(self,
                          x,
@@ -3032,7 +3056,6 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
                                    preserve_aspect_ratio, use_tensor_inputs)
       self.assertShapeEqual(y, ops.convert_to_tensor(y_tf))
 
-  @test_util.run_deprecated_v1
   def testPreserveAspectRatioMultipleImages(self):
     x_shape = [10, 100, 80, 10]
     x = np.random.uniform(size=x_shape)
@@ -3046,42 +3069,36 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
             expect_shape,
             preserve_aspect_ratio=preserve_aspect_ratio)
 
-  @test_util.run_deprecated_v1
   def testPreserveAspectRatioNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertResizeEqual(x, x_shape, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPreserveAspectRatioSmaller(self):
     x_shape = [100, 100, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertResizeCheckShape(x, x_shape, [75, 50], [50, 50, 10])
 
-  @test_util.run_deprecated_v1
   def testPreserveAspectRatioSmallerMultipleImages(self):
     x_shape = [10, 100, 100, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertResizeCheckShape(x, x_shape, [75, 50], [10, 50, 50, 10])
 
-  @test_util.run_deprecated_v1
   def testPreserveAspectRatioLarger(self):
     x_shape = [100, 100, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertResizeCheckShape(x, x_shape, [150, 200], [150, 150, 10])
 
-  @test_util.run_deprecated_v1
   def testPreserveAspectRatioSameRatio(self):
     x_shape = [1920, 1080, 3]
     x = np.random.uniform(size=x_shape)
 
     self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
 
-  @test_util.run_deprecated_v1
   def testPreserveAspectRatioSquare(self):
     x_shape = [299, 299, 3]
     x = np.random.uniform(size=x_shape)
@@ -3259,10 +3276,10 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
                         tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)]]
 
       for nptype in self.TYPES:
+        image = tensor_spec.TensorSpec(shape=[1, 6, 4, 1], dtype=nptype)
         for method in self.METHODS:
           for target_shape in target_shapes:
             with test_util.run_functions_eagerly(run_func_eagerly):
-              image = tensor_spec.TensorSpec(shape=[1, 6, 4, 1], dtype=nptype)
               test_dtype.get_concrete_function(image, target_shape, method)
 
   @test_util.disable_xla("align_corners=False not supported by XLA")
@@ -3625,19 +3642,14 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     if use_tensor_inputs:
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
-
-    y = image_ops.resize_image_with_pad_v1(x_tensor, target_height,
-                                           target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(
+          image_ops.resize_image_with_pad_v1(x_tensor, target_height,
+                                             target_width))
 
   def _assertReturns(self,
                      x,
@@ -3666,28 +3678,53 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._ResizeImageWithPad(x, target_height, target_width,
                                  use_tensor_inputs)
-      except Exception as e:  # pylint: disable=broad-except
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
     y = image_ops.resize_image_with_pad_v1(image, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
-  @test_util.run_deprecated_v1
+  def testShapeInference(self):
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Test with 3-D tensors.
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
+
+      # Test with 4-D tensors.
+      self._assertShapeInference([5, 55, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, 66, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, 50, 60, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, None, None, None], 55, 66,
+                                 [5, 55, 66, None])
+      self._assertShapeInference([None, None, None, None], 55, 66,
+                                 [None, 55, 66, None])
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension
     x = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -3725,19 +3762,14 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     if use_tensor_inputs:
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
-
-    y = image_ops.resize_image_with_pad_v2(x_tensor, target_height,
-                                           target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(
+          image_ops.resize_image_with_pad_v2(x_tensor, target_height,
+                                             target_width))
 
   def _assertReturns(self,
                      x,
@@ -3766,29 +3798,53 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._ResizeImageWithPad(x, target_height, target_width,
                                  use_tensor_inputs)
-      except Exception as e:  # pylint: disable=broad-except
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
     y = image_ops.resize_image_with_pad_v1(image, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
+  def testShapeInference(self):
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Test with 3-D tensors.
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
 
-  @test_util.run_deprecated_v1
+      # Test with 4-D tensors.
+      self._assertShapeInference([5, 55, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 66, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, 60, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 50, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, None, None, 3], 55, 66, [5, 55, 66, 3])
+      self._assertShapeInference([5, 55, 66, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, 50, 60, None], 55, 66, [5, 55, 66, None])
+      self._assertShapeInference([5, None, None, None], 55, 66,
+                                 [5, 55, 66, None])
+      self._assertShapeInference([None, None, None, None], 55, 66,
+                                 [None, 55, 66, None])
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension
     x = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -3824,19 +3880,17 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     if use_tensor_inputs:
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
 
-    y = image_ops.resize_image_with_crop_or_pad(x_tensor, target_height,
-                                                target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
+    @def_function.function
+    def resize_crop_or_pad(*args):
+      return image_ops.resize_image_with_crop_or_pad(*args)
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(
+          resize_crop_or_pad(x_tensor, target_height, target_width))
 
   def _assertReturns(self,
                      x,
@@ -3865,28 +3919,22 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._ResizeImageWithCropOrPad(x, target_height, target_width,
                                        use_tensor_inputs)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
     y = image_ops.resize_image_with_crop_or_pad(image, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
-  @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPad(self):
     # Pad even along col.
     x = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -3924,7 +3972,6 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, y, y_shape)
 
-  @test_util.run_deprecated_v1
   def testCrop(self):
     # Crop even along col.
     x = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -3962,7 +4009,6 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, y, y_shape)
 
-  @test_util.run_deprecated_v1
   def testCropAndPad(self):
     # Pad along row but crop along col.
     x = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -3982,29 +4028,29 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, y, y_shape)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([59, 69, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([50, 69, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([59, 60, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 69, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([59, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([59, 69, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([50, 69, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([59, 60, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
-    self._assertShapeInference(None, 55, 66, [55, 66, None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([59, 69, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 69, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([59, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 69, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([59, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([59, 69, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 69, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([59, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
 
-  @test_util.run_deprecated_v1
   def testNon3DInput(self):
     # Input image is not 3D
     x = [0] * 15
@@ -4018,7 +4064,6 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
       self._assertRaises(x, x_shape, target_height, target_width,
                          "must have either 3 or 4 dimensions.")
 
-  @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
     target_height, target_width = [1, 1]
@@ -4044,7 +4089,6 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
-  @test_util.run_deprecated_v1
   def testBadParams(self):
     x_shape = [4, 4, 1]
     x = np.zeros(x_shape)
@@ -4059,11 +4103,12 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     self._assertRaises(x, x_shape, target_height, target_width,
                        "target_width must be > 0")
 
-  @test_util.run_deprecated_v1
   def testNameScope(self):
-    image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
-    y = image_ops.resize_image_with_crop_or_pad(image, 55, 66)
-    self.assertTrue(y.op.name.startswith("resize_image_with_crop_or_pad"))
+    # Testing name scope requires placeholders and a graph.
+    with ops.Graph().as_default():
+      image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
+      y = image_ops.resize_image_with_crop_or_pad(image, 55, 66)
+      self.assertTrue(y.op.name.startswith("resize_image_with_crop_or_pad"))
 
 
 def simple_color_ramp():
@@ -4143,7 +4188,6 @@ class JpegTest(test_util.TensorFlowTestCase):
         image1_crop, image2 = self.evaluate([image1_crop, image2])
         self.assertAllEqual(image1_crop, image2)
 
-  @test_util.run_deprecated_v1
   def testCropAndDecodeJpegWithInvalidCropWindow(self):
     with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
@@ -4156,10 +4200,10 @@ class JpegTest(test_util.TensorFlowTestCase):
                       [11, 11, 11, -1], [11, 11, 0, 11], [11, 11, 11, 0],
                       [0, 0, h + 1, w], [0, 0, h, w + 1]]
       for crop_window in crop_windows:
-        result = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
-        with self.assertRaisesWithPredicateMatch(
-            errors.InvalidArgumentError,
-            lambda e: "Invalid JPEG data or crop window" in str(e)):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            "Invalid JPEG data or crop window"):
+          result = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
           self.evaluate(result)
 
   def testSynthetic(self):
@@ -4220,36 +4264,35 @@ class JpegTest(test_util.TensorFlowTestCase):
       # The images should be the same.
       self.assertAllClose(image1, image2)
 
-  @test_util.run_deprecated_v1
   def testShape(self):
-    with self.cached_session(use_gpu=True) as sess:
-      jpeg = constant_op.constant("nonsense")
-      for channels in 0, 1, 3:
-        image = image_ops.decode_jpeg(jpeg, channels=channels)
-        self.assertEqual(image.get_shape().as_list(),
-                         [None, None, channels or None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True) as sess:
+        jpeg = constant_op.constant("nonsense")
+        for channels in 0, 1, 3:
+          image = image_ops.decode_jpeg(jpeg, channels=channels)
+          self.assertEqual(image.get_shape().as_list(),
+                           [None, None, channels or None])
 
-  @test_util.run_deprecated_v1
   def testExtractJpegShape(self):
     # Read a real jpeg and verify shape.
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1.jpg")
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True):
       jpeg = io_ops.read_file(path)
       # Extract shape without decoding.
-      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
-      self.assertEqual(image_shape.tolist(), [256, 128, 3])
+      image_shape = self.evaluate(image_ops.extract_jpeg_shape(jpeg))
+      self.assertAllEqual(image_shape, [256, 128, 3])
 
-  @test_util.run_deprecated_v1
   def testExtractJpegShapeforCmyk(self):
     # Read a cmyk jpeg image, and verify its shape.
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1_cmyk.jpg")
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True):
       jpeg = io_ops.read_file(path)
-      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
+      image_shape = self.evaluate(image_ops.extract_jpeg_shape(jpeg))
       # Cmyk jpeg image has 4 channels.
-      self.assertEqual(image_shape.tolist(), [256, 128, 4])
+      self.assertAllEqual(image_shape, [256, 128, 4])
 
   def testRandomJpegQuality(self):
     # Previous implementation of random_jpeg_quality had a bug.
@@ -4317,14 +4360,12 @@ class JpegTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True) as sess:
         sess.run(adjust_jpeg_quality_image)
 
-  @test_util.run_deprecated_v1
   def testAdjustJpegQualityShape(self):
     with self.cached_session(use_gpu=True):
       image = constant_op.constant(
           np.arange(24, dtype=np.uint8).reshape([2, 4, 3]))
       adjusted_image = image_ops.adjust_jpeg_quality(image, 80)
-      self.assertListEqual(adjusted_image.shape.as_list(),
-                           [None, None, 3])
+      adjusted_image.shape.assert_is_compatible_with([None, None, 3])
 
 
 class PngTest(test_util.TensorFlowTestCase):
@@ -4397,14 +4438,15 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertEqual(2, image0.shape[-1])
       self.assertAllEqual(image0, image1)
 
-  @test_util.run_deprecated_v1
   def testShape(self):
-    with self.cached_session(use_gpu=True):
-      png = constant_op.constant("nonsense")
-      for channels in 0, 1, 3:
-        image = image_ops.decode_png(png, channels=channels)
-        self.assertEqual(image.get_shape().as_list(),
-                         [None, None, channels or None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True):
+        png = constant_op.constant("nonsense")
+        for channels in 0, 1, 3:
+          image = image_ops.decode_png(png, channels=channels)
+          self.assertEqual(image.get_shape().as_list(),
+                           [None, None, channels or None])
 
 
 class GifTest(test_util.TensorFlowTestCase):
@@ -4442,12 +4484,13 @@ class GifTest(test_util.TensorFlowTestCase):
     self._testValid("scan.gif")
     self._testValid("optimized.gif")
 
-  @test_util.run_deprecated_v1
   def testShape(self):
-    with self.cached_session(use_gpu=True) as sess:
-      gif = constant_op.constant("nonsense")
-      image = image_ops.decode_gif(gif)
-      self.assertEqual(image.get_shape().as_list(), [None, None, None, 3])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True) as sess:
+        gif = constant_op.constant("nonsense")
+        image = image_ops.decode_gif(gif)
+        self.assertEqual(image.get_shape().as_list(), [None, None, None, 3])
 
 
 class ConvertImageTest(test_util.TensorFlowTestCase):
@@ -4469,17 +4512,17 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
         self.assertTrue(y_saturate.dtype == output_dtype)
         self.assertAllClose(y_saturate, y_np, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testNoConvert(self):
-    # Make sure converting to the same data type creates only an identity op
-    with self.cached_session(use_gpu=True):
-      image = constant_op.constant([1], dtype=dtypes.uint8)
-      image_ops.convert_image_dtype(image, dtypes.uint8)
-      y = image_ops.convert_image_dtype(image, dtypes.uint8)
-      self.assertEqual(y.op.type, "Identity")
-      self.assertEqual(y.op.inputs[0], image)
+    # Tests with Tensor.op requires a graph.
+    with ops.Graph().as_default():
+      # Make sure converting to the same data type creates only an identity op
+      with self.cached_session(use_gpu=True):
+        image = constant_op.constant([1], dtype=dtypes.uint8)
+        image_ops.convert_image_dtype(image, dtypes.uint8)
+        y = image_ops.convert_image_dtype(image, dtypes.uint8)
+        self.assertEqual(y.op.type, "Identity")
+        self.assertEqual(y.op.inputs[0], image)
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenInteger(self):
     # Make sure converting to between integer types scales appropriately
     with self.cached_session(use_gpu=True):
@@ -4488,7 +4531,6 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 2**32], dtypes.int64, dtypes.int32, [0, 1])
       self._convert([0, 1], dtypes.int32, dtypes.int64, [0, 2**32])
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenFloat(self):
     # Make sure converting to between float types does nothing interesting
     with self.cached_session(use_gpu=True):
@@ -4497,7 +4539,6 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([-1.0, 0, 1.0, 200000], dtypes.float64, dtypes.float32,
                     [-1.0, 0, 1.0, 200000])
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenIntegerAndFloat(self):
     # Make sure converting from and to a float type scales appropriately
     with self.cached_session(use_gpu=True):
@@ -4506,7 +4547,6 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 1.1 / 255.0, 1], dtypes.float32, dtypes.uint8,
                     [0, 1, 255])
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenInt16AndInt8(self):
     with self.cached_session(use_gpu=True):
       # uint8, uint16

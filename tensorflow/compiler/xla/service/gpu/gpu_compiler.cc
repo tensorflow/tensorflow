@@ -59,8 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
-#include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -92,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
+#include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -151,6 +151,8 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ZeroSizedHloElimination>();
 
     pipeline.AddPass<GpuScatterExpander>();
+    // TODO(phawkins): replace QR decompositions with calls to cuSOLVER.
+    pipeline.AddPass<QrExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
 
@@ -301,8 +303,7 @@ Status GpuCompiler::OptimizeHloModule(
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline horizontal_fusion("horizontal_fusion");
-    horizontal_fusion.AddPass<GpuHorizontalFusion>();
-    horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
+    horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -616,6 +617,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->GetDeviceDescription().threads_per_warp();
   gpu_device_info.shared_memory_per_block =
       stream_exec->GetDeviceDescription().shared_memory_per_block();
+  gpu_device_info.threads_per_core_limit =
+      stream_exec->GetDeviceDescription().threads_per_core_limit();
+  gpu_device_info.core_count = stream_exec->GetDeviceDescription().core_count();
 
   absl::optional<CudaComputeCapability> cuda_compute_capability =
       [&]() -> absl::optional<CudaComputeCapability> {

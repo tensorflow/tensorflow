@@ -132,6 +132,15 @@ TEST(TfOpUtilsTest, JaxOpTest) {
   EXPECT_EQ(TfOpEventName(kName), "op_type");
 }
 
+TEST(TfOpUtilsTest, OpWithoutTypeTest) {
+  const absl::string_view kName = "OpName:";  // with trailing ':'
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kUnknown);
+  EXPECT_EQ(tf_op.name, "OpName");
+  EXPECT_EQ(tf_op.type, kUnknownOp);
+  EXPECT_EQ(TfOpEventName(kName), "OpName");  // without trailing ':'
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

@@ -585,6 +585,8 @@ class InferenceBuilderImpl : public InferenceBuilder {
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
       create_info.hints.Add(ModelHints::kReduceKernelsCount);
       create_info.hints.Add(ModelHints::kFastTuning);
+    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
+      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
@@ -601,8 +603,8 @@ class InferenceBuilderImpl : public InferenceBuilder {
         absl::make_unique<TensorTieFactory>(environment_, context_.get());
 #endif
 
-    inputs_ = LinkTensors(graph, graph.inputs());
-    outputs_ = LinkTensors(graph, graph.outputs());
+    inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
+    outputs_ = LinkTensors(context_->GetOutputIds(), AccessType::WRITE);
     return absl::OkStatus();
   }
 
@@ -675,12 +677,13 @@ class InferenceBuilderImpl : public InferenceBuilder {
     if (GetRelativeImportance(options, InferencePriority::MIN_LATENCY,
                               InferencePriority::MIN_MEMORY_USAGE) ==
         PriorityImportance::HIGHER) {
-      preferred_storage_types = {GetFastestStorageType(environment_->device()),
-                                 TensorStorageType::BUFFER};
-    } else {
       preferred_storage_types = {
-          GetStorageTypeWithMinimalMemoryConsumption(environment_->device()),
+          GetFastestStorageType(environment_->device().GetInfo()),
           TensorStorageType::BUFFER};
+    } else {
+      preferred_storage_types = {GetStorageTypeWithMinimalMemoryConsumption(
+                                     environment_->device().GetInfo()),
+                                 TensorStorageType::BUFFER};
     }
 
     for (TensorStorageType storage_type : preferred_storage_types) {
@@ -718,15 +721,13 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   // Links internal tensors with external user-facing objects.
-  std::vector<TensorTieDef> LinkTensors(const GraphFloat32& graph,
-                                        const std::vector<Value*>& values) {
+  std::vector<TensorTieDef> LinkTensors(const std::vector<ValueId>& ids,
+                                        AccessType access) {
     std::vector<TensorTieDef> links;
-    links.reserve(values.size());
-    for (const auto& value : values) {
-      TensorObjectDef def = TensorToDef(*context_->GetTensor(value->id));
-      AccessType access =
-          graph.IsGraphInput(value->id) ? AccessType::READ : AccessType::WRITE;
-      links.push_back({value->id, access, def, def});
+    links.reserve(ids.size());
+    for (const auto& id : ids) {
+      TensorObjectDef def = TensorToDef(*context_->GetTensor(id));
+      links.push_back({id, access, def, def});
     }
     return links;
   }

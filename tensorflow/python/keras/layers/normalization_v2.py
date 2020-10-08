@@ -28,7 +28,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.layers.experimental.SyncBatchNormalization', v1=[])  # pylint: disable=g-classes-have-attributes
+# pylint: disable=g-classes-have-attributes
+@keras_export('keras.layers.experimental.SyncBatchNormalization', v1=[])
 class SyncBatchNormalization(normalization.BatchNormalizationBase):
   r"""Normalize and scale inputs or activations synchronously across replicas.
 
@@ -204,7 +205,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
         return (mean, variance)
 
 
-@keras_export('keras.layers.BatchNormalization', v1=[])  # pylint: disable=missing-docstring
+# pylint: disable=missing-docstring
+@keras_export('keras.layers.BatchNormalization', v1=[])
 class BatchNormalization(normalization.BatchNormalizationBase):
 
   __doc__ = normalization.replace_in_base_docstring([

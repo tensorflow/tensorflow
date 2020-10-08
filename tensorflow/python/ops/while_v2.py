@@ -161,6 +161,10 @@ def while_loop(cond,
       Returns:
         A list of tensors the same length as args.
       """
+      # The function was created with a signature rather than tensors, so
+      # internal placeholders were created without handle data.
+      _copy_handle_data(nest.flatten(loop_vars[2:], expand_composites=True),
+                        nest.flatten(args, expand_composites=True))
       # Capture the tensors already captured in cond_graph so that they appear
       # in the same order in body_graph.external_captures.
       for t in cond_graph.external_captures:
@@ -372,7 +376,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     while_op._add_while_inputs(new_inputs)
     while_op._add_outputs([t.dtype for t in new_outputs],
                           [t.shape for t in new_outputs])
-    _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
+    _copy_handle_data(new_outputs, while_op.outputs[orig_num_params:])
 
   # Do not ignore grads wrt extra outputs when computing higher order
   # derivatives.

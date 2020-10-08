@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -104,7 +102,9 @@ py_library(
     name = "backend_config",
     srcs = ["backend_config.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:util"],
+    deps = [
+        "//tensorflow/python:util",
+    ],
 )
 
 # TODO(scottzhu): Cleanup this target and point all the user to keras/engine.
@@ -287,6 +287,7 @@ py_library(
 py_library(
     name = "optimizers",
     srcs = [
+        "optimizer_v1.py",
         "optimizers.py",
     ],
     srcs_version = "PY2AND3",
@@ -336,6 +337,7 @@ tf_py_test(
     size = "small",
     srcs = ["activations_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":activations",
         ":backend",
@@ -355,6 +357,7 @@ tf_py_test(
     size = "small",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":testing_utils",
@@ -371,6 +374,7 @@ tf_py_test(
     size = "small",
     srcs = ["constraints_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -385,6 +389,7 @@ tf_py_test(
     size = "small",
     srcs = ["initializers_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -419,6 +424,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = ["notsan"],
+    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -454,6 +460,7 @@ tf_py_test(
     srcs = ["metrics_functional_test.py"],
     python_version = "PY3",
     deps = [
+        ":combinations",
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
@@ -621,6 +628,7 @@ tf_py_test(
     size = "medium",
     srcs = ["backend_config_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backend",
         ":backend_config",
@@ -635,6 +643,7 @@ tf_py_test(
     srcs = ["keras_parameterized_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
+    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

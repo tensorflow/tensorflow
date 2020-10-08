@@ -310,6 +310,11 @@ TFTPU_CAPI_EXPORT void TpuExecutable_Fingerprint(SE_Executable* executable,
                                                  const char** fingerprint,
                                                  size_t* size);
 
+// Caller is responsible for freeing the returned module's proto and its
+// config's proto.
+TFTPU_CAPI_EXPORT XLA_HloModule
+TpuExecutable_HloModule(SE_Executable* executable);
+
 TFTPU_CAPI_EXPORT void TpuExecutable_Free(SE_Executable*);
 
 // Converts an XLA `Shape` into its equivalent TPU `Shape` representation.
@@ -458,6 +463,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Fingerprint);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_HloModule);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Free);
 
   TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuShapeRepresentation);

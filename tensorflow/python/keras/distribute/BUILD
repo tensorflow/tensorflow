@@ -16,8 +16,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -29,6 +27,7 @@ py_library(
     srcs = [
         "__init__.py",
         "distributed_training_utils.py",
+        "distributed_training_utils_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -137,6 +136,7 @@ cuda_py_test(
     srcs = ["worker_training_state_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tfrt_enabled = True,
     deps = [
         ":multi_worker_testing_utils",
         ":worker_training_state",
@@ -337,6 +337,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
+    python_version = "PY3",
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",

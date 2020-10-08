@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -17,6 +18,7 @@ cc_library(
     srcs = ["diagnostics.cc"],
     hdrs = ["diagnostics.h"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
@@ -55,6 +57,14 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
+)
+
+cc_library(
+    name = "format_utils",
+    hdrs = ["format_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -110,6 +120,7 @@ cc_library(
     srcs = ["tf_op_utils.cc"],
     hdrs = ["tf_op_utils.h"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
         "@com_google_absl//absl/strings",
     ],
@@ -468,6 +479,27 @@ cc_library(
     hdrs = ["file_system_utils.h"],
     deps = [
         "//tensorflow/core/platform",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "parse_annotation",
+    srcs = ["parse_annotation.cc"],
+    hdrs = ["parse_annotation.h"],
+    visibility = ["//tensorflow/core/profiler:friends"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "parse_annotation_test",
+    srcs = ["parse_annotation_test.cc"],
+    deps = [
+        ":parse_annotation",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
     ],
 )

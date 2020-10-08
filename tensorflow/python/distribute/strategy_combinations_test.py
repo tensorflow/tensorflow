@@ -23,47 +23,11 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.eager import context
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-
-
-class VirtualDevicesTest(test.TestCase, parameterized.TestCase):
-
-  def setUp(self):
-    context._reset_context()  # pylint: disable=protected-access
-    # Need to call set_virtual_cpus_to_at_least() in setUp with the maximum
-    # value needed in any test.
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
-    super(VirtualDevicesTest, self).setUp()
-
-  def test3VirtualCPUs(self):
-    cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
-
-  def testSetVirtualCPUsAgain(self):
-    strategy_combinations.set_virtual_cpus_to_at_least(2)
-    cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
-
-  def testSetVirtualCPUsErrors(self):
-    with self.assertRaises(ValueError):
-      strategy_combinations.set_virtual_cpus_to_at_least(0)
-    with self.assertRaisesRegex(RuntimeError, "with 3 < 5 virtual CPUs"):
-      strategy_combinations.set_virtual_cpus_to_at_least(5)
-
-  @combinations.generate(combinations.combine(
-      distribution=[strategy_combinations.mirrored_strategy_with_cpu_1_and_2],
-      mode=["graph", "eager"]))
-  def testMirrored2CPUs(self, distribution):
-    with distribution.scope():
-      one_per_replica = distribution.run(lambda: constant_op.constant(1))
-      num_replicas = distribution.reduce(
-          reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
-      self.assertEqual(2, self.evaluate(num_replicas))
 
 
 class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
@@ -100,6 +64,19 @@ class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
           reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
       self.assertEqual(self.evaluate(num_replicas), 4.)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
+          ],
+          mode=["graph", "eager"]))
+  def testMirrored2CPUs(self, distribution):
+    with distribution.scope():
+      one_per_replica = distribution.run(lambda: constant_op.constant(1))
+      num_replicas = distribution.reduce(
+          reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
+      self.assertEqual(2, self.evaluate(num_replicas))
+
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

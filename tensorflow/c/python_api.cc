@@ -136,6 +136,7 @@ std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
       auto* out_shape_and_type = handle_data.add_shape_and_type();
       ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
       out_shape_and_type->set_dtype(p.dtype);
+      out_shape_and_type->set_specialized_type(p.specialized_type);
     }
   }
   string result;
@@ -163,7 +164,8 @@ void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
     status->status =
         ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
     if (TF_GetCode(status) != TF_OK) return;
-    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype());
+    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype(),
+                                  shape_and_type_proto.specialized_type());
   }
   ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
 }

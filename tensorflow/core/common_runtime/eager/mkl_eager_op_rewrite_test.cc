@@ -40,8 +40,7 @@ class EagerOpRewriteTest : public ::testing::Test {
     tensorflow::EagerContext* eager_ctx = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        async, lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous,
-        GetDefaultCustomKernelCreator());
+        async, lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous);
 
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(
@@ -103,7 +102,18 @@ REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Negative);
 
 #define REGISTER_TEST(NAME, T, INPUT)                            \
   TEST_F(EagerOpRewriteTest, NAME##_##T) {                       \
-    std::vector<string> ops = {"BatchMatMul", "MatMul"};         \
+    std::vector<string> ops = {"AvgPool",                        \
+                               "AvgPoolGrad",                    \
+                               "AvgPool3D",                      \
+                               "AvgPool3DGrad",                  \
+                               "BatchMatMul",                    \
+                               "FusedBatchNorm",                 \
+                               "FusedBatchNormV2",               \
+                               "FusedBatchNormV3",               \
+                               "FusedBatchNormGrad",             \
+                               "FusedBatchNormGradV2",           \
+                               "FusedBatchNormGradV3",           \
+                               "MatMul"};                        \
     for (int i = 0; i < ops.size(); ++i) {                       \
       auto orig_op = CreateOp(ops[i]);                           \
       orig_op->MutableAttrs()->Set("T", T);                      \

@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/casts.h"
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #endif
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
@@ -30,7 +30,7 @@ std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
   return ::grpc::InsecureChannelCredentials();  // NOLINT
 }
 
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
 template <>
 Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     absl::string_view local_proto_key, GetTpuProgramResponseExternal* response,
@@ -156,6 +156,6 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
 
   return std::vector<::grpc::Slice>{::grpc::Slice(encoded_header)};
 }
-#endif  // LIBTFTPU
+#endif  // LIBTPU_ON_GCE
 }  // namespace tpu
 }  // namespace tensorflow

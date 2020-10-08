@@ -217,10 +217,9 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
 
 // Add kCopy instructions around the given kWhile instruction to eliminate any
 // possible live range interference of HLO values assuming a dependency-based
-// ordering (HloDependencyOrdering). Copies are added conservatively. There
-// likely are copies which are not strictly necessary, but they are removed
-// later in the pass via RemoveUnnecessaryCopies.
-//
+// ordering. Copies are added conservatively. There  likely are copies which are
+// not strictly necessary, but they are removed later in the pass via
+// RemoveUnnecessaryCopies.
 //
 // Elements (each ShapeIndex) in the loop state are considered independently.  A
 // copy is added to each element of the loop state which is modified in the

@@ -602,6 +602,60 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('multiply',
                     f.experimental_get_compiler_ir(b=a, a=b)(stage='hlo'))
 
+  def testGetCompilerIrDot(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(a, b):
+        return a + b
+
+      a = constant_op.constant([1.1, 1.1])
+      b = constant_op.constant([2.2, 2.2])
+
+      self.assertIn(
+          'label',
+          f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo_dot'))
+
+  def testGetCompilerIrNoDevicePlacement(self):
+    if 'gpu' not in self.device.lower():
+      self.skipTest('Testing get_compiler_ir on GPUs without placement')
+
+    @def_function.function(experimental_compile=True)
+    def f(a, b):
+      return a + b
+
+    a = constant_op.constant([1.1, 1.1])
+    b = constant_op.constant([2.2, 2.2])
+
+    self.assertIn(
+        'label',
+        f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo_dot'))
+
+  def testGetCompilerIrNonTensors(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def f(l):
+        return l[0] + l[1]
+
+      l = [constant_op.constant(1.1), constant_op.constant(2.2)]
+
+      self.assertIn('tuple',
+                    f.experimental_get_compiler_ir(l)())
+
+  def testConstantOnWrongDevice(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      s = random_ops.random_uniform([2], 1, 10, dtypes.int32)
+      l = random_ops.random_normal([s[0] * s[1]])
+
+      @def_function.function(experimental_compile=True)
+      def f(l):
+        return array_ops.reshape(l, s)
+
+      self.assertIn('tuple',
+                    f.experimental_get_compiler_ir(l)())
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

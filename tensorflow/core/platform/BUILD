@@ -55,6 +55,9 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
@@ -202,6 +205,7 @@ cc_library(
 cc_library(
     name = "cuda",
     hdrs = ["cuda.h"],
+    compatible_with = [],
     deps = [
         ":platform",
         "//tensorflow/stream_executor/cuda:cuda_activation_header",
@@ -376,6 +380,7 @@ filegroup(
 
 cc_library(
     name = "mutex",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
     # TODO(b/161569340): Short-term fix. Remove this visibility rule.
     visibility = ["//tensorflow:__subpackages__"],
@@ -1008,6 +1013,7 @@ cc_library(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tf_cc_tests(
@@ -1709,6 +1715,13 @@ bzl_library(
     srcs = [
         "build_config_root.bzl",
     ] + tf_platform_alias("build_config_root.bzl"),
+    visibility = [
+        "//learning/brain/google/xla/tests:__pkg__",
+        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
+        "//nlp/deleuze:__pkg__",
+        "//nlp/projects/minmt:__pkg__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 bzl_library(

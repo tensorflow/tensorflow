@@ -14,6 +14,10 @@ run fast enough for previously not available real-time applications.
 Unlike CPUs, GPUs compute with 16-bit or 32-bit floating point numbers and do
 not require quantization for optimal performance.
 
+**NOTE:** The delegate does accept 8-bit quantized models on Android. Support on
+iOS is experimental. Refer to the [advanced documentation](gpu_advanced.md) for
+details.
+
 Another benefit with GPU inference is its power efficiency. GPUs carry out the
 computations in a very efficient and optimized manner, so that they consume less
 power and generate less heat than when the same task is run on CPUs.
@@ -47,8 +51,8 @@ package in the existing `dependencies` block.
 ```
 dependencies {
     ...
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite:2.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.3.0'
 }
 ```
 
@@ -152,29 +156,75 @@ Lastly make sure to select Release-only builds on 64-bit architecture. Under
 
 ### Android
 
+Note: The TensorFlow Lite Interpreter must be created on the same thread as when
+is is run. Otherwise, `TfLiteGpuDelegate Invoke: GpuDelegate must run on the
+same thread where it was initialized.` may occur.
+
 Look at the demo to see how to add the delegate. In your application, add the
 AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
 the`addDelegate` function to register the GPU delegate to the interpreter:
 
-```java
-import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.gpu.GpuDelegate;
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Kotlin</h3>
+      <p><pre class="prettyprint lang-kotlin">
+    import org.tensorflow.lite.Interpreter
+    import org.tensorflow.lite.gpu.CompatibilityList
+    import org.tensorflow.lite.gpu.GpuDelegate
 
-// Initialize interpreter with GPU delegate
-GpuDelegate delegate = new GpuDelegate();
-Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
-Interpreter interpreter = new Interpreter(model, options);
+    val compatList = CompatibilityList()
 
-// Run inference
-while (true) {
-  writeToInput(input);
-  interpreter.run(input, output);
-  readFromOutput(output);
-}
+    val options = Interpreter.Options().apply{
+        if(compatList.isDelegateSupportedOnThisDevice){
+            // if the device has a supported GPU, add the GPU delegate
+            val delegateOptions = compatList.bestOptionsForThisDevice
+            this.addDelegate(GpuDelegate(delegateOptions))
+        } else {
+            // if the GPU is not supported, run on 4 threads
+            this.setNumThreads(4)
+        }
+    }
 
-// Clean up
-delegate.close();
-```
+    val interpreter = Interpreter(model, options)
+
+    // Run inference
+    writeToInput(input)
+    interpreter.run(input, output)
+    readFromOutput(output)
+      </pre></p>
+    </section>
+    <section>
+      <h3>Java</h3>
+      <p><pre class="prettyprint lang-java">
+    import org.tensorflow.lite.Interpreter;
+    import org.tensorflow.lite.gpu.CompatibilityList;
+    import org.tensorflow.lite.gpu.GpuDelegate;
+
+    // Initialize interpreter with GPU delegate
+    Interpreter.Options options = new Interpreter.Options();
+    CompatibilityList compatList = CompatibilityList();
+
+    if(compatList.isDelegateSupportedOnThisDevice()){
+        // if the device has a supported GPU, add the GPU delegate
+        GpuDelegate.Options delegateOptions = compatList.getBestOptionsForThisDevice();
+        GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions);
+        options.addDelegate(gpuDelegate);
+    } else {
+        // if the GPU is not supported, run on 4 threads
+        options.setNumThreads(4);
+    }
+
+    Interpreter interpreter = new Interpreter(model, options);
+
+    // Run inference
+    writeToInput(input);
+    interpreter.run(input, output);
+    readFromOutput(output);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 ### iOS
 

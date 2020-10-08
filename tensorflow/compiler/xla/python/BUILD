@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")

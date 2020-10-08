@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -41,7 +43,7 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
 void Free(SE_DeviceMemoryBase*);
 
 // xla::Shape
-xla::Shape FromC(XLA_Shape* shape);
+xla::Shape FromC(const XLA_Shape* shape);
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape);
 void Free(XLA_Shape* shape);
 
@@ -64,11 +66,6 @@ void Free(XLA_ShapedBuffer* c_buffer);
 SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
 stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
 void Free(SE_DeviceMemoryBase*);
-
-// xla::Shape
-xla::Shape FromC(XLA_Shape* shape);
-void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape);
-void Free(XLA_Shape* shape);
 
 // Literal
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
@@ -93,6 +90,17 @@ SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem);
 // released. 'aliased' should be true in this case. 'aliased' has no effect if
 // 'mem' is unowned.
 SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem, bool aliased);
+
+// HloModule
+XLA_HloModule ToC(const xla::HloModule& module);
+xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+    const XLA_HloModule& c_module);
+void Free(XLA_HloModule* c_module);
+
+// HloModuleConfig
+XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config);
+xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config);
+void Free(XLA_HloModuleConfig* c_config);
 
 // Helper for managing stack based C -> C++ conversions.
 template <class CType>

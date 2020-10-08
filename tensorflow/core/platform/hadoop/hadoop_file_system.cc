@@ -154,9 +154,8 @@ Status SplitArchiveNameAndPath(StringPiece& path, string& nn) {
   return Status::OK();
 }
 
-// We rely on HDFS connection caching here. The HDFS client calls
-// org.apache.hadoop.fs.FileSystem.get(), which caches the connection
-// internally.
+// We implement connection caching in Tensorflow, which can significantly
+// improve performance. Fixes #43187
 Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   TF_RETURN_IF_ERROR(libhdfs()->status());
 
@@ -164,6 +163,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   io::ParseURI(fname, &scheme, &namenode, &path);
   string nn(namenode);
 
+  string cacheKey(scheme.data(), scheme.size());
   hdfsBuilder* builder = libhdfs()->hdfsNewBuilder();
   if (scheme == "file") {
     libhdfs()->hdfsBuilderSetNameNode(builder, nullptr);
@@ -185,13 +185,22 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   } else if (scheme == "har") {
     TF_RETURN_IF_ERROR(SplitArchiveNameAndPath(path, nn));
     libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
+    cacheKey += nn;
   } else {
     libhdfs()->hdfsBuilderSetNameNode(builder,
                                       nn.empty() ? "default" : nn.c_str());
+    cacheKey += nn;
   }
-  *fs = libhdfs()->hdfsBuilderConnect(builder);
-  if (*fs == nullptr) {
-    return errors::NotFound(strerror(errno));
+  {
+    mutex_lock lock(mu_);
+    if (connectionCache_.find(cacheKey) == connectionCache_.end()) {
+      hdfsFS cacheFs = libhdfs()->hdfsBuilderConnect(builder);
+      if (cacheFs == nullptr) {
+        return errors::NotFound(strerror(errno));
+      }
+      connectionCache_[cacheKey] = cacheFs;
+    }
+    *fs = connectionCache_[cacheKey];
   }
   return Status::OK();
 }

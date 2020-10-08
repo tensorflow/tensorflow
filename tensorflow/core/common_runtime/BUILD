@@ -1,7 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -11,10 +10,16 @@ load(
 )
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -88,7 +93,7 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-    ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
+    ] + if_libtpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
 filegroup(

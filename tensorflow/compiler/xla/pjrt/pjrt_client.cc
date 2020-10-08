@@ -90,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -280,6 +281,11 @@ StatusOr<absl::flat_hash_set<int>> PjRtClient::GetParametersThatMustBeDonated(
         return Status::OK();
       }));
   return parameters_to_donate;
+}
+
+std::unique_ptr<HloCostAnalysis> PjRtClient::GetHloCostAnalysis() {
+  return absl::make_unique<HloCostAnalysis>(
+      client_->backend().compiler()->ShapeSizeBytesFunction());
 }
 
 namespace {
@@ -894,6 +900,7 @@ void PjRtBuffer::WaitForOutstandingDonationHold() {
 
 StatusOr<std::shared_ptr<TrackedDeviceBuffer>> PjRtBuffer::Release(
     bool wait_for_operations_to_complete) {
+  tensorflow::profiler::TraceMe trace_me("PjRtBuffer::Release");
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
   TrackedDeviceBuffer::StreamAndEventContainer events;
   {

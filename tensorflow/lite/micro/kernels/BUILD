@@ -53,6 +53,7 @@ cc_library(
         "reshape.cc",
         "resize_nearest_neighbor.cc",
         "round.cc",
+        "shape.cc",
         "split.cc",
         "split_v.cc",
         "strided_slice.cc",
@@ -638,6 +639,7 @@ tflite_micro_cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

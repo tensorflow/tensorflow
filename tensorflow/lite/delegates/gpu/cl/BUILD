@@ -286,7 +286,7 @@ cc_library(
         ":cl_command_queue",
         ":cl_context",
         ":cl_device",
-        ":cl_kernel",
+        ":device_info",
         ":precision",
         ":program_cache",
         ":tensor",

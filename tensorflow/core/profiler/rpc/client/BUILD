@@ -1,10 +1,13 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_profiler_client_deps",
+    "tf_protos_profiler_service",
 )
 
 package(
@@ -57,7 +60,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/rpc:grpc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         tf_grpc_cc_dependency(),
     ],
     alwayslink = True,
@@ -67,4 +72,70 @@ tf_pybind_cc_library_wrapper(
     name = "profiler_client_headers",
     visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [":profiler_client_impl"],
+)
+
+cc_library(
+    name = "profiler_client_test_util",
+    testonly = 1,
+    hdrs = ["profiler_client_test_util.h"],
+    deps = [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
+    ] + tf_protos_profiler_service(),
+)
+
+tf_cc_test(
+    name = "profiler_client_test",
+    srcs = ["profiler_client_test.cc"],
+    tags = ["external"],  # So that test suite reruns unconditionally.
+    deps = [
+        ":profiler_client_impl",
+        ":profiler_client_test_util",
+        "@com_google_absl//absl/time",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
+    ] + tf_protos_profiler_service(),
+)
+
+cc_library(
+    name = "remote_profiler_session_manager",
+    srcs = ["remote_profiler_session_manager.cc"],
+    hdrs = ["remote_profiler_session_manager.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        ":profiler_client_impl",
+        ":save_profile",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "remote_profiler_session_manager_test",
+    srcs = ["remote_profiler_session_manager_test.cc"],
+    tags = ["external"],  # So that test suite reruns unconditionally.
+    deps = [
+        ":profiler_client_test_util",
+        ":remote_profiler_session_manager",
+        "@com_google_absl//absl/time",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
+    ] + tf_protos_profiler_service(),
 )

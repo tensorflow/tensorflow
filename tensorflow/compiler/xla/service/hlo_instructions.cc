@@ -2395,6 +2395,16 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
     }
   }
   proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
+  for (const auto& pair : output_to_operand_aliasing_) {
+    auto aliasing = proto.add_custom_call_output_operand_aliasing();
+    aliasing->set_operand_index(pair.second.first);
+    for (int64 index : pair.first) {
+      aliasing->add_output_shape_index(index);
+    }
+    for (int64 index : pair.second.second) {
+      aliasing->add_operand_shape_index(index);
+    }
+  }
   return proto;
 }
 
@@ -2431,6 +2441,16 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   }
   if (custom_call_has_side_effect_) {
     extra.push_back("custom_call_has_side_effect=true");
+  }
+  if (!output_to_operand_aliasing_.empty()) {
+    std::vector<string> pair_strings;
+    for (const auto& pair : output_to_operand_aliasing_) {
+      pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
+                                    pair.second.first, ", ",
+                                    pair.second.second.ToString(), ")"));
+    }
+    extra.push_back(StrCat("output_to_operand_aliasing={",
+                           StrJoin(pair_strings, ", "), "}"));
   }
   return extra;
 }
@@ -2475,6 +2495,10 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       casted_other.custom_call_has_side_effect()) {
     return false;
   }
+  if (output_to_operand_aliasing_ !=
+      casted_other.output_to_operand_aliasing()) {
+    return false;
+  }
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;
@@ -2499,6 +2523,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_feature_group_count(feature_group_count_);
   cloned->set_batch_group_count(batch_group_count_);
   cloned->set_custom_call_has_side_effect(custom_call_has_side_effect_);
+  cloned->set_output_to_operand_aliasing(output_to_operand_aliasing_);
   return std::move(cloned);
 }
 

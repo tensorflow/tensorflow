@@ -17,15 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_UTIL_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
-#include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"

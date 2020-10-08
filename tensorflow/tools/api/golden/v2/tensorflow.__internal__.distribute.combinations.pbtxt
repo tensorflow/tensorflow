@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.distribute.combinations"
+tf_module {
+  member_method {
+    name: "generate"
+    argspec: "args=[\'combinations\', \'test_combinations\'], varargs=None, keywords=None, defaults=[\'()\'], "
+  }
+}

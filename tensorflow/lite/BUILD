@@ -181,6 +181,12 @@ cc_library(
     deps = ["//tensorflow/lite/c:common"],
 )
 
+cc_library(
+    name = "builtin_ops",
+    hdrs = ["builtin_ops.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
 exports_files(["builtin_ops.h"])
 
 cc_library(
@@ -260,6 +266,7 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
     ],
     alwayslink = 1,
 )
@@ -661,6 +668,13 @@ cc_library(
 cc_library(
     name = "macros",
     hdrs = ["core/macros.h"],
+)
+
+cc_library(
+    name = "stateful_error_reporter",
+    hdrs = ["stateful_error_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/lite/core/api"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

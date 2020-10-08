@@ -225,6 +225,22 @@ class MultiHeadAttentionTest(keras_parameterized.TestCase):
         model.predict([query, value, mask_data]),
         model.predict([query, value, null_mask_data]))
 
+  def test_dropout(self):
+    test_layer = multi_head_attention.MultiHeadAttention(
+        num_heads=2, key_dim=2, dropout=0.5)
+
+    # Generate data for the input (non-mask) tensors.
+    from_data = keras.backend.ones(shape=(32, 4, 8))
+    to_data = keras.backend.ones(shape=(32, 2, 8))
+    train_out = test_layer(from_data, to_data, None, None, None, True)
+    test_out = test_layer(from_data, to_data, None, None, None, False)
+
+    # Output should be close when not in training mode,
+    # and should not be close when enabling dropout in training mode.
+    self.assertNotAllClose(
+        keras.backend.eval(train_out),
+        keras.backend.eval(test_out))
+
 
 class SubclassAttention(multi_head_attention.MultiHeadAttention):
 
@@ -235,7 +251,8 @@ class SubclassAttention(multi_head_attention.MultiHeadAttention):
                          query_tensor,
                          key_tensor,
                          value_tensor,
-                         attention_mask=None):
+                         attention_mask=None,
+                         training=None):
     return value_tensor, None
 
 

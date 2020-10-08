@@ -117,10 +117,6 @@ class ParameterServerStrategy(distribute_lib.Strategy):
     extended = ParameterServerStrategyExtended(
         self, cluster_resolver=cluster_resolver)
     super(ParameterServerStrategy, self).__init__(extended)
-    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
-        "ParameterServerStrategy")
-    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
-        len(self.extended.parameter_devices))
 
   def experimental_distribute_dataset(self, dataset, options=None):
     self._raise_pss_error_if_eager()
@@ -128,12 +124,10 @@ class ParameterServerStrategy(distribute_lib.Strategy):
           self).experimental_distribute_dataset(dataset=dataset,
                                                 options=options)
 
-  def experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                     options=None):
+  def distribute_datasets_from_function(self, dataset_fn, options=None):
     self._raise_pss_error_if_eager()
-    super(ParameterServerStrategy,
-          self).experimental_distribute_datasets_from_function(
-              dataset_fn=dataset_fn, options=options)
+    super(ParameterServerStrategy, self).distribute_datasets_from_function(
+        dataset_fn=dataset_fn, options=options)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     self._raise_pss_error_if_eager()
@@ -162,8 +156,6 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
             self, cluster_resolver=cluster_resolver))
     distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
         "ParameterServerStrategy")
-    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
-        len(self.extended.parameter_devices))
 
   __init__.__doc__ = ParameterServerStrategy.__init__.__doc__
 
@@ -353,14 +345,14 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -387,8 +379,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._input_host_device, session)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     if self._cluster_spec:
       input_pipeline_id = multi_worker_util.id_in_cluster(
           self._cluster_spec, self._task_type, self._task_id)

@@ -513,6 +513,24 @@ class StreamExecutor {
   // allocation.
   StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
 
+  // Block host until all streams associated with this stream executor have
+  // finished all of enqueued work.
+  port::Status BlockHostUntilAllStreamsAreDone() {
+    std::vector<Stream *> streams;
+    {
+      absl::MutexLock lock(&mu_);
+      for (Stream *stream : streams_) {
+        streams.push_back(stream);
+      }
+    }
+
+    for (Stream *stream : streams) {
+      TF_RETURN_IF_ERROR(BlockHostUntilDone(stream));
+    }
+
+    return port::Status::OK();
+  }
+
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
             typename... BeginArgsT>
@@ -642,6 +660,16 @@ class StreamExecutor {
   template <typename TraceCallT, typename... ArgsT>
   void SubmitTrace(TraceCallT trace_call, ArgsT &&...args);
 
+  void RegisterStream(Stream *stream) {
+    absl::MutexLock lock(&mu_);
+    streams_.insert(stream);
+  }
+
+  void UnregisterStream(Stream *stream) {
+    absl::MutexLock lock(&mu_);
+    streams_.erase(stream);
+  }
+
   // Reader/writer lock for class-static StreamExecutor members.
   static absl::Mutex static_mu_;
 
@@ -731,6 +759,9 @@ class StreamExecutor {
   int64 memory_limit_bytes_;
 
   StreamExecutorMemoryAllocator allocator_;
+
+  // Set of streams associated with this stream executor.
+  std::set<Stream *> streams_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };

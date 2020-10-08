@@ -203,6 +203,8 @@ def image_dataset_from_directory(directory,
   dataset = dataset.batch(batch_size)
   # Users may need to reference `class_names`.
   dataset.class_names = class_names
+  # Include file paths for images as attribute.
+  dataset.file_paths = image_paths
   return dataset
 
 

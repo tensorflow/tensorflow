@@ -2615,11 +2615,14 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
-                errors::InvalidArgument("lr is not a positive scalar: ",
-                                        lr.shape().DebugString()));
+    OP_REQUIRES(
+        ctx,
+        TensorShapeUtils::IsScalar(lr.shape()) &&
+            (lr.scalar<T>()() > static_cast<T>(0) ||
+             (multiply_linear_by_lr_ && lr.scalar<T>()() >= static_cast<T>(0))),
+        errors::InvalidArgument("lr is not a positive scalar (or zero if "
+                                "multiply_linear_by_lr is set): ",
+                                lr.shape().DebugString()));
 
     const Tensor& l1 = ctx->input(6);
     OP_REQUIRES(ctx,

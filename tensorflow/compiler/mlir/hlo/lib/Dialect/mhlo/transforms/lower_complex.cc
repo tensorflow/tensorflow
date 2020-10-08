@@ -37,7 +37,6 @@ limitations under the License.
 
 using mlir::FunctionPass;
 using mlir::OwningRewritePatternList;
-using mlir::PassRegistration;
 using mlir::PassWrapper;
 
 namespace {

@@ -103,6 +103,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
+#include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
@@ -281,6 +282,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
+  pipeline.AddPass<QrExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
   // Inline computations with a single call site.

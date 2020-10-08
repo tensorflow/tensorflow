@@ -326,7 +326,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                              const FunctionLibraryDefinition* lib_def,
                              thread::ThreadPool* default_thread_pool,
                              const OptimizerOptions& optimizer_options,
-                             const CustomKernelCreator* custom_kernel_creator,
                              const SessionMetadata* session_metadata,
                              ProcessFunctionLibraryRuntime* parent);
 
@@ -390,7 +389,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const int graph_def_version_;
   const FunctionLibraryDefinition* const base_lib_def_;
   GraphOptimizer optimizer_;
-  const CustomKernelCreator* custom_kernel_creator_;
   const SessionMetadata* const session_metadata_;
   Executor::Args::Runner default_runner_;
   const string device_name_;
@@ -462,7 +460,6 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* default_thread_pool,
     const OptimizerOptions& optimizer_options,
-    const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent)
     : device_mgr_(dmgr),
@@ -472,7 +469,6 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       graph_def_version_(graph_def_version),
       base_lib_def_(lib_def),
       optimizer_(optimizer_options),
-      custom_kernel_creator_(custom_kernel_creator),
       session_metadata_(session_metadata),
       default_runner_(nullptr),
       device_name_(device_ == nullptr
@@ -609,10 +605,12 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
     FunctionLibraryRuntime* flr, OpKernel** kernel) {
   // If a custom kernel creator is given, try that.
   Status s;
-  if (custom_kernel_creator_ != nullptr &&
-      custom_kernel_creator_->CanCreateKernel(*this, props)) {
+  const CustomKernelCreator* custom_kernel_creator =
+      GetDefaultCustomKernelCreator();
+  if (custom_kernel_creator &&
+      custom_kernel_creator->CanCreateKernel(*this, props)) {
     std::unique_ptr<OpKernel> ret;
-    s = custom_kernel_creator_->CreateKernel(this, props, &ret);
+    s = custom_kernel_creator->CreateKernel(this, props, &ret);
     if (s.ok()) {
       *kernel = ret.release();
     } else {
@@ -1328,9 +1326,9 @@ Status FunctionLibraryRuntimeImpl::Clone(
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
     FunctionLibraryRuntime** out_flr, bool skip_flib_def) {
-  TF_RETURN_IF_ERROR(parent_->Clone(
-      env_, graph_def_version_, optimizer_.options(), custom_kernel_creator_,
-      out_lib_def, out_pflr, skip_flib_def));
+  TF_RETURN_IF_ERROR(parent_->Clone(env_, graph_def_version_,
+                                    optimizer_.options(), out_lib_def, out_pflr,
+                                    skip_flib_def));
   *out_flr = (*out_pflr)->GetFLR(device_->name());
   if (*out_flr != nullptr) {
     return Status::OK();
@@ -1376,12 +1374,11 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
     const OptimizerOptions& optimizer_options,
-    const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent) {
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
       device_mgr, env, config, device, graph_def_version, lib_def, thread_pool,
-      optimizer_options, custom_kernel_creator, session_metadata, parent));
+      optimizer_options, session_metadata, parent));
 }
 
 class SymbolicGradientHelper {

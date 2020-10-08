@@ -39,12 +39,12 @@ set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
 )
 if(NOT TENSORFLOW_SOURCE_DIR)
   get_filename_component(TENSORFLOW_SOURCE_DIR
-    "${CMAKE_SOURCE_DIR}/../../"
+    "${CMAKE_CURRENT_LIST_DIR}/../../"
     ABSOLUTE
   )
 endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
-set(TFLITE_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_MODULE_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
   ${CMAKE_MODULE_PATH}
@@ -266,14 +266,17 @@ populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
 )
 
 # Common include directories
+set(TFLITE_INCLUDE_DIRS
+  "${TENSORFLOW_SOURCE_DIR}"
+  "${TFLITE_FLATBUFFERS_SCHEMA_DIR}"
+)
 include_directories(
   BEFORE
-   "${TENSORFLOW_SOURCE_DIR}"
-   "${TFLITE_FLATBUFFERS_SCHEMA_DIR}"
+    ${TFLITE_INCLUDE_DIRS}
 )
 
 # TFLite library
-add_library(tensorflowlite
+add_library(tensorflow-lite
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_SRCS}
   ${TFLITE_C_SRCS}
@@ -294,8 +297,14 @@ add_library(tensorflowlite
   ${TFLITE_KERNEL_SRCS}
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
+  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
+  ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
 )
-target_link_libraries(tensorflowlite
+target_include_directories(tensorflow-lite
+  PUBLIC
+    ${TFLITE_INCLUDE_DIRS}
+)
+target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
     NEON_2_SSE
@@ -312,11 +321,11 @@ target_link_libraries(tensorflowlite
     ruy
     ${TFLITE_TARGET_DEPENDENCIES}
 )
-target_compile_options(tensorflowlite
+target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
-add_library(tensorflow::tensorflowlite ALIAS tensorflowlite)
+add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
 
 # Benchmark Tool
 populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
@@ -338,7 +347,7 @@ list(APPEND TFLITE_BENCHMARK_SRCS
 )
 
 list(APPEND TFLITE_BENCHMARK_LIBS
-  tensorflowlite
+  tensorflow-lite
   ${CMAKE_DL_LIBS}
 )
 
