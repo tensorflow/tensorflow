@@ -589,6 +589,8 @@ class _EagerDefinedFunction(object):
                 config=config,
                 executor_type=executor_type)
 
+    for i, func_graph_output in enumerate(self._func_graph_outputs):
+      custom_gradient.copy_handle_data(func_graph_output, outputs[i])
     if executing_eagerly:
       return outputs
     else:
@@ -597,8 +599,6 @@ class _EagerDefinedFunction(object):
       # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
-      for i, func_graph_output in enumerate(self._func_graph_outputs):
-        custom_gradient.copy_handle_data(func_graph_output, outputs[i])
       return outputs
 
 

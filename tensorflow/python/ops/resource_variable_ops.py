@@ -43,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -62,14 +63,8 @@ acd.register_read_only_resource_op("ResourceGatherNd")
 acd.register_read_only_resource_op("_ReadVariablesOp")
 
 
-def get_resource_handle_data(graph_op):
-  assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
-
-  handle_data = pywrap_tf_session.GetHandleShapeAndType(
-      graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
-
-  return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
-      compat.as_bytes(handle_data))
+# TODO(allenl): Remove this alias and migrate callers.
+get_resource_handle_data = handle_data_util.get_resource_handle_data
 
 
 def get_eager_safe_handle_data(handle):

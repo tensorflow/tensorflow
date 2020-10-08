@@ -3725,6 +3725,7 @@ py_library(
         ":gradients",
         ":gradients_util",
         ":graph_to_function_def",
+        ":handle_data_util",
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/python/compat",
@@ -3860,6 +3861,21 @@ py_library(
 )
 
 py_library(
+    name = "handle_data_util",
+    srcs = [
+        "ops/handle_data_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":protos_all_py",
+        ":pywrap_tf_session",
+        ":util",
+    ],
+)
+
+py_library(
     name = "gradients",
     srcs = [
         "ops/custom_gradient.py",
@@ -3869,6 +3885,7 @@ py_library(
     deps = [
         ":gradients_impl",
         ":gradients_util",
+        ":handle_data_util",
         ":pywrap_tf_session",
         ":unconnected_gradients",
         "//tensorflow/python/eager:forwardprop",
@@ -4263,6 +4280,7 @@ py_library(
         ":auto_control_deps_utils",
         ":dtypes",
         ":framework_ops",
+        ":handle_data_util",
         ":pywrap_tf_session",
         ":resource_variable_ops_gen",
         ":tensor_shape",
@@ -4296,6 +4314,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":handle_data_util",
         ":list_ops_gen",
     ],
 )
