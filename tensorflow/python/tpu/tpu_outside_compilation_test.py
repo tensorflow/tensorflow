@@ -24,6 +24,7 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -291,7 +292,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -317,7 +318,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -352,7 +353,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -490,7 +491,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -514,7 +515,6 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     # written by host.
     self.assertLen(events, 2)
     self.assertEqual(events[1].summary.value[0].tag, "x")
-    self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
   @parameterized.parameters((True), (False))
   def testSummaryControlFlowIfWithAutoOutsideCompilation(
@@ -527,7 +527,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       def computation(x):
         x = x + 1.0
         if x < 5:
-          summary.scalar("x", x, step=0)
+          scalar_summary_v2.scalar("x", x, step=0)
           x = x * 2.0
         return x + 1.0
 
@@ -553,7 +553,6 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       #
       self.assertLen(events, 2)
       self.assertEqual(events[1].summary.value[0].tag, "cond/x")
-      self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
   @test_util.disable_mlir_bridge(
       "TODO(b/168493455): Reenable this test once deadlock resolved."
