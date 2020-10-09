@@ -1695,8 +1695,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   static bool Maxpool3DGradRewrite(const Node* n) {
-    CHECK_NOTNULL(n);
-    bool do_rewrite = false;
+    DCHECK(n);
     for (const Edge* e : n->in_edges()) {
       // Rewrite only if there is corresponding Maxpool3D, i.e., workspace is
       // available
@@ -1705,11 +1704,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
           e->src()->type_string() ==
               mkl_op_registry::GetMklOpName(csinfo_.max_pool3d) &&
           e->src_output() == 0) {
-        do_rewrite = true;
-        break;
+        return true;
       }
     }
-    return do_rewrite;
+    return false;
   }
 
   static bool FusedBatchNormExRewrite(const Node* n) {
