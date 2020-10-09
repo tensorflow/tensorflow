@@ -1098,9 +1098,11 @@ class CollectiveAllReduce(CrossDeviceOps):
     batch_size = len(per_replica_values)
     # Pass self._communication to the runtime as a communication hint.
     communication = self._communication.value
-    # For now, we use NCCL only when batch_size > 1.
+    # For now, we use NCCL only when batch_size > 1 since we don't have a way to
+    # order NCCL launches. We're hoping that there's only one batched
+    # all-reduce, which is the gradients.
     # TODO(b/132575814): switch to NCCL for all collectives when communication
-    # is NCCL.
+    # is NCCL if and only if we can order collectives deterministically.
     if self._communication == CollectiveCommunication.NCCL and batch_size == 1:
       communication = CollectiveCommunication.AUTO.value
 
