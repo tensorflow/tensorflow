@@ -715,7 +715,7 @@ cc_library(
 
 alias(
     name = "bounds_check",
-    actual = "//tensorflow/core:framework_bounds_check",
+    actual = "//tensorflow/core/framework:bounds_check",
     visibility = [":friends"],
 )
 
