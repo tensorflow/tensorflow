@@ -1,11 +1,6 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -102,13 +97,12 @@ cc_library(
     name = "traceme_wrapper",
     hdrs = ["traceme_wrapper.h"],
     copts = tf_profiler_copts(),
-    features = ["-layering_check"],
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme_headers",
+        "//tensorflow/core/profiler/lib:traceme_for_pybind",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -119,7 +113,6 @@ tf_python_pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
     copts = tf_profiler_copts(),
-    features = ["-layering_check"],
     module_name = "_pywrap_profiler",
     visibility = [
         "//tensorflow/python/eager:__pkg__",
@@ -129,9 +122,9 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/convert:xplane_to_trace_events",
-        "//tensorflow/core/profiler/lib:profiler_session_headers",
+        "//tensorflow/core/profiler/lib:profiler_session_for_pybind",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/rpc:profiler_server_headers",
+        "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/python:pybind11_status",

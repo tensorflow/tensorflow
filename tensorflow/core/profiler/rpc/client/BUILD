@@ -1,8 +1,11 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load(
+    "//tensorflow/core/profiler/builds:build_config.bzl",
+    "tf_profiler_copts",
+    "tf_profiler_pybind_cc_library_wrapper",
+)
 
 # For platform specific build config
 load(
@@ -19,14 +22,14 @@ cc_library(
     srcs = ["capture_profile.cc"],
     hdrs = ["capture_profile.h"],
     copts = tf_profiler_copts(),
-    features = ["-layering_check"],
     visibility = [
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
-        ":profiler_client_headers",
+        ":profiler_client_for_pybind",
         ":save_profile",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
@@ -53,10 +56,9 @@ cc_library(
     ],
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "profiler_client_headers",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [":profiler_client"],
+tf_profiler_pybind_cc_library_wrapper(
+    name = "profiler_client_for_pybind",
+    actual = ":profiler_client",
 )
 
 cc_library(
@@ -113,9 +115,9 @@ cc_library(
 tf_cc_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.cc"],
-    features = ["-layering_check"],
     tags = ["external"],  # So that test suite reruns unconditionally.
     deps = [
+        ":profiler_client",
         ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",
         "@com_google_absl//absl/time",
@@ -131,10 +133,9 @@ cc_library(
     srcs = ["remote_profiler_session_manager.cc"],
     hdrs = ["remote_profiler_session_manager.h"],
     copts = tf_profiler_copts(),
-    features = ["-layering_check"],
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        ":profiler_client_headers",
+        ":profiler_client_for_pybind",
         ":save_profile",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -150,7 +151,6 @@ cc_library(
 tf_cc_test(
     name = "remote_profiler_session_manager_test",
     srcs = ["remote_profiler_session_manager_test.cc"],
-    features = ["-layering_check"],
     tags = ["external"],  # So that test suite reruns unconditionally.
     deps = [
         ":profiler_client_impl",  # for oss
