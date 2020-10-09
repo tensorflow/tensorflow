@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -450,7 +450,7 @@ void* GetFlatbufferTensorBuffer(
   // and if there is update the runtime structure to point to its location in
   // memory.
   // First see if there's any buffer information in the serialized tensor.
-  // TODO(b/160894903): Add better unit tests that validate flatbuffer values.
+  // TODO(b/170379532): Add better unit tests to validate flatbuffer values.
   void* out_buffer = nullptr;
   if (auto* buffer = (*buffers)[flatbuffer_tensor.buffer()]) {
     // If we've found a buffer, does it have any data?
@@ -1019,9 +1019,9 @@ TfLiteTensor* MicroAllocator::AllocatePersistentTfLiteTensorInternal(
 TfLiteStatus MicroAllocator::PopulateTfLiteTensorFromFlatbuffer(
     const Model* model, const SubGraph* subgraph, TfLiteTensor* tensor,
     int tensor_index, bool allocate_temp) {
-  // TODO(b/160894903): This method serves as a stub to ensure quantized
-  // allocations in the tail can be recorded. Once all kernels have been ported
-  // to the new API this can be dropped.
+  // TODO(b/162311891): This method serves as a stub to ensure quantized
+  // allocations in the tail can be recorded. Once the interpreter has APIs for
+  // accessing buffers on TfLiteEvalTensor this method can be dropped.
   return internal::InitializeTfLiteTensorFromFlatbuffer(
       memory_allocator_, allocate_temp, *subgraph->tensors()->Get(tensor_index),
       model->buffers(), error_reporter_, tensor);
