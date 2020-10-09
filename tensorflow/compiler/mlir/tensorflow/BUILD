@@ -1045,6 +1045,7 @@ cc_library(
         "translate/import_model.h",
     ],
     deps = [
+        ":convert_attr",
         ":convert_tensor",
         ":convert_type",
         ":dump_mlir_util",
@@ -1259,6 +1260,24 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "convert_attr",
+    srcs = ["utils/convert_attr.cc"],
+    hdrs = ["utils/convert_attr.h"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":convert_type",
+        ":tensorflow_attributes",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/stream_executor/lib",
+        "@llvm-project//mlir:IR",
     ],
 )
 
