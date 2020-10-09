@@ -182,6 +182,7 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index<IndexCount> FlatToTensorIndex(
 // Requires that nthreads is equal to the total number of elements in the input
 // tensor.
 template <typename T, int sp0, int sp1, int sp2, bool conjugate = false>
+__launch_bounds__(1024)
 __global__ void ShuffleInTensor3Simple(int nthreads,
                                        const T* __restrict__ input,
                                        Dimension<3> input_dims,
@@ -213,6 +214,7 @@ __global__ void ShuffleInTensor3Simple(int nthreads,
 static constexpr int kUnroll = 4;
 
 template <typename T, int sp0, int sp1, int sp2, bool conjugate = false>
+__launch_bounds__(1024)
 __global__ void ShuffleInTensor3SimpleVector(int nthreads,
                                              const T* __restrict__ input,
                                              Dimension<3> input_dims,
@@ -273,6 +275,7 @@ __global__ void ShuffleInTensor3SimpleVector(int nthreads,
 // the best performance on K40 GPUs.
 template <typename T, int NumThreads, int TileSizeI, int TileSizeJ,
           bool conjugate = false>
+__launch_bounds__(1024)
 __global__ void SwapDimension1And2InTensor3UsingTiles(
     const T* __restrict__ input, Dimension<3> input_dims,
     T* __restrict__ output) {
@@ -419,6 +422,7 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
 // A Gpu custom kernel that convert input to output, given proper padding on
 // the left and the top.
 template <typename T, int NDIMS>
+__launch_bounds__(1024)
 __global__ void PadInputCustomKernelNHWC(
     int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
     T* __restrict__ output, Dimension<NDIMS> output_dims,
@@ -448,6 +452,7 @@ __global__ void PadInputCustomKernelNHWC(
 }
 
 template <typename T, int NDIMS>
+__launch_bounds__(1024)
 __global__ void PadInputCustomKernelNCHW(
     int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
     T* __restrict__ output, Dimension<NDIMS> output_dims,
@@ -1131,6 +1136,7 @@ struct NCHWToNHWC<GPUDevice, T, NDIMS> {
 };
 
 template <typename T>
+__launch_bounds__(1024)
 __global__ void ConvertToBFloat16Kernel(int nthreads, const T* src,
                                         bfloat16* dst) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
@@ -1165,6 +1171,7 @@ struct ConvertToBFloat16<GPUDevice, T, NDIMS> {
 };
 
 template <typename T>
+__launch_bounds__(1024)
 __global__ void ConvertFromBFloat16Kernel(int nthreads, const bfloat16* src,
                                           T* dst) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {

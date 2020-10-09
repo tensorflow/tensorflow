@@ -2927,7 +2927,7 @@ cuda_py_test(
     srcs = ["transpose_op_test.py"],
     shard_count = 10,
     tags = [
-        "no_gpu",
+        "no_cuda",
         "no_oss",
         "notap",  # flaky timeout/segfault, b/136498892
         "optonly",  # times out
