@@ -233,6 +233,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:mixed_precision",
         "//tensorflow/python:tf2",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/optimizer_v2",

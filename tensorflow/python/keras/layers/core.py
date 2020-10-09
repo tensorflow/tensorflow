@@ -1304,8 +1304,16 @@ class TFOpLambda(Layer):
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
     if 'name' not in kwargs:
+      # Generate a name.
+      # TFOpLambda layers avoid already-observed names,
+      # because users cannot easily control the generated names.
+      # Without this avoidance, users would be more likely to run
+      # into unavoidable duplicate layer name collisions.
+      # (For standard layers users could just set `name` when creating the
+      # layer to work around a collision, but they can't do that for
+      # auto-generated layers)
       kwargs['name'] = K.unique_object_name(
-          'tf.' + self.symbol, zero_based=True)
+          'tf.' + self.symbol, zero_based=True, avoid_observed_names=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method

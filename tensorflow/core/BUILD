@@ -50,7 +50,6 @@
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
-# portable_proto_library ":portable_proto_lib" (Google-internal)
 #
 # Note that :framework and :lib have incomplete transitive dependencies (they
 # declare but do not define some symbols) if framework_shared_object=True
@@ -71,7 +70,6 @@ load(
     "if_libtpu",
     "if_mobile",
     "if_not_windows",
-    "tf_android_core_proto_headers",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -79,9 +77,7 @@ load(
     "tf_cuda_library",
     "tf_defines_nortti_if_lite_protos",
     "tf_features_nomodules_if_mobile",
-    "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_lite_protos",
-    "tf_portable_full_lite_protos",
     "transitive_hdrs",
 )
 
@@ -108,9 +104,6 @@ load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "genrule")
 
 # For platform specific build config
 load(
@@ -145,7 +138,6 @@ load(
     "if_mkl",
     "mkl_deps",
 )
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
@@ -187,7 +179,6 @@ package_group(name = "friends")
 #
 # Note that some protos are in neither additional_core_proto_srcs nor this
 # filegroup; e.g.  ones with individual proto_library targets.
-# LINT.IfChange
 COMMON_PROTO_SRCS = [
     "//tensorflow/core/protobuf:bfc_memory_map.proto",
     "//tensorflow/core/protobuf:config.proto",
@@ -250,7 +241,6 @@ ERROR_CODES_PROTO_SRCS = [
     "//tensorflow/core/protobuf:error_codes.proto",
     "//tensorflow/core/lib/core:error_codes.proto",
 ]
-# LINT.ThenChange(//tensorflow/core/portable_proto_config.asciipb)
 
 CORE_PROTO_SRCS = COMMON_PROTO_SRCS + EXAMPLE_PROTO_SRCS + FRAMEWORK_PROTO_SRCS + UTIL_PROTO_SRCS + PROFILER_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
@@ -2841,11 +2831,6 @@ alias(
     name = "cuda_libdevice_path",
     actual = "//tensorflow/core/platform:cuda_libdevice_path",
 )
-
-# Normalize CORE_PROTO_SRCS to generate valid output file names.
-PORTABLE_PROTO_HEADERS_OUT = tf_android_core_proto_headers(CORE_PROTO_SRCS) + [
-    "//google/protobuf/any.proto.h",
-]
 
 transitive_hdrs(
     name = "headers",

@@ -85,17 +85,19 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
 
 def serialize_bare_concrete_function(concrete_function, name_map):
   """Build a SavedBareConcreteFunction."""
-  # TODO(edloper): Currently, bare concrete functions don't have access to a
-  # function_spec, so they can't be called with the structured signature.
-  # Update the serialization to include a function_spec.
-
   # pylint: disable=protected-access
   name = name_map.get(compat.as_text(concrete_function.name),
                       concrete_function.name)
-  return saved_object_graph_pb2.SavedBareConcreteFunction(
+  proto = saved_object_graph_pb2.SavedBareConcreteFunction(
       concrete_function_name=name,
       allowed_positional_arguments=concrete_function._num_positional_args,
       argument_keywords=concrete_function._arg_keywords)
+  if concrete_function._pre_initialized_function_spec is not None:
+    coder = nested_structure_coder.StructureCoder()
+    proto.function_spec.CopyFrom(
+        _serialize_function_spec(
+            concrete_function._pre_initialized_function_spec, coder))
+  return proto
   # pylint: enable=protected-access
 
 

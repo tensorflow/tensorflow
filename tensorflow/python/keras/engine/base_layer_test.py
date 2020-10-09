@@ -469,6 +469,32 @@ class BaseLayerTest(keras_parameterized.TestCase):
         ]
         self.assertAllEqual(actual_names, expected_names)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_layer_names_after_loading(self):
+    if context.executing_eagerly():
+      backend.clear_session()
+      with testing_utils.use_keras_tensors_scope(True):
+        # Mimic loading a model that already contained add layers with
+        # name = 'add_1' and 'tf.__operators__.add'
+        layers.Add(name='add_1')
+        layers.Add(name='tf.__operators__.add')
+
+        inputs = input_layer.Input(shape=[2])
+        add1 = inputs + inputs
+        add2 = layers.Add()([inputs, inputs])
+        add3 = inputs + inputs
+        add4 = layers.Add()([inputs, inputs])
+        model = training_lib.Model(
+            inputs=[inputs], outputs=[add1, add2, add3, add4])
+        actual_names = [l.name for l in model.layers]
+        # The generated op layer names should have avoided layer names seen in
+        # the loaded model. (This avoiance should not apply to non-op-layers)
+        expected_names = [
+            'input_1', 'tf.__operators__.add_1',
+            'add', 'tf.__operators__.add_2', 'add_1'
+        ]
+        self.assertAllEqual(actual_names, expected_names)
+
   def test_add_trainable_weight_on_frozen_layer(self):
 
     class TestLayer(base_layer.Layer):

@@ -47,7 +47,7 @@ class OutfeedThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  OutfeedConfig config_;
+  const OutfeedConfig config_;
   const ShapeTree<BufferAllocation::Slice> outfeed_slices_;
 };
 

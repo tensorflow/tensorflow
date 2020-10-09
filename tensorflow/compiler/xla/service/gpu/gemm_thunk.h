@@ -60,11 +60,11 @@ class GemmThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  GpuGemmConfig config_;
+  const GpuGemmConfig config_;
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
-  bool implements_whole_instruction_;
+  const bool implements_whole_instruction_;
 };
 
 // Run the given GEMM instruction `gemm` subject to the configuration

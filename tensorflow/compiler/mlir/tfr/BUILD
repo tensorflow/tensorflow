@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load(
     "//third_party/mlir:tblgen.bzl",
@@ -245,5 +245,68 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@pybind11",
+    ],
+)
+
+py_library(
+    name = "composite",
+    srcs = ["python/composite.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "tfr_gen",
+    srcs = ["python/tfr_gen.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
+        "//tensorflow/python:op_def_registry",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct/static_analysis",
+        "@gast_archive//:gast",
+    ],
+)
+
+tf_py_test(
+    name = "tfr_gen_test",
+    size = "small",
+    srcs = ["python/tfr_gen_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":composite",
+        ":tfr_gen",
+        "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
+        "//tensorflow/compiler/mlir/tfr/resources:test_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+py_library(
+    name = "op_reg_gen",
+    srcs = ["python/op_reg_gen.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:op_def_registry",
+        "//tensorflow/python/autograph/pyct",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "op_reg_gen_test",
+    size = "small",
+    srcs = ["python/op_reg_gen_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":composite",
+        ":op_reg_gen",
+        "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
+        "//tensorflow/python:client_testlib",
     ],
 )

@@ -19,6 +19,7 @@ limitations under the License.
 // Useful functions for writing tests.
 
 #include <cstdint>
+#include <limits>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
@@ -191,6 +192,21 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
 
 // Returns the number of tensors in the default subgraph for a tflite::Model.
 size_t GetModelTensorCount(const Model* model);
+
+// Derives the quantization scaling factor from a min and max range.
+template <typename T>
+inline float ScaleFromMinMax(const float min, const float max) {
+  return (max - min) /
+         static_cast<float>((std::numeric_limits<T>::max() * 1.0) -
+                            std::numeric_limits<T>::min());
+}
+
+// Derives the quantization zero point from a min and max range.
+template <typename T>
+inline int ZeroPointFromMinMax(const float min, const float max) {
+  return static_cast<int>(std::numeric_limits<T>::min()) +
+         static_cast<int>(-min / ScaleFromMinMax<T>(min, max) + 0.5f);
+}
 
 }  // namespace testing
 }  // namespace tflite

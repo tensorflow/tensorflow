@@ -7,6 +7,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
@@ -85,6 +86,7 @@ cuda_py_test(
 tf_python_pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"],
+    copts = tf_profiler_copts(),
     module_name = "_pywrap_traceme",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
@@ -99,6 +101,7 @@ tf_python_pybind_extension(
 cc_library(
     name = "traceme_wrapper",
     hdrs = ["traceme_wrapper.h"],
+    copts = tf_profiler_copts(),
     features = ["-layering_check"],
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
@@ -115,6 +118,7 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
+    copts = tf_profiler_copts(),
     features = ["-layering_check"],
     module_name = "_pywrap_profiler",
     visibility = [
@@ -142,7 +146,7 @@ cc_library(
     srcs = ["python_hooks.cc"],
     hdrs = ["python_hooks.h"],
     compatible_with = get_compatible_with_cloud(),
-    copts = ["-fexceptions"],
+    copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
     visibility = ["//visibility:public"],
     deps = [

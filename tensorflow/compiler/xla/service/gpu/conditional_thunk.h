@@ -67,7 +67,7 @@ class ConditionalThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  ConditionalThunkConfig config_;
+  const ConditionalThunkConfig config_;
   BufferAllocation::Slice branch_index_buffer_index_;
   std::vector<BufferAllocation::Slice> branch_operand_buffer_indexes_;
 };

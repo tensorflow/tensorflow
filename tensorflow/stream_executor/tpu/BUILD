@@ -3,7 +3,10 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//tensorflow/core/tpu:__subpackages__"],
+    default_visibility = [
+        "//learning/brain/experimental/dtensor:__subpackages__",
+        "//tensorflow/core/tpu:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 

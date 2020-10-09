@@ -88,6 +88,7 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
 // We use a wrapper class to add Python-specific functionality.
 class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
+  explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
 
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }

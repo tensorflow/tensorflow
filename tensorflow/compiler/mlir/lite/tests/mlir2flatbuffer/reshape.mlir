@@ -5,8 +5,9 @@ func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: RESHAPE,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 22,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: RESHAPE
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {

@@ -415,6 +415,76 @@ the fusion.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklNativeAvgPool")
+    .Input("value: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn(shape_inference::AvgPoolShape)
+    .Doc(R"doc(
+oneDNN version of AvgPool operator that does not depend on layout
+propagation. Uses oneDNN APIs to perform average pooling on the input.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeAvgPoolGrad")
+    .Input("orig_input_shape: int32")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn(shape_inference::AvgPoolGradShape)
+    .Doc(R"doc(
+oneDNN version of AvgPoolGrad operator that does not depend on layout
+propagation. Uses oneDNN APIs to compute gradients of AvgPool operator.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeAvgPool3D")
+    .Input("value: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn(shape_inference::Pool3DShape)
+    .Doc(R"doc(
+oneDNN version of AvgPool3D operator that does not depend on layout
+propagation. Uses oneDNN APIs to perform 3D average pooling on the input.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeAvgPool3DGrad")
+    .Input("orig_input_shape: int32")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {float, half, double, bfloat16}")
+    .SetShapeFn(shape_inference::AvgPool3DGradShape)
+    .Doc(R"doc(
+oneDNN version of AvgPool3DGrad operator that does not depend on layout
+propagation. Uses oneDNN APIs to compute gradients of AvgPool3D function.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklQuantizedMaxPool")
     .Input("input:         T")
     .Input("min_input:     float")
@@ -1654,6 +1724,170 @@ MKL version of FusedBatchNormEx operator. Uses MKL DNN APIs to perform fused
 batch normalization and relu.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeFusedBatchNorm")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Input("mean: T")
+    .Input("variance: T")
+    .Output("y: T")
+    .Output("batch_mean: T")
+    .Output("batch_variance: T")
+    .Output("reserve_space_1: T")
+    .Output("reserve_space_2: T")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("exponential_avg_factor: float = 1.0")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(R"doc(
+oneDNN version of FusedBatchNorm operator that does not depend on layout
+propagation. Uses oneDNN APIs to perform fused batch normalization.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeFusedBatchNormGrad")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("reserve_space_1: T")
+    .Input("reserve_space_2: T")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: T")
+    .Output("offset_backprop: T")
+    .Output("reserve_space_3: T")
+    .Output("reserve_space_4: T")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
+    .Doc(R"doc(
+oneDNN version of FusedBatchNormGrad operator that does not depend
+on layout propagation. Uses oneDNN APIs to compute gradients for fused
+batch normalization.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeFusedBatchNormV2")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Attr("T: {bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("exponential_avg_factor: float = 1.0")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape);
+
+REGISTER_OP("_MklNativeFusedBatchNormGradV2")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_3: U")
+    .Output("reserve_space_4: U")
+    .Attr("T: {bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape);
+
+REGISTER_OP("_MklNativeFusedBatchNormV3")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("exponential_avg_factor: float = 1.0")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(
+        R"doc(oneDNN version of FusedBatchNormV3 operator that does not depend
+        on layout propagation. Do not invoke this operator directly in Python.
+        Graph rewrite pass is expected to invoke this operator.)doc");
+
+REGISTER_OP("_MklNativeFusedBatchNormGradV3")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Input("reserve_space_3: U")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_4: U")
+    .Output("reserve_space_5: U")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
+    .Doc(
+        R"doc(oneDNN version of FusedBatchNormGradV3 that does not depend
+        on layout propagation. Do not invoke this operator directly in Python.
+        Graph rewrite pass is expected to invoke this operator.)doc");
+
+REGISTER_OP("_MklNativeFusedBatchNormEx")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("side_input: num_side_inputs * T")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Attr("T: {bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("num_side_inputs: int >= 0 = 0")
+    .Attr("activation_mode: string = \"Identity\"")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(R"doc(
+oneDNN version of FusedBatchNormEx operator that does not depend on layout propagation.
+Uses oneDNN APIs to perform fused batch normalization and relu.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 

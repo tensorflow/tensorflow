@@ -476,7 +476,6 @@ Thunk::ThunkInfo ThunkEmitter::EmissionContext::GetThunkInfo(
     const HloInstruction* hlo) const {
   CHECK(hlo);
   Thunk::ThunkInfo info;
-  info.hlo_instruction = hlo;
   info.profile_annotation = absl::StrFormat(
       "Thunk:#hlo_op=%s,hlo_module=%s#", hlo->name(), hlo->GetModule()->name());
   return info;

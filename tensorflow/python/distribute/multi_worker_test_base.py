@@ -32,7 +32,7 @@ import six
 _portpicker_import_error = None
 try:
   import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:  # pylint: disable=invalid-name
+except (ImportError, ModuleNotFoundError) as _error:  # pylint: disable=invalid-name
   _portpicker_import_error = _error
   portpicker = None
 
@@ -56,6 +56,7 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 
 original_run_std_server = dc._run_std_server  # pylint: disable=protected-access
@@ -353,16 +354,53 @@ def create_multi_process_cluster(num_workers,
   return cluster
 
 
-# TODO(rchao): Remove `test_obj` once estimator repo picks up the updated
-# nightly TF.
+@tf_export(
+    '__internal__.distribute.multi_process_runner.create_cluster_spec', v1=[])
 def create_cluster_spec(has_chief=False,
                         num_workers=1,
                         num_ps=0,
-                        has_eval=False,
-                        test_obj=None):
-  """Create a cluster spec with tasks with unused local ports."""
-  del test_obj
+                        has_eval=False):
+  """Create a cluster spec with tasks with unused local ports.
 
+  This utility finds available ports at localhost, and returns a dict that
+  represents the cluster spec that utilizes those ports, according to the
+  arguments. The dict representing the cluster spec contains task types, and
+  their instances' addresses. Note that this is usually only for testing purpose
+  using multiple processes in the local machine, and should not be used for real
+  multi-worker TensorFlow programs, where the addresses need to point to the
+  processes at separate machines.
+
+  This util is useful when creating the `cluster_spec` arg for
+  `tf.__internal__.distribute.multi_process_runner.run`.
+
+  Arguments:
+    has_chief: Whether the generated cluster spec should contain "chief" task
+      type.
+    num_workers: Number of workers to use in the cluster spec.
+    num_ps: Number of parameter servers to use in the cluster spec.
+    has_eval: Whether this cluster spec has evaluator.
+
+  Returns:
+    A dict that represents the cluster spec using localhost ports for the tasks.
+
+  Example:
+
+  ```python
+  cluster_spec =
+  tf.__internal__.distribute.multi_process_runner.create_cluster_spec(
+      has_chief=True, num_workers=2, num_ps=2)
+  # An example of cluster_spec is
+  # {'chief': ['localhost:23381'],
+  # 'worker': ['localhost:19197', 'localhost:22903'],
+  # 'ps': ['localhost:16912', 'localhost:21535']}
+
+  cluster_spec =
+  tf.__internal__.distribute.multi_process_runner.create_cluster_spec(
+      has_chief=False, num_workers=0, num_ps=0, has_eval=True)
+  # An example of cluster_spec is
+  # {'evaluator': ['localhost:23381']}
+  ```
+  """
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
 

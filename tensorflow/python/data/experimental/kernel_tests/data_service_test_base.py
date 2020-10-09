@@ -197,12 +197,13 @@ class TestBase(test_base.DatasetTestBase):
   def make_distributed_dataset(self,
                                dataset,
                                cluster,
+                               processing_mode="parallel_epochs",
                                job_name=None,
                                max_outstanding_requests=None):
     # pylint: disable=protected-access
     return dataset.apply(
         data_service_ops._distribute(
-            "parallel_epochs",
+            processing_mode,
             cluster.target,
             job_name=job_name,
             max_outstanding_requests=max_outstanding_requests,
@@ -214,5 +215,8 @@ class TestBase(test_base.DatasetTestBase):
                                      job_name=None,
                                      max_outstanding_requests=None):
     dataset = dataset_ops.Dataset.range(num_elements)
-    return self.make_distributed_dataset(dataset, cluster, job_name,
-                                         max_outstanding_requests)
+    return self.make_distributed_dataset(
+        dataset,
+        cluster,
+        job_name=job_name,
+        max_outstanding_requests=max_outstanding_requests)

@@ -534,8 +534,9 @@ Status CompileGraphToXlaHlo(
 
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
-    llvm::StringRef device_type, bool use_tuple_args,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
+    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
+    const GraphDebugInfo& debug_info,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -544,6 +545,7 @@ Status CompileGraphToXlaHlo(
   RegisterDialects(context.getDialectRegistry());
   GraphImportConfig config;
   config.graph_as_function = true;
+  config.control_outputs = control_rets;
   // Disable shape inference during import as some TensorFlow op fails during
   // shape inference with dynamic shaped operands. This in turn causes the
   // import to fail. Shape inference during import is going to be removed and

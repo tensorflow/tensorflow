@@ -40,6 +40,10 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
       OperationType::DEPTHWISE_CONVOLUTION) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
+  auto dw_inputs = graph.FindInputs(dw_node->id);
+  if (dw_inputs.size() != 1) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
   auto dw_outputs = graph.FindOutputs(dw_node->id);
   auto consumers = graph.FindConsumers(dw_outputs[0]->id);
   if (consumers.size() != 1) {
@@ -60,7 +64,6 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
       dw_node->operation.attributes);
   auto conv_attr =
       absl::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
-  auto dw_inputs = graph.FindInputs(dw_node->id);
   auto conv_outputs = graph.FindOutputs(conv_node->id);
   OperationDef op_def;
   op_def.precision = precision;

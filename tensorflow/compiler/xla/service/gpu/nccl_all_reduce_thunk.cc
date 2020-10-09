@@ -522,7 +522,8 @@ struct NcclAllReduceConfig::AuxData {
 NcclAllReduceConfig::NcclAllReduceConfig(NcclAllReduceConfig&&) = default;
 NcclAllReduceConfig::~NcclAllReduceConfig() = default;
 
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* instr) {
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* instr,
+                                           int64 replica_count) {
   NcclAllReduceConfig config;
   config.operand_count = instr->operands().size();
   config.operand_element_type.reserve(config.operand_count);
@@ -530,6 +531,7 @@ NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* instr) {
     config.operand_element_type.push_back(
         instr->operand(i)->shape().element_type());
   }
+  config.replica_count = replica_count;
   config.replica_groups = instr->replica_groups();
   auto reduction_kind = MatchReductionComputation(instr->to_apply());
   CHECK(reduction_kind.has_value());
