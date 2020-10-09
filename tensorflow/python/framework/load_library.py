@@ -158,7 +158,6 @@ def load_library(library_location):
         'The file or folder to load kernel libraries from does not exist.',
         library_location)
 
-@tf_export('load_pluggable_device_library')
 def load_pluggable_device_library(library_location):
   """Loads a Tensorflow PluggableDevice plugin
   "library_location" can be a path to a specific shared object, or a folder.

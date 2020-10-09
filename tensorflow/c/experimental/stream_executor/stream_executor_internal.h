@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform.h"
 
-using tensorflow::StatusFromTF_Status;
 namespace stream_executor {
 
 // Plugin initialization function that a device plugin
@@ -103,7 +102,7 @@ class CStream : public internal::StreamInterface {
   port::Status Create() {
     OwnedTFStatus c_status(TF_NewStatus());
     stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    port::Status s = StatusFromTF_Status(c_status.get());
+    port::Status s = tensorflow::StatusFromTF_Status(c_status.get());
     return s;
   }
 
@@ -133,14 +132,14 @@ class CEvent : public internal::EventInterface {
   port::Status Create() {
     OwnedTFStatus c_status(TF_NewStatus());
     stream_executor_->create_event(device_, &event_handle_, c_status.get());
-    return StatusFromTF_Status(c_status.get());
+    return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
   port::Status Record(SP_Stream stream_handle) {
     OwnedTFStatus c_status(TF_NewStatus());
     stream_executor_->record_event(device_, stream_handle, event_handle_,
                                    c_status.get());
-    return StatusFromTF_Status(c_status.get());
+    return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
   void Destroy() {
@@ -171,7 +170,7 @@ class CTimer : public internal::TimerInterface {
   port::Status Create() {
     OwnedTFStatus c_status(TF_NewStatus());
     stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
-    return StatusFromTF_Status(c_status.get());
+    return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
   void Destroy() {

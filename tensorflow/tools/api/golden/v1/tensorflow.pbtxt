@@ -1577,10 +1577,6 @@ tf_module {
     argspec: "args=[\'library_filename\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "load_pluggable_device_library"
-    argspec: "args=[\'library_location\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "local_variables"
     argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

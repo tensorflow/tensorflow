@@ -630,6 +630,9 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
 
 namespace tensorflow {
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
+// Helpers for loadding a TensorFlow PluggableDevice plugin (a .so file).
+Status LoadPluggableDeviceLibrary(const char* library_filename, void** result);
 }  // namespace tensorflow
 
 void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
@@ -742,4 +745,27 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
     TF_ImportGraphDefOptions* opts, unsigned char enable) {
   opts->opts.validate_colocation_constraints = enable;
+}
+
+TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
+                                          TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  status->status = tensorflow::errors::Unimplemented(
+      "PluggableDevice plugin functionality is not supported on mobile");
+  return nullptr;
+#else
+  TF_Library* lib_handle = new TF_Library;
+  status->status = tensorflow::LoadPluggableDeviceLibrary(
+      library_filename, &lib_handle->lib_handle);
+  if (!status->status.ok()) {
+    delete lib_handle;
+    return nullptr;
+  }
+  return lib_handle;
+#endif
+}
+
+void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
+  if (lib_handle == nullptr) return;
+  delete lib_handle;
 }

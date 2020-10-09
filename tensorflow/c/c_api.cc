@@ -308,9 +308,6 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
 Status LoadDynamicLibrary(const char* library_filename, void** result,
                           const void** buf, size_t* len);
 
-// Helpers for loadding a TensorFlow PluggableDevice plugin (a .so file)
-Status LoadPluggableDeviceLibrary(const char* library_filename, void** result);
-
 // TODO(josh11b,mrry): Change Session to be able to use a Graph*
 // directly, instead of requiring us to serialize to a GraphDef and
 // call Session::Extend().
@@ -582,23 +579,6 @@ TF_Buffer* TF_GetAllOpList() {
   TF_Buffer* ret = TF_NewBuffer();
   TF_CHECK_OK(MessageToBuffer(op_list, ret));
   return ret;
-}
-
-TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
-                                          TF_Status* status) {
-  TF_Library* lib_handle = new TF_Library;
-  status->status = tensorflow::LoadPluggableDeviceLibrary(
-      library_filename, &lib_handle->lib_handle);
-  if (!status->status.ok()) {
-    delete lib_handle;
-    return nullptr;
-  }
-  return lib_handle;
-}
-
-void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
-  if (lib_handle == nullptr) return;
-  delete lib_handle;
 }
 
 // --------------------------------------------------------------------------

@@ -170,13 +170,20 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
   TF_SetStatus(status, TF_OK, "");
 }
 
-// This function is only for pluggable device
-// it will return nullptr in all other cases
+// This function is only for pluggable device.
+// It will return nullptr in all other cases.
+// This function is experimental and subject to change.
 SP_Stream TF_GetStream(TF_OpKernelContext* ctx) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  auto c_stream = static_cast<stream_executor::CStream*>(
-      cc_ctx->op_device_context()->stream()->implementation());
-  return c_stream->Handle();
+  if (cc_ctx->op_device_context() == nullptr) {  // CPU Device
+    return nullptr;
+  } else if (!cc_ctx->op_device_context()->IsPluggableDevice()) {
+    return nullptr;
+  } else {  // Is a PluggableDevice
+    auto c_stream = static_cast<stream_executor::CStream*>(
+        cc_ctx->op_device_context()->stream()->implementation());
+    return c_stream->Handle();
+  }
 }
 
 int TF_NumInputs(TF_OpKernelContext* ctx) {
