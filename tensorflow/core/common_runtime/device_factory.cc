@@ -64,6 +64,9 @@ int32 DeviceFactory::DevicePriority(const string& device_type) {
 }
 
 // static
+// If subdevice type is not found in the device factories, that means
+// device is not registed. In this case, device type will be used as
+// subdevice type.
 string DeviceFactory::SubDeviceType(const string& device_type) {
   tf_shared_lock l(*get_device_factory_lock());
   std::unordered_map<string, FactoryItem>& factories = device_factories();
@@ -71,11 +74,6 @@ string DeviceFactory::SubDeviceType(const string& device_type) {
   if (iter != factories.end()) {
     return iter->second.subdevice_type;
   }
-
-  // If subdevice type is not found in the device factories, that means
-  // device is not registed. Unit test will direct create kernel without
-  // device registered. In these cases, device type will be used as
-  // subdevice type (framework:op_kernel_test, c:kernel_test)
   return device_type;
 }
 

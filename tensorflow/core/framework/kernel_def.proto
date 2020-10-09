@@ -41,8 +41,8 @@ message KernelDef {
   // this is not set), we prefer GPU kernels over CPU.
   int32 priority = 6;
 
-  // Subdevice type of this kernel runs on
-  // For first-party devices, subdevice_type is the same as device type
+  // Sub-type of device this kernel runs on.
+  // For first-party devices, subdevice_type is the same as device type.
   // For PluggableDevices(third-party devices), subdevice_type is registered 
   // by plugin.
   string subdevice_type = 7;

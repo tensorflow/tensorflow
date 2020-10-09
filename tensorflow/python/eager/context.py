@@ -1244,21 +1244,28 @@ class Context(object):
   def invoking_op_callbacks(self, value):
     self._thread_local_data.invoking_op_callbacks = value
 
-  # Parse PhysicalDevice from the device string
-  # if the device string contains subdevice type string, then parse it.
-  # if the device string doesn't contains subdevice type string, subdevice type will
-  # be the same as the device type string.
-  def _parse_physical_devices(self, devs):
+  # Parse PhysicalDevice from the device string.
+  # If the device string contains subdevice type string, then parse it.
+  #  e.g. '/physical_device:GPU:0:X_GPU' 
+  #           -> PhysicalDevice(name='/physical_device:GPU:0',
+  #                             device_type='GPU', subdevice_type='X_GPU')
+  # If the device string doesn't contains subdevice type string, subdevice 
+  # type will be the same as the device type string.
+  #  e.g. '/physical_device:CPU:0' 
+  #           -> PhysicalDevice(name='/physical_device:CPU:0',
+  #                             device_type='CPU', subdevice_type='CPU')
+  def _parse_physical_devices(self, devices):
     physical_devices = []
-    for d in devs:
-        if (d.decode().count(":") == 3):
-          name = d.decode().strip(d.decode().split(":")[3]).strip(":")
-          device_type = d.decode().split(":")[1]
-          subdevice_type = d.decode().split(":")[3]
+    for d in devices:
+        device_spec = d.decode()
+        if (device_spec.count(":") == 3):
+          name = device_spec.strip(device_spec.split(":")[3]).strip(":")
+          device_type = device_spec.split(":")[1]
+          subdevice_type = device_spec.split(":")[3]
         else:
-          name = d.decode()
-          device_type = d.decode().split(":")[1]
-          subdevice_type = d.decode().split(":")[1]
+          name = device_spec
+          device_type = device_spec.split(":")[1]
+          subdevice_type = device_spec.split(":")[1]
         physical_devices.append(PhysicalDevice(name, device_type, subdevice_type))
     return physical_devices
 

@@ -131,6 +131,12 @@ class ContextTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'Multiple devices'):
       context.context().get_total_memory_usage('GPU')
 
+  def testParsePhysicalDevices(self):
+    expected_cpu = context.PhysicalDevice(
+                     name='/physical_device:CPU:0',
+                     device_type='CPU', subdevice_type='CPU')
+    cpu_devices = context.context().list_physical_devices("CPU")
+    self.assertTrue(expected_cpu in cpu_devices)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
