@@ -2230,8 +2230,8 @@ tf_cuda_library(
         ],
     ),
     hdrs = [
-        ":core_cpu_base_headers",
         ":framework_internal_public_headers",
+        "//tensorflow/core/common_runtime:device_factory.h",
     ],
     copts = tf_copts(),
     linkopts = select({
