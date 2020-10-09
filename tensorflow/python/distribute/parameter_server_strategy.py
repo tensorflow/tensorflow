@@ -693,3 +693,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       Boolean.
     """
     return True
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return replica_id

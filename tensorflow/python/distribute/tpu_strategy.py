@@ -1345,6 +1345,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # TPUStrategy.
     return False
 
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
   """Replication Context class for TPU Strategy."""

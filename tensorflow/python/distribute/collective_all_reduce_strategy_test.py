@@ -32,11 +32,14 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
@@ -598,5 +601,29 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
     context._reset_context()  # pylint: disable=protected-access
 
 
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu,
+        ],
+        mode=['eager']))
+class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
+
+  def test_replica_id_in_sync_group(self, strategy):
+
+    def replica_fn():
+      replica_ctx = distribution_strategy_context.get_replica_context()
+      return replica_ctx.replica_id_in_sync_group, replica_ctx._replica_id
+
+    results = test_util.gather(strategy, strategy.run(replica_fn))
+    self.assertAllEqual(list(range(strategy.extended._num_replicas_in_sync)),
+                        results[0].numpy())
+    self.assertAllEqual(
+        list(range(len(strategy.extended.worker_devices))) *
+        strategy.extended._num_workers, results[1].numpy())
+
+
 if __name__ == '__main__':
-  test.main()
+  test_util.main()
