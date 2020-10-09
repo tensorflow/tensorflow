@@ -340,6 +340,7 @@ def compare_results(results_with_ds,
     # so use larger tolerance for now. Predict should be related to weights.
     if (isinstance(distribution,
                    (mirrored_strategy.MirroredStrategy,
+                    mirrored_strategy.MirroredStrategyV1,
                     distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
         key.startswith(('weights_1', 'weights_2', 'predict_result'))):
       return relaxed_tolerance

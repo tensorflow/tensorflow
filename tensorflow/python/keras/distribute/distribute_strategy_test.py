@@ -1371,7 +1371,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
             metrics=metrics)
 
       batch_size = 8
-      if isinstance(distribution, mirrored_strategy.MirroredStrategy):
+      if isinstance(distribution, (mirrored_strategy.MirroredStrategy,
+                                   mirrored_strategy.MirroredStrategyV1)):
         # MirroredStrategy uses global batch size.
         batch_size = 8 * distribution.num_replicas_in_sync
 
@@ -2011,7 +2012,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.compile(optimizer, 'mae')
 
     if isinstance(distribution,
-                  central_storage_strategy.CentralStorageStrategy):
+                  (central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       with self.assertRaisesRegex(ValueError, 'not supported'):
         model.fit(x, y, batch_size=10, epochs=1)
     else:
@@ -2023,7 +2025,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_custom_gradient_transformation(self, distribution):
     if isinstance(distribution,
-                  central_storage_strategy.CentralStorageStrategy):
+                  (central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       self.skipTest('Not supported with `CentralStorageStrategy`')
 
     class MyLayer(keras.layers.Layer):

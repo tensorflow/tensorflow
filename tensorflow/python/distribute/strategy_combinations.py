@@ -44,6 +44,28 @@ CollectiveAllReduceExtended = (
     collective_all_reduce_strategy.CollectiveAllReduceExtended)
 
 
+def _version_chooser(tf1_cls, tf2_cls):
+
+  def creator(*args, **kwargs):
+    if tf2.enabled():
+      return tf2_cls(*args, **kwargs)
+    return tf1_cls(*args, **kwargs)
+
+  return creator
+
+
+MirroredStrategy = _version_chooser(mirrored_lib.MirroredStrategyV1,
+                                    mirrored_lib.MirroredStrategy)
+CentralStorageStrategy = _version_chooser(
+    central_storage_strategy.CentralStorageStrategyV1,
+    central_storage_strategy.CentralStorageStrategy)
+OneDeviceStrategy = _version_chooser(one_device_lib.OneDeviceStrategyV1,
+                                     one_device_lib.OneDeviceStrategy)
+# Only V2 CollectiveAllReduceStrategy combinations are supported.
+CollectiveAllReduceStrategy = (
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+
+
 # pylint: disable=missing-docstring
 def _get_tpu_strategy_creator(steps_per_run,
                               use_single_core=False,
@@ -79,8 +101,8 @@ def _get_tpu_strategy_creator(steps_per_run,
     device_assignment = None
     if use_single_core:
       device_assignment = device_assignment_lib.DeviceAssignment(
-          topology, core_assignment=device_assignment_lib.
-          SINGLE_CORE_ASSIGNMENT)
+          topology,
+          core_assignment=device_assignment_lib.SINGLE_CORE_ASSIGNMENT)
 
     # Steps per run is only supported in TF 1.x
     if tf2.enabled():
@@ -120,8 +142,7 @@ def _get_multi_worker_mirrored_creator(required_gpus):
     # configures the eager context. The eager context can no longer be
     # configured after initialization.
     with context.eager_mode():
-      strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-          cluster_resolver=resolver)
+      strategy = CollectiveAllReduceStrategy(cluster_resolver=resolver)
     # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
     # collectives may hang if any worker launches collectives before the chief
     # creates the strategy.
@@ -143,20 +164,16 @@ default_strategy = combinations.NamedDistribution(
     distribution_strategy_context._get_default_strategy,  # pylint: disable=protected-access
     required_gpus=None)
 one_device_strategy = combinations.NamedDistribution(
-    "OneDeviceCPU",
-    lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
-    required_gpus=None)
+    "OneDeviceCPU", lambda: OneDeviceStrategy("/cpu:0"), required_gpus=None)
 one_device_strategy_gpu = combinations.NamedDistribution(
-    "OneDeviceGPU",
-    lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
-    required_gpus=1)
+    "OneDeviceGPU", lambda: OneDeviceStrategy("/gpu:0"), required_gpus=1)
 one_device_strategy_on_worker_1 = combinations.NamedDistribution(
     "OneDeviceOnWorker1CPU",
-    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/cpu:0"),  # pylint: disable=line-too-long
+    lambda: OneDeviceStrategy("/job:worker/replica:0/task:1/cpu:0"),
     required_gpus=None)
 one_device_strategy_gpu_on_worker_1 = combinations.NamedDistribution(
     "OneDeviceOnWorker1GPU",
-    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/gpu:0"),  # pylint: disable=line-too-long
+    lambda: OneDeviceStrategy("/job:worker/replica:0/task:1/gpu:0"),
     required_gpus=1)
 tpu_strategy = combinations.NamedDistribution(
     "TPU", _get_tpu_strategy_creator(steps_per_run=2), required_tpu=True)
@@ -180,35 +197,32 @@ cloud_tpu_strategy = combinations.NamedDistribution(
     required_tpu=True,
     use_cloud_tpu=True)
 mirrored_strategy_with_one_cpu = combinations.NamedDistribution(
-    "Mirrored1CPU", lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))
+    "Mirrored1CPU", lambda: MirroredStrategy(["/cpu:0"]))
 mirrored_strategy_with_one_gpu = combinations.NamedDistribution(
-    "Mirrored1GPU",
-    lambda: mirrored_lib.MirroredStrategy(["/gpu:0"]),
-    required_gpus=1)
+    "Mirrored1GPU", lambda: MirroredStrategy(["/gpu:0"]), required_gpus=1)
 mirrored_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     "MirroredCPUAndGPU",
-    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/cpu:0"]),
+    lambda: MirroredStrategy(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
 mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
-    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
+    lambda: MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
-    "Mirrored2CPU", lambda: mirrored_lib.MirroredStrategy(["/cpu:1", "/cpu:2"]))
+    "Mirrored2CPU", lambda: MirroredStrategy(["/cpu:1", "/cpu:2"]))
 mirrored_strategy_with_cpu_1_and_2.__doc__ = (
     """Mirrored strategy with 2 virtual CPUs.
 
-    Should call set_virtual_cpus_to_at_least(3) in the test's setUp methods.
+    Should set up logical devices before use
     """)
 central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
     "CentralStorage2GPUs",
-    lambda: central_storage_strategy.CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
+    lambda: CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
     required_gpus=2)
 central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     "CentralStorageCPUAndGPU",
-    lambda: central_storage_strategy.CentralStorageStrategy(
-        ["/gpu:0", "/cpu:0"]),
+    lambda: CentralStorageStrategy(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
 # chief + 1 worker, with CPU.
 multi_worker_mirrored_2x1_cpu = combinations.NamedDistribution(
@@ -310,8 +324,7 @@ multidevice_strategies = [
 ]
 
 multiworker_strategies = [
-    multi_worker_mirrored_2x1_cpu,
-    multi_worker_mirrored_2x1_gpu,
+    multi_worker_mirrored_2x1_cpu, multi_worker_mirrored_2x1_gpu,
     multi_worker_mirrored_2x2_gpu
 ]
 
