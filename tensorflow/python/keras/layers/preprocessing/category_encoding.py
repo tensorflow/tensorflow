@@ -128,7 +128,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     # We need to call super() before we call _add_state_variable().
     combiner = _CategoryEncodingCombiner(
-        compute_max_element=max_tokens is None,
+        max_tokens=max_tokens,
         compute_idf=output_mode == TFIDF)
     super(CategoryEncoding, self).__init__(combiner=combiner, **kwargs)
     base_preprocessing_layer._kpl_gauge.get_cell("V2").set("CategoryEncoding")
@@ -137,15 +137,6 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     self._output_mode = output_mode
     self._sparse = sparse
     self._called = False
-
-    # We are adding these here instead of in build() since they do not depend
-    # on the input shape at all.
-    if max_tokens is None:
-      self.num_elements = self._add_state_variable(
-          name=_NUM_ELEMENTS_NAME,
-          shape=(),
-          dtype=dtypes.int32,
-          initializer=init_ops.zeros_initializer)
 
     if self._output_mode == TFIDF:
       # The TF-IDF weight may have a (None,) tensorshape. This creates
@@ -159,6 +150,8 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       else:
         initializer = init_ops.zeros_initializer
 
+      # We are adding these here instead of in build() since they do not depend
+      # on the input shape at all.
       self.tf_idf_weights = self._add_state_variable(
           name=_IDF_NAME,
           shape=tensor_shape.TensorShape((max_tokens,)),
@@ -198,16 +191,17 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     if not reset_state:
       raise ValueError("CategoryEncoding does not support streaming adapts.")
 
-    if self._called and self._max_tokens is None:
-      raise RuntimeError("CategoryEncoding can't be adapted after being called "
-                         "if max_tokens is None.")
     super(CategoryEncoding, self).adapt(data, reset_state)
 
   def _set_state_variables(self, updates):
     if not self.built:
       raise RuntimeError("_set_state_variables() must be called after build().")
-    if self._max_tokens is None:
-      self.set_num_elements(updates[_NUM_ELEMENTS_NAME])
+    if _NUM_ELEMENTS_NAME in updates:
+      if self._max_tokens is None:
+        self.set_num_elements(updates[_NUM_ELEMENTS_NAME])
+      elif self._max_tokens != updates[_NUM_ELEMENTS_NAME]:
+        raise RuntimeError("Cannot update states if you construct the layer "
+                           "with `max_tokens`={}".format(self._max_tokens))
     if self._output_mode == TFIDF:
       self.set_tfidf_data(updates[_IDF_NAME])
 
@@ -248,7 +242,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     if self._called:
       raise RuntimeError("num_elements cannot be changed after the layer is "
                          "called.")
-    K.set_value(self.num_elements, num_elements)
+    self._max_tokens = num_elements
 
   def set_tfidf_data(self, tfidf_data):
     tfidf_data = self._convert_to_ndarray(tfidf_data)
@@ -278,12 +272,10 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
                        "or `output_mode='binary'`. Please pass a single input.")
     self._called = True
     if self._max_tokens is None:
-      out_depth = K.get_value(self.num_elements)
-      if out_depth == 0:
-        raise RuntimeError(
-            "If you construct a `CategoryEncoding` layer with "
-            "`max_tokens=None`, you need to call `adapt()` "
-            "on it before using it")
+      raise RuntimeError(
+          "If you construct a `CategoryEncoding` layer with "
+          "`max_tokens=None`, you need to call `adapt()` "
+          "on it before using it")
     else:
       out_depth = self._max_tokens
 
@@ -350,9 +342,9 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
   MAX_VALUE_IDX = 0
   DOC_ID_IDX = 1
 
-  def __init__(self, compute_max_element=True, compute_idf=False):
+  def __init__(self, max_tokens=None, compute_idf=False):
+    self._max_tokens = max_tokens
     self._compute_idf = compute_idf
-    self._compute_max_element = compute_max_element
 
   def compute(self, values, accumulator=None):
     """Computes a step in this computation, returning a new accumulator."""
@@ -367,9 +359,10 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
         element = [element]
       current_doc_id = accumulator.data[self.DOC_ID_IDX]
       for value in element:
-        current_max_value = accumulator.data[self.MAX_VALUE_IDX]
-        if value > current_max_value:
-          accumulator.data[self.MAX_VALUE_IDX] = value
+        if self._max_tokens is None:
+          current_max_value = accumulator.data[self.MAX_VALUE_IDX]
+          if value > current_max_value:
+            accumulator.data[self.MAX_VALUE_IDX] = value
         if self._compute_idf:
           doc_count = accumulator.per_doc_count_dict[value]
           if doc_count["last_doc_id"] != current_doc_id:
@@ -389,9 +382,10 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
     for accumulator in accumulators[1:]:
       base_accumulator.data[self.DOC_ID_IDX] += accumulator.data[
           self.DOC_ID_IDX]
-      base_accumulator.data[self.MAX_VALUE_IDX] = max(
-          base_accumulator.data[self.MAX_VALUE_IDX],
-          accumulator.data[self.MAX_VALUE_IDX])
+      if self._max_tokens is None:
+        base_accumulator.data[self.MAX_VALUE_IDX] = max(
+            base_accumulator.data[self.MAX_VALUE_IDX],
+            accumulator.data[self.MAX_VALUE_IDX])
       if self._compute_idf:
         for token, value in accumulator.per_doc_count_dict.items():
           # Any newly created token counts in 'base_accumulator''s
@@ -431,10 +425,13 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
           the IDF value for index i. Only returned if `compute_idf` is True.
     """
     data, document_counts = accumulator
-    max_element = data[self.MAX_VALUE_IDX]
+    if data[self.MAX_VALUE_IDX] is not None:
+      max_element = data[self.MAX_VALUE_IDX] + 1
+    else:
+      max_element = self._max_tokens
     output_dict = {}
-    if self._compute_max_element:
-      output_dict[_NUM_ELEMENTS_NAME] = max_element + 1
+    if self._max_tokens is None:
+      output_dict[_NUM_ELEMENTS_NAME] = max_element
 
     if self._compute_idf:
       num_documents = data[self.DOC_ID_IDX]
@@ -444,7 +441,7 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
       # the dict directly for those values gives us meaningful counts (of 0).
       # However, this also means we can't just extract the values in
       # document_counts - we need to do a deliberate indexing using range().
-      doc_counts = [document_counts[i]["count"] for i in range(max_element + 1)]
+      doc_counts = [document_counts[i]["count"] for i in range(max_element)]
       idf = self._inverse_document_frequency(doc_counts, num_documents)
       output_dict[_IDF_NAME] = idf
 
@@ -493,5 +490,8 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
       per_doc_count_dict = collections.defaultdict(create_default_dict)
     else:
       per_doc_count_dict = None
-    data = [0, 0]
+    if self._max_tokens is None:
+      data = [0, 0]
+    else:
+      data = [None, 0]
     return _CategoryEncodingAccumulator(data, per_doc_count_dict)
