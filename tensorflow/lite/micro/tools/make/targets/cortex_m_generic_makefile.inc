@@ -112,6 +112,11 @@ ifneq ($(filter cortex-%-generic,$(TARGET)),)
     # https://developer.arm.com/documentation/100891/0611/troubleshooting/general-troubleshooting-advice
     MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
   else ifeq ($(filter armgcc,$(ALL_TAGS)),armgcc)
+    ifeq ($(shell which arm-none-eabi-gcc),)
+      export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
+      $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
+    endif
+
     CXX_TOOL  := arm-none-eabi-gcc
     CC_TOOL   := arm-none-eabi-gcc
     AR_TOOL   := arm-none-eabi-gcc-ar
