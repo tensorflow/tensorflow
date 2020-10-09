@@ -538,8 +538,8 @@ REGISTER_OP("_MklNativeMaxPool3D")
     .Attr("workspace_enabled: bool = false")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
-oneDNN version of MaxPoolGrad that does not depend on layout propagation.
-Uses oneDNN APIs to compute gradients of MaxPool operator.
+oneDNN version of MaxPool3D operator that does not depend on layout propagation.
+Uses oneDNN APIs to perform 3D max pooling on the input.
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
