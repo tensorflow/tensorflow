@@ -314,7 +314,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:error_reporter",
     ],
 )
 
@@ -331,7 +331,7 @@ cc_library(
     deps = [
         ":minimal_logging",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:error_reporter",
     ],
 )
 
@@ -346,7 +346,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:op_resolver",
     ],
 )
 
@@ -362,7 +362,7 @@ cc_library(
     ],
     deps = [
         ":util",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
