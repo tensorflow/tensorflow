@@ -118,12 +118,14 @@ void RecordingMicroAllocator::PrintRecordedAllocation(
     const char* allocation_description) const {
 #ifndef TF_LITE_STRIP_ERROR_STRINGS
   RecordedAllocation allocation = GetRecordedAllocation(allocation_type);
-  TF_LITE_REPORT_ERROR(
-      error_reporter(),
-      "[RecordingMicroAllocator] '%s' used %d bytes with alignment overhead "
-      "(requested %d bytes for %d %s)",
-      allocation_name, allocation.used_bytes, allocation.requested_bytes,
-      allocation.count, allocation_description);
+  if (allocation.used_bytes > 0 || allocation.requested_bytes > 0) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter(),
+        "[RecordingMicroAllocator] '%s' used %d bytes with alignment overhead "
+        "(requested %d bytes for %d %s)",
+        allocation_name, allocation.used_bytes, allocation.requested_bytes,
+        allocation.count, allocation_description);
+  }
 #endif
 }
 
