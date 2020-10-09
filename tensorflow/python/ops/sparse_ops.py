@@ -1905,7 +1905,7 @@ def sparse_retain(sp_input, to_retain):
   retain_shape = to_retain.get_shape()
   retain_shape.assert_has_rank(1)
   if sp_input.values.get_shape().dims is not None:
-    sp_input.values.get_shape().dims[0].merge_with(
+    sp_input.values.get_shape().dims[0].assert_is_compatible_with(
         tensor_shape.dimension_at_index(retain_shape, 0))
 
   where_true = array_ops.reshape(array_ops.where_v2(to_retain), [-1])
@@ -1993,7 +1993,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
     # For cases when shape is known during graph construction, this catches the
     # error before the sparse_tensor.SparseTensor catches it.
     if output_shape_tensor.get_shape().rank is not None:
-      output_shape_tensor.get_shape().dims[0].merge_with(
+      output_shape_tensor.get_shape().dims[0].assert_is_compatible_with(
           in_shape.get_shape().dims[0])
 
     output_shape_tensor_const = tensor_util.constant_value(output_shape_tensor)
