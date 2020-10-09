@@ -894,7 +894,7 @@ inline void SetDummyMklDnnShapeOutput(OpKernelContext* context,
 }
 
 // If the input tensor has ref count as 1, it is forwarded to the desired
-// output port and the function reutrns true. In that case, it also allocates
+// output port and the function returns true. In that case, it also allocates
 // the serialized MklDnnShape object. Otherwise, the function returns false.
 inline bool ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
                                                 int idx_in, int idx_out,
@@ -921,9 +921,8 @@ inline bool ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
   if (is_forwarded || always_forward) {
     AllocateOutputSetMklShape(context, idx_out, mkl_shape);
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 // Forward the MKL shape ONLY (used in elementwise and other ops where
