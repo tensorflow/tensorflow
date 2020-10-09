@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -56,7 +56,7 @@ ProgramCache& ProgramCache::operator=(ProgramCache&& program_cache) {
   return *this;
 }
 
-Status ProgramCache::GetOrCreateCLKernel(
+absl::Status ProgramCache::GetOrCreateCLKernel(
     const std::string& code, const std::string& function_name,
     const std::vector<CompilerOptions>& compiler_options,
     const CLContext& context, const CLDevice& device, CLKernel* result) {
@@ -64,32 +64,31 @@ Status ProgramCache::GetOrCreateCLKernel(
   ProgramDescriptor desc{code, options, use_fingerprints_};
   auto it = programs_.find(desc);
   if (it != programs_.end()) {
-    RETURN_IF_ERROR(result->CreateFromProgram(it->second, function_name));
-    return OkStatus();
+    return result->CreateFromProgram(it->second, function_name);
   }
 
   CLProgram program;
   RETURN_IF_ERROR(CreateCLProgram(code, options, context, device, &program));
   RETURN_IF_ERROR(result->CreateFromProgram(program, function_name));
   programs_.insert(std::make_pair(std::move(desc), std::move(program)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ProgramCache::GetOrCreateCLKernel(const std::string& code,
-                                         const std::string& function_name,
-                                         const CLContext& context,
-                                         const CLDevice& device,
-                                         CLKernel* result) {
+absl::Status ProgramCache::GetOrCreateCLKernel(const std::string& code,
+                                               const std::string& function_name,
+                                               const CLContext& context,
+                                               const CLDevice& device,
+                                               CLKernel* result) {
   return GetOrCreateCLKernel(code, function_name, {}, context, device, result);
 }
 
-Status ProgramCache::AddSerializedCache(
+absl::Status ProgramCache::AddSerializedCache(
     const CLContext& context, const CLDevice& device,
     absl::Span<const uint8_t> serialized_cache) {
   flatbuffers::Verifier verifier(serialized_cache.data(),
                                  serialized_cache.size());
   if (!data::VerifyCompiledCacheBuffer(verifier)) {
-    return InvalidArgumentError("Serialized model is corrupted.");
+    return absl::InvalidArgumentError("Serialized model is corrupted.");
   }
 
   auto model = data::GetCompiledCache(serialized_cache.data());
@@ -97,7 +96,7 @@ Status ProgramCache::AddSerializedCache(
                                model->driver_version()->size());
 
   if (device.GetPlatformVersion() != platform_version) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "OpenCL driver changed, cache invalid, should be regenerated");
   }
 
@@ -116,10 +115,10 @@ Status ProgramCache::AddSerializedCache(
       programs_.insert(std::make_pair(std::move(desc), std::move(program)));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ProgramCache::GetSerializedCache(
+absl::Status ProgramCache::GetSerializedCache(
     const CLDevice& device, std::vector<uint8_t>* serialized_cache) const {
   ::flatbuffers::FlatBufferBuilder builder;
   std::vector<flatbuffers::Offset<data::Program>> serialized_programs;
@@ -140,9 +139,9 @@ Status ProgramCache::GetSerializedCache(
   data::FinishCompiledCacheBuffer(builder, cache_builder.Finish());
   size_t next_element = serialized_cache->size();
   serialized_cache->resize(serialized_cache->size() + builder.GetSize());
-  memcpy(&(*serialized_cache)[next_element], builder.GetBufferPointer(),
-         builder.GetSize());
-  return OkStatus();
+  std::memcpy(&(*serialized_cache)[next_element], builder.GetBufferPointer(),
+              builder.GetSize());
+  return absl::OkStatus();
 }
 
 }  // namespace cl

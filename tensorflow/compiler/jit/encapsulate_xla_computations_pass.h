@@ -28,14 +28,12 @@
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/env.h"
 
-    namespace tensorflow {
+namespace tensorflow {
 
 // Encapsulates nodes marked with the _xla_compile_id attribute into
 // XlaLaunch operators.
 class EncapsulateXlaComputationsPass : public GraphOptimizationPass {
  public:
-  static const char* const kXlaClusterAttr;  // _xla_compile_id
-
   Status Run(const GraphOptimizationPassOptions& options) override;
 
   // The following methods are public only for unit tests.

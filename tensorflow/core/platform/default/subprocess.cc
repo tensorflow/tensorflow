@@ -47,8 +47,8 @@ limitations under the License.
 // Fortunately, most people haven't heard of pthread_atfork().
 //
 //
-// 2) FYI from m3b@ about execv():
-// The execv() call implicitly uses the libc global variable environ, which was
+// 2) FYI from m3b@ about execvp():
+// The execvp() call implicitly uses the libc global variable environ, which was
 // copied by fork(), and that copy could have raced with a setenv() call in
 // another thread, since libc implementations are usually not very careful about
 // this. (glibc isn't careful, for example.)
@@ -61,7 +61,7 @@ limitations under the License.
 // Amusingly, the standard says of fork(): "...to avoid errors, the child
 // process may only execute async-signal-safe operations until such time as one
 // of the exec functions is called."  Notice that execve() is listed as
-// async-signal-safe, but execv() is not, and the difference is just the
+// async-signal-safe, but execvp() is not, and the difference is just the
 // handling of the environment.
 
 namespace tensorflow {
@@ -102,11 +102,15 @@ void SubProcess::FreeArgs() {
 void SubProcess::ClosePipes() {
   for (int i = 0; i < kNFds; i++) {
     if (parent_pipe_[i] >= 0) {
-      close(parent_pipe_[i]);
+      if (close(parent_pipe_[i]) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
       parent_pipe_[i] = -1;
     }
     if (child_pipe_[i] >= 0) {
-      close(child_pipe_[i]);
+      if (close(child_pipe_[i]) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
       child_pipe_[i] = -1;
     }
   }
@@ -215,7 +219,9 @@ bool SubProcess::Start() {
     running_ = true;
     for (int i = 0; i < kNFds; i++) {
       if (child_pipe_[i] >= 0) {
-        close(child_pipe_[i]);
+        if (close(child_pipe_[i]) < 0) {
+          LOG(ERROR) << "close() failed: " << strerror(errno);
+        }
         child_pipe_[i] = -1;
       }
     }
@@ -227,7 +233,9 @@ bool SubProcess::Start() {
   int devnull_fd = -1;
   for (int i = 0; i < kNFds; i++) {
     if (parent_pipe_[i] >= 0) {
-      close(parent_pipe_[i]);
+      if (close(parent_pipe_[i]) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
       parent_pipe_[i] = -1;
     }
 
@@ -242,7 +250,9 @@ bool SubProcess::Start() {
             _exit(1);
           }
         }
-        close(child_pipe_[i]);
+        if (close(child_pipe_[i]) < 0) {
+          LOG(ERROR) << "close() failed: " << strerror(errno);
+        }
         child_pipe_[i] = -1;
         break;
 
@@ -264,19 +274,23 @@ bool SubProcess::Start() {
             }
           }
         } else {
-          close(i);
+          if (close(i) < 0) {
+            LOG(ERROR) << "close() failed: " << strerror(errno);
+          }
         }
         break;
     }
   }
 
   if (devnull_fd >= 0) {
-    close(devnull_fd);
+    if (close(devnull_fd) < 0) {
+      LOG(ERROR) << "close() failed: " << strerror(errno);
+    }
   }
 
   // Execute the child program.
-  // See comment (2) in the header about issues with the use of execv().
-  execv(exec_path_, exec_argv_);
+  // See comment (2) in the header about issues with the use of execvp().
+  execvp(exec_path_, exec_argv_);
   _exit(1);
 }
 
@@ -379,7 +393,9 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
           // Special case: if no data is given to send to the child process,
           // close the pipe to unblock the child, and skip the file descriptor.
           if (stdin_input == nullptr) {
-            close(parent_pipe_[i]);
+            if (close(parent_pipe_[i]) < 0) {
+              LOG(ERROR) << "close() failed: " << strerror(errno);
+            }
             parent_pipe_[i] = -1;
             continue;
           }
@@ -441,7 +457,9 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
               fds[i].fd = -1;
               fd_remain--;
               // Close the child's stdin pipe to unblock the process.
-              close(parent_pipe_[CHAN_STDIN]);
+              if (close(parent_pipe_[CHAN_STDIN]) < 0) {
+                LOG(ERROR) << "close() failed: " << strerror(errno);
+              }
               parent_pipe_[CHAN_STDIN] = -1;
             }
           } else if (!retry(errno)) {

@@ -32,13 +32,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_CUSTOM_GEMV_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_CUSTOM_GEMV_H_
 
+#include <stdint.h>
+
+#include <algorithm>
 #include <type_traits>
 #include <vector>
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 
 namespace tflite {
 namespace cpu_backend_gemm {
@@ -144,7 +150,7 @@ bool CustomGemv(
     const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
     const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
     CpuBackendContext* context) {
-  gemmlowp::ScopedProfilingLabel label("cpu_backend_gemm::Gemm: CustomGemv");
+  ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm: CustomGemv");
   using Impl = CustomGemvImpl<LhsScalar, RhsScalar, AccumScalar, DstScalar,
                               quantization_flavor>;
   if (lhs_params.rows < Impl::kKernelRows) {
@@ -592,10 +598,10 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
 
 // We want to use fused multiply-add when it's available (that is, on A64
 // unconditionally and on A32 with VFPv4) because it's often faster, and
-// because non-fused seems not to be available in A64 so a conscentious compiler
-// might emit slow code (separate mul and add instructions) in order to
+// because non-fused seems not to be available in A64 so a conscientious
+// compiler might emit slow code (separate mul and add instructions) in order to
 // implement the vmlaq_f32 intrinsic with strict bit-for-bit exactness on A64.
-// (Compilers seems to be generating a fused fmla instruction at the moment,
+// (Compilers seem to be generating a fused fmla instruction at the moment,
 // but that could change).
 //
 // We still want to support building for A32 without VFPv4.

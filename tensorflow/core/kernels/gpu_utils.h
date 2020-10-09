@@ -146,7 +146,7 @@ class AutoTuneMap {
   }
 
  private:
-  AutoTuneMap(const string& name) : name_(name) {
+  AutoTuneMap(const std::string& name) : name_(name) {
     min_score_threshold_ = 1;
     int min_warmup_iterations = 10;
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
@@ -174,8 +174,8 @@ class AutoTuneMap {
     }
   };
 
-  string GetActionSummary(StringPiece action, const Parameters& params,
-                          const Config& config) {
+  std::string GetActionSummary(StringPiece action, const Parameters& params,
+                               const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
                            string(action).c_str(), params.ToString().c_str(),
                            config.ToString().c_str());
@@ -188,8 +188,8 @@ class AutoTuneMap {
     int32 count;
   };
   std::unordered_map<Parameters, ValueType, Hasher> params_config_map_
-      GUARDED_BY(mu_);
-  string name_;
+      TF_GUARDED_BY(mu_);
+  std::string name_;
   int32 min_score_threshold_;
   int32 max_autotune_count_;
   int32 max_autotune_global_count_;
@@ -238,7 +238,7 @@ void LogFusedConvForwardAutotuneResults(
     se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
 
 // Returns the best algorithms for the config, one is the fastest, the other is
-// other is fastest with 0 scracth space. Unsuccessful autotuning results are
+// other is fastest with 0 scratch space. Unsuccessful autotuning results are
 // allowed and ignored.
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo);

@@ -72,7 +72,7 @@ def BuildFullModel():
   return sgd_op.minimize(loss)
 
 
-def BuildSplitableModel():
+def BuildSplittableModel():
   """Build a small model that can be run partially in each step."""
   image = array_ops.zeros([2, 6, 6, 3])
 

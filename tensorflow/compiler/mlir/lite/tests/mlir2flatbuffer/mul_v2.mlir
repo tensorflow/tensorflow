@@ -1,19 +1,20 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:f32, 0.1>> {
 ^bb0(%arg0: tensor<3x!quant.uniform<i8:f32, 0.1>>):
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
   // CHECK-NEXT:  operator_codes: [ {
-  // CHECK-NEXT:    builtin_code: MUL,
-  // CHECK-NEXT:    version: 2
+  // CHECK-NEXT:    deprecated_builtin_code: 18,
+  // CHECK-NEXT:    version: 2,
+  // CHECK-NEXT:    builtin_code: MUL
   // CHECK-NEXT:  } ],
   // CHECK-NEXT:  subgraphs: [ {
   // CHECK-NEXT:    tensors: [ {
   // CHECK-NEXT:      shape: [ 3 ],
   // CHECK-NEXT:      type: INT8,
   // CHECK-NEXT:      buffer: 1,
-  // CHECK-NEXT:      name: "Input",
+  // CHECK-NEXT:      name: "arg0",
   // CHECK-NEXT:      quantization: {
   // CHECK-NEXT:        scale: [ 0.1 ],
   // CHECK-NEXT:        zero_point: [ 0 ]
@@ -58,11 +59,16 @@ func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:
   // CHECK-NEXT:    data: [ 2, 2, 2 ]
   // CHECK-NEXT:  }, {
   // CHECK-EMPTY:
+  // CHECK-NEXT:  }, {
+  // CHECK-NEXT:    data: [ 49, 46, 49, 52, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+  // CHECK-NEXT:  } ],
+  // CHECK-NEXT:  metadata: [ {
+  // CHECK-NEXT:  name: "min_runtime_version",
+  // CHECK-NEXT:  buffer: 4
   // CHECK-NEXT:  } ]
   // CHECK-NEXT:}
 
-  %0 = "tfl.pseudo_input" (%arg0)  : (tensor<3x!quant.uniform<i8:f32, 0.1>>) ->tensor<3x!quant.uniform<i8:f32, 0.1>> loc("Input")
-  %1 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<i8:f32, 0.1>>, value = dense<2> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<i8:f32, 0.1>>
-  %2 = "tfl.mul"(%0, %1) {fused_activation_function = "NONE"} : (tensor<3x!quant.uniform<i8:f32, 0.1>>, tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:f32, 0.1>> loc("mul")
-  return %2 : tensor<3x!quant.uniform<i8:f32, 0.1>>
+  %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<i8:f32, 0.1>>, value = dense<2> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<i8:f32, 0.1>>
+  %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<3x!quant.uniform<i8:f32, 0.1>>, tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:f32, 0.1>> loc("mul")
+  return %1 : tensor<3x!quant.uniform<i8:f32, 0.1>>
 }

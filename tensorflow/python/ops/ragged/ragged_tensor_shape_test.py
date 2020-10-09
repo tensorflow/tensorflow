@@ -373,43 +373,46 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
 
   def testRepr(self):
     shape = RaggedTensorDynamicShape.from_dim_sizes([2, (2, 1), 2, 1])
-    self.assertRegexpMatches(
-        repr(shape),
-        r'RaggedTensorDynamicShape\('
+    self.assertRegex(
+        repr(shape), r'RaggedTensorDynamicShape\('
         r'partitioned_dim_sizes=\(<[^>]+>, <[^>]+>\), '
         r'inner_dim_sizes=<[^>]+>\)')
 
-  @parameterized.parameters(
-      [
-          dict(
-              x=[[10], [20], [30]],  # shape=[3, 1]
-              dim_sizes=[3, 2],
-              expected=[[10, 10], [20, 20], [30, 30]]),
-          dict(
-              x=[[10], [20], [30]],  # shape=[3, 1]
-              dim_sizes=[3, [3, 0, 2]],
-              expected=ragged_factory_ops.constant_value(
-                  [[10, 10, 10], [], [30, 30]], dtype=np.int32)),
-          dict(
-              x=[[[1, 2, 3]], [[4, 5, 6]]],  # shape = [2, 1, 3]
-              dim_sizes=[2, [2, 3], 3],
-              expected=ragged_factory_ops.constant_value(
-                  [[[1, 2, 3], [1, 2, 3]], [[4, 5, 6], [4, 5, 6], [4, 5, 6]]],
-                  dtype=np.int32,
-                  ragged_rank=1)),
-          dict(
-              x=[[[1]], [[2]]],  # shape = [2, 1, 1]
-              dim_sizes=[2, [2, 3], [0, 2, 1, 2, 0]],
-              expected=ragged_factory_ops.constant_value(
-                  [[[], [1, 1]], [[2], [2, 2], []]],
-                  dtype=np.int32,
-                  ragged_rank=2)),
-          dict(
-              x=10,
-              dim_sizes=[3, [3, 0, 2]],
-              expected=ragged_factory_ops.constant_value([[10, 10, 10], [],
-                                                          [10, 10]])),
-      ])
+  @parameterized.parameters([
+      dict(
+          x=[[10], [20], [30]],  # shape=[3, 1]
+          dim_sizes=[3, 2],
+          expected=[[10, 10], [20, 20], [30, 30]]),
+      dict(
+          x=[[10], [20], [30]],  # shape=[3, 1]
+          dim_sizes=[3, [3, 0, 2]],
+          expected=ragged_factory_ops.constant_value(
+              [[10, 10, 10], [], [30, 30]], dtype=np.int32)),
+      dict(
+          x=[[[1, 2, 3]], [[4, 5, 6]]],  # shape = [2, 1, 3]
+          dim_sizes=[2, [2, 3], 3],
+          expected=ragged_factory_ops.constant_value(
+              [[[1, 2, 3], [1, 2, 3]], [[4, 5, 6], [4, 5, 6], [4, 5, 6]]],
+              dtype=np.int32,
+              ragged_rank=1)),
+      dict(
+          x=[[[1]], [[2]]],  # shape = [2, 1, 1]
+          dim_sizes=[2, [2, 3], [0, 2, 1, 2, 0]],
+          expected=ragged_factory_ops.constant_value(
+              [[[], [1, 1]], [[2], [2, 2], []]], dtype=np.int32,
+              ragged_rank=2)),
+      dict(
+          x=10,
+          dim_sizes=[3, [3, 0, 2]],
+          expected=ragged_factory_ops.constant_value([[10, 10, 10], [],
+                                                      [10, 10]])),
+      dict(
+          x=ragged_factory_ops.constant_value([[[1], [2]], [[3]]],
+                                              ragged_rank=1),
+          dim_sizes=[2, [2, 1], 2],
+          expected=ragged_factory_ops.constant_value(
+              [[[1, 1], [2, 2]], [[3, 3]]], ragged_rank=1)),
+  ])
   def testRaggedBroadcastTo(self, x, dim_sizes, expected):
     shape = RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
     result = ragged_tensor_shape.broadcast_to(x, shape)

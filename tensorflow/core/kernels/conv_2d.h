@@ -102,6 +102,86 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
   }
 };
 
+template <typename Device, typename T>
+struct SpatialConvolutionBackwardInputFunc {
+  void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation) {
+    input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
+        filter, output_backward, input_backward.dimension(2),
+        input_backward.dimension(1), col_stride, row_stride, col_dilation,
+        row_dilation);
+  }
+};
+
+// GPU version requires all tensors to be indexable by int32.
+template <typename T>
+struct SpatialConvolutionBackwardInputFunc<Eigen::GpuDevice, T> {
+  void operator()(const Eigen::GpuDevice& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation) {
+    To32Bit(input_backward).device(d) = Eigen::SpatialConvolutionBackwardInput(
+        To32Bit(filter), To32Bit(output_backward), input_backward.dimension(2),
+        input_backward.dimension(1), col_stride, row_stride, col_dilation,
+        row_dilation);
+  }
+};
+
+template <typename Device, typename T>
+struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc {
+  void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex padded_cols, Eigen::DenseIndex padded_rows,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation, Eigen::DenseIndex pad_left,
+                  Eigen::DenseIndex pad_top) {
+    // We have to slice the result of a spatial convolution backward
+    // input, before assigning it to the `input_backward` to remove padding.
+    //
+    // TODO(ezhulenev): Pass explicit paddings to Eigen and do not materialize
+    // intermediate result in memory before slicing.
+    input_backward.device(d) =
+        Eigen::SpatialConvolutionBackwardInput(
+            filter, output_backward, padded_cols, padded_rows, col_stride,
+            row_stride, col_dilation, row_dilation)
+            .eval()
+            .slice(Eigen::DSizes<Eigen::DenseIndex, 4>{0, pad_left, pad_top, 0},
+                   input_backward.dimensions());
+  }
+};
+
+// GPU version requires all tensors to be indexable by int32.
+template <typename T>
+struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc<Eigen::GpuDevice,
+                                                              T> {
+  void operator()(const Eigen::GpuDevice& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex padded_cols, Eigen::DenseIndex padded_rows,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation, Eigen::DenseIndex pad_left,
+                  Eigen::DenseIndex pad_top) {
+    To32Bit(input_backward).device(d) =
+        Eigen::SpatialConvolutionBackwardInput(
+            To32Bit(filter), To32Bit(output_backward), padded_cols, padded_rows,
+            col_stride, row_stride, col_dilation, row_dilation)
+            .eval()
+            .slice(Eigen::DSizes<Eigen::DenseIndex, 4>{0, pad_left, pad_top, 0},
+                   input_backward.dimensions());
+  }
+};
+
 // TODO(vrv): Figure out how to use the MatMulFunctor in matmul_op.h.
 // My initial attempt to do this compiled but failed in the pytest
 // due to a swigdeps error.
@@ -229,6 +309,28 @@ struct TransformDepth {
   }
 };
 
+// Note on the use of const reference for the "padding_value" argument
+//
+// In the ROCm TF build,
+// ++ the call(s) to the functor are in the files (conv_*.cc) that are compiled
+//    by the "CPU" compiler, while the
+// ++ the GPUDevice specific template instantiations are in the files that are
+//     compiled by the "GPU" compiler.
+//
+// For T == Eigen::half, the value of the "padding_value" argument (when it was
+// pass-by-value) was getting corrupted, leading to regressions in the
+// convolution unit tests.
+//
+// I do not understand the exact reason for the this, but based on similar past
+// issues, it is likely due to a combination of
+// ++ an ABI incompatibility between the "old" CPU compiler (gcc 5.4 for
+//    Ubuntu 16.04, gcc 7.5 for Ubuntu 18.04) and the "new" ROCm GPU compiler
+//    (hipclang which is based on latest clang), AND
+// ++ Eigen::half having the same size but different internals on the CPU and
+//    GPU sides (unsigned short on CPU, union {unsigned short, _Float16} on GPU
+//
+// Changing the "padding value" argument to be a const reference type seems to
+// suppress the bug
 template <typename Device, typename T, typename IndexType, int NDIMS>
 struct PadInput {
   void operator()(const Device& d,
@@ -236,7 +338,7 @@ struct PadInput {
                   const std::array<int, NDIMS - 2>& padding_left,
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, IndexType>::Tensor out,
-                  TensorFormat format) {
+                  TensorFormat format, const T& padding_value) {
     Eigen::array<Eigen::IndexPair<IndexType>, NDIMS> padding;
     padding[GetTensorDimIndex<NDIMS - 2>(format, 'N')] = {0, 0};
     for (int i = 0; i < NDIMS - 2; ++i) {
@@ -244,7 +346,7 @@ struct PadInput {
           padding_left[i], padding_right[i]};
     }
     padding[GetTensorDimIndex<NDIMS - 2>(format, 'C')] = {0, 0};
-    out.device(d) = in.pad(padding);
+    out.device(d) = in.pad(padding, padding_value);
   }
 };
 

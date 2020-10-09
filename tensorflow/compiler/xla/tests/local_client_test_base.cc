@@ -16,16 +16,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
@@ -188,9 +194,10 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     argument_layouts[i] = &arguments[i]->on_host_shape();
   }
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<LocalExecutable> executable,
+      auto executables,
       local_client_->Compile(computation, argument_layouts, build_options));
-  TF_ASSIGN_OR_RETURN(auto ret, executable->Run(arguments, run_options));
+  TF_RET_CHECK(executables.size() == 1);
+  TF_ASSIGN_OR_RETURN(auto ret, executables[0]->Run(arguments, run_options));
 
   auto device_ordinal =
       build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();
@@ -203,6 +210,22 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   }
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return std::move(ret);
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+LocalClientTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
+  return ParseAndReturnVerifiedModule(hlo_text, HloModuleConfig());
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+LocalClientTestBase::ParseAndReturnVerifiedModule(
+    absl::string_view hlo_text, const HloModuleConfig& config) {
+  auto module = absl::make_unique<VerifiedHloModule>(
+      TestName(), config, /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true,
+      local_client_->backend().compiler()->ShapeSizeBytesFunction());
+  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  return std::move(module);
 }
 
 }  // namespace xla

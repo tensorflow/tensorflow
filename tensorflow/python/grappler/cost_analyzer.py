@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow as tf_wrap
+from tensorflow.python import _pywrap_cost_analyzer as tf_wrap
 from tensorflow.python.grappler import cluster as gcluster
 from tensorflow.python.grappler import item as gitem
 
@@ -44,10 +44,9 @@ def GenerateCostReport(metagraph,
   if cluster is None:
     cluster = gcluster.Cluster(disable_detailed_stats=False)
 
-  ret_from_swig = tf_wrap.GenerateCostReport(metagraph.SerializeToString(),
-                                             per_node_report, verbose,
-                                             cluster.tf_cluster)
-  return ret_from_swig
+  return tf_wrap.GenerateCostReport(metagraph.SerializeToString(),
+                                    per_node_report, verbose,
+                                    cluster.tf_cluster)
 
 
 def GenerateMemoryReport(metagraph, detailed_report=True, cluster=None):

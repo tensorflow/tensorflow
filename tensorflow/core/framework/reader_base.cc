@@ -228,16 +228,7 @@ void ReaderBase::SaveBaseState(ReaderBaseState* state) const {
   state->set_work_started(work_started_);
   state->set_work_finished(work_finished_);
   state->set_num_records_produced(num_records_produced_);
-  // Unfortunately, external proto does not accept string_view.
-#if defined(PLATFORM_GOOGLE)
-  // TODO(dero): Remove NOLINT after USE_TSTRING is enabled.  The external proto
-  // compiler does not create an overloaded set method that accepts
-  // absl::string_view, and string_view to std::string is an explicit
-  // conversion.
-  state->set_current_work(StringPiece(work_));  // NOLINT
-#else
-  state->set_current_work(string(work_));
-#endif
+  state->set_current_work(work_.data(), work_.size());
 }
 
 tstring ReaderBase::KeyName(const tstring& key) const {

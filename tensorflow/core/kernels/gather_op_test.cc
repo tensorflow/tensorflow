@@ -40,11 +40,12 @@ namespace {
 
 class GatherOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType data_type, DataType index_type) {
+  void MakeOp(DataType data_type, DataType index_type, int batch_dims = 0) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "GatherV2")
                      .Input(FakeInput(data_type))
                      .Input(FakeInput(index_type))
                      .Input(FakeInput(index_type))
+                     .Attr("batch_dims", batch_dims)
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
@@ -173,6 +174,20 @@ TEST_F(GatherOpTest, Error_IndexOutOfRange) {
   Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "indices[2] = 99 is not in [0, 5)"))
+      << s;
+}
+
+TEST_F(GatherOpTest, Error_BatchDimsOutOfRange) {
+  MakeOp(DT_FLOAT, DT_INT32, 10);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 3}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
+  AddInputFromArray<int32>(TensorShape({4}), {0, 4, 99, 2});
+  AddInputFromArray<int32>(TensorShape({}), {0});
+  Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Expected batch_dims in the range [-1, 1], but got 10"))
       << s;
 }
 

@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_NODE_SHADER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_NODE_SHADER_H_
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -94,15 +96,21 @@ class NodeShader {
 
   // A context for generating a code.
   struct GenerationContext {
-    const GraphFloat32* graph;
     const GpuInfo* gpu_info;
-    const Node* node;
     CompilationOptions compiler_options;
+
+    // Information extracted & copied from compiled graph.
+    const std::string& op_type;
+    const absl::any& op_attr;
+    // Do NOT use StrongShape<Layout::BHWC> in preparation for
+    // RankedTensorType::getShape() which returns ArrayRef<int64_t>.
+    std::vector<std::array<int64_t, 4>> input_shapes;
+    std::vector<std::array<int64_t, 4>> output_shapes;
   };
 
   // Generates shader code for a node. The code should be just a function body.
-  virtual Status GenerateCode(const GenerationContext& ctx,
-                              GeneratedCode* generated_code) const = 0;
+  virtual absl::Status GenerateCode(const GenerationContext& ctx,
+                                    GeneratedCode* generated_code) const = 0;
 
   // Limit the size of the const offsets array
   static constexpr int kMaxConstArraySize = 9;

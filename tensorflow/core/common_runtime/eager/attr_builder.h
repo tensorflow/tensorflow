@@ -42,7 +42,7 @@ namespace tensorflow {
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
 // Look up OpDef for `op_name`.
-Status OpDefForOp(const char* op_name, const OpDef** op_def);
+Status OpDefForOp(const string& op_name, const OpDef** op_def);
 
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 // If op_name is not registered in global op registry, AttrTypeMapForOp assumes
@@ -83,8 +83,14 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // of the NodeDef till BuildNodeDef is called, or Set is called with certain
 // uncommon types (see template specializations of Set to see which types
 // trigger a NodeDef creation).
+//
+// Setting attributes via `Set` may cause arena-allocated protocol buffer
+// messages to be destructed, which is not thread safe. This means that it is
+// currently not safe to set attributes on *different* AttrBuilder objects from
+// multiple threads. This does not apply to `CopyAttributes`.
 class AttrBuilder {
  public:
+  AttrBuilder() {}
   explicit AttrBuilder(const char* op) { Reset(op); }
 
   void Reset(const char* op) {
@@ -106,6 +112,14 @@ class AttrBuilder {
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     SetAttrValue(value, &attr_tmp_);
     AddAttrIfNotPresent(attr_name, attr_tmp_);
+    cached_cache_key_ = absl::nullopt;
+    return *this;
+  }
+
+  size_t NumAttributes() const { return encoded_attrs_.size(); }
+
+  AttrBuilder& Set(StringPiece attr_name, const AttrValue& value) {
+    AddAttrIfNotPresent(attr_name, value);
     cached_cache_key_ = absl::nullopt;
     return *this;
   }
@@ -141,6 +155,12 @@ class AttrBuilder {
   void FillAttrValueMapWithoutDefaults(AttrValueMap* m) const;
   const NodeDef& BuildNodeDef();
 
+  // Transfers the attributes from `other` to this AttrBuilder. Does not
+  // overwrite existing attributes. Since it does not require deserializing and
+  // re-serializing attributes, it is much more efficient than going through an
+  // AttrValueMap.
+  void CopyAttributes(const AttrBuilder& other);
+
  private:
   tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
 
@@ -154,10 +174,7 @@ class AttrBuilder {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
     // If attribute is set more than once, its first value prevails
-    if (AttrSlice(m).Find(attr_name) == nullptr) {
-      SetAttrValue(value, &attr_tmp_);
-      m->insert(AttrValueMap::value_type(attr_name, attr_tmp_));
-    }
+    m->insert({attr_name, value});
   }
 
   void AddAttrIfNotPresent(StringPiece attr_name, const AttrValue& value);

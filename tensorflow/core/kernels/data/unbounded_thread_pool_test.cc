@@ -33,7 +33,8 @@ TEST(UnboundedThreadPool, ConcurrentThreadCreation) {
   const int kNumThreadsToCreate = 10;
   std::atomic<int> i(0);
   for (int j = 0; j < kNumThreadsToCreate; ++j) {
-    threads.push_back(thread_factory->StartThread("", [&i, thread_factory]() {
+    threads.push_back(thread_factory->StartThread("", [=, &i,
+                                                       &thread_factory]() {
       std::vector<std::unique_ptr<Thread>> nested_threads;
       for (int k = 0; k < kNumThreadsToCreate; ++k) {
         nested_threads.push_back(

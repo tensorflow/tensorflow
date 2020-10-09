@@ -37,7 +37,7 @@ namespace toco {
     return ::tensorflow::Status::OK();
   }
   const Array& input_array = model->GetArray(fc_op->inputs[0]);
-  const string& weights_name = fc_op->inputs[1];
+  const std::string& weights_name = fc_op->inputs[1];
   Array& weights_array = model->GetArray(weights_name);
   const Array& output_array = model->GetArray(fc_op->outputs[0]);
   // Exit if this FC op isn't quantized with uint8 inputs and int16 outputs,
@@ -143,7 +143,7 @@ namespace toco {
   // Add a second output array to this FC op, serving as a workspace to perform
   // runtime shuffling/xoring of its input activations.
   CHECK_EQ(fc_op->outputs.size(), 1);
-  const string& shuffled_input_workspace_array_name =
+  const std::string& shuffled_input_workspace_array_name =
       AvailableArrayName(*model, fc_op->inputs[0] + "_shuffled");
   fc_op->outputs.push_back(shuffled_input_workspace_array_name);
   auto& shuffled_input_workspace_array =

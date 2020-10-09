@@ -99,17 +99,15 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
       {input_indices_id, "device FLT4* const src_indices_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id, input_indices_id,
-                          params](const std::map<ValueId, BHWC>& buffers) {
-                           return CalculateOutputShape(
-                               buffers.find(input_id)->second, params);
-                         }};
+  desc->output_buffer = {
+      output_id, "device FLT4* output_buffer",
+      [input_id, params](const std::map<ValueId, BHWC>& buffers) {
+        return CalculateOutputShape(buffers.find(input_id)->second, params);
+      }};
 
   desc->uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, input_indices_id, output_id,
-        params](const std::map<ValueId, BHWC>& buffers) {
+       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
          const auto& output_dimension = buffers.find(output_id)->second;
          std::vector<int> uniform_params{
@@ -122,18 +120,18 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
              params.padding.prepended.w,
              params.padding.prepended.h,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
-  desc->resize_function = [input_id, input_indices_id,
+  desc->resize_function = [input_id,
                            params](const std::map<ValueId, BHWC>& buffers) {
     const auto& src_shape = buffers.find(input_id)->second;
     BHWC dst_shape = CalculateOutputShape(src_shape, params);
     const uint3 groups_size{16, 16, 1};
-    int groups_x = IntegralDivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(dst_shape.h, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(dst_shape.c, 4);
+    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shape.c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

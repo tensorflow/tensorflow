@@ -26,27 +26,21 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
 namespace convert {
-
-#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
-  ((NV_TENSORRT_MAJOR > major) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH > patch) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
+using ::stream_executor::port::StatusOr;
 
 struct EngineConnection {
   // Constructs a non-control edge.
@@ -98,7 +92,8 @@ struct EngineInfo {
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
         precision_mode(TrtPrecisionMode::FP32),
-        use_calibration(true) {}
+        use_calibration(true),
+        allow_build_at_runtime(true) {}
 
   string engine_name;
   string device;
@@ -115,6 +110,7 @@ struct EngineInfo {
   int maximum_cached_engines;
   TrtPrecisionMode precision_mode;
   bool use_calibration;
+  bool allow_build_at_runtime;
 };
 
 // Constructs a graphdef from the segment in the given graph. Adds _Arg
@@ -139,18 +135,20 @@ Status ConvertSegmentToGraphDef(
 // Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
 // 'builder' successfully build the engine. If the result is not ok, 'engine'
 // will be set to nullptr
-// Once returned, 'builder' is not needed any more and can be safely detroyed.
+// Once returned, 'builder' is not needed any more and can be safely destroyed.
 //
-// - convert_successfully: indicates whether the converson to TensorRT network
+// - convert_successfully: indicates whether the conversion to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
-    const std::vector<PartialTensorShape>& input_shapes, Logger* logger,
-    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
+    const std::vector<PartialTensorShape>& input_shapes,
+    nvinfer1::ILogger* logger, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
-    bool* convert_successfully);
+    const bool use_implicit_batch, bool* convert_successfully,
+    TrtShapeOptimizationProfile* profiles);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -161,11 +159,6 @@ class OutputEdgeValidator {
   bool operator()(const Edge* out_edge) const;
 };
 
-string DebugString(const nvinfer1::DimensionType type);
-string DebugString(const nvinfer1::DataType trt_dtype);
-string DebugString(const nvinfer1::Dims& dims);
-string DebugString(const nvinfer1::Permutation& permutation, int len);
-string DebugString(const nvinfer1::ITensor& tensor);
 int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
 int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 
@@ -190,6 +183,10 @@ class TRT_ShapedWeights {
   void* GetValues() const {
     return const_cast<char*>(tensor_.tensor_data().data());
   }
+
+  // Fills all the weight values with value.
+  template <typename T>
+  Status SetValues(T value);
 
   int64_t count() const;
 
@@ -300,6 +297,8 @@ class TRT_TensorOrWeights {
 
   nvinfer1::Dims GetTrtDims() const;
 
+  Status GetTfType(DataType* tf_type) const;
+
   int batch_size() const { return batch_size_; }
 
   string DebugString() const;
@@ -337,6 +336,9 @@ class TRT_TensorOrWeights {
   // is that currently it cannot convert a graph that doesn't have the batch
   // size represented in the shapes or the batch sizes are different. See
   // b/118387490 for more details.
+  //
+  // If use_implicit_batch is false, batch_size_ is unused and
+  // tensor_->getDimensions() will contain the entire shape (A,B,C).
   int batch_size_ = -1;
 
   TRT_ShapedWeights weights_;
@@ -355,7 +357,8 @@ struct OpConverterParams {
                     const std::vector<TRT_TensorOrWeights>& inputs,
                     std::vector<TRT_TensorOrWeights>* outputs,
                     TrtWeightStore* weight_store,
-                    TrtPrecisionMode precision_mode, bool use_calibration);
+                    TrtPrecisionMode precision_mode, bool use_calibration,
+                    bool use_implicit_batch);
 
   // Constructor used for conversion.
   OpConverterParams(Converter* converter, const NodeDef& node_def,
@@ -371,6 +374,7 @@ struct OpConverterParams {
   TrtWeightStore* weight_store;
   const TrtPrecisionMode precision_mode;
   const bool use_calibration;
+  const bool use_implicit_batch;
 };
 
 using OpConverter = std::function<Status(OpConverterParams*)>;
@@ -382,7 +386,8 @@ class TrtNodeValidator {
   // checked by IsTensorRTCandidate() later. It is used to get the shape and
   // data type information of a tensor for validation purpose.
   TrtNodeValidator(const grappler::GraphProperties& graph_properties,
-                   TrtPrecisionMode precision_mode, bool use_calibration);
+                   TrtPrecisionMode precision_mode, bool use_calibration,
+                   bool use_implicit_batch);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
@@ -422,6 +427,8 @@ class TrtNodeValidator {
 
   const bool use_calibration_;
 
+  const bool use_implicit_batch_;
+
   friend class ValidatorTest;
   friend class OpConverterTest;
 };
@@ -442,8 +449,9 @@ class Converter {
     nvinfer1::DataType trt_dtype;
   };
 
-  Converter(nvinfer1::INetworkDefinition* trt_network,
-            TrtPrecisionMode precision_mode, bool use_calibration);
+  static StatusOr<std::unique_ptr<Converter>> Create(
+      TrtPrecisionMode precision_mode, bool use_calibration,
+      nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -462,19 +470,29 @@ class Converter {
   Status RenameAndMarkOutputTensors(
       const std::vector<EngineOutputInfo>& output_tensors);
 
+  // Build a TRT engine using the created network.
+  Status BuildCudaEngine(TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
+                         int max_batch_size, size_t max_workspace_size_bytes,
+                         nvinfer1::IGpuAllocator* allocator,
+                         TRTInt8Calibrator* calibrator,
+                         TrtShapeOptimizationProfile* profiles);
+
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by op converters to convert individual TF node and add layers
   // to the TRT network.
 
   // Op converters (e.g. ConvertReshape) need to access the TRT network in order
   // to add TRT layers.
-  nvinfer1::INetworkDefinition* network() { return trt_network_; }
+  nvinfer1::INetworkDefinition* network() { return trt_network_.get(); }
 
   // What precision are we targeting?
   TrtPrecisionMode precision_mode() const { return precision_mode_; }
 
   // Calibration will be or was previously performed on this network?
   bool use_calibration() const { return use_calibration_; }
+
+  // Whether implicit batch mode is enabled
+  bool use_implicit_batch() const { return use_implicit_batch_; }
 
   // This should be called on the inputs and outputs of any layer we create
   // where we know that the quantization range does not change during that
@@ -500,6 +518,7 @@ class Converter {
   // dimension which should always be 0.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
+                         absl::string_view name,
                          nvinfer1::ITensor** output_tensor);
 
   // Converts 'input' into 'tensor' with shape specified by 'dims' (which
@@ -513,12 +532,74 @@ class Converter {
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
 
+  // Reshapes a dynamic shape tensor by removing or adding dimensions of size 1,
+  // and/or permuting the dimensions. The new shape is derived from the shape of
+  // the input tensor according to the slices and size_for_added_dims arguments.
+  //
+  // If there would be at most one unknown dimension, we could set the new shape
+  // using IShuffleLayer::setReshapeDimensions, which treats -1 as a special
+  // value (the same way as TF). In general, we can have more than one unknown
+  // dimensions, and we have to manipulate the shape tensors during runtime to
+  // define the new shape. This helper function defines the necessary shape
+  // inference layers and calls reshape using the calculated new shape.
+  //
+  // Example:
+  //
+  // Assume that we want to reshape a tensor from shape {A,B,C,D} to {C,D,A,B}
+  // (no transpose, just change the shape). In dynamic shape mode, the A,B,C,D
+  // values are not necessarily known at conversion time, they can be all -1. We
+  // can only define the new shape at runtime, when the actual shape is already
+  // known. To define the new shape:
+  // - We use an IShapeLayer to retrieve a shape tensor with the {A,B,C,D}
+  //   values.
+  // - Create two slices {C,D} and {A,B} of the shape tensor.
+  // - Concatenate these slices {C,D,A,B},
+  // - Set the {C,D,A,B} shape tensor as an input shape tensor for
+  // IShuffleLayer.
+  //
+  // This can be achieved by calling DynamicReshape(input, {{2,4},{0,2}},
+  // params).
+  //
+  // Before each slice we can insert a new dim if the corresponding
+  // size_for_added_dims element is not negative. The size_for_added_dims array
+  // can have more than slices.size() elements, in order to insert a dimension
+  // ater the last slice.
+  //
+  // Parameters:
+  // input - input tensor
+  // slices - [start, end) pairs of slices
+  // params - conversion parameters
+  // output - reshaped tensor
+  // size_for_added_dims - size of dimension inserted right before slice[i]. We
+  //   only insert a new dim if size_for_added_dims[i] >= 0.
+  Status DynamicReshape(nvinfer1::ITensor* input,
+                        std::vector<std::pair<int, int>> slices,
+                        OpConverterParams* params, nvinfer1::ITensor** output,
+                        std::vector<int> size_for_added_dims = {});
+
+  // Inserts a singleton dimension at axis for a dynamic shape tensor.
+  Status DynamicExpandDims(nvinfer1::ITensor* input, const nvinfer1::Dims& dims,
+                           int axis, OpConverterParams* params,
+                           nvinfer1::ITensor** output);
+
+  // Helper function to add a squeeze op to the network.
+  //
+  // The input_dims argument stores the TRT dimensions of the input tensor,
+  // where the dimensions to be squeezed are replaced by 0.
+  Status SqueezeTensor(nvinfer1::ITensor* input, std::vector<int>* input_dims,
+                       OpConverterParams* params, nvinfer1::ITensor** output);
+
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
                                          const nvinfer1::Dims& dims);
 
  private:
+  Converter(TrtPrecisionMode precision_mode, bool use_calibration,
+            nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
+
+  Status Init(nvinfer1::ILogger* trt_logger);
+
   // Verify the provided batch_size is consistent with batch_size_ and update it
   // if necessary.
   Status MaybeUpdateBatchSize(int batch_size);
@@ -547,8 +628,11 @@ class Converter {
   // Tensors/weights added during construction of trt_network_.
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
 
-  // The TRT networking being built.
-  nvinfer1::INetworkDefinition* trt_network_;
+  // The TRT builder used to create the network and build the engine. Not owned.
+  TrtUniquePtrType<nvinfer1::IBuilder> trt_builder_;
+
+  // The TRT network being built.
+  TrtUniquePtrType<nvinfer1::INetworkDefinition> trt_network_;
 
   // Store the weights added during construction of trt_network_.
   TrtWeightStore weight_store_;
@@ -573,6 +657,10 @@ class Converter {
 
   const bool use_calibration_;
 
+  // If this is false, all dimensions including the batch dimension are
+  // set explicitely.
+  const bool use_implicit_batch_;
+
   // Batch size of inputs to trt_network_ added by AddInputTensor(). During
   // network construction it will update this, use it to verify the batch
   // size of all inputs are compatible, and make sure individual TF node is
@@ -589,6 +677,7 @@ class Converter {
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             const TRT_TensorOrWeights& operand_r,
                             const bool check_feasibility,
+                            const bool use_implicit_batch,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 
@@ -596,12 +685,14 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
 // Map of all supported ActivationTypes
 const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
+// Map of all supported BinaryOperations
+const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
+BinaryOperationMap();
 
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_CONVERT_NODES_H_

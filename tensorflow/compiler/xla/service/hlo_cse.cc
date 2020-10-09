@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/hash.h"
 
 namespace xla {
 
@@ -96,23 +97,61 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
 // share the exact same set of operands.
 int64 CseHash(const HloInstruction* instruction) {
   int64 hash = std::hash<int64>()(static_cast<int64>(instruction->opcode()));
+  auto c_hash = [](auto c) {
+    return tensorflow::Hash64(reinterpret_cast<const char*>(c.data()),
+                              c.size() * sizeof(c[0]));
+  };
+  auto proto_hash = [](auto proto) {
+    return std::hash<int64>{}(proto.ByteSizeLong());
+  };
   hash = tensorflow::Hash64Combine(
       hash, instruction->opcode() == HloOpcode::kGetTupleElement
                 ? instruction->tuple_index()
-                : -1);
+                : c_hash(instruction->shape().dimensions()));
   for (auto operand : instruction->operands()) {
     hash = tensorflow::Hash64Combine(hash, operand->unique_id());
   }
-  if (instruction->opcode() == HloOpcode::kConstant) {
-    hash = tensorflow::Hash64Combine(hash, instruction->literal().Hash());
+  for (auto c : instruction->called_computations()) {
+    hash = tensorflow::Hash64Combine(
+        hash, std::hash<int64>()(
+                  static_cast<int64>(c->root_instruction()->opcode())));
   }
-  return hash;
+  switch (instruction->opcode()) {
+    case HloOpcode::kConstant:
+      return tensorflow::Hash64Combine(hash, instruction->literal().Hash());
+    case HloOpcode::kSlice:
+      return tensorflow::Hash64Combine(
+          tensorflow::Hash64Combine(hash, c_hash(instruction->slice_starts())),
+          c_hash(instruction->slice_strides()));
+    case HloOpcode::kPad:
+      return tensorflow::Hash64Combine(
+          hash, proto_hash(instruction->padding_config()));
+    case HloOpcode::kDot:
+      return tensorflow::Hash64Combine(
+          hash, proto_hash(instruction->dot_dimension_numbers()));
+    case HloOpcode::kConvolution:
+      return tensorflow::Hash64Combine(
+          tensorflow::Hash64Combine(
+              hash, proto_hash(instruction->convolution_dimension_numbers())),
+          proto_hash(instruction->window()));
+    case HloOpcode::kReduceWindow:
+      return tensorflow::Hash64Combine(hash, proto_hash(instruction->window()));
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kIota:
+    case HloOpcode::kReduce:
+      return tensorflow::Hash64Combine(hash, c_hash(instruction->dimensions()));
+    default:
+      return hash;
+  }
 }
 
 }  // namespace
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
+
   const std::function<bool(const HloInstruction*, const HloInstruction*)>
       eq_instructions = std::equal_to<const HloInstruction*>();
   const std::function<bool(const HloComputation*, const HloComputation*)>
@@ -153,16 +192,15 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         continue;
       }
 
-      auto it = representatives.find(instruction);
-      if (it != representatives.end()) {
-        HloInstruction* equivalent_instruction = *it;
+      auto pair = representatives.insert(instruction);
+      if (!pair.second) {
+        HloInstruction* equivalent_instruction = *pair.first;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         changed = true;
         continue;
       }
-      representatives.insert(instruction);
     }
   }
   return changed;

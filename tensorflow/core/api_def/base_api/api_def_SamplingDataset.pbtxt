@@ -4,7 +4,7 @@ op {
   in_arg {
     name: "rate"
     description: <<END
-A scalar representing the sample rate. Each element of `input_dataset` is 
+A scalar representing the sample rate. Each element of `input_dataset` is
 retained with this probability, independent of all other elements.
 END
   }

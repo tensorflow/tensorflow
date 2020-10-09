@@ -33,6 +33,6 @@ END
   }
   summary: "Outputs random integers from a uniform distribution."
   description: <<END
-The generated values are uniform integers covering the whole range of `dtype`. 
+The generated values are uniform integers covering the whole range of `dtype`.
 END
 }

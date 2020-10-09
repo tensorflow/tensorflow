@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/version.h"
 
 namespace toco {
@@ -134,9 +135,9 @@ class ImportTest : public ::testing::Test {
 
     input_model_ = ::tflite::GetModel(builder_.GetBufferPointer());
   }
-  string InputModelAsString() {
-    return string(reinterpret_cast<char*>(builder_.GetBufferPointer()),
-                  builder_.GetSize());
+  std::string InputModelAsString() {
+    return std::string(reinterpret_cast<char*>(builder_.GetBufferPointer()),
+                       builder_.GetSize());
   }
   flatbuffers::FlatBufferBuilder builder_;
   const ::tflite::Model* input_model_ = nullptr;

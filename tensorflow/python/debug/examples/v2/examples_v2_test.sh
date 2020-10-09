@@ -59,9 +59,33 @@ ${DEBUG_MNIST_BIN} --max_steps=4 --fake_data
 
 # Verify mnist does not break with check_numerics enabled on first iteration
 # check_numerics should not cause non-zero exit code on a single train step
-${DEBUG_MNIST_BIN} --max_steps=1 --fake_data --debug
+${DEBUG_MNIST_BIN} --max_steps=1 --fake_data --check_numerics
 
 # Verify check_numerics exits with non-zero exit code
-! ${DEBUG_MNIST_BIN} --max_steps=4 --fake_data --debug
+! ${DEBUG_MNIST_BIN} --max_steps=4 --fake_data --check_numerics
+
+# Verify that dumping works properly.
+TMP_DIR="$(mktemp -d)"
+${DEBUG_MNIST_BIN} --max_steps=4 --fake_data --dump_dir="${TMP_DIR}"
+
+# Check that the .execution and .graph_execution_traces are not empty,
+# i.e., the content of the circular buffer have been written to the disk.
+EXECUTION_FILE="$(ls ${TMP_DIR}/*.execution)"
+EXECUTION_FILE_SIZE=$(du -b "${EXECUTION_FILE}" | awk '{print $1}')
+echo "Size of ${EXECUTION_FILE}: ${EXECUTION_FILE_SIZE}"
+if [[ "${EXECUTION_FILE_SIZE}" == "0" ]]; then
+  echo "ERROR: ${EXECUTION_FILE} is unexpectedly empty."
+  exit 1
+fi
+
+GRAPH_TRACES_FILE="$(ls ${TMP_DIR}/*.graph_execution_traces)"
+GRAPH_TRACES_FILE_SIZE=$(du -b "${EXECUTION_FILE}" | awk '{print $1}')
+echo "Size of ${GRAPH_TRACES_FILE}: ${GRAPH_TRACES_FILE_SIZE}"
+if [[ "${GRAPH_TRACES_FILE_SIZE}" == "0" ]]; then
+  echo "ERROR: ${GRAPH_TRACES_FILE} is unexpectedly empty."
+  exit 1
+fi
+
+rm -rf "${TMP_DIR}"
 
 echo "SUCCESS: tfdbg examples and binaries test PASSED"

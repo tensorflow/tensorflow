@@ -52,7 +52,7 @@ class LocalDevice : public Device {
   // computations.
   static mutex global_tp_mu_;
   static gtl::InlinedVector<EigenThreadPoolInfo*, 4> global_tp_info_
-      GUARDED_BY(global_tp_mu_);
+      TF_GUARDED_BY(global_tp_mu_);
 
   friend class test::Benchmark;
 

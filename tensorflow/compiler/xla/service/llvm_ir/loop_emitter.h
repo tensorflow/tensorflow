@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -42,6 +43,12 @@ class LoopEmitter {
 
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
               llvm::IRBuilder<>* b);
+
+  // Constructs a LoopEmitter from an body_emitter that generates
+  // element of the given target array in the dynamic dimension.
+  LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
+              std::vector<llvm::Value*> dynamic_dims, llvm::IRBuilder<>* b);
+
   // Constructs a LoopEmitter from an element generator that generates each
   // element of the given target array.
   LoopEmitter(const ElementGenerator& target_element_generator,
@@ -64,11 +71,13 @@ class LoopEmitter {
   // specifies the element, will return multiple indices if the loop is
   // unrolled.
   std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock() {
-    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"", b_->getInt64Ty());
+    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"", b_->getInt64Ty(),
+                                         /*base_index*/ nullptr);
   }
 
   virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      absl::string_view loop_name, llvm::Type* index_type);
+      absl::string_view loop_name, llvm::Type* index_type,
+      llvm::Value* base_index);
 
   // Emits a complete loop nest for every element in the given shape.
   Status EmitLoop(absl::string_view loop_name = "",
@@ -81,11 +90,21 @@ class LoopEmitter {
   // The shape that the emitted loop iterates through.
   Shape shape_;
 
+  // Dynamic dimensions that  emitted loop iterates through. Generate the
+  // loop based on the dynamic dimensions if this vector is not empty.
+  std::vector<llvm::Value*> dynamic_dims_;
+
   // Points to the exit block of the emitted loop. If the given shape is
   // scalar, no loops are emitted and exit_bb_ is nullptr in that case.
   llvm::BasicBlock* exit_bb_;
 
   llvm::IRBuilder<>* b_;
+
+ private:
+  IrArray::Index EmitStaticIndex(ForLoopNest* loop_nest,
+                                 llvm::Type* index_type);
+  IrArray::Index EmitDynamicIndex(ForLoopNest* loop_nest,
+                                  llvm::Type* index_type);
 };
 
 }  // namespace llvm_ir

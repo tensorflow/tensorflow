@@ -26,18 +26,13 @@ namespace gpu {
 
 constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
 
-// Whether 'instr' can occur inside fusions, i.e. whether it is a candidate
-// for being fused. Note that further restrictions apply, e.g. Scatter must
-// be the root of an input fusion.
-bool IsFusible(const HloInstruction& instr);
-
 bool IsInputFusible(const HloInstruction& instr);
 
 bool IsLoopFusible(const HloInstruction& instr);
 
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
 // suffers from poor data locality if the layouts of input parameters differ. In
-// such situtations it is better not to fuse. Only input params with
+// such situations it is better not to fuse. Only input params with
 // maximum rank are considered. Params with smaller ranks will be broadcasted
 // and have not been observed to cause data locality issues.
 // TODO(b/111977086): Improve reduce emitters to remove this limitation.
@@ -63,9 +58,13 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion would be "too large" -- i.e., have more operands and
-// outputs than is allowed.
+// outputs than is allowed or occupy too much shared memory.
+// If the fusion is a producer/consumer fusion and instr1 is the
+// consumer and instr2 is the producer, set consumer_producer_fusion
+// to true to enable more fusion.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
-                           const HloInstruction& instr2);
+                           const HloInstruction& instr2,
+                           bool is_consumer_producer_fusion = false);
 
 // Check if fusing producer and consumer will generate a nested loop, e.g. both
 // producer and consumer are `reduce-window` HLO instructions.

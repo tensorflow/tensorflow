@@ -63,6 +63,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                is_square=True,
+               parameters=None,
                name="LinearOperatorCirculant"):
     r"""Initialize an `_BaseLinearOperatorCirculant`.
 
@@ -83,6 +84,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
+      parameters: Python `dict` of parameters used to instantiate this
+        `LinearOperator`.
       name:  A name to prepend to all ops created by this class.
 
     Raises:
@@ -116,12 +119,15 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
       super(_BaseLinearOperatorCirculant, self).__init__(
           dtype=dtypes.as_dtype(input_output_dtype),
-          graph_parents=[self.spectrum],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self.spectrum])
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""
@@ -150,7 +156,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         |z y x w|
     ```
 
-    `block_depth = 2` means `A` is block symmetric circulant with symemtric
+    `block_depth = 2` means `A` is block symmetric circulant with symmetric
     circulant blocks.  For example, with `W`, `X`, `Y`, `Z` symmetric circulant,
 
     ```
@@ -376,7 +382,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _broadcast_batch_dims(self, x, spectrum):
     """Broadcast batch dims of batch matrix `x` and spectrum."""
-    spectrum = ops.convert_to_tensor(spectrum, name="spectrum")
+    spectrum = ops.convert_to_tensor_v2_with_dispatch(spectrum, name="spectrum")
     # spectrum.shape = batch_shape + block_shape
     # First make spectrum a batch matrix with
     #   spectrum.shape = batch_shape + [prod(block_shape), 1]
@@ -535,8 +541,6 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   This means that the result of matrix multiplication `v = Au` has `Lth` column
   given circular convolution between `h` with the `Lth` column of `u`.
 
-  See http://ee.stanford.edu/~gray/toeplitz.pdf
-
   #### Description in terms of the frequency spectrum
 
   There is an equivalent description in terms of the [batch] spectrum `H` and
@@ -692,6 +696,11 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   * If `is_X == False`, callers should expect the operator to not have `X`.
   * If `is_X == None` (the default), callers should have no expectation either
     way.
+
+  References:
+    Toeplitz and Circulant Matrices - A Review:
+      [Gray, 2006](https://www.nowpublishers.com/article/Details/CIT-006)
+      ([pdf](https://ee.stanford.edu/~gray/toeplitz.pdf))
   """
 
   def __init__(self,
@@ -739,6 +748,15 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
       is_square:  Expect that this operator acts like square [batch] matrices.
       name:  A name to prepend to all ops created by this class.
     """
+    parameters = dict(
+        spectrum=spectrum,
+        input_output_dtype=input_output_dtype,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
     super(LinearOperatorCirculant, self).__init__(
         spectrum,
         block_depth=1,
@@ -747,7 +765,11 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_self_adjoint=is_self_adjoint,
         is_positive_definite=is_positive_definite,
         is_square=is_square,
+        parameters=parameters,
         name=name)
+
+  def _eigvals(self):
+    return ops.convert_to_tensor_v2_with_dispatch(self.spectrum)
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
@@ -916,6 +938,15 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
       is_square:  Expect that this operator acts like square [batch] matrices.
       name:  A name to prepend to all ops created by this class.
     """
+    parameters = dict(
+        spectrum=spectrum,
+        input_output_dtype=input_output_dtype,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
     super(LinearOperatorCirculant2D, self).__init__(
         spectrum,
         block_depth=2,
@@ -924,6 +955,7 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
         is_self_adjoint=is_self_adjoint,
         is_positive_definite=is_positive_definite,
         is_square=is_square,
+        parameters=parameters,
         name=name)
 
 
@@ -1066,6 +1098,15 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
       is_square:  Expect that this operator acts like square [batch] matrices.
       name:  A name to prepend to all ops created by this class.
     """
+    parameters = dict(
+        spectrum=spectrum,
+        input_output_dtype=input_output_dtype,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
     super(LinearOperatorCirculant3D, self).__init__(
         spectrum,
         block_depth=3,
@@ -1074,6 +1115,7 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
         is_self_adjoint=is_self_adjoint,
         is_positive_definite=is_positive_definite,
         is_square=is_square,
+        parameters=parameters,
         name=name)
 
 

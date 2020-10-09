@@ -51,6 +51,27 @@ void TensorShape::CheckDimsAtLeast(int NDIMS) const {
                           << " dimensions";
 }
 
+// TODO(slebedev): Consider merging IsValid implementations.
+template <class Shape>
+bool TensorShapeBase<Shape>::IsValid() {
+  // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
+  // unknown_shape() set, and it seems hard to remove this without backwards
+  // compatibility issues.
+  if (kIsPartial && unknown_rank()) return dims() == 0;
+  int64 num_elements = 1;
+  if (dims() > MaxDimensions()) return false;
+  for (auto d : dim_sizes()) {
+    if (d < (kIsPartial ? -1 : 0)) return false;
+    if (d == -1) {
+      num_elements = -1;
+    } else if (!kIsPartial || num_elements >= 0) {
+      num_elements = MultiplyWithoutOverflow(num_elements, d);
+      if (num_elements < 0) return false;
+    }
+  }
+  return true;
+}
+
 template <class Shape>
 bool TensorShapeBase<Shape>::IsValid(const TensorShapeProto& proto) {
   // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
@@ -161,7 +182,7 @@ void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
 
   // Allow sizes that are under kint64max^0.25 so that 4-way multiplication
   // below cannot overflow.
-  static const uint64 kMaxSmall = 0xd744;
+  static const int64 kMaxSmall = 0xd744;
   static_assert(kMaxSmall * kMaxSmall * kMaxSmall * kMaxSmall <= kint64max,
                 "bad overflow check");
   bool large_size = false;
@@ -255,7 +276,6 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
     //   set_ndims_byte(b.ndims_byte());
     //   set_data_type(b.data_type());
   } else {
-    DCHECK_EQ(b.tag(), REP_OUT_OF_LINE);
     set_ndims_byte(b.ndims_byte());
     set_data_type(b.data_type());
     if (tag() == REP_OUT_OF_LINE) {
@@ -474,28 +494,6 @@ void TensorShapeBase<Shape>::AsProto(TensorShapeProto* proto) const {
   }
 }
 
-void TensorShapeRep::DumpRep() const {
-#if 0
-  fprintf(stderr, "Rep: %d %d dims\n", tag(), dims());
-  if (tag() == REP16) {
-    fprintf(stderr, "REP16 NDIMS: %d\n", ndims_byte());
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %d\n", i, as16()->dims_[i]);
-    }
-  } else if (tag_ == REP32) {
-    fprintf(stderr, "REP32 NDIMS: %d\n", ndims_);
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %d\n", i, as32()->dims_[i]);
-    }
-  } else if (tag_ == REP_OUT_OF_LINE) {
-    fprintf(stderr, "REP_OUT_OF_LINE NDIMS: %d %p\n", ndims_, as16()->dims_);
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %lld\n", i, (*as64()->dims_)[i]);
-    }
-  }
-#endif
-}
-
 template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
   return TensorShapeIter<Shape>(static_cast<const Shape*>(this), 0);
@@ -503,8 +501,8 @@ TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
 
 template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::end() const {
-  CHECK(!unknown_rank());
-  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), dims());
+  const int max_dim = unknown_rank() ? -1 : dims();
+  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), max_dim);
 }
 
 string TensorShapeRep::DebugString() const {
@@ -594,7 +592,7 @@ Status MakeShapeHelper(const T* dims, int64 n, Shape* out) {
       if (TF_PREDICT_FALSE(new_num_elements < 0)) {
         TensorShapeProto proto;
         for (int64 j = 0; j < n; ++j) {
-          proto.add_dim()->set_size(dim);
+          proto.add_dim()->set_size(internal::SubtleMustCopy(dims[j]));
         }
         return errors::InvalidArgument(
             "Shape ", TensorShape::DebugString(proto),

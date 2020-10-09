@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
-#include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
@@ -92,18 +91,18 @@ Status XlaResource::SetTypeAndShape(DataType type, const TensorShape& shape) {
                                    "'' to an invalid type");
   }
   if (initialized() && type_ != type) {
-    return errors::InvalidArgument("Type of resource ", name_,
-                                   " cannot be changed after initialization: "
-                                   "old type was ",
-                                   DataTypeString(type_), ", new type is ",
-                                   DataTypeString(type));
+    return errors::Unimplemented("Type of resource ", name_,
+                                 " cannot be changed after initialization: "
+                                 "old type was ",
+                                 DataTypeString(type_), ", new type is ",
+                                 DataTypeString(type));
   }
   if (initialized() && shape_ != shape) {
-    return errors::InvalidArgument("Shape of resource ", name_,
-                                   " cannot be changed after initialization: "
-                                   "old shape was ",
-                                   shape_.DebugString(), ", new shape is ",
-                                   shape.DebugString());
+    return errors::Unimplemented("Shape of resource ", name_,
+                                 " cannot be changed after initialization: "
+                                 "old shape was ",
+                                 shape_.DebugString(), ", new shape is ",
+                                 shape.DebugString());
   }
   type_ = type;
   shape_ = shape;

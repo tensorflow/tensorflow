@@ -45,21 +45,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
               "for more info.").format(symbol, replacement))
       self.function_warnings[symbol] = warning
 
-    # List module renames. Right now, we just support renames from a module
-    # names that don't contain '.'.
+    # List module renames. If changed, please update max_submodule_depth.
     self.import_renames = {
-        "tensorflow": ast_edits.ImportRename(
-            "tensorflow.compat.v1",
-            excluded_prefixes=["tensorflow.contrib",
-                               "tensorflow.flags",
-                               "tensorflow.compat.v1",
-                               "tensorflow.compat.v2"])
+        "tensorflow":
+            ast_edits.ImportRename(
+                "tensorflow.compat.v1",
+                excluded_prefixes=[
+                    "tensorflow.contrib", "tensorflow.flags",
+                    "tensorflow.compat",
+                    "tensorflow.compat.v1", "tensorflow.compat.v2",
+                    "tensorflow.google"
+                ],
+            )
     }
-
-    self.inserts_after_imports = {
-        ("tensorflow", None): ["tensorflow.disable_v2_behavior()"],
-        ("tensorflow", "tf"): ["tf.disable_v2_behavior()"],
-    }
-
-    # TODO(kaftan,annarev): specify replacement from TensorFlow import to
-    # compat.v1 import.
+    # Needs to be updated if self.import_renames is changed.
+    self.max_submodule_depth = 2

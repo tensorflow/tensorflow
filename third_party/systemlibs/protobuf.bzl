@@ -83,6 +83,8 @@ def _proto_gen_impl(ctx):
     for dep in ctx.attr.deps:
         import_flags += dep.proto.import_flags
         deps += dep.proto.deps
+    import_flags = depset(import_flags).to_list()
+    deps = depset(deps).to_list()
 
     args = []
     if ctx.attr.gen_cc:
@@ -91,6 +93,7 @@ def _proto_gen_impl(ctx):
         args += ["--python_out=" + gen_dir]
 
     inputs = srcs + deps
+    tools = [ctx.executable.protoc]
     if ctx.executable.plugin:
         plugin = ctx.executable.plugin
         lang = ctx.attr.plugin_language
@@ -104,7 +107,7 @@ def _proto_gen_impl(ctx):
             outdir = ",".join(ctx.attr.plugin_options) + ":" + outdir
         args += ["--plugin=protoc-gen-%s=%s" % (lang, plugin.path)]
         args += ["--%s_out=%s" % (lang, outdir)]
-        inputs += [plugin]
+        tools.append(plugin)
 
     if args:
         ctx.actions.run(
@@ -113,6 +116,7 @@ def _proto_gen_impl(ctx):
             arguments = args + import_flags + [s.path for s in srcs],
             executable = ctx.executable.protoc,
             mnemonic = "ProtoCompile",
+            tools = tools,
             use_default_shell_env = True,
         )
 
@@ -272,8 +276,8 @@ def internal_gen_well_known_protos_java(srcs):
     Args:
       srcs: the well known protos
     """
-    root = Label("%s//protobuf_java" % (REPOSITORY_NAME)).workspace_root
-    pkg = PACKAGE_NAME + "/" if PACKAGE_NAME else ""
+    root = Label("%s//protobuf_java" % (native.repository_name())).workspace_root
+    pkg = native.package_name() + "/" if native.package_name() else ""
     if root == "":
         include = " -I%ssrc " % pkg
     else:

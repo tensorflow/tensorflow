@@ -241,6 +241,7 @@ class TestEnqueuers(test.TestCase):
     # One epoch is completed so enqueuer will switch the Sequence
 
     acc = []
+    self.skipTest('b/145555807 flakily timing out.')
     for _ in range(100):
       acc.append(next(gen_output2)[0, 0, 0, 0])
     self.assertEqual(acc[-1], 99 * 15)

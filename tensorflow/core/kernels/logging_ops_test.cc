@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
@@ -48,6 +49,12 @@ TEST_F(PrintingV2GraphTest, StringSuccess) {
 
 TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
   ASSERT_NE(::tensorflow::Status::OK(), (Init("invalid_output_stream")));
+}
+
+TEST_F(PrintingV2GraphTest, InvalidInputRank) {
+  TF_ASSERT_OK(Init());
+  AddInputFromArray<tstring>(TensorShape({2}), {"bar", "foo"});
+  ASSERT_NE(::tensorflow::Status::OK(), RunOpKernel());
 }
 
 class PrintingGraphTest : public OpsTestBase {

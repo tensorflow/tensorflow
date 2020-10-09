@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,15 +24,10 @@ import re
 import sys
 
 import six
+from six.moves import range
+import six.moves.configparser
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
-
-# pylint: disable=g-import-not-at-top
-if six.PY2:
-  import ConfigParser
-else:
-  import configparser as ConfigParser
-# pylint: enable=g-import-not-at-top
 
 PATH_TO_DIR = "tensorflow/tools/tensorflow_builder/compat_checker"
 
@@ -56,8 +52,8 @@ def _compare_versions(v1, v2):
     raise RuntimeError("Cannot compare `inf` to `inf`.")
 
   rtn_dict = {"smaller": None, "larger": None}
-  v1_list = v1.split(".")
-  v2_list = v2.split(".")
+  v1_list = six.ensure_str(v1).split(".")
+  v2_list = six.ensure_str(v2).split(".")
   # Take care of cases with infinity (arg=`inf`).
   if v1_list[0] == "inf":
     v1_list[0] = str(int(v2_list[0]) + 1)
@@ -121,7 +117,7 @@ def _get_func_name():
 
 
 class ConfigCompatChecker(object):
-  """Class that checks configuration versions and depencency compatibilities.
+  """Class that checks configuration versions and dependency compatibilities.
 
   `ConfigCompatChecker` checks a given set of configurations and their versions
   against supported versions and dependency rules defined in `.ini` config file.
@@ -184,7 +180,7 @@ class ConfigCompatChecker(object):
       """Prints a requirement and its components.
 
       Returns:
-        String that has concantenated information about a requirement.
+        String that has concatenated information about a requirement.
       """
       info = {
           "section": self._section,
@@ -204,7 +200,7 @@ class ConfigCompatChecker(object):
       req_str += "Range: {range}\n"
       req_str += "Exclude: {exclude}\n"
       req_str += "Include: {include}\n"
-      req_str += "Initilalized: {init}\n\n"
+      req_str += "Initialized: {init}\n\n"
 
       return req_str.format(**info)
 
@@ -218,7 +214,7 @@ class ConfigCompatChecker(object):
         [1] String that includes `range` indicating range syntax for defining
             a requirement.
               e.g. `range(1.0, 2.0) include(3.0) exclude(1.5)`
-        [2] List that includes inidividual supported versions or items.
+        [2] List that includes individual supported versions or items.
               e.g. [`1.0`, `3.0`, `7.1`]
 
       For a list type requirement, it directly stores the list to
@@ -380,11 +376,11 @@ class ConfigCompatChecker(object):
     curr_status = True
 
     # Initialize config parser for parsing version requirements file.
-    parser = ConfigParser.ConfigParser()
+    parser = six.moves.configparser.ConfigParser()
     parser.read(self.req_file)
 
     if not parser.sections():
-      err_msg = "[Error] Empty confie file. "
+      err_msg = "[Error] Empty config file. "
       err_msg += "(file = %s, " % str(self.req_file)
       err_msg += "parser sectons = %s)" % str(parser.sections())
       self.error_msg.append(err_msg)
@@ -431,7 +427,7 @@ class ConfigCompatChecker(object):
             self.warning_msg.append(warn_msg)
 
           # Last dependency item may only or not have `]` depending
-          # on the identation style in the config (.ini) file.
+          # on the indentation style in the config (.ini) file.
           # If it has `[`, then either skip or remove from string.
           if spec_split[-1] == "]":
             spec_split = spec_split[:-1]
@@ -643,7 +639,7 @@ class ConfigCompatChecker(object):
     if filtered[-1] == "]":
       filtered = filtered[:-1]
     elif "]" in filtered[-1]:
-      filtered[-1] = filtered[-1].replace("]", "")
+      filtered[-1] = six.ensure_str(filtered[-1]).replace("]", "")
     # If `]` is missing, then it could be a formatting issue with
     # config file (.ini.). Add to warning.
     else:
@@ -792,7 +788,7 @@ class ConfigCompatChecker(object):
       Boolean that is a status of the compatibility check result.
     """
     # Check if all `Required` configs are found in user configs.
-    usr_keys = self.usr_config.keys()
+    usr_keys = list(self.usr_config.keys())
 
     for k in six.iterkeys(self.usr_config):
       if k not in usr_keys:
@@ -809,10 +805,10 @@ class ConfigCompatChecker(object):
     for config_name, spec in six.iteritems(self.usr_config):
       temp_status = True
       # Check under which section the user config is defined.
-      in_required = config_name in self.required.keys()
-      in_optional = config_name in self.optional.keys()
-      in_unsupported = config_name in self.unsupported.keys()
-      in_dependency = config_name in self.dependency.keys()
+      in_required = config_name in list(self.required.keys())
+      in_optional = config_name in list(self.optional.keys())
+      in_unsupported = config_name in list(self.unsupported.keys())
+      in_dependency = config_name in list(self.dependency.keys())
 
       # Add to warning if user config is not specified in the config file.
       if not (in_required or in_optional or in_unsupported or in_dependency):

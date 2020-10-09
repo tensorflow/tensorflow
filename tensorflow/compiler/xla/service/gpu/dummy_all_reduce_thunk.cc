@@ -14,12 +14,28 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace gpu {
 
+struct NcclAllReduceConfig::AuxData {};
+
+NcclAllReduceConfig::NcclAllReduceConfig(NcclAllReduceConfig &&) = default;
+NcclAllReduceConfig::~NcclAllReduceConfig() = default;
+
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr,
+                                           int64 replica_count) {
+  NcclAllReduceConfig config = {};
+  return config;
+}
+
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
   return false;  // Skylark selects this source file if NCCL is disabled.
+}
+
+/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
+  return false;
 }
 
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -28,25 +44,17 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
       "compiler, which is necessary to build the NCCL source library.");
 }
 
-NcclAllReduceThunk::~NcclAllReduceThunk() = default;
-
-/*static*/ absl::flat_hash_set<int>
+/*static*/ absl::flat_hash_set<GlobalDeviceId>
 NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
   return {};
 }
 
-struct NcclAllReduceThunk::AuxData {};
-
 NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, int64 element_count,
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
-      replica_count_(replica_count),
-      element_count_(element_count),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer) {}
+    ThunkInfo thunk_info, NcclAllReduceConfig &&config,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : Thunk(Thunk::kNcclAllReduce, thunk_info),
+      config_(std::move(config)),
+      buffers_(std::move(buffers)) {}
 
 }  // namespace gpu
 }  // namespace xla

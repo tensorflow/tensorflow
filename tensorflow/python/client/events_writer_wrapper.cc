@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/string_view.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/core/util/events_writer.h"
 #include "tensorflow/python/lib/core/pybind11_absl.h"
 #include "tensorflow/python/lib/core/pybind11_proto.h"
@@ -33,8 +33,7 @@ PYBIND11_MODULE(_pywrap_events_writer, m) {
       .def("FileName",
            [](tensorflow::EventsWriter& self) { return self.FileName(); })
       .def("_WriteSerializedEvent",
-           [](tensorflow::EventsWriter& self,
-              const absl::string_view event_str) {
+           [](tensorflow::EventsWriter& self, const std::string& event_str) {
              self.WriteSerializedEvent(event_str);
            })
       .def("Flush", [](tensorflow::EventsWriter& self) { return self.Flush(); })

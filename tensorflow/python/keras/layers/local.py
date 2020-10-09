@@ -29,6 +29,9 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -40,6 +43,9 @@ class LocallyConnected1D(Layer):
   the `Conv1D` layer, except that weights are unshared,
   that is, a different set of filters is applied at each different patch
   of the input.
+
+  Note: layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
 
   Example:
   ```python
@@ -64,6 +70,7 @@ class LocallyConnected1D(Layer):
           any `dilation_rate` value != 1.
       padding: Currently only supports `"valid"` (case-insensitive).
           `"same"` may be supported in the future.
+          `"valid"` means no padding.
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
@@ -340,6 +347,9 @@ class LocallyConnected2D(Layer):
   that is, a different set of filters is applied at each
   different patch of the input.
 
+  Note: layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
+
   Examples:
   ```python
       # apply a 3x3 unshared weights convolution with 64 output filters on a
@@ -369,6 +379,7 @@ class LocallyConnected2D(Layer):
           all spatial dimensions.
       padding: Currently only support `"valid"` (case-insensitive).
           `"same"` will be supported in future.
+          `"valid"` means no padding.
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
@@ -766,7 +777,7 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   kernel = kernel_mask * kernel
   kernel = make_2d(kernel, split_dim=K.ndim(kernel) // 2)
 
-  output_flat = K.math_ops.sparse_matmul(inputs_flat, kernel, b_is_sparse=True)
+  output_flat = math_ops.sparse_matmul(inputs_flat, kernel, b_is_sparse=True)
   output = K.reshape(output_flat,
                      [K.shape(output_flat)[0],] + output_shape.as_list()[1:])
   return output
@@ -776,7 +787,7 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
                              output_shape):
   """Apply N-D convolution with un-shared weights using a single sparse matmul.
 
-  This method outputs `inputs . tf.SparseTensor(indices=kernel_idxs,
+  This method outputs `inputs . tf.sparse.SparseTensor(indices=kernel_idxs,
   values=kernel, dense_shape=kernel_shape)`, with `.` standing for
   matrix-multiply. It also reshapes `inputs` to 2-D and `output` to (N+2)-D.
 
@@ -799,7 +810,7 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
       Output (N+2)-D dense tensor with shape `output_shape`.
   """
   inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
-  output_flat = K.sparse_ops.sparse_tensor_dense_mat_mul(
+  output_flat = sparse_ops.sparse_tensor_dense_mat_mul(
       kernel_idxs, kernel, kernel_shape, inputs_flat, adjoint_b=True)
   output_flat_transpose = K.transpose(output_flat)
 
@@ -825,11 +836,11 @@ def make_2d(tensor, split_dim):
     Tensor of shape
     `(d0 * ... * d(split_dim-1), d(split_dim) * ... * d(N-1))`.
   """
-  shape = K.array_ops.shape(tensor)
+  shape = array_ops.shape(tensor)
   in_dims = shape[:split_dim]
   out_dims = shape[split_dim:]
 
-  in_size = K.math_ops.reduce_prod(in_dims)
-  out_size = K.math_ops.reduce_prod(out_dims)
+  in_size = math_ops.reduce_prod(in_dims)
+  out_size = math_ops.reduce_prod(out_dims)
 
-  return K.array_ops.reshape(tensor, (in_size, out_size))
+  return array_ops.reshape(tensor, (in_size, out_size))

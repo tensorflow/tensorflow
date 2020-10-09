@@ -607,7 +607,7 @@ TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
       window, dnums);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("to be equal to batch group count"));
+              HasSubstr("to be a multiple of batch group count"));
 }
 
 namespace fft {
@@ -615,8 +615,7 @@ namespace fft {
 static const char* unsupported_rank = "only supports ranks 1-3";
 static const char* invalid_rank = "requires input of at least same rank";
 static const char* requires_complex_input = "requires complex input type";
-static const char* requires_f32_input = "requires F32 input type";
-static const char* requires_c64_input = "requires C64 input type";
+static const char* requires_f32_input = "requires F32 or F64 input type";
 static const char* dimensions_match = "innermost dimensions match fft_length";
 static const char* innermost_dimension_matches =
     "innermost dimension matches fft_length/2+1";
@@ -654,7 +653,7 @@ TEST_F(ShapeInferenceTest, InferFftShapeTestFftTypes) {
   Shape shape_f32 = ShapeUtil::MakeShape(F32, {16, 8});
   Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 8});
   fft::Fail(shape_f32, type, {16, 8}, fft::requires_complex_input);
-  fft::Fail(shape_c128, type, {16, 8}, fft::requires_complex_input);
+  fft::Pass(shape_c128, type, {16, 8}, shape_c128);
 }
 
 TEST_F(ShapeInferenceTest, InferFftShapeTestIfftRanks) {
@@ -672,7 +671,7 @@ TEST_F(ShapeInferenceTest, InferFftShapeTestIfftTypes) {
   Shape shape_f32 = ShapeUtil::MakeShape(F32, {16, 8});
   Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 8});
   fft::Fail(shape_f32, type, {16, 8}, fft::requires_complex_input);
-  fft::Fail(shape_c128, type, {16, 8}, fft::requires_complex_input);
+  fft::Pass(shape_c128, type, {16, 8}, shape_c128);
 }
 
 TEST_F(ShapeInferenceTest, InferFftShapeTestRfftRanks) {
@@ -747,9 +746,10 @@ TEST_F(ShapeInferenceTest, InferFftShapeTestIrfftDimensions) {
 TEST_F(ShapeInferenceTest, InferFftShapeTestIrfftTypes) {
   FftType type = FftType::IRFFT;
   Shape shape_f32 = ShapeUtil::MakeShape(F32, {16, 8});
-  Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 8});
-  fft::Fail(shape_f32, type, {16, 8}, fft::requires_c64_input);
-  fft::Fail(shape_c128, type, {16, 8}, fft::requires_c64_input);
+  Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 5});
+  Shape shape_f64_out = ShapeUtil::MakeShape(F64, {16, 8});
+  fft::Fail(shape_f32, type, {16, 8}, fft::requires_complex_input);
+  fft::Pass(shape_c128, type, {16, 8}, shape_f64_out);
 }
 
 TEST_F(ShapeInferenceTest, MapThatChangesElementType) {
@@ -1020,6 +1020,17 @@ TEST_F(ReduceShapeInferenceTest, ErrorElementTypeVsApplyType) {
               HasSubstr("0-th parameter shape differs"));
 }
 
+TEST_F(ReduceShapeInferenceTest, ReduceWithRepeatedReduceDimension) {
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&arg_shape, &f32_},
+      /*dimensions_to_reduce=*/{0, 0}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Duplicate reduction dimension: 0"));
+}
+
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =
@@ -1027,6 +1038,16 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 64}), inferred));
+}
+
+TEST_F(ShapeInferenceTest, InferSliceWithDynamicDimensions) {
+  Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64}, {true, true});
+  auto inferred_status =
+      ShapeInference::InferSliceShape(matrix_shape, {32, 0}, {33, 64}, {1, 1});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {1, 64}, {false, true}), inferred));
 }
 
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStrides) {
@@ -1115,6 +1136,64 @@ TEST_F(ShapeInferenceTest, InferCompareShape) {
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeDegenerateCombine) {
+  // [1, <=1]
+  //   | reshape
+  // [<=1]
+  //
+  // Both output dimension can be dynamic, use inferred_dimension to tie-break.
+  auto operand = ShapeUtil::MakeShape(F32, {1, 1}, {false, true});
+  auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {1},
+                                                  /*inferred_dimension=*/-1);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1}, {true}), status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeSplit) {
+  // [<=10]
+  //   | reshape
+  // [1, 10]
+  //
+  // Both output dimension can be dynamic, use inferred_dimension to tie-break.
+  auto operand = ShapeUtil::MakeShape(F32, {10}, {true});
+  auto status = ShapeInference::InferReshapeShape(operand, {0}, {1, 10},
+                                                  /*inferred_dimension=*/0);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 10}, {true, false}),
+            status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeCombine) {
+  // [6, <=10]
+  //   | reshape
+  // [<=60]
+  auto operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
+  auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {60},
+                                                  /*inferred_dimension=*/-11);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {60}, {true}), status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, UnchangedDimension) {
+  // [6, <=10]
+  //   | reshape
+  // [2, 3, <=10]
+  auto operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
+  auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {2, 3, 10},
+                                                  /*inferred_dimension=*/-11);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
+            status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, InferDynamicBroadcast) {
+  // CHECK:
+  // %broadcast = s32[15,<=15]{1,0} broadcast(s32[<=15]{0}), dimensions={1}
+
+  auto operand_shape = ShapeUtil::MakeShape(F32, {15}, {true});
+  auto inferred_status =
+      ShapeInference::InferBroadcastShape(operand_shape, {15});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {15, 15}, {false, true}), inferred);
 }
 
 TEST_F(ShapeInferenceTest, BroadcastScalar) {
@@ -1297,8 +1376,30 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
   EXPECT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), output_shape));
 }
 
+TEST_F(ShapeInferenceTest, ErrorSetDimensionSize) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape val_shape = ShapeUtil::MakeShape(S32, {1});
+  auto inferred_status = ShapeInference::InferSetDimensionSizeShape(
+      arg_shape, val_shape, /*dimension=*/0);
+
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("value has to be S32 scalar"));
+}
+
+TEST_F(ShapeInferenceTest, ErrorSetDimensionSizeWrongType) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape val_shape = ShapeUtil::MakeShape(U32, {});
+  auto inferred_status = ShapeInference::InferSetDimensionSizeShape(
+      arg_shape, val_shape, /*dimension=*/0);
+
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("value has to be S32 scalar"));
+}
+
 // BatchMatMul with different batch dimension sizes fails.
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 3, 14});
 
@@ -1317,7 +1418,7 @@ TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
 }
 
 // BatchMatMul with different batch dimension numbers passes
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersPasses) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimNumbersPasses) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 14});
 
@@ -1534,6 +1635,20 @@ TEST_F(ShapeInferenceTest, WhileWithBadShapes) {
   ASSERT_FALSE(inferred_status_error4.ok());
   ASSERT_THAT(inferred_status_error4.status().error_message(),
               HasSubstr("parameter of condition and body"));
+}
+
+// Tests for the concatenate instruction with dynamic shapes.
+TEST_F(ShapeInferenceTest, ConcatenateWithDynamicShapes) {
+  auto dynamic_shape_1 =
+      ShapeUtil::MakeShape(F32, {32, 160, 10}, {true, false, false});
+  auto dynamic_shape_2 =
+      ShapeUtil::MakeShape(F32, {32, 160, 10}, {false, true, false});
+  auto inferred_status = ShapeInference::InferConcatOpShape(
+      {&dynamic_shape_1, &dynamic_shape_2}, /*dimension=*/0);
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {64, 160, 10}, {true, true, false}), inferred));
 }
 
 // Tests for the concatenate instruction with proper shapes.
@@ -2019,6 +2134,58 @@ TEST_F(ScatterGatherShapeInferenceTest, TensorFlowBatchDynamicSlice) {
   EXPECT_TRUE(ShapeUtil::Equal(
       gather_shape,
       ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicGatherEntireDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 1}, {false, true, false}),
+          ShapeUtil::MakeShape(S64, {}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{0, 1},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0},
+              /*index_vector_dim=*/0),
+          /*slice_sizes=*/{1, 2, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape, ShapeUtil::MakeShape(F32, {2, 1}, {true, false})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicGatherCollapsedDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 1}, {true, false, false}),
+          ShapeUtil::MakeShape(S64, {}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{0, 1},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0},
+              /*index_vector_dim=*/0),
+          /*slice_sizes=*/{1, 2, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape, ShapeUtil::MakeShape(F32, {2, 1}, {false, false})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicIndices) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 2}),
+          ShapeUtil::MakeShape(S64, {3, 4, 2}, {false, true, false}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{2, 3},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0, 1},
+              /*index_vector_dim=*/2),
+          /*slice_sizes=*/{1, 2, 2}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape,
+      ShapeUtil::MakeShape(F32, {3, 4, 2, 2}, {false, true, false, false})))
       << ShapeUtil::HumanString(gather_shape);
 }
 

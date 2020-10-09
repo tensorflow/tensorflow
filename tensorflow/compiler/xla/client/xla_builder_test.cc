@@ -221,6 +221,16 @@ TEST_F(XlaBuilderTest, ShapeInferenceError) {
   EXPECT_THAT(statusor.status().error_message(), HasSubstr("shape inference"));
 }
 
+TEST_F(XlaBuilderTest, DynamicDimensionReshapeToR0) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {1}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "dyn_dim");
+  auto dx = SetDimensionSize(x, y, 0);
+  Reshape(dx, {});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_TRUE(statusor.ok());
+}
+
 TEST_F(XlaBuilderTest, ParameterAlreadyRegistered) {
   XlaBuilder b_call("add");
   Parameter(&b_call, 0, ShapeUtil::MakeShape(PRED, {}), "x");
@@ -282,7 +292,7 @@ TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
 
   // The binary operation has in-dim broadcast and degenerate broadcast, should
-  // first do the in-dim broadcast then convert the degnerate broadcast into a
+  // first do the in-dim broadcast then convert the degenerate broadcast into a
   // reshape and a broadcast.
   //
   // Expected:
@@ -317,6 +327,17 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Broadcast(op::Reshape(op::Broadcast())));
+}
+
+TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
+  BroadcastInDim(x, {-3, 3, 4},
+                 /*broadcast_dimensions=*/{0, 1, 2});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("shape's dimensions must not be < 0"));
 }
 
 TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
@@ -360,6 +381,29 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
+TEST_F(XlaBuilderTest, AllGatherR1) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "x");
+  AllGather(x, /*all_gather_dimension=*/0, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
+  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {16})));
+}
+
+TEST_F(XlaBuilderTest, AllGatherR2) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  AllGather(x, /*all_gather_dimension=*/1, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 64})));
+}
+
 TEST_F(XlaBuilderTest, AllToAll) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
@@ -386,11 +430,23 @@ TEST_F(XlaBuilderTest, CollectivePermute) {
 
 TEST_F(XlaBuilderTest, GetDimensionSize) {
   XlaBuilder b(TestName());
-  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
   GetDimensionSize(x, 1);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kGetDimensionSize);
+}
+
+TEST_F(XlaBuilderTest, GetDimensionSizeConstant) {
+  XlaBuilder b(TestName());
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
+  // Get dimension size from a contant dimension gives us a constant.
+  GetDimensionSize(x, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
 }
 
 TEST_F(XlaBuilderTest, ReportError) {
@@ -498,6 +554,32 @@ TEST_F(XlaBuilderTest, DynamicParameter) {
                                  ->shape()
                                  .tuple_shapes(1);
   EXPECT_TRUE(param_shape.is_dynamic_dimension(0));
+}
+
+TEST_F(XlaBuilderTest, SetDimensionSize) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
+  auto set_dim_size = SetDimensionSize(p0, p1, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          BuildHloModule(&b, /*root=*/set_dim_size));
+  const Shape& root_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(root_shape.is_dynamic_dimension(0));
+}
+
+TEST_F(XlaBuilderTest, RemoveDimensionSize) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
+  auto set_dim_size = SetDimensionSize(p0, p1, 0);
+  auto remove_dim_size = RemoveDynamicDimension(set_dim_size, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          BuildHloModule(&b, /*root=*/remove_dim_size));
+  const Shape& root_shape =
+      module->entry_computation()->root_instruction()->shape();
+  // Dynamic dimension has been removed.
+  EXPECT_FALSE(root_shape.is_dynamic_dimension(0));
 }
 
 TEST_F(XlaBuilderTest, DynamicUnary) {
@@ -853,14 +935,14 @@ TEST_F(XlaBuilderTest, DynamicReshape) {
                                    /*target_param_index=*/{0},
                                    /*target_dim_num=*/3));
   auto gte = GetTupleElement(p0, 0);  // f32[2, 3, <=4, <=5, 6]
-  Reshape(gte, /*new_sizes=*/{6, 4, 1, 5, 2, 3});
+  Reshape(gte, /*new_sizes=*/{6, 4, 5, 2, 3});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result_shape =
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(result_shape.is_dynamic_dimension(1));
-  EXPECT_TRUE(result_shape.is_dynamic_dimension(3));
+  EXPECT_TRUE(result_shape.is_dynamic_dimension(2));
   EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(),
-                              {false, true, false, true, false, false}))
+                              {false, true, true, false, false}))
       << result_shape;
 }
 

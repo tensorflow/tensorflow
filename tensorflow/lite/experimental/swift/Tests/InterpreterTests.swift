@@ -50,26 +50,6 @@ class InterpreterTests: XCTestCase {
     XCTAssertNil(interpreter.delegates)
   }
 
-  func testInitWithDelegate() throws {
-    let metalDelegate = MetalDelegate()
-    let interpreter = try Interpreter(modelPath: AddQuantizedModel.path, delegates: [metalDelegate])
-    XCTAssertEqual(interpreter.delegates?.count, 1)
-    XCTAssertNil(interpreter.options)
-  }
-
-  func testInitWithOptionsAndDelegate() throws {
-    var options = Interpreter.Options()
-    options.threadCount = 1
-    let metalDelegate = MetalDelegate()
-    let interpreter = try Interpreter(
-      modelPath: AddQuantizedModel.path,
-      options: options,
-      delegates: [metalDelegate]
-    )
-    XCTAssertNotNil(interpreter.options)
-    XCTAssertEqual(interpreter.delegates?.count, 1)
-  }
-
   func testInputTensorCount() {
     XCTAssertEqual(interpreter.inputTensorCount, AddModel.inputTensorCount)
   }
@@ -162,10 +142,12 @@ class InterpreterTests: XCTestCase {
   }
 
   func testResizeInputTensorAtIndexToShape_ThrowsInvalidIndex() {
-    XCTAssertThrowsError(try interpreter.resizeInput(
-      at: AddModel.invalidIndex,
-      to: [2, 2, 3]
-    )) { error in
+    XCTAssertThrowsError(
+      try interpreter.resizeInput(
+        at: AddModel.invalidIndex,
+        to: [2, 2, 3]
+      )
+    ) { error in
       let maxIndex = AddModel.inputTensorCount - 1
       self.assertEqualErrors(
         actual: error,
@@ -182,10 +164,12 @@ class InterpreterTests: XCTestCase {
   }
 
   func testCopyDataToInputTensorAtIndex_ThrowsInvalidIndex() {
-    XCTAssertThrowsError(try interpreter.copy(
-      AddModel.inputData,
-      toInputAt: AddModel.invalidIndex
-    )) { error in
+    XCTAssertThrowsError(
+      try interpreter.copy(
+        AddModel.inputData,
+        toInputAt: AddModel.invalidIndex
+      )
+    ) { error in
       let maxIndex = AddModel.inputTensorCount - 1
       self.assertEqualErrors(
         actual: error,
@@ -198,10 +182,12 @@ class InterpreterTests: XCTestCase {
     try interpreter.resizeInput(at: AddModel.validIndex, to: AddModel.shape)
     try interpreter.allocateTensors()
     let invalidData = Data(count: AddModel.dataCount - 1)
-    XCTAssertThrowsError(try interpreter.copy(
-      invalidData,
-      toInputAt: AddModel.validIndex
-    )) { error in
+    XCTAssertThrowsError(
+      try interpreter.copy(
+        invalidData,
+        toInputAt: AddModel.validIndex
+      )
+    ) { error in
       self.assertEqualErrors(
         actual: error,
         expected: .invalidTensorDataCount(provided: invalidData.count, required: AddModel.dataCount)
@@ -243,12 +229,20 @@ class InterpreterOptionsTests: XCTestCase {
   func testInitWithDefaultValues() {
     let options = Interpreter.Options()
     XCTAssertNil(options.threadCount)
+    XCTAssertFalse(options.isXNNPackEnabled)
   }
 
   func testInitWithCustomValues() {
     var options = Interpreter.Options()
+
     options.threadCount = 2
     XCTAssertEqual(options.threadCount, 2)
+
+    options.isXNNPackEnabled = false
+    XCTAssertFalse(options.isXNNPackEnabled)
+
+    options.isXNNPackEnabled = true
+    XCTAssertTrue(options.isXNNPackEnabled)
   }
 
   func testEquatable() {
@@ -262,13 +256,22 @@ class InterpreterOptionsTests: XCTestCase {
 
     options2.threadCount = 3
     XCTAssertNotEqual(options1, options2)
+
+    options2.threadCount = 2
+    XCTAssertEqual(options1, options2)
+
+    options2.isXNNPackEnabled = true
+    XCTAssertNotEqual(options1, options2)
+
+    options1.isXNNPackEnabled = true
+    XCTAssertEqual(options1, options2)
   }
 }
 
 // MARK: - Constants
 
 /// Values for the `add.bin` model.
-private enum AddModel {
+enum AddModel {
   static let info = (name: "add", extension: "bin")
   static let inputTensorCount = 1
   static let outputTensorCount = 1
@@ -301,7 +304,7 @@ private enum AddModel {
 }
 
 /// Values for the `add_quantized.bin` model.
-private enum AddQuantizedModel {
+enum AddQuantizedModel {
   static let info = (name: "add_quantized", extension: "bin")
   static let inputOutputIndex = 0
   static let shape: Tensor.Shape = [2]
@@ -346,14 +349,15 @@ extension Array {
   init?(unsafeData: Data) {
     guard unsafeData.count % MemoryLayout<Element>.stride == 0 else { return nil }
     #if swift(>=5.0)
-    self = unsafeData.withUnsafeBytes { .init($0.bindMemory(to: Element.self)) }
+      self = unsafeData.withUnsafeBytes { .init($0.bindMemory(to: Element.self)) }
     #else
-    self = unsafeData.withUnsafeBytes {
-      .init(UnsafeBufferPointer<Element>(
-        start: $0,
-        count: unsafeData.count / MemoryLayout<Element>.stride
-      ))
-    }
+      self = unsafeData.withUnsafeBytes {
+        .init(
+          UnsafeBufferPointer<Element>(
+            start: $0,
+            count: unsafeData.count / MemoryLayout<Element>.stride
+          ))
+      }
     #endif  // swift(>=5.0)
   }
 }

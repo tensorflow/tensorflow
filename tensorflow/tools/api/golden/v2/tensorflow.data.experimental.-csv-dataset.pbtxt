@@ -3,20 +3,22 @@ tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.ops.readers.CsvDatasetV2\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetSource\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
-  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'collections.abc.Iterable\'>"
   member {
     name: "element_spec"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'filenames\', \'record_defaults\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \',\', \'True\', \'\', \'None\'], "
+    argspec: "args=[\'self\', \'filenames\', \'record_defaults\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\', \'exclude_cols\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \',\', \'True\', \'\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
     argspec: "args=[\'self\', \'transformation_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_numpy_iterator"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "batch"
@@ -25,6 +27,10 @@ tf_class {
   member_method {
     name: "cache"
     argspec: "args=[\'self\', \'filename\'], varargs=None, keywords=None, defaults=[\'\'], "
+  }
+  member_method {
+    name: "cardinality"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "concatenate"
@@ -44,7 +50,7 @@ tf_class {
   }
   member_method {
     name: "from_generator"
-    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\', \'output_signature\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "from_tensor_slices"
@@ -56,7 +62,7 @@ tf_class {
   }
   member_method {
     name: "interleave"
-    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'-1\', \'1\', \'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "list_files"
@@ -64,7 +70,7 @@ tf_class {
   }
   member_method {
     name: "map"
-    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "options"
@@ -72,7 +78,7 @@ tf_class {
   }
   member_method {
     name: "padded_batch"
-    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "prefetch"
@@ -80,7 +86,7 @@ tf_class {
   }
   member_method {
     name: "range"
-    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "reduce"

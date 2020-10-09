@@ -111,7 +111,8 @@ fi
 
 # Add extra params for rocm devices and libraries for ROCm container.
 if [[ "${CONTAINER_TYPE}" == "rocm" ]]; then
-  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video \
+  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --shm-size 16G"
 else
   ROCM_EXTRA_PARAMS=""
 fi
@@ -161,7 +162,7 @@ mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 # By default we cleanup - remove the container once it finish running (--rm)
 # and share the PID namespace (--pid=host) so the process inside does not have
 # pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
-${DOCKER_BINARY} run --rm --pid=host \
+${DOCKER_BINARY} run --rm --name ${DOCKER_IMG_NAME} --pid=host \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=$(id -u -n)" \

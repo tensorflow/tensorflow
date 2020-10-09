@@ -45,7 +45,7 @@ class SingleOpModel {
     return true;
   }
 
-  Status Invoke();
+  absl::Status Invoke();
 
   const std::vector<float>& GetOutput(int index) const {
     return outputs_[index].data;
@@ -57,16 +57,16 @@ class SingleOpModel {
   std::vector<TensorFloat32> outputs_;
 };
 
-Status CompareVectors(const std::vector<float>& reference,
-                      const std::vector<float>& output, float max_error);
+absl::Status CompareVectors(const std::vector<float>& reference,
+                            const std::vector<float>& output, float max_error);
 
 /// Helper function that compiles previously configured graph (with added
 /// tasks), initializes graph with specified inputs, invokes and fills specified
 /// outputs
-Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& graph,
-                id<MTLDevice> device,
-                const std::map<ValueId, TensorFloat32>& inputs,
-                std::map<ValueId, TensorFloat32>* outputs);
+absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& graph,
+                      id<MTLDevice> device,
+                      const std::map<ValueId, TensorFloat32>& inputs,
+                      std::map<ValueId, TensorFloat32>* outputs);
 
 }  // namespace metal
 }  // namespace gpu

@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import argparse
 import os
-import shutil
 import sys
 import tempfile
 
@@ -34,6 +33,7 @@ from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
+from tensorflow.python.lib.io import file_io
 
 
 _DUMP_ROOT_PREFIX = "tfdbg_"
@@ -375,7 +375,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
   def _remove_dump_root(self):
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
   def _prep_debug_cli_for_run_end(self,
                                   debug_dump,
@@ -393,7 +393,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         and caused the preparation of this run-end CLI (if any).
       passed_filter_exclude_node_names: (None or str) Regular expression used
         with the tensor filter to exclude ops with names matching the regular
-        expresssion.
+        expression.
     """
 
     if tf_error:
@@ -552,9 +552,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     run_start_response = framework.OnRunStartResponse(
         action,
         debug_urls,
-        node_name_regex_whitelist=parsed.node_name_filter,
-        op_type_regex_whitelist=parsed.op_type_filter,
-        tensor_dtype_regex_whitelist=parsed.tensor_dtype_filter)
+        node_name_regex_allowlist=parsed.node_name_filter,
+        op_type_regex_allowlist=parsed.op_type_filter,
+        tensor_dtype_regex_allowlist=parsed.tensor_dtype_filter)
 
     if parsed.till_filter_pass:
       # For the run-till-filter-pass (run -f) mode, use the DEBUG_RUN

@@ -4,14 +4,15 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK:  {
 // CHECK-NEXT:    version: 3,
 // CHECK-NEXT:    operator_codes: [ {
-// CHECK-NEXT:      builtin_code: CUSTOM,
+// CHECK-NEXT:      deprecated_builtin_code: 32,
 // CHECK-NEXT:      custom_code: "FlexAddV2"
+// CHECK-NEXT:      builtin_code: CUSTOM
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    subgraphs: [ {
 // CHECK-NEXT:      tensors: [ {
 // CHECK-NEXT:        shape: [ 3, 2 ],
 // CHECK-NEXT:        buffer: 1,
-// CHECK-NEXT:        name: "tf.Placeholder.input",
+// CHECK-NEXT:        name: "arg0",
 // CHECK-NEXT:        quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:        }
@@ -39,10 +40,15 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:    }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:    }, {
+// CHECK-NEXT:      data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:    } ],
+// CHECK-NEXT:    metadata: [ {
+// CHECK-NEXT:    name: "min_runtime_version",
+// CHECK-NEXT:    buffer: 3
 // CHECK-NEXT:    } ]
 // CHECK-NEXT:  }
 
-  %0 = "tf.Placeholder.input"(%arg0) {name = "Placeholder"} : (tensor<3x2xf32>) -> tensor<3x2xf32>
-  %1 = "tf.AddV2"(%0, %0) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
-  return %1 : tensor<3x2xf32>
+  %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
 }

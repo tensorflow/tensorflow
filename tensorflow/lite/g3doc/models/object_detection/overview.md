@@ -2,7 +2,7 @@
 
 <img src="../images/detection.png" class="attempt-right">
 
-Detect multiple objects within an image, with bounding boxes. Recognize 80
+Detect multiple objects within an image, with bounding boxes. Recognize 90
 different classes of objects.
 
 ## Get started
@@ -20,11 +20,15 @@ If you are using a platform other than Android or iOS, or you are already
 familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
 download our starter object detection model and the accompanying labels.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
-starter model and labels</a>
+<a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1?lite-format=tflite">Download
+starter model with Metadata</a>
 
 For more information about the starter model, see
 <a href="#starter_model">Starter model</a>.
+
+For more information about Metadata and associated fields (eg: `labels.txt`) see
+<a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
+the metadata from models</a>
 
 ## What is object detection?
 
@@ -180,21 +184,63 @@ edges in a similar manner.
 
 Note: Object detection models accept input images of a specific size. This is likely to be different from the size of the raw image captured by your device’s camera, and you will have to write code to crop and scale your raw image to fit the model’s input size (there are examples of this in our <a href="#get_started">example applications</a>).<br /><br />The pixel values output by the model refer to the position in the cropped and scaled image, so you must scale them to fit the raw image in order to interpret them correctly.
 
+## Performance benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>GPU</th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1?lite-format=tflite">COCO SSD MobileNet v1</a>
+    </td>
+    <td rowspan = 3>
+      27 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>22ms</td>
+    <td>46ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>20ms</td>
+    <td>29ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+     <td>7.6ms</td>
+    <td>11ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
+
 ## Starter model
 
 We recommend starting with this pre-trained quantized COCO SSD MobileNet v1
 model.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
+<a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1?lite-format=tflite">Download
 starter model and labels</a>
 
 ### Uses and limitations
 
 The object detection model we provide can identify and locate up to 10 objects
-in an image. It is trained to recognize 80 classes of object. For a full list of
-classes, see the labels file in the
-<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
-zip</a>.
+in an image. It is trained to recognize 90 classes of objects. For a full list
+of classes, see the labels file embedded in the model with
+<a href="https://www.tensorflow.org/lite/convert/metadata#visualize_the_metadata">metadata
+visualiztion</a>.
 
 If you want to train a model to recognize new classes, see
 <a href="#customize_model">Customize model</a>.
@@ -254,10 +300,10 @@ each object. There will always be 10 objects detected.
 
 ## Customize model
 
-The pre-trained models we provide are trained to detect 80 classes of object.
+The pre-trained models we provide are trained to detect 90 classes of objects.
 For a full list of classes, see the labels file in the
-<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
-zip</a>.
+<a href="https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1?lite-format=tflite">model
+metadata</a>.
 
 You can use a technique known as transfer learning to re-train a model to
 recognize classes not in the original set. For example, you could re-train the

@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
+#include "tensorflow/compiler/xla/service/cpu/test_target_triple_helper.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -37,10 +38,10 @@ StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
   }
 
   llvm::LLVMContext context;
-  std::unique_ptr<llvm::Function> function =
-      absl::WrapUnique(llvm::Function::Create(
-          llvm::FunctionType::get(llvm::Type::getVoidTy(context), {}),
-          llvm::GlobalValue::ExternalLinkage, "test"));
+  llvm::Module module("test", context);
+  llvm::Function* function = llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getVoidTy(context), {}),
+      llvm::GlobalValue::ExternalLinkage, "test", &module);
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
@@ -74,8 +75,9 @@ ENTRY main {
   module_group->push_back(std::move(hlo_module));
 
   // Check that the GetTargetVectorRegisterByteSize is itself working.
-  TF_ASSERT_OK_AND_ASSIGN(unsigned vector_register_byte_size_for_x86_64,
-                          GetTargetVectorRegisterByteSize("x86_64-pc-linux"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      unsigned vector_register_byte_size_for_x86_64,
+      GetTargetVectorRegisterByteSize(kTargetTripleForHost));
   ASSERT_EQ(vector_register_byte_size_for_x86_64, 16);
 
   std::string triple = "i686-none-android";

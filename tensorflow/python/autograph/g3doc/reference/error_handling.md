@@ -38,6 +38,10 @@ Among the distinctive features of the re-raised exception:
    the `@tf.function`
  * the references corresponding to converted code are marked with an
    asterisk (`*`)
+ * the references corresponding to code which AutoGraph reached, but decided not
+   to convert, are marked with a double asterisk (`**`)
+ * the references corresponding to code that AutoGraph didn't reach at all have
+   no marking
 
 For example, the code below triggers an exception in the Python runtime, at
 graph construction time:
@@ -62,7 +66,7 @@ TypeError: in converted code:
 
     <ipython-input-9-002fa22f79df>:8 f  *
         tf.constant(1) + tf.constant(1.0)
-    tensorflow/python/ops/math_ops.py:900 binary_op_wrapper
+    tensorflow/python/ops/math_ops.py:900 binary_op_wrapper  **
         return func(x, y, name=name)
     ... more TensorFlow internal frames ...
 

@@ -1,4 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -26,14 +27,17 @@ cc_library(
         "nnapi_delegate.h",
         "nnapi_delegate_kernel.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi:nnapi_util",
     ],
 )
@@ -63,10 +67,15 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi:nnapi_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -86,19 +95,118 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "nnapi_delegate_mock_test",
+    testonly = 1,
+    hdrs = [
+        "nnapi_delegate_mock_test.h",
+    ],
+    copts = select({
+        "//tensorflow:ios": [
+            "-DNNAPI_DELEGATE_DISABLED",
+        ],
+        "//tensorflow:windows": [
+            "-DNNAPI_DELEGATE_DISABLED",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":nnapi_delegate",
+        "//tensorflow/lite/nnapi:nnapi_handler",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_test(
     name = "nnapi_delegate_test",
     size = "small",
-    srcs = ["nnapi_delegate_test.cc"],
+    srcs = [
+        "nnapi_delegate_test.cc",
+    ],
     tags = [
-        "no_mac",  #TODO(b/141562975): Re-enable when bug is resolved.
         "no_windows",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":nnapi_delegate",
+        ":nnapi_delegate_mock_test",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "nnapi_delegate_errno_test",
+    size = "small",
+    srcs = [
+        "nnapi_delegate_errno_test.cc",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":nnapi_delegate",
+        ":nnapi_delegate_mock_test",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "nnapi_delegate_device_selection_test",
+    size = "small",
+    srcs = [
+        "nnapi_delegate_device_selection_test.cc",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":nnapi_delegate",
+        ":nnapi_delegate_mock_test",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "nnapi_delegate_signed_quantization_test",
+    size = "small",
+    srcs = [
+        "nnapi_delegate_signed_quantization_test.cc",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":nnapi_delegate",
+        ":nnapi_delegate_mock_test",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
@@ -117,7 +225,7 @@ cc_test(
     deps = [
         ":nnapi_delegate",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",

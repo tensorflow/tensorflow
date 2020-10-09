@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-#if !defined(PLATFORM_GOOGLE)
+#if !defined(PLATFORM_GOOGLE) && !defined(PLATFORM_GOOGLE_ANDROID)
 
 #define PCHECK(invocation) CHECK(invocation)
 

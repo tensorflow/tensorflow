@@ -29,19 +29,13 @@ limitations under the License.
 //   When indices are out of bound, the ops will not succeed.
 //
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-#include <limits>
+#include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include <cstring>
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -52,14 +46,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* lookup = GetInput(context, node, 0);
+  const TfLiteTensor* lookup;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &lookup));
   TF_LITE_ENSURE_EQ(context, NumDimensions(lookup), 1);
   TF_LITE_ENSURE_EQ(context, lookup->type, kTfLiteInt32);
 
-  const TfLiteTensor* value = GetInput(context, node, 1);
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &value));
   TF_LITE_ENSURE(context, NumDimensions(value) >= 2);
 
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(NumDimensions(value));
 
   outputSize->data[0] = SizeOfDimension(lookup, 0);
@@ -76,8 +73,11 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
   const int row_size = SizeOfDimension(value, 0);
   const int row_bytes = value->bytes / row_size;
 
+  char* output_raw = GetTensorData<char>(output);
+  const char* value_raw = GetTensorData<char>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int idx = lookup->data.i32[i];
+    int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
       context->ReportError(context,
                            "Embedding Lookup: index out of bounds. "
@@ -85,8 +85,8 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
                            idx, row_size - 1);
       return kTfLiteError;
     } else {
-      memcpy(output->data.raw + i * row_bytes,
-             value->data.raw + idx * row_bytes, row_bytes);
+      std::memcpy(output_raw + i * row_bytes, value_raw + idx * row_bytes,
+                  row_bytes);
     }
   }
 
@@ -106,15 +106,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   }
 
   float* output_ptr = GetTensorData<float>(output);
-  const int8_t* value_ptr;
-  if (value->type == kTfLiteUInt8) {
-    value_ptr = reinterpret_cast<int8_t*>(value->data.uint8);
-  } else {
-    value_ptr = value->data.int8;
-  }
+  const int8_t* value_ptr = GetTensorData<int8_t>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
 
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int idx = lookup->data.i32[i];
+    int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
       context->ReportError(context,
                            "Embedding Lookup: index out of bounds. "
@@ -136,9 +132,12 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* lookup = GetInput(context, node, 0);
-  const TfLiteTensor* value = GetInput(context, node, 1);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* lookup;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &lookup));
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &value));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   switch (value->type) {
     case kTfLiteFloat32:
       return EvalSimple(context, node, lookup, value, output);

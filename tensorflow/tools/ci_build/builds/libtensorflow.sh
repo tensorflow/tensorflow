@@ -54,8 +54,9 @@ function build_libtensorflow_tarball() {
   BAZEL_OPTS="--config=opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
   export CC_OPT_FLAGS="-mavx -msse4.2"
   if [ "${TF_NEED_CUDA}" == "1" ]; then
-    BAZEL_OPTS="${BAZEL_OPTS} --config=cuda"
+    BAZEL_OPTS="${BAZEL_OPTS} --config=cuda --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain"
     export TF_NEED_ROCM=0
+    export TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
   fi
   bazel clean --expunge
   yes "" | ./configure
@@ -84,7 +85,7 @@ function build_libtensorflow_tarball() {
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz ${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/java/libtensorflow.jar ${DIR}
   cp_normalized_srcjar bazel-bin/tensorflow/java/libtensorflow-src.jar ${DIR}/libtensorflow-src.jar
-  cp bazel-genfiles/tensorflow/tools/lib_package/libtensorflow_proto.zip ${DIR}
+  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_proto.zip ${DIR}
   chmod -x ${DIR}/*
 }
 

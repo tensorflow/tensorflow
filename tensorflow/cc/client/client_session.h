@@ -64,7 +64,7 @@ class ClientSession {
   ClientSession(const Scope& scope, const string& target);
 
   /// Same as above, but use the empty string ("") as the target specification.
-  ClientSession(const Scope& scope);
+  explicit ClientSession(const Scope& scope);
 
   /// Create a new session, configuring it with `session_options`.
   ClientSession(const Scope& scope, const SessionOptions& session_options);
@@ -92,6 +92,14 @@ class ClientSession {
              const std::vector<Output>& fetch_outputs,
              const std::vector<Operation>& run_outputs,
              std::vector<Tensor>* outputs, RunMetadata* run_metadata) const;
+
+  /// Same as above. Additionally allows user to provide custom threadpool
+  /// implementation via ThreadPoolOptions.
+  Status Run(const RunOptions& run_options, const FeedType& inputs,
+             const std::vector<Output>& fetch_outputs,
+             const std::vector<Operation>& run_outputs,
+             std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+             const thread::ThreadPoolOptions& threadpool_options) const;
 
   /// \brief A handle to a subgraph, created with
   /// `ClientSession::MakeCallable()`.

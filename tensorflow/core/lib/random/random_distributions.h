@@ -18,17 +18,13 @@ limitations under the License.
 
 #include <string.h>
 
-#define _USE_MATH_DEFINES
-#include <math.h>
-#include <cmath>
-#undef _USE_MATH_DEFINES
-
 #include <algorithm>
+#include <cmath>
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace random {
@@ -51,7 +47,7 @@ template <typename Int>
 PHILOX_DEVICE_INLINE Int SignedAdd(Int a,
                                    typename std::make_unsigned<Int>::type b) {
   // Implementation note: both b_div_2 and b - b_div_2 are positive and
-  // representatble as Int.
+  // representable as Int.
   auto b_div_2 = b >> 1;
   return a + static_cast<Int>(b_div_2) + static_cast<Int>(b - b_div_2);
 }
@@ -74,12 +70,12 @@ template <class Generator>
 class UniformDistribution<Generator, Eigen::half> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<Eigen::half, kResultElementCount> ResultType;
   typedef Eigen::half ResultElementType;
 
@@ -98,12 +94,12 @@ template <class Generator>
 class UniformDistribution<Generator, bfloat16> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<bfloat16, kResultElementCount> ResultType;
   typedef bfloat16 ResultElementType;
 
@@ -122,12 +118,12 @@ template <class Generator>
 class UniformDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<float, kResultElementCount> ResultType;
   typedef float ResultElementType;
 
@@ -146,12 +142,12 @@ template <class Generator>
 class UniformDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount / 2;
+  static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<double, kResultElementCount> ResultType;
   typedef double ResultElementType;
 
@@ -170,12 +166,12 @@ template <class Generator>
 class UniformDistribution<Generator, int32> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<int32, kResultElementCount> ResultType;
   typedef int32 ResultElementType;
 
@@ -205,12 +201,12 @@ template <class Generator>
 class UniformDistribution<Generator, int64> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount / 2;
+  static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<int64, kResultElementCount> ResultType;
   typedef int64 ResultElementType;
 
@@ -247,12 +243,12 @@ template <typename Generator, typename IntType>
 class UniformFullIntDistribution32 {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<IntType, kResultElementCount> ResultType;
   typedef IntType ResultElementType;
 
@@ -271,12 +267,12 @@ template <typename Generator, typename IntType>
 class UniformFullIntDistribution64 {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount / 2;
+  static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 3;
+  static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<IntType, kResultElementCount> ResultType;
   typedef IntType ResultElementType;
 
@@ -310,9 +306,9 @@ template <class Generator>
 class SingleSampleAdapter {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = 1;
+  static constexpr int kResultElementCount = 1;
   // The number of elements that will be returned by the underlying generator.
-  static const int kNativeElementCount = Generator::kResultElementCount;
+  static constexpr int kNativeElementCount = Generator::kResultElementCount;
   typedef typename Generator::ResultElementType ResultType;
   typedef typename Generator::ResultElementType ResultElementType;
 
@@ -394,12 +390,12 @@ template <class Generator>
 class NormalDistribution<Generator, Eigen::half> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 70;
+  static constexpr int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<Eigen::half, kResultElementCount> ResultType;
   typedef Eigen::half ResultElementType;
 
@@ -421,12 +417,12 @@ template <class Generator>
 class NormalDistribution<Generator, bfloat16> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 70;
+  static constexpr int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<bfloat16, kResultElementCount> ResultType;
   typedef bfloat16 ResultElementType;
 
@@ -451,12 +447,12 @@ template <class Generator>
 class NormalDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 70;
+  static constexpr int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<float, kResultElementCount> ResultType;
   typedef float ResultElementType;
 
@@ -475,12 +471,12 @@ template <class Generator>
 class NormalDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount = Generator::kResultElementCount / 2;
+  static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 70;
+  static constexpr int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = false;
+  static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<double, kResultElementCount> ResultType;
   typedef double ResultElementType;
 
@@ -518,13 +514,13 @@ template <class SingleSampleGenerator>
 class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount =
+  static constexpr int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 90;
+  static constexpr int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = true;
+  static constexpr bool kVariableSamplesPerOutput = true;
   // The threshold where the normal distribution is truncated.
   const float kTruncateValue = 2.0f;
 
@@ -564,13 +560,13 @@ template <class SingleSampleGenerator>
 class TruncatedNormalDistribution<SingleSampleGenerator, bfloat16> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount =
+  static constexpr int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 90;
+  static constexpr int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = true;
+  static constexpr bool kVariableSamplesPerOutput = true;
   // The threshold where the normal distribution is truncated.
   const float kTruncateValue = 2.0f;
 
@@ -611,13 +607,13 @@ template <class SingleSampleGenerator>
 class TruncatedNormalDistribution<SingleSampleGenerator, float> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount =
+  static constexpr int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 90;
+  static constexpr int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = true;
+  static constexpr bool kVariableSamplesPerOutput = true;
   // The threshold where the normal distribution is truncated.
   const float kTruncateValue = 2.0f;
 
@@ -658,15 +654,15 @@ template <class SingleSampleGenerator>
 class TruncatedNormalDistribution<SingleSampleGenerator, double> {
  public:
   // The number of elements that will be returned.
-  static const int kResultElementCount =
+  static constexpr int kResultElementCount =
       (SingleSampleGenerator::kNativeElementCount > 1)
           ? SingleSampleGenerator::kNativeElementCount / 2
           : 1;
   // Cost of generation of a single element (in cycles).
-  static const int kElementCost = 90;
+  static constexpr int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
-  static const bool kVariableSamplesPerOutput = true;
+  static constexpr bool kVariableSamplesPerOutput = true;
   typedef Array<double, kResultElementCount> ResultType;
   typedef double ResultElementType;
   const double kTruncateValue = 2.0;
@@ -714,7 +710,7 @@ void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1) {
   }
   const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
   const float u2 = Eigen::numext::sqrt(-2.0f * Eigen::numext::log(u1));
-#if defined(TENSORFLOW_USE_SYCL) || !defined(__linux__)
+#if !defined(__linux__)
   *f0 = Eigen::numext::sin(v1);
   *f1 = Eigen::numext::cos(v1);
 #else
@@ -740,7 +736,7 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
   }
   const double v1 = 2 * M_PI * Uint64ToDouble(x2, x3);
   const double u2 = Eigen::numext::sqrt(-2.0 * Eigen::numext::log(u1));
-#if defined(TENSORFLOW_USE_SYCL) || !defined(__linux__)
+#if !defined(__linux__)
   *d0 = Eigen::numext::sin(v1);
   *d1 = Eigen::numext::cos(v1);
 #else

@@ -27,23 +27,15 @@ namespace data {
 // The expected use is that a single `MemoryWriterIterator` populates the
 // cache with dataset elements. Once all elements are cached, the cache can
 // be used by one or more `MemoryReaderIterator`s.
-class MemoryCache : public ResourceBase {
+class MemoryCache {
  public:
   MemoryCache() = default;
 
-  string DebugString() const override;
-
   // Marks the cache as completed.
-  void Complete();
-
-  // Returns whether the cache is claimed.
-  bool IsClaimed();
+  void Complete(std::vector<std::vector<Tensor>>&& cache);
 
   // Returns whether the cache is completed.
   bool IsCompleted();
-
-  // Attempts to claim the cache, returning whether the cache was claimed.
-  bool MaybeClaim();
 
   // Resets the cache.
   void Reset();
@@ -51,26 +43,38 @@ class MemoryCache : public ResourceBase {
   // Returns the element at the given index.
   const std::vector<Tensor>& at(int64 index);
 
-  // Adds the element to the cache.
-  void emplace_back(std::vector<Tensor> element);
-
   // Returns the size of the cache.
   size_t size();
 
+  // Returns a reference to the cache's data. The returned reference will be
+  // invalidated by any call to Reset().
+  const std::vector<std::vector<Tensor>>& data();
+
  private:
   mutex mu_;
-  // Determines whether a writer has claimed the cache.
-  bool claimed_ GUARDED_BY(mu_) = false;
   // Determines whether all elements of the dataset have been cached.
-  bool completed_ GUARDED_BY(mu_) = false;
-  std::vector<std::vector<Tensor>> cache_ GUARDED_BY(mu_);
+  bool completed_ TF_GUARDED_BY(mu_) = false;
+  std::vector<std::vector<Tensor>> cache_ TF_GUARDED_BY(mu_);
+};
+
+// A resource wrapping a shared instance of a memory cache.
+class MemoryCacheManager : public ResourceBase {
+ public:
+  MemoryCacheManager() : cache_(std::make_shared<MemoryCache>()) {}
+
+  string DebugString() const override;
+
+  std::shared_ptr<MemoryCache> get() { return cache_; }
+
+ private:
+  std::shared_ptr<MemoryCache> cache_;
 };
 
 // Creates an instance of cache resource and transfers ownership to the caller.
-class AnonymousMemoryCacheHandleOp : public AnonymousResourceOp<MemoryCache> {
+class AnonymousMemoryCacheHandleOp
+    : public AnonymousResourceOp<MemoryCacheManager> {
  public:
   explicit AnonymousMemoryCacheHandleOp(OpKernelConstruction* ctx);
-  void Compute(OpKernelContext* ctx) override;
 
  private:
   string name() override;
@@ -78,7 +82,7 @@ class AnonymousMemoryCacheHandleOp : public AnonymousResourceOp<MemoryCache> {
                         std::unique_ptr<FunctionLibraryDefinition> flib_def,
                         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                         FunctionLibraryRuntime* lib,
-                        MemoryCache** resource) override;
+                        MemoryCacheManager** manager) override;
 };
 
 // Deletes an instance of cache resource.

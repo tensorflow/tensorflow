@@ -53,7 +53,7 @@ class RmspropTest(xla_test.XLATestCase):
     return var_t, mg_t, rms_t, mom_t
 
   def testBasic(self):
-    for dtype in self.float_types:
+    for dtype in self.float_types | self.complex_types:
       for centered in [False, True]:
         with self.session(), self.test_scope():
           # Initialize variables for numpy implementation.
@@ -83,13 +83,13 @@ class RmspropTest(xla_test.XLATestCase):
           mg1 = rms_opt.get_slot(var1, "mg")
           self.assertEqual(mg1 is not None, centered)
           rms0 = rms_opt.get_slot(var0, "rms")
-          self.assertTrue(rms0 is not None)
+          self.assertIsNotNone(rms0)
           rms1 = rms_opt.get_slot(var1, "rms")
-          self.assertTrue(rms1 is not None)
+          self.assertIsNotNone(rms1)
           mom0 = rms_opt.get_slot(var0, "momentum")
-          self.assertTrue(mom0 is not None)
+          self.assertIsNotNone(mom0)
           mom1 = rms_opt.get_slot(var1, "momentum")
-          self.assertTrue(mom1 is not None)
+          self.assertIsNotNone(mom1)
 
           # Fetch params to validate initial values
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))

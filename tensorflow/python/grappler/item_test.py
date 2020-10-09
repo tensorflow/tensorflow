@@ -109,7 +109,7 @@ class ItemTest(test.TestCase):
     self.assertEqual(new_tf_item, newest_tf_item)
 
   @test_util.run_v1_only('b/120545219')
-  def testColocationContraints(self):
+  def testColocationConstraints(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant([10])
       v = variables.VariableV1([3], dtype=dtypes.int32)

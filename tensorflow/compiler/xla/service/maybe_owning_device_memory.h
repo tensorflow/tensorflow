@@ -49,13 +49,17 @@ class MaybeOwningDeviceMemory {
 
   // Fetches the underlying DeviceMemoryBase from a MaybeOwningDeviceMemory. The
   // caller of this function is *not* responsible for freeing the memory.
-  tensorflow::se::DeviceMemoryBase AsDeviceMemoryBase();
+  tensorflow::se::DeviceMemoryBase AsDeviceMemoryBase() const;
 
   // Release the tensorflow::se::OwningDeviceMemory without freeing it, and
   // moves the ownership of the memory buffer from the object to the caller.
   //
   // A nullopt is returned if the HasOwnership() == false;
   absl::optional<tensorflow::se::OwningDeviceMemory> Release();
+
+  // If the device memory is owned, returns a pointer to the internal
+  // OwningDeviceMemory, otherwise nullptr is returned.
+  const tensorflow::se::OwningDeviceMemory* AsOwningDeviceMemory() const;
 
   // Returns true if the device_memory has ownership over underlying memory.
   bool HasOwnership() const;

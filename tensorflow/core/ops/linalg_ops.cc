@@ -47,6 +47,49 @@ Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// The first input is [...,K,M] and second input is [...,M,N].
+Status BandedTriangularSolveShapeFn(InferenceContext* c) {
+  ShapeHandle lhs;
+  ShapeHandle rhs;
+
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &lhs));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
+
+  // Check K > 0.
+  DimensionHandle num_bands = c->Dim(lhs, -2);
+  DimensionHandle m = c->Dim(lhs, -1);
+  if (c->ValueKnown(num_bands) && c->Value(num_bands) <= 0) {
+    return errors::InvalidArgument("Number of bands must be positive, but is ",
+                                   c->Value(num_bands));
+  }
+  if (c->ValueKnown(num_bands) && c->ValueKnown(m) &&
+      c->Value(num_bands) > c->Value(m)) {
+    return errors::InvalidArgument("Number of bands ", c->Value(num_bands),
+                                   " cannot exceed the size of the matrix ",
+                                   c->Value(m));
+  }
+
+  ShapeHandle lhs_batch_shape;
+  ShapeHandle rhs_batch_shape;
+  ShapeHandle output_batch_shape;
+  // Make the common batch subshape.
+  TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &rhs_batch_shape));
+  TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+      c, lhs_batch_shape, rhs_batch_shape, true, &output_batch_shape));
+
+  // lhs and rhs have the same value for M to be compatible.
+  TF_RETURN_IF_ERROR(c->Merge(m, c->Dim(rhs, -2), &m));
+
+  // Build final shape (batch_shape + m + n) in <out>.
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(output_batch_shape, c->Matrix(m, c->Dim(rhs, -1)), &out));
+
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 // The first input is [...,M,N] and second input is either [...,M,K] or [...,M].
 // Output is [...,N,K] or [...,N]. If <square>, then input is [...,M,M].
 Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
@@ -80,6 +123,34 @@ Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
   // Build final shape (batch_shape + n + k) in <out>.
   TF_RETURN_IF_ERROR(c->Concatenate(lhs_batch_shape, c->Vector(n), &out));
   TF_RETURN_IF_ERROR(c->Concatenate(out, c->Vector(c->Dim(rhs, -1)), &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+// The first input is [...,M,M] and second input is [...,M,N].
+// Output is [...,M,N].
+Status MatrixTriangularSolveShapeFn(InferenceContext* c) {
+  ShapeHandle lhs;
+  ShapeHandle rhs;
+  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &lhs));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
+
+  ShapeHandle lhs_batch_shape;
+  ShapeHandle rhs_batch_shape;
+  ShapeHandle output_batch_shape;
+  // Make the common batch subshape.
+  TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &rhs_batch_shape));
+  TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+      c, lhs_batch_shape, rhs_batch_shape, true, &output_batch_shape));
+  DimensionHandle m;
+  // lhs and rhs have the same value for m to be compatible.
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, -1), c->Dim(rhs, -2), &m));
+
+  ShapeHandle out;
+  // Build final shape (batch_shape + m + n) in <out>.
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(output_batch_shape, c->Matrix(m, c->Dim(rhs, -1)), &out));
   c->set_output(0, out);
   return Status::OK();
 }
@@ -383,6 +454,15 @@ REGISTER_OP("SelfAdjointEig")
       return Status::OK();
     });
 
+REGISTER_OP("Eig")
+    .Input("input: T")
+    .Output("e: Tout")
+    .Output("v: Tout")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("Tout: {complex64, complex128}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn);
+
 REGISTER_OP("SelfAdjointEigV2")
     .Input("input: T")
     .Output("e: T")
@@ -409,6 +489,17 @@ REGISTER_OP("MatrixSolve")
       return MatrixSolveShapeFn(c, true /* square (*/);
     });
 
+REGISTER_OP("BandedTriangularSolve")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("lower: bool = True")
+    .Attr("adjoint: bool = False")
+    .Attr("T: {double, float, half, complex64, complex128}")
+    .SetShapeFn([](InferenceContext* c) {
+      return BandedTriangularSolveShapeFn(c);
+    });
+
 REGISTER_OP("MatrixTriangularSolve")
     .Input("matrix: T")
     .Input("rhs: T")
@@ -417,7 +508,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
-      return MatrixSolveShapeFn(c, true /* square (*/);
+      return MatrixTriangularSolveShapeFn(c);
     });
 
 REGISTER_OP("MatrixSolveLs")

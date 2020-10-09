@@ -32,65 +32,23 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using XlaOpGenerator = XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64>);
-
-XlaOp BitcastConvertFloatingPointToIntegral(const XlaOp& value,
-                                            int64 bit_width) {
-  PrimitiveType signed_type;
-  PrimitiveType unsigned_type;
-  XlaOp max_value;
-  switch (bit_width) {
-    case 16:
-      max_value =
-          ConstantR0(value.builder(),
-                     static_cast<uint16>(std::numeric_limits<int16>::max()));
-      signed_type = S16;
-      unsigned_type = U16;
-      break;
-    case 32:
-      max_value =
-          ConstantR0(value.builder(),
-                     static_cast<uint32>(std::numeric_limits<int32>::max()));
-      signed_type = S32;
-      unsigned_type = U32;
-      break;
-    case 64:
-      max_value =
-          ConstantR0(value.builder(),
-                     static_cast<uint64>(std::numeric_limits<int64>::max()));
-      signed_type = S64;
-      unsigned_type = U64;
-      break;
-    default:
-      return value.builder()->ReportError(
-          InvalidArgument("Invalid bit width %lld for Comparator floating "
-                          "point parameter.",
-                          bit_width));
-  }
-  // Switch from a floating point value to a integer value in such a way that
-  // when using the integer value to compare, we get the same result for normal
-  // values, and -Nan is treated as the smallest value, and Nan is treated as
-  // the largest value.
-  // If f is a float, and
-  // x = bit_cast<int32>(f);
-  // y = x < 0 ? numeric_limits<int32>::max() - x : x;
-  // then y is ordered as an int32 such that finite values have the obvious
-  // order, -0 is ordered before 0, and -NaN and NaN appear at the beginning
-  // and end of the ordering.
-  // Note that in order to avoid -x to overflow, we calculate
-  // numeric_limits<int32>::max() - x as unsigned, and then convert back to
-  // signed.
-  auto signed_value = BitcastConvertType(value, signed_type);
-  auto unsigned_value = BitcastConvertType(value, unsigned_type);
-  auto flipped_value =
-      BitcastConvertType(Sub(max_value, unsigned_value), signed_type);
-  auto is_negative = Lt(signed_value, Zero(value.builder(), signed_type));
-  return Select(is_negative, flipped_value, signed_value);
-}
+using XlaCompareOp = XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64>);
 
 XlaComputation CreateScalarComparisonComputation(
     const string& name, const std::vector<PrimitiveType>& operand_types,
-    XlaBuilder* builder, XlaOpGenerator generator) {
+    XlaBuilder* builder, XlaCompareOp generator) {
+  CHECK_NE(operand_types.size(), 0);
+  std::vector<absl::optional<XlaCompareOp>> generators(operand_types.size());
+  generators[0] = generator;
+  return CreateScalarComparisonComputation(name, operand_types, generators,
+                                           builder);
+}
+}  // namespace
+
+XlaComputation CreateScalarComparisonComputation(
+    const string& name, const std::vector<PrimitiveType>& operand_types,
+    const std::vector<absl::optional<XlaCompareOp>>& generators,
+    XlaBuilder* builder) {
   // Create a default computation where we compare only the first two
   // parameters of type 'operand_types[0]'.
   auto b = builder->CreateSubBuilder(name);
@@ -99,9 +57,11 @@ XlaComputation CreateScalarComparisonComputation(
     return b->BuildAndNoteError();
   }
 
+  CHECK_EQ(operand_types.size(), generators.size());
   int64 parameter_count = 0;
-  XlaOp first_lhs_param;
-  XlaOp first_rhs_param;
+  int64 last_generator_index = 0;
+  std::vector<XlaOp> lhs_params;
+  std::vector<XlaOp> rhs_params;
 
   // For each type in 'operand_types' we create two parameters of this type. The
   // idea is that this computation can be used by n-ary Sort, and potentially
@@ -114,45 +74,54 @@ XlaComputation CreateScalarComparisonComputation(
                                absl::StrCat("p.", parameter_count, ".lhs"));
     auto rhs_param = Parameter(b.get(), parameter_count * 2 + 1, scalar_shape,
                                absl::StrCat("p.", parameter_count, ".rhs"));
-    if (parameter_count == 0) {
-      first_lhs_param = lhs_param;
-      first_rhs_param = rhs_param;
+    lhs_params.emplace_back(lhs_param);
+    rhs_params.emplace_back(rhs_param);
+    if (generators[parameter_count].has_value()) {
+      last_generator_index = parameter_count;
     }
-    ++parameter_count;
+    parameter_count++;
   }
-  if (primitive_util::IsFloatingPointType(operand_types[0])) {
-    PrimitiveType compare_type = operand_types[0];
-    // Special-case handling for BF16. We currently do not support direct
-    // comparisons with BF16, so we convert to F32 and then use the F32
-    // comparison logic.
-    if (compare_type == BF16) {
-      compare_type = F32;
-      first_lhs_param = ConvertElementType(first_lhs_param, F32);
-      first_rhs_param = ConvertElementType(first_rhs_param, F32);
+
+  CHECK_NE(parameter_count, 0);
+
+  auto shape_or = b->GetShape(lhs_params[0]);
+  if (!shape_or.ok()) {
+    b->ReportError(shape_or.status());
+    return {};
+  }
+  Shape shape = shape_or.ValueOrDie();
+  shape.set_element_type(PRED);
+  XlaOp param_equal = Broadcast(One(b.get(), shape.element_type()),
+                                AsInt64Slice(shape.dimensions()));
+  XlaOp result = param_equal;
+
+  for (int64 i = 0; i < parameter_count; i++) {
+    if (generators[i].has_value()) {
+      result = Select(param_equal,
+                      generators[i].value()(lhs_params[i], rhs_params[i], {}),
+                      result);
+      if (i != last_generator_index) {
+        param_equal =
+            And(param_equal, EqTotalOrder(lhs_params[i], rhs_params[i]));
+      }
     }
-    int64 bit_width = primitive_util::BitWidth(compare_type);
-    first_lhs_param =
-        BitcastConvertFloatingPointToIntegral(first_lhs_param, bit_width);
-    first_rhs_param =
-        BitcastConvertFloatingPointToIntegral(first_rhs_param, bit_width);
   }
-  generator(first_lhs_param, first_rhs_param, {});
+
   return b->BuildAndNoteError();
 }
-}  // namespace
 
 // Creates a scalar less-than computation and returns it.
 XlaComputation CreateScalarLtComputation(
     const std::vector<PrimitiveType>& operand_types, XlaBuilder* builder) {
   return CreateScalarComparisonComputation("compare-less-than", operand_types,
-                                           builder, Lt);
+                                           builder, LtTotalOrder);
 }
 
 // Creates a scalar greater-than computation and returns it.
 XlaComputation CreateScalarGtComputation(
     const std::vector<PrimitiveType>& operand_types, XlaBuilder* builder) {
-  return CreateScalarComparisonComputation("compare-greater-than",
-                                           operand_types, builder, Gt);
+  return CreateScalarComparisonComputation(
+      "compare-greater-than", operand_types, builder, GtTotalOrder);
 }
 
 }  // namespace xla

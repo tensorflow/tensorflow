@@ -18,11 +18,18 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/base/call_once.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -43,20 +50,21 @@ using se::rocm::ScopedActivateExecutorContext;
 int NcclManager::instance_count = 0;
 #endif
 
-#define NCCL_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    ncclResult_t nccl_status = (__VA_ARGS__);                   \
-    if (nccl_status != ncclSuccess) {                           \
-      return errors::Internal(ncclGetErrorString(nccl_status)); \
-    }                                                           \
+#define NCCL_RETURN_IF_ERROR(...)                                        \
+  do {                                                                   \
+    ncclResult_t nccl_status = (__VA_ARGS__);                            \
+    if (nccl_status != ncclSuccess) {                                    \
+      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status), \
+                              ". Set NCCL_DEBUG=WARN for detail.");      \
+    }                                                                    \
   } while (0)
 
-#define CUDA_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    cudaError_t cuda_status = (__VA_ARGS__);                    \
-    if (cuda_status != cudaSuccess) {                           \
-      return errors::Internal(cudaGetErrorString(cuda_status)); \
-    }                                                           \
+#define CUDA_RETURN_IF_ERROR(...)                                         \
+  do {                                                                    \
+    cudaError_t cuda_status = (__VA_ARGS__);                              \
+    if (cuda_status != cudaSuccess) {                                     \
+      return errors::Internal("CUDA: ", cudaGetErrorString(cuda_status)); \
+    }                                                                     \
   } while (0)
 
 // Contains data for a single stream used for nccl communication; this includes
@@ -84,8 +92,8 @@ struct NcclManager::NcclStream : public core::RefCounted {
   mutex mu;
   condition_variable cv;
   // Has (collective, participant_idx) pairs.
-  std::deque<std::pair<Collective*, int>> pending_launches_ GUARDED_BY(mu);
-  bool shutdown_requested GUARDED_BY(mu) = false;
+  std::deque<std::pair<Collective*, int>> pending_launches_ TF_GUARDED_BY(mu);
+  bool shutdown_requested TF_GUARDED_BY(mu) = false;
 };
 
 struct NcclManager::CommunicatorMember {
@@ -112,6 +120,10 @@ struct NcclManager::Communicator {
 };
 
 namespace {
+
+static constexpr DataTypeSet kValidDataTypes =
+    ToSet(DT_HALF) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) |
+    ToSet(DT_INT64);
 
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
@@ -205,6 +217,10 @@ struct NcclManager::Collective : public core::RefCounted {
   // Guarded by the mutex of the containing Communicator.
   int available_participants = 0;
   bool multi_node_ready = false;
+  // trace_context is used by tracing system to associate collective
+  // scheduling and execution (cooperative kernel launch), which happen
+  // on different threads.
+  uint64 trace_context = 0;
 
   Status status;
 };
@@ -236,8 +252,8 @@ NcclManager* NcclManager::instance() {
 #if TENSORFLOW_USE_ROCM
   // singleton does not count against total instances
   // see comment above in Collective constructor concerning ROCm platform
-  static std::once_flag once;
-  std::call_once(once, [] { --NcclManager::instance_count; });
+  static absl::once_flag once;
+  absl::call_once(once, [] { --NcclManager::instance_count; });
 #endif
   return instance;
 }
@@ -250,17 +266,24 @@ string NcclManager::GenerateCommunicatorKey() {
 
 Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
                                     NcclManager::Communicator** communicator) {
-  // Sort by executor to make ordering of executors deterministic.
+  // Sort by device ID, executor, and global rank to make ordering of
+  // participants deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
                const std::unique_ptr<Participant>& b) {
-              if (a->executor == b->executor) {
-                return a->global_rank < b->global_rank;
+              if (a->gpu_device_id != b->gpu_device_id) {
+                return a->gpu_device_id < b->gpu_device_id;
               }
-              return a->executor < b->executor;
+              if (a->executor != b->executor) {
+                return a->executor < b->executor;
+              }
+              return a->global_rank < b->global_rank;
             });
 
   mutex_lock l(mu_);
+  if (!status_.ok()) {
+    return status_;
+  }
 
   if (collective->communicator_key.empty()) {
     // For single-node collectives, when the caller does not specify a
@@ -440,6 +463,7 @@ void NcclManager::AddReduceSend(std::unique_ptr<Participant> participant,
 void NcclManager::AddReduceRecv(std::unique_ptr<Participant> participant,
                                 const Context& context,
                                 ncclRedOp_t reduction_op) {
+  participant->root = true;
   AddParticipant(std::move(participant), context, kReduce, reduction_op);
 }
 
@@ -468,6 +492,7 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
                                  ncclRedOp_t reduction_op) {
   Collective* to_run = nullptr;
   DataType data_type;
+  Status nccl_manager_status;
   if (participant->input != nullptr) {
     data_type = participant->input->dtype();
   } else {
@@ -475,85 +500,100 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
   }
   {
     mutex_lock l(mu_);
-    auto collective_it = collectives_.find(context.collective_key);
-    Collective* collective = nullptr;
-    if (collective_it == collectives_.end()) {
-      collective =
-          new Collective(context.collective_key, data_type, collective_type,
-                         reduction_op, context.num_local_devices,
-                         context.num_global_devices, context.communicator_key);
-      collectives_.emplace(context.collective_key, collective);
-    } else {
-      collective = collective_it->second;
-    }
+    nccl_manager_status = status_;
+    if (nccl_manager_status.ok()) {
+      auto collective_it = collectives_.find(context.collective_key);
+      Collective* collective = nullptr;
+      if (collective_it == collectives_.end()) {
+        collective = new Collective(
+            context.collective_key, data_type, collective_type, reduction_op,
+            context.num_local_devices, context.num_global_devices,
+            context.communicator_key);
+        collectives_.emplace(context.collective_key, collective);
+      } else {
+        collective = collective_it->second;
+      }
 
-    // Check `collective` is correct and consistent.
-    if (collective->status.ok() && !collective->single_node &&
-        collective->communicator_key.empty()) {
-      collective->status = errors::Internal(
-          "Collective ", reduction_op, " is multi node with num_local_devices=",
-          collective->num_local_devices,
-          " and num_global_devices=", collective->num_global_devices,
-          " but has an empty communicator_key");
-    }
-    if (collective->status.ok() && collective->communicator_key.size() !=
-                                       context.communicator_key.size()) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           " mismatch in member communicator_key with size ",
-                           collective->communicator_key.size(),
-                           " and arg communicator_key with size ",
-                           context.communicator_key.size());
-    }
-    if (collective->status.ok() && collective->type != collective_type) {
-      collective->status = errors::Internal(
-          "Collective ", reduction_op, " previously initialized with type ",
-          collective->type, " but now got type ", collective_type);
-    }
-    if (collective->status.ok() &&
-        collective->num_global_devices != context.num_global_devices) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           " previously initialized with num_global_devices ",
-                           collective->num_global_devices, " but now got ",
-                           context.num_global_devices);
-    }
-    if (collective->status.ok() &&
-        collective->num_local_devices != context.num_local_devices) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           "previously initialized with num_local_devices ",
-                           collective->num_local_devices, " but now got ",
-                           context.num_local_devices);
-    }
-    if (collective->status.ok() &&
-        collective->participants.size() >= collective->num_local_devices) {
-      collective->status = errors::Internal(
-          "Collective ", reduction_op, " expected ",
-          collective->num_local_devices, " participants but now has ",
-          collective->participants.size(),
-          " with one more participant being added");
-    }
-    if (collective->status.ok() && collective->root_rank >= 0 &&
-        context.source_rank >= 0 &&
-        collective->root_rank != context.source_rank) {
-      collective->status = errors::Internal(
-          "Collective ", collective->collective_key, " already has root_rank ",
-          collective->root_rank, " but new participant has root_rank ",
-          context.source_rank);
-    }
+      // Check `collective` is correct and consistent.
+      if (collective->status.ok() && !collective->single_node &&
+          collective->communicator_key.empty()) {
+        collective->status = errors::Internal(
+            "Collective ", reduction_op,
+            " is multi node with num_local_devices=",
+            collective->num_local_devices,
+            " and num_global_devices=", collective->num_global_devices,
+            " but has an empty communicator_key");
+      }
+      if (collective->status.ok() && collective->communicator_key.size() !=
+                                         context.communicator_key.size()) {
+        collective->status =
+            errors::Internal("Collective ", reduction_op,
+                             " mismatch in member communicator_key with size ",
+                             collective->communicator_key.size(),
+                             " and arg communicator_key with size ",
+                             context.communicator_key.size());
+      }
+      if (collective->status.ok() && collective->type != collective_type) {
+        collective->status = errors::Internal(
+            "Collective ", reduction_op, " previously initialized with type ",
+            collective->type, " but now got type ", collective_type);
+      }
+      if (collective->status.ok() &&
+          collective->num_global_devices != context.num_global_devices) {
+        collective->status =
+            errors::Internal("Collective ", reduction_op,
+                             " previously initialized with num_global_devices ",
+                             collective->num_global_devices, " but now got ",
+                             context.num_global_devices);
+      }
+      if (collective->status.ok() &&
+          collective->num_local_devices != context.num_local_devices) {
+        collective->status =
+            errors::Internal("Collective ", reduction_op,
+                             "previously initialized with num_local_devices ",
+                             collective->num_local_devices, " but now got ",
+                             context.num_local_devices);
+      }
+      if (collective->status.ok() &&
+          collective->participants.size() >= collective->num_local_devices) {
+        collective->status = errors::Internal(
+            "Collective ", reduction_op, " expected ",
+            collective->num_local_devices, " participants but now has ",
+            collective->participants.size(),
+            " with one more participant being added");
+      }
+      if (collective->status.ok() && collective->root_rank >= 0 &&
+          context.source_rank >= 0 &&
+          collective->root_rank != context.source_rank) {
+        collective->status = errors::Internal(
+            "Collective ", collective->collective_key,
+            " already has root_rank ", collective->root_rank,
+            " but new participant has root_rank ", context.source_rank);
+      }
+      if (collective->status.ok() &&
+          !kValidDataTypes.Contains(collective->data_type)) {
+        collective->status = errors::Internal(
+            "Collective ", collective->collective_key,
+            " expected data types compatible with NCCL but instead got ",
+            DataTypeString(collective->data_type));
+      }
 
-    if (context.source_rank >= 0) {
-      collective->root_rank = context.source_rank;
-    }
-    collective->participants.emplace_back(std::move(participant));
-    ++collective->available_participants;
+      if (context.source_rank >= 0) {
+        collective->root_rank = context.source_rank;
+      }
 
-    if (CheckReady(context.collective_key, collective)) {
-      to_run = collective;
+      collective->participants.emplace_back(std::move(participant));
+      ++collective->available_participants;
+
+      if (CheckReady(context.collective_key, collective)) {
+        to_run = collective;
+      }
     }
   }
-
+  if (!nccl_manager_status.ok()) {
+    participant->done_callback(nccl_manager_status);
+    return;
+  }
   if (to_run != nullptr) RunCollective(to_run);
 }
 
@@ -571,6 +611,10 @@ bool NcclManager::CheckReady(const string& collective_key,
 }
 
 void NcclManager::RunCollective(Collective* collective) {
+  // For TraceMeConsumer in Connection::RPCDone().
+  tensorflow::profiler::TraceMeProducer traceme("Schedule Collective");
+  collective->trace_context = traceme.GetContextId();
+
   static mutex collective_mu(LINKER_INITIALIZED);
 
   Status status = collective->status;
@@ -637,6 +681,20 @@ void NcclManager::RunCollective(Collective* collective) {
   collective->Unref();
 }
 
+namespace {
+// For tracing purpose.
+size_t ComputeBufferSize(const NcclManager::Participant* p,
+                         DataType data_type) {
+  size_t num_elements = 0;
+  if (p->output) {
+    num_elements += p->output->NumElements();
+  } else if (p->input) {
+    num_elements += p->input->NumElements();
+  }
+  return num_elements * DataTypeSize(data_type);
+}
+}  // namespace
+
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 #if TENSORFLOW_USE_ROCM
   se::Stream* comm_stream = nccl_stream->stream;
@@ -666,6 +724,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
     // Launch the nccl kernel.
     Collective* collective = next_launch.first;
+    tensorflow::profiler::TraceMeConsumer traceme("Run Collective",
+                                                  collective->trace_context);
+
     ncclDataType_t data_type = ToNcclType(collective->data_type);
     int p_idx = next_launch.second;
     Participant* p = collective->participants[p_idx].get();
@@ -681,6 +742,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclAllReduce",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "all_reduce"}});
+        });
         nccl_result = ncclAllReduce(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, collective->reduction_op,
                                     nccl_comm, *cu_stream);
@@ -697,6 +764,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         if (p->output) {
           recvbuff = const_cast<char*>(p->output->tensor_data().data());
           num_elements = p->output->NumElements();
+        } else {
+          // Operate in-place if no output (for the src node).
+          recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
           p->done_callback(errors::Internal(
@@ -709,6 +779,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclBroadcast",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "broadcast"}});
+        });
         nccl_result =
             ncclBroadcast(sendbuff, recvbuff, num_elements, data_type,
                           collective->root_rank, nccl_comm, *cu_stream);
@@ -719,6 +795,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         void* recvbuff =
             p->output ? const_cast<char*>(p->output->tensor_data().data())
                       : nullptr;
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "buffer_size",
+              {{"output_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "reduce"}});
+        });
         nccl_result = ncclReduce(sendbuff, recvbuff, p->input->NumElements(),
                                  data_type, collective->reduction_op,
                                  collective->root_rank, nccl_comm, *cu_stream);
@@ -735,6 +817,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " recvcount " << p->output->NumElements() << " nccl_comm "
                 << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclAllGather",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "all_gather"}});
+        });
         nccl_result = ncclAllGather(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, nccl_comm, *cu_stream);
         break;
@@ -758,6 +846,52 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
     };
     p->event_mgr->ThenExecute(comm_stream, done_callback);
   }
+}
+
+void NcclManager::StartAbort(const Status& s) {
+  VLOG(1) << "NcclManager StartAbort";
+  absl::flat_hash_map<string, Collective*> collectives;
+  // After status_ is set to a non-OK one, there should be no further
+  // modifications to collectives_.
+  {
+    mutex_lock l(mu_);
+    if (!status_.ok()) {
+      LOG(WARNING)
+          << "NcclManager already aborted, ignoring subsequent StartAbort with "
+          << s;
+      return;
+    }
+    status_ = s;
+    collectives.swap(collectives_);
+  }
+  // collectives_ contains pending launches that haven't been dispatched to
+  // kernel launch threads, so we can simply invoke the done callbacks of them.
+  for (const auto& item : collectives) {
+    for (const std::unique_ptr<Participant>& p : item.second->participants) {
+      p->done_callback(s);
+    }
+    item.second->Unref();
+  }
+  // Abort ncclComm. Note that there could be multiple ncclComm per device, and
+  // ncclCommAbort contains cuda calls that requires device synchronization.
+  // That is a collective on nccl_comm_0 can block ncclCommAbort(nccl_comm_1),
+  // so we need to abort all ncclComm in a concurrent fashion. This assumes that
+  // there's only one active NcclManager at a time.
+  UnboundedWorkQueue queue(Env::Default(), "nccl_abort");
+  int num_comms = 0;
+  for (std::unique_ptr<Communicator>& communicator : communicators_) {
+    num_comms += communicator->members.size();
+  }
+  BlockingCounter pending(num_comms);
+  for (std::unique_ptr<Communicator>& communicator : communicators_) {
+    for (const CommunicatorMember& member : communicator->members) {
+      queue.Schedule([&member, &pending]() {
+        ncclCommAbort(member.nccl_comm);
+        pending.DecrementCount();
+      });
+    }
+  }
+  pending.Wait();
 }
 
 }  // namespace tensorflow

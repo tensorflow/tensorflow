@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import argparse
 import tempfile
 
@@ -27,6 +26,7 @@ from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import readline_ui
 from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 
@@ -62,7 +62,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     super(CursesTest, self).setUp()
 
   def tearDown(self):
-    shutil.rmtree(self._tmp_dir)
+    file_io.delete_recursively(self._tmp_dir)
     super(CursesTest, self).tearDown()
 
   def _babble(self, args, screen_info=None):
@@ -88,13 +88,13 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(ui, readline_ui.ReadlineUI)
 
   def testUIFactoryRaisesExceptionOnInvalidUIType(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid ui_type: 'foobar'"):
+    with self.assertRaisesRegex(ValueError, "Invalid ui_type: 'foobar'"):
       ui_factory.get_ui(
           "foobar",
           config=cli_config.CLIConfig(config_file_path=self._tmp_config_path))
 
   def testUIFactoryRaisesExceptionOnInvalidUITypeGivenAvailable(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid ui_type: 'readline'"):
+    with self.assertRaisesRegex(ValueError, "Invalid ui_type: 'readline'"):
       ui_factory.get_ui(
           "readline",
           available_ui_types=["curses"],

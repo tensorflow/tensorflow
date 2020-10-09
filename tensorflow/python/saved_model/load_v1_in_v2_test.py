@@ -32,15 +32,20 @@ from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
@@ -48,6 +53,7 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
+from tensorflow.python.training import saver
 
 
 class LoadTest(test.TestCase):
@@ -178,7 +184,7 @@ class LoadTest(test.TestCase):
     return path
 
   def test_multi_meta_graph_loading(self):
-    with self.assertRaisesRegexp(ValueError, "2 MetaGraphs"):
+    with self.assertRaisesRegex(ValueError, "2 MetaGraphs"):
       load.load(self._v1_multi_metagraph_saved_model())
     first_imported = load.load(self._v1_multi_metagraph_saved_model(),
                                tags=["first"])
@@ -187,9 +193,9 @@ class LoadTest(test.TestCase):
                          first_start=constant_op.constant(2.))))
     second_imported = load.load(self._v1_multi_metagraph_saved_model(),
                                 tags=set(["second"]))
-    with self.assertRaisesRegexp(TypeError, "second_start"):
+    with self.assertRaisesRegex(TypeError, "second_start"):
       second_imported.signatures["second_key"](x=constant_op.constant(2.))
-    with self.assertRaisesRegexp(TypeError, "second_start"):
+    with self.assertRaisesRegex(TypeError, "second_start"):
       second_imported.signatures["second_key"](
           second_start=constant_op.constant(2.),
           x=constant_op.constant(2.))
@@ -420,7 +426,7 @@ class LoadTest(test.TestCase):
 
   def test_unfed_placeholder_exception(self):
     path = self._unfed_placeholder_signature()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         lift_to_graph.UnliftableError,
         "signature needs an input for each placeholder.*\n\nUnable to lift"):
       load.load(path)
@@ -561,6 +567,25 @@ class LoadTest(test.TestCase):
         start_dense_shape=dense_shape)
     self.assertAllEqual([84, 86, 88], result["output"].values.numpy())
 
+  def _model_with_ragged_input(self):
+    """Generate a graph with a RaggedTensor input and serialize in V1 format."""
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      x = ragged_factory_ops.placeholder(dtypes.float32, 1, [])
+      y = x * 2
+      with session_lib.Session() as sess:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(sess, path, inputs={"x": x}, outputs={"y": y})
+    return path
+
+  def test_load_ragged_inputs(self):
+    path = self._model_with_ragged_input()
+    imported = load.load(path)
+    imported_fn = imported.signatures["serving_default"]
+    x = ragged_factory_ops.constant([[10., 20.], [30.]])
+    result = imported_fn(x_component_0=x.values, x_component_1=x.row_splits)
+    self.assertAllEqual(result["y"], [[20., 40.], [60.]])
+
   def _model_with_defun(self):
     """Generate a graph with a Defun and serialize in V1 format."""
     export_graph = ops.Graph()
@@ -593,6 +618,47 @@ class LoadTest(test.TestCase):
     imported_fn = imported.signatures["serving_default"]
     forty_two = constant_op.constant([42], dtype=dtypes.int64)
     self.assertEqual([45], imported_fn(forty_two)["output"].numpy())
+
+  def test_load_and_restore_partitioned_variables(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      partitioned_var = variable_scope.get_variable(
+          "a", shape=[6], initializer=init_ops.constant_initializer(13),
+          partitioner=partitioned_variables.fixed_size_partitioner(2),
+          use_resource=True)
+      x = array_ops.placeholder(shape=[], dtype=dtypes.float32)
+      y = x * partitioned_var
+      with session_lib.Session() as session:
+        session.run(variables.global_variables_initializer())
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(session, path,
+                                inputs={"x": x}, outputs={"y": y})
+
+        # Create a name-based checkpoint with different values.
+        session.run(partitioned_var.assign([[5, 4, 3], [2, 1, 0]]))
+        ckpt_path = os.path.join(self.get_temp_dir(), "restore_ckpt")
+        saver.Saver().save(session, ckpt_path)
+
+    imported = load.load(path)
+    self.assertAllClose(self.evaluate(imported.variables),
+                        [[13, 13, 13], [13, 13, 13]])
+
+    self.evaluate(imported.restore(ckpt_path))
+    self.assertAllClose(self.evaluate(imported.variables),
+                        [[5, 4, 3], [2, 1, 0]])
+    self.assertAllClose(
+        self.evaluate(
+            imported.signatures["serving_default"](constant_op.constant(2.))),
+        {"y": [10, 8, 6, 4, 2, 0]})
+
+  def test_structured_input_signature(self):
+    path = self._v1_single_metagraph_saved_model(False)
+    imported = load.load(path)
+    args, kwargs = (
+        imported.signatures["serving_default"].structured_input_signature)
+    self.assertEqual(args, ())
+    self.assertAllEqual(
+        kwargs, {"start": tensor_spec.TensorSpec(shape=None, name="start")})
 
 
 if __name__ == "__main__":

@@ -51,11 +51,11 @@ class CsvDatasetBenchmark(test.Benchmark):
     self._filenames = []
     for n in self._num_cols:
       fn = os.path.join(self._temp_dir, 'file%d.csv' % n)
-      with open(fn, 'wb') as f:
+      with open(fn, 'w') as f:
         # Just write 100 rows and use `repeat`... Assumes the cost
         # of creating an iterator is not significant
-        row = ','.join([str_val for _ in range(n)])
-        f.write('\n'.join([row for _ in range(100)]))
+        row = ','.join(str_val for _ in range(n))
+        f.write('\n'.join(row for _ in range(100)))
       self._filenames.append(fn)
 
   def _tear_down(self):

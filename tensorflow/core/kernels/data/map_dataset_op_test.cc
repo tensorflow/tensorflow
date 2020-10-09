@@ -22,7 +22,7 @@ namespace {
 
 constexpr char kNodeName[] = "map_dataset";
 
-class MapDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class MapDatasetOpTest : public DatasetOpsTestBase {};
 
 MapDatasetParams MapDatasetParams1() {
   auto map_dataset_params_0 = MapDatasetParams(
@@ -134,7 +134,7 @@ std::vector<CardinalityTestCase<MapDatasetParams>> CardinalityTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(),
            /*expected_cardinality=*/4},
           {/*dataset_params=*/MapDatasetParams2(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/MapDatasetParams3(),
            /*expected_cardinality=*/4}};
 }

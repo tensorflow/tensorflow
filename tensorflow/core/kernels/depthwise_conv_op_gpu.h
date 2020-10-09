@@ -987,7 +987,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
                                              const T* filter, T* in_backprop,
                                              TensorFormat data_format) {
   if (args.depth_multiplier == 1) {
-    if (CanLaunchDepthwiseConv2dGPUSmall(args)) {
+    // This kernel doesn't currently work in all cases so it is disabled.
+    // TODO(b/150988950): Fix and reenable this kernel.
+    if (/* CanLaunchDepthwiseConv2dGPUSmall(args) */ false) {
       return LaunchDepthwiseConv2dGPUSmall<
           T, DIRECTION_BACKWARD, kKnownFilterWidth, kKnownFilterHeight>(
           ctx, args, out_backprop, filter, in_backprop, data_format);
@@ -1761,7 +1763,7 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   int num_filter_backprop =
       args.filter_rows * args.filter_cols * args.out_depth;
   se::DeviceMemoryBase filter_bp_ptr(filter_backprop, num_filter_backprop);
-  stream->ThenMemset32(&filter_bp_ptr, 0, num_filter_backprop * sizeof(T));
+  stream->ThenMemZero(&filter_bp_ptr, num_filter_backprop * sizeof(T));
 
   if (args.filter_rows == 3 && args.filter_cols == 3) {
     OP_REQUIRES_OK(

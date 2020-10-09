@@ -496,18 +496,31 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
 }
 
 template <typename T>
-std::vector<T> VectorWithConstantTail(int size, int tail_length) {
+void VectorWithConstantTail(int size, int tail_length, std::vector<T>* v) {
   CHECK_LE(tail_length, size);
-  std::vector<T> v(size, T(0));
-  for (int i = 0; i < size - tail_length; ++i) {
-    v[i] = T(i + 1);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    T vi = (i >= size - tail_length) ? T() : T(i);
+    v->push_back(vi);
   }
-  return v;
+}
+
+template <>
+void VectorWithConstantTail(int size, int tail_length,
+                            std::vector<std::complex<float>>* v) {
+  CHECK_LE(tail_length, size);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    std::complex<float> vi(
+        0.0f, (i >= (size - tail_length)) ? 0.f : static_cast<float>(i));
+    v->push_back(vi);
+  }
 }
 
 template <typename T>
 TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
-  auto values = VectorWithConstantTail<T>(size, tail_length);
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
   Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
   std::copy(values.begin(), values.end(), tensor.flat<T>().data());
   TensorProto tensor_proto;
@@ -517,7 +530,8 @@ TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
 
 template <typename T>
 TensorProto CreateAsProtoField(int size, int tail_length) {
-  auto values = VectorWithConstantTail<T>(size, tail_length);
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
   Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
   std::copy(values.begin(), values.end(), tensor.flat<T>().data());
   TensorProto tensor_proto;

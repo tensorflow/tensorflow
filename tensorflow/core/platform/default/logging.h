@@ -19,7 +19,9 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/logging.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/logging.h
 
+#include <atomic>
 #include <limits>
+#include <memory>
 #include <sstream>
 
 #include "absl/base/log_severity.h"
@@ -42,7 +44,10 @@ namespace internal {
 class LogMessage : public std::basic_ostringstream<char> {
  public:
   LogMessage(const char* fname, int line, int severity);
-  ~LogMessage();
+  ~LogMessage() override;
+
+  // Change the location of the log message.
+  LogMessage& AtLocation(const char* fname, int line);
 
   // Returns the minimum log level for VLOG statements.
   // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
@@ -81,7 +86,14 @@ struct Voidifier {
 class LogMessageFatal : public LogMessage {
  public:
   LogMessageFatal(const char* file, int line) TF_ATTRIBUTE_COLD;
-  TF_ATTRIBUTE_NORETURN ~LogMessageFatal();
+  TF_ATTRIBUTE_NORETURN ~LogMessageFatal() override;
+};
+
+// LogMessageNull supports the DVLOG macro by simply dropping any log messages.
+class LogMessageNull : public std::basic_ostringstream<char> {
+ public:
+  LogMessageNull() {}
+  ~LogMessageNull() override {}
 };
 
 #define _TF_LOG_INFO \
@@ -123,6 +135,118 @@ class LogMessageFatal : public LogMessage {
           ::tensorflow::internal::LogMessage(__FILE__, __LINE__, \
                                              tensorflow::INFO)
 
+// `DVLOG` behaves like `VLOG` in debug mode (i.e. `#ifndef NDEBUG`).
+// Otherwise, it compiles away and does nothing.
+#ifndef NDEBUG
+#define DVLOG VLOG
+#else
+#define DVLOG(verbose_level) \
+  while (false && (verbose_level) > 0) ::tensorflow::internal::LogMessageNull()
+#endif
+
+class LogEveryNState {
+ public:
+  bool ShouldLog(int n);
+  uint32_t counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+};
+
+class LogFirstNState {
+ public:
+  bool ShouldLog(int n);
+  uint32 counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+};
+
+class LogEveryPow2State {
+ public:
+  bool ShouldLog(int ignored);
+  uint32 counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+};
+
+class LogEveryNSecState {
+ public:
+  bool ShouldLog(double seconds);
+  uint32 counter() { return counter_.load(std::memory_order_relaxed); }
+
+ private:
+  std::atomic<uint32> counter_{0};
+  // Cycle count according to CycleClock that we should next log at.
+  std::atomic<int64> next_log_time_cycles_{0};
+};
+
+// This macro has a lot going on!
+//
+// * A local static (`logging_internal_stateful_condition_state`) is
+//   declared in a scope such that each `LOG_EVERY_N` (etc.) line has its own
+//   state.
+// * `COUNTER`, the third variable, is used to support `<< COUNTER`. It is not
+//   mangled, so shadowing can be a problem, albeit more of a
+//   shoot-yourself-in-the-foot one.  Don't name your variables `COUNTER`.
+// * A single for loop can declare state and also test
+//   `condition && state.ShouldLog()`, but there's no way to constrain it to run
+//   only once (or not at all) without declaring another variable.  The outer
+//   for-loop declares this variable (`do_log`).
+// * Using for loops instead of if statements means there's no risk of an
+//   ambiguous dangling else statement.
+#define LOGGING_INTERNAL_STATEFUL_CONDITION(kind, condition, arg)   \
+  for (bool logging_internal_stateful_condition_do_log(condition);  \
+       logging_internal_stateful_condition_do_log;                  \
+       logging_internal_stateful_condition_do_log = false)          \
+    for (static ::tensorflow::internal::Log##kind##State            \
+             logging_internal_stateful_condition_state;             \
+         logging_internal_stateful_condition_do_log &&              \
+         logging_internal_stateful_condition_state.ShouldLog(arg);  \
+         logging_internal_stateful_condition_do_log = false)        \
+      for (const uint32_t COUNTER ABSL_ATTRIBUTE_UNUSED =           \
+               logging_internal_stateful_condition_state.counter(); \
+           logging_internal_stateful_condition_do_log;              \
+           logging_internal_stateful_condition_do_log = false)
+
+// An instance of `LOG_EVERY_N` increments a hidden zero-initialized counter
+// every time execution passes through it and logs the specified message when
+// the counter's value is a multiple of `n`, doing nothing otherwise.  Each
+// instance has its own counter.  The counter's value can be logged by streaming
+// the symbol `COUNTER`.  `LOG_EVERY_N` is thread-safe.
+// Example:
+//
+//   for (const auto& user : all_users) {
+//     LOG_EVERY_N(INFO, 1000) << "Processing user #" << COUNTER;
+//     ProcessUser(user);
+//   }
+#define LOG_EVERY_N(severity, n)                       \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(EveryN, true, n) \
+  LOG(severity)
+// `LOG_FIRST_N` behaves like `LOG_EVERY_N` except that the specified message is
+// logged when the counter's value is less than `n`.  `LOG_FIRST_N` is
+// thread-safe.
+#define LOG_FIRST_N(severity, n)                       \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(FirstN, true, n) \
+  LOG(severity)
+// `LOG_EVERY_POW_2` behaves like `LOG_EVERY_N` except that the specified
+// message is logged when the counter's value is a power of 2.
+// `LOG_EVERY_POW_2` is thread-safe.
+#define LOG_EVERY_POW_2(severity)                         \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(EveryPow2, true, 0) \
+  LOG(severity)
+// An instance of `LOG_EVERY_N_SEC` uses a hidden state variable to log the
+// specified message at most once every `n_seconds`.  A hidden counter of
+// executions (whether a message is logged or not) is also maintained and can be
+// logged by streaming the symbol `COUNTER`.  `LOG_EVERY_N_SEC` is thread-safe.
+// Example:
+//
+//   LOG_EVERY_N_SEC(INFO, 2.5) << "Got " << COUNTER << " cookies so far";
+#define LOG_EVERY_N_SEC(severity, n_seconds)                      \
+  LOGGING_INTERNAL_STATEFUL_CONDITION(EveryNSec, true, n_seconds) \
+  LOG(severity)
+
 // CHECK dies with a fatal error if condition is not true.  It is *not*
 // controlled by NDEBUG, so the check will be executed regardless of
 // compilation mode.  Therefore, it is safe to do things like:
@@ -141,16 +265,12 @@ inline const T& GetReferenceableValue(const T& t) {
 inline char GetReferenceableValue(char t) { return t; }
 inline unsigned char GetReferenceableValue(unsigned char t) { return t; }
 inline signed char GetReferenceableValue(signed char t) { return t; }
-inline short GetReferenceableValue(short t) { return t; }
-inline unsigned short GetReferenceableValue(unsigned short t) { return t; }
+inline int16 GetReferenceableValue(int16 t) { return t; }
+inline uint16 GetReferenceableValue(uint16 t) { return t; }
 inline int GetReferenceableValue(int t) { return t; }
 inline unsigned int GetReferenceableValue(unsigned int t) { return t; }
-inline long GetReferenceableValue(long t) { return t; }
-inline unsigned long GetReferenceableValue(unsigned long t) { return t; }
-inline long long GetReferenceableValue(long long t) { return t; }
-inline unsigned long long GetReferenceableValue(unsigned long long t) {
-  return t;
-}
+inline int64 GetReferenceableValue(int64 t) { return t; }
+inline uint64 GetReferenceableValue(uint64 t) { return t; }
 
 // This formats a value for a failing CHECK_XX statement.  Ordinarily,
 // it uses the definition for operator<<, with a few special cases below.
@@ -171,16 +291,16 @@ void MakeCheckOpValueString(std::ostream* os, const unsigned char& v);
 #if LANG_CXX11
 // We need an explicit specialization for std::nullptr_t.
 template <>
-void MakeCheckOpValueString(std::ostream* os, const std::nullptr_t& p);
+void MakeCheckOpValueString(std::ostream* os, const std::nullptr_t& v);
 #endif
 
 // A container for a string pointer which can be evaluated to a bool -
 // true iff the pointer is non-NULL.
 struct CheckOpString {
-  CheckOpString(string* str) : str_(str) {}
+  explicit CheckOpString(string* str) : str_(str) {}
   // No destructor: if str_ is non-NULL, we're about to LOG(FATAL),
   // so there's no point in cleaning up str_.
-  operator bool() const { return TF_PREDICT_FALSE(str_ != NULL); }
+  explicit operator bool() const { return TF_PREDICT_FALSE(str_ != nullptr); }
   string* str_;
 };
 
@@ -269,12 +389,12 @@ TF_DEFINE_CHECK_OP_IMPL(Check_GT, >)
 
 // In optimized mode, use CheckOpString to hint to compiler that
 // the while condition is unlikely.
-#define CHECK_OP_LOG(name, op, val1, val2)                            \
-  while (::tensorflow::internal::CheckOpString _result =              \
-             ::tensorflow::internal::name##Impl(                      \
-                 ::tensorflow::internal::GetReferenceableValue(val1), \
-                 ::tensorflow::internal::GetReferenceableValue(val2), \
-                 #val1 " " #op " " #val2))                            \
+#define CHECK_OP_LOG(name, op, val1, val2)                     \
+  while (::tensorflow::internal::CheckOpString _result{        \
+      ::tensorflow::internal::name##Impl(                      \
+          ::tensorflow::internal::GetReferenceableValue(val1), \
+          ::tensorflow::internal::GetReferenceableValue(val2), \
+          #val1 " " #op " " #val2)})                           \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__) << *(_result.str_)
 
 #define CHECK_OP(name, op, val1, val2) CHECK_OP_LOG(name, op, val1, val2)
@@ -352,13 +472,13 @@ int64 MinVLogLevelFromEnv();
 // instance will be called from whichever thread is performing a logging
 // operation.
 class TFLogEntry {
-  static absl::LogSeverity AsAbslLogSecurity(int severity) {
+  static absl::LogSeverity AsAbslLogSeverity(int severity) {
     return static_cast<absl::LogSeverity>(severity);
   }
 
  public:
   explicit TFLogEntry(int severity, absl::string_view log_line)
-      : severity_(AsAbslLogSecurity(severity)), log_line_(log_line) {}
+      : severity_(AsAbslLogSeverity(severity)), log_line_(log_line) {}
 
   absl::LogSeverity log_severity() const { return severity_; }
   std::string ToString() const { return std::string(log_line_); }

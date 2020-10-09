@@ -112,7 +112,7 @@ TEST(ClientSessionTest, Extend) {
   test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({31, 42}, {2}));
 }
 
-TEST(ClientSessionTest, MultiThreaded) {
+TEST(ClientSessionTest, MultiThreadedWithDefaultThreadpool) {
   Scope root = Scope::NewRootScope();
   auto a = Add(root, {1, 2}, {3, 4});
   auto b = Mul(root, {1, 2}, {3, 4});
@@ -135,6 +135,49 @@ TEST(ClientSessionTest, MultiThreaded) {
   auto c = Sub(root, b, a);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({c}, &outputs));
+  test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({-1, 2}, {2}));
+}
+
+TEST(ClientSessionTest, MultiThreadedWithCustomThreadpool) {
+  Scope root = Scope::NewRootScope();
+  int num_threads = 3;
+  auto a = Add(root, {1, 2}, {3, 4});
+  auto b = Mul(root, {1, 2}, {3, 4});
+  ClientSession session(root);
+
+  auto inter_op_threadpool =
+      absl::make_unique<CustomThreadPoolImpl>(num_threads);
+  ASSERT_EQ(inter_op_threadpool->GetNumScheduleCalled(), 0);
+
+  auto intra_op_threadpool =
+      absl::make_unique<CustomThreadPoolImpl>(num_threads);
+  ASSERT_EQ(intra_op_threadpool->GetNumScheduleCalled(), 0);
+
+  tensorflow::thread::ThreadPoolOptions threadPoolOptions;
+  threadPoolOptions.inter_op_threadpool = inter_op_threadpool.get();
+  threadPoolOptions.intra_op_threadpool = intra_op_threadpool.get();
+
+  {
+    thread::ThreadPool thread_pool(Env::Default(), "pool", 2);
+    thread_pool.Schedule([&session, a]() {
+      std::vector<Tensor> outputs;
+      TF_EXPECT_OK(session.Run(RunOptions(), ClientSession::FeedType{}, {a}, {},
+                               &outputs, nullptr, thread::ThreadPoolOptions()));
+      test::ExpectTensorEqual<int>(outputs[0],
+                                   test::AsTensor<int>({4, 6}, {2}));
+    });
+    thread_pool.Schedule([&session, b]() {
+      std::vector<Tensor> outputs;
+      TF_EXPECT_OK(session.Run(RunOptions(), ClientSession::FeedType{}, {b}, {},
+                               &outputs, nullptr, thread::ThreadPoolOptions()));
+      test::ExpectTensorEqual<int>(outputs[0],
+                                   test::AsTensor<int>({3, 8}, {2}));
+    });
+  }
+  auto c = Sub(root, b, a);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run(RunOptions(), ClientSession::FeedType{}, {c}, {},
+                           &outputs, nullptr, thread::ThreadPoolOptions()));
   test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({-1, 2}, {2}));
 }
 

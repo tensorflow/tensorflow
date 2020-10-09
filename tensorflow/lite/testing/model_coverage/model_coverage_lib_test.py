@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 import numpy as np
 
 from tensorflow.lite.python import lite
@@ -55,6 +56,18 @@ class EvaluateFrozenGraph(test.TestCase):
     filename = self._saveFrozenGraph(sess)
     model_coverage.test_frozen_graph(filename, ['Placeholder'], ['add'])
 
+  def testInputWithRange(self):
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32)
+        _ = in_tensor + in_tensor
+
+    filename = self._saveFrozenGraph(sess)
+    model_coverage.test_frozen_graph(
+        filename, ['Placeholder'], ['add'],
+        input_data_range={'Placeholder': (0, 10)})
+
   def testMultipleOutputs(self):
     with ops.Graph().as_default():
       with session.Session().as_default() as sess:
@@ -72,7 +85,6 @@ class EvaluateFrozenGraph(test.TestCase):
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
 
-  @test_util.run_in_graph_and_eager_modes
   def testFunctions(self):
     """Tests functions."""
 
@@ -144,6 +156,39 @@ class EvaluateSavedModel(test.TestCase):
         saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
     model_coverage.test_saved_model(saved_model_dir)
 
+  def testPostTrainingQuantize16x8(self):
+    """Test for post-training quantization mode: activations/weights - int16/int8."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
+
+    input_size = [5, 5, 3]
+    kernel_size = [3, 3, 1]
+    layer_name = 'test_conv2d'
+    input_0 = keras.layers.Input(shape=input_size)
+    layer_0 = keras.layers.Conv2D(
+        filters=kernel_size[-1],
+        kernel_size=kernel_size[0:2],
+        use_bias=False,
+        name=layer_name)(
+            input_0)
+    model = keras.models.Model(inputs=[input_0], outputs=[layer_0])
+    keras_layer = [layer for layer in model.layers if layer.name == layer_name
+                  ][0]
+    keras_layer.set_weights([
+        np.random.rand(
+            input_size[-1],
+            kernel_size[0],
+            kernel_size[1],
+            kernel_size[2],
+        ).astype(np.float32)
+    ])
+
+    saved_model.save(model, saved_model_dir)
+
+    model_coverage.test_saved_model(
+        saved_model_dir,
+        post_training_quantize_16x8=True,
+        model_input_size=input_size)
+
 
 class EvaluateKerasModel(test.TestCase):
 
@@ -167,18 +212,21 @@ class EvaluateKerasModel(test.TestCase):
       os.close(fd)
     return keras_file
 
+  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testFloat(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file)
 
+  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testPostTrainingQuantize(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file, post_training_quantize=True)
 
+  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testTargetOps(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)

@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -109,23 +111,14 @@ struct TargetDeviceFunction {
 struct TargetDeviceFunction GetDeviceFunctionRoot(
     TargetDeviceFunctionID func_id) {
   switch (func_id) {
-    case TargetDeviceFunctionID::kPow: {
-      return {"__nv_pow", "__ocml_pow"};
-    }
-    case TargetDeviceFunctionID::kErfcinv: {
-      return {"__nv_erfcinv", "__ocml_erfcinv"};
-    }
-    case TargetDeviceFunctionID::kLog: {
-      return {"__nv_log", "__ocml_log"};
-    }
-    case TargetDeviceFunctionID::kLog1p: {
-      return {"__nv_log1p", "__ocml_log1p"};
-    }
-    case TargetDeviceFunctionID::kSin: {
-      return {"__nv_sin", "__ocml_sin"};
+    case TargetDeviceFunctionID::kAtan2: {
+      return {"__nv_atan2", "__ocml_atan2"};
     }
     case TargetDeviceFunctionID::kCos: {
       return {"__nv_cos", "__ocml_cos"};
+    }
+    case TargetDeviceFunctionID::kErfcinv: {
+      return {"__nv_erfcinv", "__ocml_erfcinv"};
     }
     case TargetDeviceFunctionID::kExp: {
       return {"__nv_exp", "__ocml_exp"};
@@ -133,23 +126,35 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kExpm1: {
       return {"__nv_expm1", "__ocml_expm1"};
     }
-    case TargetDeviceFunctionID::kSqrt: {
-      return {"__nv_sqrt", "__ocml_sqrt"};
-    }
-    case TargetDeviceFunctionID::kRsqrt: {
-      return {"__nv_rsqrt", "__ocml_rsqrt"};
-    }
-    case TargetDeviceFunctionID::kAtan2: {
-      return {"__nv_atan2", "__ocml_atan2"};
-    }
     case TargetDeviceFunctionID::kFmod: {
       return {"__nv_fmod", "__ocml_fmod"};
+    }
+    case TargetDeviceFunctionID::kHypot: {
+      return {"__nv_hypot", "__ocml_hypot"};
+    }
+    case TargetDeviceFunctionID::kLog: {
+      return {"__nv_log", "__ocml_log"};
+    }
+    case TargetDeviceFunctionID::kLog1p: {
+      return {"__nv_log1p", "__ocml_log1p"};
+    }
+    case TargetDeviceFunctionID::kPow: {
+      return {"__nv_pow", "__ocml_pow"};
     }
     case TargetDeviceFunctionID::kRound: {
       return {"__nv_round", "__ocml_round"};
     }
-    case TargetDeviceFunctionID::kHypot: {
-      return {"__nv_hypot", "__ocml_hypot"};
+    case TargetDeviceFunctionID::kRsqrt: {
+      return {"__nv_rsqrt", "__ocml_rsqrt"};
+    }
+    case TargetDeviceFunctionID::kSin: {
+      return {"__nv_sin", "__ocml_sin"};
+    }
+    case TargetDeviceFunctionID::kSqrt: {
+      return {"__nv_sqrt", "__ocml_sqrt"};
+    }
+    case TargetDeviceFunctionID::kTanh: {
+      return {"__nv_tanh", "__ocml_tanh"};
     }
   }
 }

@@ -1,7 +1,9 @@
 path: "tensorflow.keras.callbacks.TensorBoard"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.callbacks_v1.TensorBoard\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.TensorBoard\'>"
   is_instance: "<class \'tensorflow.python.keras.callbacks.Callback\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.TensorBoardVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

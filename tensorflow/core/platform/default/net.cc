@@ -15,18 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/platform/net.h"
 
-#include <cerrno>
-#include <cstdlib>
-#include <cstring>
-#include <unordered_set>
-
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <unordered_set>
+
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace internal {
@@ -51,7 +51,9 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   int one = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)) < 0) {
     LOG(ERROR) << "setsockopt() failed: " << strerror(errno);
-    close(fd);
+    if (close(fd) < 0) {
+      LOG(ERROR) << "close() failed: " << strerror(errno);
+    };
     return false;
   }
 
@@ -61,7 +63,9 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   addr.sin_port = htons(static_cast<uint16_t>(*port));
   if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
     LOG(WARNING) << "bind(port=" << *port << ") failed: " << strerror(errno);
-    close(fd);
+    if (close(fd) < 0) {
+      LOG(ERROR) << "close() failed: " << strerror(errno);
+    };
     return false;
   }
 
@@ -69,7 +73,9 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   if (getsockname(fd, reinterpret_cast<struct sockaddr*>(&addr), &addr_len) <
       0) {
     LOG(WARNING) << "getsockname() failed: " << strerror(errno);
-    close(fd);
+    if (close(fd) < 0) {
+      LOG(ERROR) << "close() failed: " << strerror(errno);
+    };
     return false;
   }
   CHECK_LE(addr_len, sizeof(addr));
@@ -80,7 +86,9 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   } else {
     CHECK_EQ(*port, actual_port);
   }
-  close(fd);
+  if (close(fd) < 0) {
+    LOG(ERROR) << "close() failed: " << strerror(errno);
+  };
   return true;
 }
 

@@ -19,9 +19,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -37,7 +37,6 @@ class Environment {
   explicit Environment(CLDevice&& device, CLContext&& context,
                        CLCommandQueue&& queue,
                        ProfilingCommandQueue&& profiling_queue);
-
   // Move only
   Environment(Environment&& environment);
   Environment& operator=(Environment&& environment);
@@ -55,9 +54,14 @@ class Environment {
 
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
   bool IsSupported(CalculationsPrecision precision) const;
-  std::vector<TensorStorageType> GetSupportedTextureStorages() const;
-  std::vector<TensorStorageType> GetSupportedBatchStorages() const;
   std::vector<TensorStorageType> GetSupportedStorages() const;
+  // returns storage types that support zero clamping when reading OOB in HW
+  // (Height/Width) dimensions.
+  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
+      const;
+  bool IsSupported(TensorStorageType storage_type) const;
+
+  absl::Status Init();
 
   void SetHighPerformance() const;
   void SetDefaultPerformance() const;
@@ -71,12 +75,11 @@ class Environment {
   ProgramCache program_cache_;
 };
 
-TensorStorageType GetOptimalStorageType(const CLDevice& gpu);
+TensorStorageType GetFastestStorageType(const DeviceInfo& gpu_info);
+TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
+    const DeviceInfo& gpu_info);
 
-Status CreateEnvironment(Environment* result);
-Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
-                                     cl_context_properties egl_display,
-                                     Environment* result);
+absl::Status CreateEnvironment(Environment* result);
 
 }  // namespace cl
 }  // namespace gpu

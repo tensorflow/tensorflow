@@ -15,27 +15,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
-TEST(IrEmitterTest, ConvWithZeroSizedKernelNotImplementedAsEigen) {
+using IrEmitterTest = HloTestBase;
+
+TEST_F(IrEmitterTest, ConvWithZeroSizedKernelNotImplementedAsEigen) {
   const char* const hlo_string = R"(
 HloModule ModuleWithConv
 
 ENTRY Conv {
   input = f32[32,50,28,28]{3,2,1,0} parameter(0)
-  kernel = f32[0,32,5,5]{3,2,1,0} parameter(1)
-  ROOT convolution = f32[64,50,24,24]{3,2,1,0} convolution(input, kernel),
+  kernel = f32[50,0,5,5]{3,2,1,0} parameter(1)
+  ROOT convolution = f32[32,0,24,24]{3,2,1,0} convolution(input, kernel),
     window={size=5x5},
-    dim_labels=b01f_01io->b01f
+    dim_labels=bf01_io01->bf01
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* entry_computation = module->entry_computation();
 

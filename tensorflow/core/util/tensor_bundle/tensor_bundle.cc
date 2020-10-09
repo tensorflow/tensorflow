@@ -31,16 +31,18 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
@@ -75,6 +77,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
 
   // Reads "num_elements" varint64's from "buffered_file".
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
+  TF_RETURN_IF_ERROR(buffered_file->Hint(size));
   std::vector<uint64> string_lengths(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {
     TF_RETURN_IF_ERROR(buffered_file->ReadVarint64(&string_lengths[i]));
@@ -150,6 +153,7 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
 
   // Reads the actual string bytes.
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
+  TF_RETURN_IF_ERROR(buffered_file->Hint(size));
   for (size_t i = 0; i < num_elements; ++i) {
     // Read the serialized variant length.
     uint64 string_length = 0;
@@ -306,7 +310,11 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     VariantTensorDataProto proto;
     data.ToProto(&proto);
     string elem;
-    proto.SerializeToString(&elem);
+    if (!proto.SerializeToString(&elem)) {
+      return errors::Unknown(
+          "Failed to serialize tensor data of size ", proto.ByteSizeLong(),
+          ". Tensor: ", val.flat<Variant>()(i).DebugString());
+    }
 
     // Write the length of the serialized variant.
     DCHECK_EQ(elem.size(), static_cast<uint64>(elem.size()));
@@ -401,24 +409,31 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
     : env_(env),
       options_(options),
       prefix_(prefix),
-      tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
-                                         random::New64())),
-      tmp_data_path_(strings::StrCat(DataFilename(prefix_, 0, 1), ".tempstate",
-                                     random::New64())),
       out_(nullptr),
       size_(0) {
+  status_ = env_->HasAtomicMove(prefix_, &use_temp_file_);
+  if (!status_.ok()) return;
+
+  data_path_ = DataFilename(prefix_, 0, 1);
+  metadata_path_ = MetaFilename(prefix_);
+  if (use_temp_file_) {
+    data_path_ = strings::StrCat(data_path_, ".tempstate", random::New64());
+    metadata_path_ =
+        strings::StrCat(metadata_path_, ".tempstate", random::New64());
+  }
+
   status_ = env_->CreateDir(string(io::Dirname(prefix_)));
   if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
     return;
   }
-  const string filename = DataFilename(prefix_, 0, 1);
+
   std::unique_ptr<WritableFile> wrapper;
-  status_ = env_->NewWritableFile(tmp_data_path_, &wrapper);
+  status_ = env_->NewWritableFile(data_path_, &wrapper);
   if (!status_.ok()) return;
   out_ = std::unique_ptr<FileOutputBuffer>(
       new FileOutputBuffer(wrapper.release(), 8 << 20 /* 8MB write buffer */));
 
-  VLOG(1) << "Writing to file " << tmp_data_path_;
+  VLOG(1) << "Writing to file " << data_path_;
 }
 
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
@@ -506,16 +521,18 @@ Status BundleWriter::Finish() {
     status_.Update(out_->Close());
     out_ = nullptr;
     if (status_.ok()) {
-      status_ = Env::Default()->RenameFile(tmp_data_path_,
-                                           DataFilename(prefix_, 0, 1));
+      if (use_temp_file_) {
+        status_ =
+            Env::Default()->RenameFile(data_path_, DataFilename(prefix_, 0, 1));
+      }
     } else {
-      Env::Default()->DeleteFile(tmp_data_path_).IgnoreError();
+      Env::Default()->DeleteFile(data_path_).IgnoreError();
     }
   }
   if (!status_.ok()) return status_;
   // Build key -> BundleEntryProto table.
   std::unique_ptr<WritableFile> file;
-  status_ = env_->NewWritableFile(tmp_metadata_path_, &file);
+  status_ = env_->NewWritableFile(metadata_path_, &file);
   if (!status_.ok()) return status_;
   {
     // N.B.: the default use of Snappy compression may not be supported on all
@@ -542,11 +559,10 @@ Status BundleWriter::Finish() {
   }
   status_.Update(file->Close());
   if (!status_.ok()) {
-    Env::Default()->DeleteFile(tmp_metadata_path_).IgnoreError();
+    Env::Default()->DeleteFile(metadata_path_).IgnoreError();
     return status_;
-  } else {
-    status_ =
-        Env::Default()->RenameFile(tmp_metadata_path_, MetaFilename(prefix_));
+  } else if (use_temp_file_) {
+    status_ = Env::Default()->RenameFile(metadata_path_, MetaFilename(prefix_));
     if (!status_.ok()) return status_;
   }
   status_ = errors::Internal("BundleWriter is closed");
@@ -717,7 +733,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
   VLOG(1) << "Merged bundles to:" << merged_prefix;
 
   // Cleanup: best effort based and ignores errors.
-  for (const string& prefix : prefixes) {
+  for (const tstring& prefix : prefixes) {
     env->DeleteFile(MetaFilename(prefix)).IgnoreError();
   }
   return status;
@@ -730,6 +746,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
       prefix_(prefix),
       metadata_(nullptr),
       table_(nullptr),
+      index_cache_(nullptr),
       iter_(nullptr),
       need_to_swap_bytes_(false) {
   const string filename = MetaFilename(prefix_);
@@ -742,7 +759,17 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   status_ = env_->NewRandomAccessFile(filename, &wrapper);
   if (!status_.ok()) return;
   metadata_ = wrapper.release();
-  status_ = table::Table::Open(table::Options(), metadata_, file_size, &table_);
+
+  table::Options o;
+  int64 cache_size;
+  Status s =
+      ReadInt64FromEnvVar("TF_TABLE_INDEX_CACHE_SIZE_IN_MB", 0, &cache_size);
+  if (s.ok() && cache_size > 0) {
+    index_cache_ = table::NewLRUCache(cache_size << 20);
+    o.block_cache = index_cache_;
+  }
+
+  status_ = table::Table::Open(o, metadata_, file_size, &table_);
   if (!status_.ok()) return;
   iter_ = table_->NewIterator();
 
@@ -773,14 +800,23 @@ BundleReader::~BundleReader() {
   delete metadata_;
   delete iter_;
   delete table_;
+  if (index_cache_) {
+    delete index_cache_;
+  }
   // InputBuffer does not own the underlying RandomAccessFile.
   for (auto pair : data_) {
     if (pair.second != nullptr && pair.second->file() != nullptr) {
       delete pair.second->file();
     }
   }
-  gtl::STLDeleteValues(&data_);
-  gtl::STLDeleteValues(&tensor_slices_);
+  for (auto& temp : data_) {
+    delete temp.second;
+  }
+  for (auto& temp : tensor_slices_) {
+    delete temp.second;
+  }
+  data_.clear();
+  tensor_slices_.clear();
 }
 
 Status BundleReader::GetBundleEntryProto(StringPiece key,
@@ -889,7 +925,8 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {
     return errors::DataLoss(
-        "Checksum does not match: stored ",
+        "TensorBundle at ", prefix_, " shard ", entry.shard_id(), " (",
+        entry.size(), " bytes): Checksum does not match: stored ",
         strings::Printf("%08u", crc32c::Unmask(entry.crc32c())),
         " vs. calculated on the restored bytes ", actual_crc32c);
   }

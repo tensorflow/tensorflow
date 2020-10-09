@@ -54,12 +54,14 @@
 //
 
 syntax = "proto3";
+
+package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "FeatureProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.example";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example";
-package tensorflow;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example/example_protos_go_proto";
 
 // Containers to hold repeated fundamental values.
 message BytesList {
@@ -80,12 +82,12 @@ message Feature {
     FloatList float_list = 2;
     Int64List int64_list = 3;
   }
-};
+}
 
 message Features {
   // Map from feature name to feature.
   map<string, Feature> feature = 1;
-};
+}
 
 // Containers for sequential data.
 //
@@ -97,9 +99,9 @@ message Features {
 //
 message FeatureList {
   repeated Feature feature = 1;
-};
+}
 
 message FeatureLists {
   // Map from feature name to feature list.
   map<string, FeatureList> feature_list = 1;
-};
+}

@@ -676,12 +676,10 @@ Status Encapsulator::Subgraph::AddFunctionCallNode(
 Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
   AttrSlice attrs = node->attrs();
   attr->clear();
-  bool found_group_attribute = false;
   for (const auto& node_attr : attrs) {
     if (node_attr.first == group_attribute_) {
       TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
       *attr = node_attr.second.s();
-      found_group_attribute = true;
       break;
     }
   }
@@ -790,7 +788,6 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
 
   TF_RETURN_IF_ERROR(CopySubgraphNodes(&node_images));
   TF_RETURN_IF_ERROR(CopySubgraphEdges(node_images, &src_arg_pairs));
-
   MarkGuaranteedConstants(*graph_in_, src_arg_pairs);
 
   for (auto& entry : subgraphs_) {
@@ -1135,7 +1132,8 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
     if (n->type_string() == kArgOp) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-      if (index < 0 || index >= types->size()) {
+      const int num_types = types->size();
+      if (index < 0 || index >= num_types) {
         return errors::InvalidArgument("Invalid argument number");
       }
       (*types)[index] = n->output_type(0);
@@ -1152,7 +1150,8 @@ static Status RenumberArguments(Graph* graph,
     if (n->type_string() == kArgOp) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-      if (index < 0 || index >= permutation.size()) {
+      const int permutation_size = permutation.size();
+      if (index < 0 || index >= permutation_size) {
         return errors::InvalidArgument("Invalid argument number");
       }
       n->AddAttr("index", permutation[index]);
@@ -1196,11 +1195,12 @@ Status EncapsulateSubgraphsPass::Run(
 
   std::unique_ptr<DeviceMgr> device_mgr =
       absl::make_unique<StaticDeviceMgr>(std::move(devices));
-  OptimizerOptions opts;
+  const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(device_mgr.get(),
-                                        options.session_options->env,
-                                        TF_GRAPH_DEF_VERSION, library, opts));
+      new ProcessFunctionLibraryRuntime(
+          device_mgr.get(), options.session_options->env,
+          /*config=*/config, TF_GRAPH_DEF_VERSION, library,
+          config->graph_options().optimizer_options()));
   FunctionLibraryRuntime* flr =
       pflr->GetFLR("/job:localhost/replica:0/task:0/device:CPU:0");
   if (flr == nullptr) {

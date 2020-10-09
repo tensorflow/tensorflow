@@ -84,6 +84,14 @@ class DirectSession : public Session {
                            std::vector<Tensor>* outputs,
                            RunMetadata* run_metadata) override;
 
+  // NOTE: Experimental and subject to change.
+  ::tensorflow::Status Run(
+      const ::tensorflow::RunOptions& run_options,
+      const NamedTensorList& inputs, const std::vector<string>& output_names,
+      const std::vector<string>& target_nodes, std::vector<Tensor>* outputs,
+      RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override;
+
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.
   ::tensorflow::Status PRunSetup(const std::vector<string>& input_names,
@@ -125,6 +133,8 @@ class DirectSession : public Session {
 
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
+  ::tensorflow::Status Finalize() override;
+
   const SessionOptions& options() const { return options_; }
 
  private:
@@ -134,7 +144,7 @@ class DirectSession : public Session {
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
-    Graph* graph = nullptr;                  // not owned.
+    std::unique_ptr<Graph> graph = nullptr;
     Device* device = nullptr;                // not owned.
     FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;
@@ -184,36 +194,42 @@ class DirectSession : public Session {
     std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
   };
 
-  // For each live partial execution, the session maintains a RunState.
-  // 'status' is the current status of this partial execution. 'executor_done'
-  // is "notified" when all executors are done. 'pending_inputs' are the set
-  // of pending feeds and 'pending_outputs' are the set of pending fetches.
+  // For each live Run() call, the session maintains a RunState.
+  // 'status' is the current status of the execution.
   struct RunState {
-    mutex mu_;
-    Status status GUARDED_BY(mu_);
-    IntraProcessRendezvous* rendez = nullptr;
+    mutex mu;
+    Status status TF_GUARDED_BY(mu);
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
-    Notification executors_done;
-    std::unordered_map<string, bool> pending_inputs;   // true if fed
-    std::unordered_map<string, bool> pending_outputs;  // true if fetched
     TensorStore tensor_store;
     ScopedStepContainer step_container;
 
     RunState(int64 step_id, const std::vector<Device*>* devices);
+  };
 
-    RunState(const std::vector<string>& pending_input_names,
-             const std::vector<string>& pending_output_names, int64 step_id,
-             const std::vector<Device*>* devices);
+  // For each live partial execution, the session maintains a PartialRunState.
+  // 'executor_done' is "notified" when all executors are done. 'pending_inputs'
+  // are the set of pending feeds and 'pending_outputs' are the set of pending
+  // fetches.
+  struct PartialRunState : public RunState {
+    Notification executors_done;
+    std::unordered_map<string, bool> pending_inputs;   // true if fed
+    std::unordered_map<string, bool> pending_outputs;  // true if fetched
+    core::RefCountPtr<IntraProcessRendezvous> rendez = nullptr;
+
+    PartialRunState(const std::vector<string>& pending_input_names,
+                    const std::vector<string>& pending_output_names,
+                    int64 step_id, const std::vector<Device*>* devices);
 
     // Returns true if all pending inputs and outputs have been completed.
     bool PendingDone() const;
 
-    ~RunState();
+    ~PartialRunState();
   };
 
   struct RunStateArgs {
-    RunStateArgs(const DebugOptions& options) : debug_options(options) {}
+    explicit RunStateArgs(const DebugOptions& options)
+        : debug_options(options) {}
 
     bool is_partial_run = false;
     string handle;
@@ -259,7 +275,7 @@ class DirectSession : public Session {
   bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
 
   ::tensorflow::Status ExtendLocked(GraphDef graph)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(
       const Tensor& resource_tensor, Tensor* retrieved_tensor);
@@ -274,7 +290,7 @@ class DirectSession : public Session {
   // tensors are computed.
   ::tensorflow::Status RecvPRunOutputs(
       const std::vector<string>& output_names,
-      const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
+      const ExecutorsAndKeys* executors_and_keys, PartialRunState* run_state,
       std::vector<Tensor>* outputs);
 
   // Check if the specified fetches can be computed from the feeds
@@ -282,7 +298,8 @@ class DirectSession : public Session {
   ::tensorflow::Status CheckFetch(
       const std::vector<std::pair<string, Tensor>>& feeds,
       const std::vector<string>& fetches,
-      const ExecutorsAndKeys* executors_and_keys, const RunState* run_state);
+      const ExecutorsAndKeys* executors_and_keys,
+      const PartialRunState* run_state);
 
   // Use the appropriate WaitForNotification function based on whether
   // operation_timeout_in_ms is greater than 0.
@@ -290,8 +307,8 @@ class DirectSession : public Session {
   // If the timeout expires, the `cm->StartCancel()` will be called.
   ::tensorflow::Status WaitForNotification(Notification* n,
                                            int64 timeout_in_ms);
-  void WaitForNotification(RunState* run_state, CancellationManager* cm,
-                           int64 timeout_in_ms);
+  void WaitForNotification(Notification* n, RunState* run_state,
+                           CancellationManager* cm, int64 timeout_in_ms);
 
   ::tensorflow::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);
@@ -326,7 +343,8 @@ class DirectSession : public Session {
   // Unique session identifier.
   string session_handle_;
   mutex graph_state_lock_;
-  bool graph_created_ GUARDED_BY(graph_state_lock_) = false;
+  bool graph_created_ TF_GUARDED_BY(graph_state_lock_) = false;
+  bool finalized_ TF_GUARDED_BY(graph_state_lock_) = false;
 
   // The thread-pools to use for running ops, with a bool indicating if the pool
   // is owned.
@@ -338,7 +356,7 @@ class DirectSession : public Session {
   bool sync_on_finish_ = true;
 
   std::vector<std::unique_ptr<FunctionInfo>> functions_
-      GUARDED_BY(executor_lock_);
+      TF_GUARDED_BY(executor_lock_);
 
   mutex executor_lock_;  // protects executors_
   // Holds mappings from signature to the executors that process
@@ -347,7 +365,7 @@ class DirectSession : public Session {
   // The map value is a shared_ptr since multiple map keys can point to the
   // same ExecutorsAndKey object.
   std::unordered_map<string, std::shared_ptr<ExecutorsAndKeys>> executors_
-      GUARDED_BY(executor_lock_);
+      TF_GUARDED_BY(executor_lock_);
 
   class RunCallableCallFrame;
   struct Callable {
@@ -356,12 +374,12 @@ class DirectSession : public Session {
     ~Callable();
   };
   mutex callables_lock_;
-  int64 next_callable_handle_ GUARDED_BY(callables_lock_) = 0;
-  std::unordered_map<int64, Callable> callables_ GUARDED_BY(callables_lock_);
+  int64 next_callable_handle_ TF_GUARDED_BY(callables_lock_) = 0;
+  std::unordered_map<int64, Callable> callables_ TF_GUARDED_BY(callables_lock_);
 
   // Holds mappings from handle to partial run state.
-  std::unordered_map<string, std::unique_ptr<RunState>> partial_runs_
-      GUARDED_BY(executor_lock_);
+  std::unordered_map<string, std::unique_ptr<PartialRunState>> partial_runs_
+      TF_GUARDED_BY(executor_lock_);
 
   // This holds all the tensors that are currently alive in the session.
   SessionState session_state_;
@@ -375,11 +393,11 @@ class DirectSession : public Session {
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
   std::unordered_map<string, string> stateful_placements_
-      GUARDED_BY(graph_state_lock_);
+      TF_GUARDED_BY(graph_state_lock_);
 
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<GraphExecutionState> execution_state_
-      GUARDED_BY(graph_state_lock_);
+      TF_GUARDED_BY(graph_state_lock_);
 
   // The function library, before any rewrites or optimizations have been
   // performed. In particular, CreateGraphs() may need to modify the function
@@ -388,7 +406,7 @@ class DirectSession : public Session {
 
   // true if the Session has been Closed.
   mutex closed_lock_;
-  bool closed_ GUARDED_BY(closed_lock_) = false;
+  bool closed_ TF_GUARDED_BY(closed_lock_) = false;
 
   // For generating unique names for this session instance.
   std::atomic<int64> edge_name_counter_ = {0};
@@ -405,7 +423,7 @@ class DirectSession : public Session {
 
   // For testing collective graph key generation.
   mutex collective_graph_key_lock_;
-  int64 collective_graph_key_ GUARDED_BY(collective_graph_key_lock_) = -1;
+  int64 collective_graph_key_ TF_GUARDED_BY(collective_graph_key_lock_) = -1;
 
   // Run in caller's thread if RunOptions.inter_op_thread_pool is negative or
   // all of following conditions are met:

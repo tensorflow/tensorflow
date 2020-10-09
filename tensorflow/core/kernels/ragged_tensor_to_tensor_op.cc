@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include <stddef.h>
 
 #include <algorithm>
@@ -32,12 +34,12 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/broadcast_to_op.h"
 #include "tensorflow/core/kernels/list_kernels.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/ops/ragged_to_dense_util.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/ragged_to_dense_util.h"
 
 namespace tensorflow {
 
@@ -404,12 +406,12 @@ void copy_array(VALUE_TYPE* dst, const VALUE_TYPE* src, INDEX_TYPE size) {
 }
 
 template <>
-void copy_array<string, int64>(string* dst, const string* src, int64 size) {
+void copy_array<tstring, int64>(tstring* dst, const tstring* src, int64 size) {
   slow_copy_array(dst, src, size);
 }
 
 template <>
-void copy_array<string, int32>(string* dst, const string* src, int32 size) {
+void copy_array<tstring, int32>(tstring* dst, const tstring* src, int32 size) {
   slow_copy_array(dst, src, size);
 }
 
@@ -559,8 +561,6 @@ TF_CALL_string(REGISTER_CPU_KERNEL);
 TF_CALL_QUANTIZED_TYPES(REGISTER_CPU_KERNEL);
 TF_CALL_quint16(REGISTER_CPU_KERNEL);
 TF_CALL_qint16(REGISTER_CPU_KERNEL);
-TF_CALL_uint32(REGISTER_CPU_KERNEL);
-TF_CALL_uint64(REGISTER_CPU_KERNEL);
 
 #undef REGISTER_CPU_KERNEL
 

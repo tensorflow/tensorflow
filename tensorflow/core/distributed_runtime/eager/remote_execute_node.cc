@@ -17,46 +17,14 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/public/version.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 
 namespace tensorflow {
 namespace eager {
 
-Status RemoteExecuteNode::Prepare() {
-  if (retvals_.empty()) return Status::OK();
-
-  // TODO(b/141209983): Consider adding a shape inference cache.
-  const tensorflow::OpRegistrationData* op_reg_data;
-  if (lib_def_->Find(ndef_.op()) == nullptr) {
-    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(ndef_.op(), &op_reg_data));
-  } else {
-    TF_RETURN_IF_ERROR(lib_def_->LookUp(ndef_.op(), &op_reg_data));
-  }
-
-  shape_inference::InferenceContext inference_context(
-      TF_GRAPH_DEF_VERSION, &ndef_, op_reg_data->op_def,
-      std::vector<shape_inference::ShapeHandle>(inputs_.size()), {}, {},
-      std::vector<
-          std::unique_ptr<std::vector<shape_inference::ShapeAndType>>>());
-  for (size_t i = 0; i < inputs_.size(); i++) {
-    shape_inference::ShapeHandle shape;
-    TF_RETURN_IF_ERROR(inputs_[i]->InferenceShape(&inference_context, &shape));
-    inference_context.SetInput(i, shape);
-  }
-
-  TF_RETURN_IF_ERROR(inference_context.Run(op_reg_data->shape_inference_fn));
-  DCHECK_EQ(inference_context.num_outputs(), retvals_.size());
-  for (int i = 0; i < inference_context.num_outputs(); i++) {
-    shape_inference::ShapeHandle shape_handle = inference_context.output(i);
-    retvals_[i]->SetInferenceShape(&inference_context, shape_handle);
-  }
-  return Status::OK();
-}
-
 void RemoteExecuteNode::RunAsync(StatusCallback done) {
-  EnqueueResponse* response = new EnqueueResponse;
+  auto response = std::make_shared<EnqueueResponse>();
 
   const gtl::InlinedVector<TensorHandle*, 4>& inputs = inputs_;
   const gtl::InlinedVector<TensorHandle*, 2>& retvals = retvals_;
@@ -81,6 +49,23 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
   }
   VLOG(3) << "Issuing: " << rpc_description;
 
+  CancellationManager* cm = cancellation_manager_;
+  CancellationToken token = 0;
+  auto call_opts = std::make_shared<CallOptions>();
+  if (cm != nullptr) {
+    token = cm->get_cancellation_token();
+    const bool already_cancelled = !cm->RegisterCallback(
+        token, [call_opts, response, done]() { call_opts->StartCancel(); });
+    if (already_cancelled) {
+      Status s = errors::Cancelled("RemoteExecuteNode::RunAsync");
+      for (size_t i = 0; i < retvals.size(); ++i) {
+        retvals[i]->PoisonRemote(s, device, context_view_id_);
+      }
+      done(s);
+      return;
+    }
+  }
+
   for (auto handle : inputs_) {
     handle->Ref();
   }
@@ -89,9 +74,13 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
   }
 
   eager_client_->StreamingEnqueueAsync(
-      request_.get(), response,
-      [inputs, retvals, response, device, rpc_description,
+      call_opts.get(), request_.get(), response.get(),
+      [inputs, retvals, call_opts, response, device,
+       context_view_id = context_view_id_, rpc_description, cm, token,
        done](const Status& status) {
+        if (cm != nullptr) {
+          cm->TryDeregisterCallback(token);
+        }
         for (auto handle : inputs) {
           handle->Unref();
         }
@@ -103,22 +92,29 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
         }
         for (size_t i = 0; i < retvals.size(); ++i) {
           if (status.ok()) {
-            Status s = retvals[i]->SetRemoteShape(
-                response->queue_response(0).shape(i), device);
+            const string output_device =
+                response->queue_response(0).device().empty()
+                    ? ""
+                    : response->queue_response(0).device(i);
+            Status s = retvals[i]->SetRemoteShapeAndDevice(
+                response->queue_response(0).shape(i), device, context_view_id,
+                output_device);
+
             if (!s.ok()) {
               LOG(ERROR) << "Ignoring an error encountered when setting "
                             "remote shape of tensor handle: "
-                         << retvals[i] << " with status: " << status.ToString()
+                         << retvals[i]
+                         << " with execute status: " << status.ToString()
+                         << " and SetRemoteShape status: " << s.ToString()
                          << "\nThis should never happen. "
                             "Please file an issue with the TensorFlow Team.";
             }
           } else {
-            retvals[i]->Poison(status);
+            retvals[i]->PoisonRemote(status, device, context_view_id);
           }
           retvals[i]->Unref();
         }
         done(status);
-        delete response;
       });
 }
 

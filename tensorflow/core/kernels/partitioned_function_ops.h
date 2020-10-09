@@ -58,13 +58,14 @@ class PartitionedCallOp : public AsyncOpKernel {
   std::unique_ptr<NameAttrList> func_;
   std::unique_ptr<ConfigProto> config_proto_;
   string executor_type_;
+  bool shared_rendezvous_;
   mutex mu_;
   // Cache the handle per FLR because this kernel may be instantiated for
   // a stateful op, different invocations of it may use different FLRs.
   // Different device placements of PartitionedCallOp also use
   // different FLRs.
   gtl::FlatMap<FunctionLibraryRuntime*, FunctionLibraryRuntime::Handle> handles_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 
-using ::tflite::gpu::IntegralDivideRoundUp;
 using ::tflite::gpu::BHWC;
+using ::tflite::gpu::DivideRoundUp;
 using ::tflite::gpu::metal::CreateComputeProgram;
 
 @implementation TFLBufferConvert {
@@ -102,10 +102,10 @@ using ::tflite::gpu::metal::CreateComputeProgram;
   [encoder setBytes:uniforms.data() length:uniforms.size() * sizeof(int) atIndex:2];
 
   MTLSize group_size = MTLSizeMake(16, 16, 1);
-  int layers = IntegralDivideRoundUp(shape.c, 4);
-  int groups_x = IntegralDivideRoundUp(shape.w, group_size.width);
-  int groups_y = IntegralDivideRoundUp(shape.h, group_size.height);
-  int groups_z = IntegralDivideRoundUp(layers, group_size.depth);
+  int layers = DivideRoundUp(shape.c, 4);
+  int groups_x = DivideRoundUp(shape.w, group_size.width);
+  int groups_y = DivideRoundUp(shape.h, group_size.height);
+  int groups_z = DivideRoundUp(layers, group_size.depth);
   MTLSize groups_count = MTLSizeMake(groups_x, groups_y, groups_z);
   [encoder dispatchThreadgroups:groups_count threadsPerThreadgroup:group_size];
 }

@@ -80,7 +80,7 @@ TEST(PReluTest, LinearAlphaWithClip) {
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 1, 1}));
 }
 
-TEST(PReluTest, 3DAlphaNoClip) {
+TEST(PReluTest, 2DAlphaNoClip) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -106,7 +106,7 @@ TEST(PReluTest, 3DAlphaNoClip) {
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 2, -6}));
 }
 
-TEST(PReluTest, 3DAlphaWithClip) {
+TEST(PReluTest, 2DAlphaWithClip) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -130,6 +130,60 @@ TEST(PReluTest, 3DAlphaWithClip) {
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
   ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 1, -6}));
+}
+
+TEST(PReluTest, 2DAlphaWidthNotEqualHeight) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 1, 1);
+
+  OperationType op_type = OperationType::PRELU;
+  PReLUAttributes attr;
+  attr.clip = 0;
+  Tensor<HWC, DataType::FLOAT32> alpha;
+  alpha.shape = HWC(2, 1, 1);
+  alpha.id = 1;
+  alpha.data = {1, 1};
+  attr.alpha = std::move(alpha);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 1, 1);
+
+  SingleOpModel model({ToString(op_type), attr}, {input}, {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {-1.0, -1.0}));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-1, -1}));
+}
+
+TEST(PReluTest, 3DAlphaNoClip) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 2);
+
+  OperationType op_type = OperationType::PRELU;
+  PReLUAttributes attr;
+  attr.clip = 0;
+  Tensor<HWC, DataType::FLOAT32> alpha;
+  alpha.shape = HWC(2, 2, 2);
+  alpha.id = 1;
+  alpha.data = {1, 1, 2, 2, 2, 2, 2, 2};
+  attr.alpha = std::move(alpha);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 2);
+
+  SingleOpModel model({ToString(op_type), attr}, {input}, {output});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {0.0, 0.0, -1.0, -1.0, 2.0, 2.0, -3.0, -3.0}));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0, 0, -2, -2, 2, 2, -6, -6}));
 }
 
 }  // namespace

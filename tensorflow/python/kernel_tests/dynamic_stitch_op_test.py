@@ -62,6 +62,7 @@ class DynamicStitchTestBase(object):
         # length.
         self.assertEqual([None], stitched_t.get_shape().as_list())
 
+  @test_util.disable_tfrt("b/169901260")
   def testSimpleOneDimensional(self):
     # Test various datatypes in the simple case to ensure that the op was
     # registered under those types.
@@ -130,6 +131,20 @@ class DynamicStitchTestBase(object):
                          [50, 51], [60, 61], [70, 71]], stitched_val)
     # Dimension 0 is max(flatten(indices))+1.
     self.assertEqual([8, 2], stitched_t.get_shape().as_list())
+
+  def testAllZeroSizeTensor(self):
+    indices = [
+        array_ops.zeros([0], dtype=dtypes.int32),
+        array_ops.zeros([0], dtype=dtypes.int32)
+    ]
+    data = [
+        array_ops.zeros([0, 2], dtype=dtypes.int32),
+        array_ops.zeros([0, 2], dtype=dtypes.int32)
+    ]
+    stitched_t = self.stitch_op(indices, data)
+    stitched_val = self.evaluate(stitched_t)
+    self.assertAllEqual(np.zeros((0, 2)), stitched_val)
+    self.assertEqual([0, 2], stitched_t.get_shape().as_list())
 
   @test_util.run_deprecated_v1
   def testHigherRank(self):

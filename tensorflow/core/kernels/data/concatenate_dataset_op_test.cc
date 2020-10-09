@@ -22,42 +22,6 @@ namespace {
 
 constexpr char kNodeName[] = "concatenate_dataset";
 
-class ConcatenateDatasetParams : public DatasetParams {
- public:
-  template <typename T, typename P>
-  ConcatenateDatasetParams(T input_dataset_params_0, P input_dataset_params_1,
-                           DataTypeVector output_dtypes,
-                           std::vector<PartialTensorShape> output_shapes,
-                           string node_name)
-      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name)) {
-    input_dataset_params_.push_back(
-        absl::make_unique<T>(input_dataset_params_0));
-    input_dataset_params_.push_back(
-        absl::make_unique<T>(input_dataset_params_1));
-    iterator_prefix_ =
-        name_utils::IteratorPrefix(input_dataset_params_0.op_name(),
-                                   input_dataset_params_0.iterator_prefix());
-  }
-
-  std::vector<Tensor> GetInputTensors() const override { return {}; }
-
-  Status GetInputNames(std::vector<string>* input_names) const override {
-    input_names->reserve(2);
-    input_names->emplace_back(ConcatenateDatasetOp::kInputDataset);
-    input_names->emplace_back(ConcatenateDatasetOp::kAnotherDataset);
-    return Status::OK();
-  }
-
-  Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{ConcatenateDatasetOp::kOutputTypes, output_dtypes_},
-                    {ConcatenateDatasetOp::kOutputShapes, output_shapes_}};
-    return Status::OK();
-  }
-
-  string op_name() const override { return ConcatenateDatasetOp::kDatasetType; }
-};
-
 // Test case 1: same shape.
 ConcatenateDatasetParams SameShapeConcatenateDatasetParams() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
@@ -112,7 +76,7 @@ ConcatenateDatasetParams DifferentDtypeConcatenateDatasetParams() {
                                   /*node_name=*/kNodeName);
 }
 
-class ConcatenateDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class ConcatenateDatasetOpTest : public DatasetOpsTestBase {};
 
 std::vector<GetNextTestCase<ConcatenateDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/SameShapeConcatenateDatasetParams(),

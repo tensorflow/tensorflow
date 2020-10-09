@@ -19,27 +19,8 @@ limitations under the License.
 #else
 #define TF_Quantization
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-include "mlir/Dialect/QuantOps/QuantPredicates.td"
-
-
-//===----------------------------------------------------------------------===//
-// Min-max range pair definitions.
-//===----------------------------------------------------------------------===//
-
-// A pair of floating point values which defines the min and max of a value
-// range for quantization. The attribute is allowed to be empty or
-// have 2 elements.
-def MinMaxAttr : Attr<Or<[CPred<"$_self.cast<ArrayAttr>().size() == 0">,
-                             CPred<"$_self.cast<ArrayAttr>().size() == 2">]>,
-                      "min-max range pair"> {
-  let storageType = [{ ArrayAttr }];
-  let returnType = [{ ArrayRef<Attribute> }];
-}
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 
 //===----------------------------------------------------------------------===//
 // QuantizedType definitions.
@@ -82,23 +63,89 @@ def QI32 : QuantizedType<"Uniform", [32], 1>;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 //===----------------------------------------------------------------------===//
 
+// TODO(b/157870442): replace all FixedResultScale trait
+def FixedOutputRangeInterface : OpInterface<
+  "FixedOutputRangeInterface"> {
+  let description = [{
+    Interface for defining the fixed output range.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the fixed output range.}],
+      "UniformQuantizedType", "GetFixedOutputRange",
+      (ins "bool":$sign, "int":$bit_width)
+    >,
+  ];
+}
+
+// TODO(b/157870442): extend this trait to replace the other two
+// tratis/interfaces AccumulatorUniformScale and AffineOpCoefficient, which
+// are used to generate the op quantization specs.
+def AffineQuantizedOpInterface : OpInterface<
+  "AffineQuantizedOpInterface"> {
+  let description = [{
+    Interface for affine quantized ops (conv2d, fully_connected, etc.)
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the affine operand index.}],
+      "int", "GetAffineOperandIndex",
+      (ins), [{}], [{return 1;}]>,
+    InterfaceMethod<
+      [{Returns whether narrow range is required for the affine operand.}],
+      "bool", "RequiredNarrowRangeAffineOperand",
+      (ins), [{}], [{return true;}]>,
+    InterfaceMethod<
+      [{Returns quantization dim for the affine operand.}],
+      "int", "GetQuantizationDimIndex",
+      (ins)>,
+    InterfaceMethod<
+      [{Returns the dimension index of the output channels.}],
+      "int", "GetChannelDimIndex", (ins)
+    >,
+  ];
+}
+
+def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
+  let description = [{
+    Interface for ops potentially have same operands and results scales.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns whether same operands and results scales are required.}],
+      "bool", "RequiredSameOperandsAndResultsScale",
+      (ins "bool":$sign, "int":$bit_width), [{}], [{return true;}]
+    >,
+  ];
+
+  let verify = [{
+    return quant::VerifySameScales($_op);
+  }];
+}
+
 // Specify this trait if the op has a fixed output value range.
 class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
   "quant::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
 
-// Specify this trait if the op requires same inputs and outputs quantization
-// scales.
-def SameOperandsAndResultsScale : NativeOpTrait<
-  "quant::SameOperandsAndResultsScale">;
-
-// Specify this trait if the b-th input of the op is a bias input, which needs
-// a scale based on the scales of op1 and op2.
+// Specify this trait if the bias-th input of the op is a bias input, which
+// needs a scale based on the scales of op1 and op2.
 class AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
   !strconcat("quant::AccumulatorUniformScale<",
              StrJoinInt<[bias, op1, op2]>.result,
              ">::Impl")>;
 
-// Specify this trait if the op doesn't have quantizable ouput. We shouldn't
+// Specify the operand index of the coefficient operand for an affine op
+// and also the quantization dimension if per-axis quantization is support.
+// If the quantization dimension is -1, per-axis quantization isn't supported.
+class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
+  !strconcat("quant::AffineOpCoefficient<",
+             StrJoinInt<[dim, index]>.result,
+             ">::Impl")>;
+
+// Specify this trait if the op doesn't have quantizable output. We shouldn't
 // apply quantization on this op.
 def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 

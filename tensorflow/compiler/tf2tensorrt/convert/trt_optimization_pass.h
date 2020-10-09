@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -34,13 +33,16 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
  public:
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
       : name_(name),
+        trt_logger_name_("DefaultLogger"),
         minimum_segment_size_(3),
         precision_mode_(TrtPrecisionMode::FP32),
         maximum_batch_size_(-1),
         is_dynamic_op_(false),
         max_cached_batches_(1),
         max_workspace_size_bytes_(256LL << 20),
-        use_calibration_(true) {
+        use_calibration_(true),
+        use_implicit_batch_(true),
+        allow_build_at_runtime_(true) {
     VLOG(1) << "Constructing " << name_;
   }
 
@@ -63,6 +65,7 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
 
  private:
   const string name_;
+  string trt_logger_name_;
   int minimum_segment_size_;
   TrtPrecisionMode precision_mode_;
   int maximum_batch_size_;
@@ -71,13 +74,13 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
   int max_cached_batches_;
   int64_t max_workspace_size_bytes_;
   bool use_calibration_;
-
+  bool use_implicit_batch_;
+  bool allow_build_at_runtime_;
 };
 
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
-#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_OPTIMIZATION_PASS_H_

@@ -1,0 +1,24 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input -tf-input-data-types=DT_INT32 -tf-input-shapes=8 -tf-output-arrays=input -o - | FileCheck %s
+
+node {
+  name: "input"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<8xi32>) -> tensor<8xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "input"
+# CHECK-SAME:  outputs = "input"
+# CHECK:         %[[GRAPH:[0-9]+]] = tf_executor.graph
+# CHECK:           tf_executor.fetch %[[ARG_0]]
+# CHECK:         return %[[GRAPH]]

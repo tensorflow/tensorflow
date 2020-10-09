@@ -29,11 +29,14 @@ from tensorflow.python.util.tf_export import tf_export
 class FtrlOptimizer(optimizer.Optimizer):
   """Optimizer that implements the FTRL algorithm.
 
-  See this [paper](
-  https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-  This version has support for both online L2 (the L2 penalty given in the paper
-  above) and shrinkage-type L2 (which is the addition of an L2 penalty to the
-  loss function).
+  This version has support for both online L2 (McMahan et al., 2013) and
+  shrinkage-type L2, which is the addition of an L2 penalty
+  to the loss function.
+
+  References:
+    Ad-click prediction:
+      [McMahan et al., 2013](https://dl.acm.org/citation.cfm?id=2488200)
+      ([pdf](https://dl.acm.org/ft_gateway.cfm?id=2488200&ftid=1388399&dwn=1&CFID=32233078&CFTOKEN=d60fe57a294c056a-CB75C374-F915-E7A6-1573FBBC7BF7D526))
   """
 
   def __init__(self,
@@ -46,15 +49,15 @@ class FtrlOptimizer(optimizer.Optimizer):
                name="Ftrl",
                accum_name=None,
                linear_name=None,
-               l2_shrinkage_regularization_strength=0.0):
+               l2_shrinkage_regularization_strength=0.0,
+               beta=None):
     r"""Construct a new FTRL optimizer.
 
     Args:
       learning_rate: A float value or a constant float `Tensor`.
       learning_rate_power: A float value, must be less or equal to zero.
         Controls how the learning rate decreases during training. Use zero for
-        a fixed learning rate. See section 3.1 in the
-        [paper](https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
+        a fixed learning rate. See section 3.1 in (McMahan et al., 2013).
       initial_accumulator_value: The starting value for accumulators.
         Only zero or positive values are allowed.
       l1_regularization_strength: A float value, must be greater than or
@@ -77,13 +80,19 @@ class FtrlOptimizer(optimizer.Optimizer):
         function w.r.t. the weights w.
         Specifically, in the absence of L1 regularization, it is equivalent to
         the following update rule:
-        w_{t+1} = w_t - lr_t / (1 + 2*L2*lr_t) * g_t -
-                  2*L2_shrinkage*lr_t / (1 + 2*L2*lr_t) * w_t
+        w_{t+1} = w_t - lr_t / (beta + 2*L2*lr_t) * g_t -
+                  2*L2_shrinkage*lr_t / (beta + 2*L2*lr_t) * w_t
         where lr_t is the learning rate at t.
         When input is sparse shrinkage will only happen on the active weights.
+      beta: A float value; corresponds to the beta parameter in the paper.
 
     Raises:
       ValueError: If one of the arguments is invalid.
+
+    References:
+      Ad-click prediction:
+        [McMahan et al., 2013](https://dl.acm.org/citation.cfm?id=2488200)
+        ([pdf](https://dl.acm.org/ft_gateway.cfm?id=2488200&ftid=1388399&dwn=1&CFID=32233078&CFTOKEN=d60fe57a294c056a-CB75C374-F915-E7A6-1573FBBC7BF7D526))
     """
     super(FtrlOptimizer, self).__init__(use_locking, name)
 
@@ -112,12 +121,13 @@ class FtrlOptimizer(optimizer.Optimizer):
     self._initial_accumulator_value = initial_accumulator_value
     self._l1_regularization_strength = l1_regularization_strength
     self._l2_regularization_strength = l2_regularization_strength
+    self._beta = (0.0 if beta is None else beta)
     self._l2_shrinkage_regularization_strength = (
         l2_shrinkage_regularization_strength)
     self._learning_rate_tensor = None
     self._learning_rate_power_tensor = None
     self._l1_regularization_strength_tensor = None
-    self._l2_regularization_strength_tensor = None
+    self._adjusted_l2_regularization_strength_tensor = None
     self._l2_shrinkage_regularization_strength_tensor = None
     self._accum_name = accum_name
     self._linear_name = linear_name
@@ -125,19 +135,24 @@ class FtrlOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     # Create the "accum" and "linear" slots.
     for v in var_list:
-      with ops.colocate_with(v):
-        val = constant_op.constant(
-            self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
-        self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
-        self._zeros_slot(v, "linear", self._linear_name or self._name)
+      val = constant_op.constant(
+          self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
+      self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
+      self._zeros_slot(v, "linear", self._linear_name or self._name)
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(
         self._learning_rate, name="learning_rate")
     self._l1_regularization_strength_tensor = ops.convert_to_tensor(
         self._l1_regularization_strength, name="l1_regularization_strength")
-    self._l2_regularization_strength_tensor = ops.convert_to_tensor(
-        self._l2_regularization_strength, name="l2_regularization_strength")
+    # L2 regularization strength with beta added in so that the underlying
+    # TensorFlow ops do not need to include that parameter.
+    self._adjusted_l2_regularization_strength_tensor = ops.convert_to_tensor(
+        self._l2_regularization_strength + self._beta /
+        (2. * math_ops.maximum(self._learning_rate, 1e-36)),
+        name="adjusted_l2_regularization_strength")
+    assert self._adjusted_l2_regularization_strength_tensor is not None
+    self._beta_tensor = ops.convert_to_tensor(self._beta, name="beta")
     self._l2_shrinkage_regularization_strength_tensor = ops.convert_to_tensor(
         self._l2_shrinkage_regularization_strength,
         name="l2_shrinkage_regularization_strength")
@@ -156,7 +171,7 @@ class FtrlOptimizer(optimizer.Optimizer):
           math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
           math_ops.cast(self._l1_regularization_strength_tensor,
                         var.dtype.base_dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor,
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
                         var.dtype.base_dtype),
           math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype),
           use_locking=self._use_locking)
@@ -169,7 +184,7 @@ class FtrlOptimizer(optimizer.Optimizer):
           math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
           math_ops.cast(self._l1_regularization_strength_tensor,
                         var.dtype.base_dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor,
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
                         var.dtype.base_dtype),
           math_ops.cast(self._l2_shrinkage_regularization_strength_tensor,
                         var.dtype.base_dtype),
@@ -188,7 +203,7 @@ class FtrlOptimizer(optimizer.Optimizer):
           math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
           math_ops.cast(self._l1_regularization_strength_tensor,
                         var.dtype.base_dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor,
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
                         var.dtype.base_dtype),
           math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype),
           use_locking=self._use_locking)
@@ -201,7 +216,7 @@ class FtrlOptimizer(optimizer.Optimizer):
           math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
           math_ops.cast(self._l1_regularization_strength_tensor,
                         var.dtype.base_dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor,
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
                         var.dtype.base_dtype),
           math_ops.cast(self._l2_shrinkage_regularization_strength_tensor,
                         var.dtype.base_dtype),
@@ -221,7 +236,7 @@ class FtrlOptimizer(optimizer.Optimizer):
           math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
           math_ops.cast(self._l1_regularization_strength_tensor,
                         var.dtype.base_dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor,
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
                         var.dtype.base_dtype),
           math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype),
           use_locking=self._use_locking)
@@ -235,7 +250,7 @@ class FtrlOptimizer(optimizer.Optimizer):
           math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
           math_ops.cast(self._l1_regularization_strength_tensor,
                         var.dtype.base_dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor,
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
                         var.dtype.base_dtype),
           math_ops.cast(self._l2_shrinkage_regularization_strength_tensor,
                         grad.dtype.base_dtype),
@@ -254,7 +269,8 @@ class FtrlOptimizer(optimizer.Optimizer):
           indices,
           math_ops.cast(self._learning_rate_tensor, grad.dtype),
           math_ops.cast(self._l1_regularization_strength_tensor, grad.dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor, grad.dtype),
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
+                        grad.dtype),
           math_ops.cast(self._learning_rate_power_tensor, grad.dtype),
           use_locking=self._use_locking)
     else:
@@ -266,7 +282,8 @@ class FtrlOptimizer(optimizer.Optimizer):
           indices,
           math_ops.cast(self._learning_rate_tensor, grad.dtype),
           math_ops.cast(self._l1_regularization_strength_tensor, grad.dtype),
-          math_ops.cast(self._l2_regularization_strength_tensor, grad.dtype),
+          math_ops.cast(self._adjusted_l2_regularization_strength_tensor,
+                        grad.dtype),
           math_ops.cast(self._l2_shrinkage_regularization_strength_tensor,
                         grad.dtype),
           math_ops.cast(self._learning_rate_power_tensor, grad.dtype),

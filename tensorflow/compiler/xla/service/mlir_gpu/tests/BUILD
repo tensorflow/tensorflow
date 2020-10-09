@@ -1,10 +1,10 @@
-# TODO(herhut): describe this package.
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_exec_properties",
 )
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     default_visibility = [":friends"],
@@ -18,25 +18,31 @@ package_group(
     ],
 )
 
-tf_cc_test(
-    name = "mlir_gpu_lhlo_gen_test",
-    srcs = ["mlir_gpu_lhlo_gen_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_irgen_test_base",
-        "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/memory",
+glob_lit_tests(
+    data = [
+        ":test_utilities",
+        "@llvm-project//mlir:run_lit.sh",
+    ],
+    default_tags = tf_cuda_tests_tags() + [
+        "no_pip",
+        "config-cuda-only",
+        "no_rocm",
+    ],
+    driver = "//tensorflow/compiler/mlir:run_lit.sh",
+    exclude = [
+        # TODO(b/137624192): Reenable once we can fuse reductions.
+        "fused_reduce.hlo",
+    ],
+    exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
+    test_file_exts = ["hlo"],
+)
+
+# Bundle together all of the test utilities that are used by tests.
+filegroup(
+    name = "test_utilities",
+    testonly = True,
+    data = [
+        "//tensorflow/compiler/xla/service/mlir_gpu:xla-gpu-opt",
+        "@llvm-project//llvm:FileCheck",
     ],
 )

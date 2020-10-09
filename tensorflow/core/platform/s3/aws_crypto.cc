@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/platform/s3/aws_crypto.h"
-#include <openssl/hmac.h>
-#include <openssl/sha.h>
 
 #include <aws/core/utils/crypto/HashResult.h>
 #include <aws/s3/S3Client.h>
+#include <openssl/hmac.h>
+#include <openssl/rand.h>
+#include <openssl/sha.h>
 
 namespace tensorflow {
 
@@ -100,6 +101,22 @@ class AWSSha256OpenSSLImpl : public Aws::Utils::Crypto::Hash {
   }
 };
 
+class AWSSecureRandomBytesImpl : public Aws::Utils::Crypto::SecureRandomBytes {
+ public:
+  AWSSecureRandomBytesImpl() {}
+  virtual ~AWSSecureRandomBytesImpl() = default;
+  virtual void GetBytes(unsigned char* buffer, size_t bufferSize) override {
+    assert(buffer);
+    int success = RAND_bytes(buffer, static_cast<int>(bufferSize));
+    if (success != 1) {
+      m_failure = true;
+    }
+  }
+
+ private:
+  bool m_failure;
+};
+
 std::shared_ptr<Aws::Utils::Crypto::Hash>
 AWSSHA256Factory::CreateImplementation() const {
   return Aws::MakeShared<AWSSha256OpenSSLImpl>(AWSCryptoAllocationTag);
@@ -108,6 +125,11 @@ AWSSHA256Factory::CreateImplementation() const {
 std::shared_ptr<Aws::Utils::Crypto::HMAC>
 AWSSHA256HmacFactory::CreateImplementation() const {
   return Aws::MakeShared<AWSSha256HMACOpenSSLImpl>(AWSCryptoAllocationTag);
+}
+
+std::shared_ptr<Aws::Utils::Crypto::SecureRandomBytes>
+AWSSecureRandomFactory::CreateImplementation() const {
+  return Aws::MakeShared<AWSSecureRandomBytesImpl>(AWSCryptoAllocationTag);
 }
 
 }  // namespace tensorflow

@@ -103,6 +103,11 @@ class SqlDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override { return Status::OK(); }
 
    protected:
@@ -142,8 +147,14 @@ class SqlDatasetOp : public DatasetOpKernel {
         if (!query_connection_initialized_) {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
         }
-        next_calls_++;
-        return query_connection_->GetNext(ctx, out_tensors, end_of_sequence);
+        Status status = Status::OK();
+        if (!end_of_sequence_) {
+          next_calls_++;
+          status =
+              query_connection_->GetNext(ctx, out_tensors, &end_of_sequence_);
+        }
+        *end_of_sequence = end_of_sequence_;
+        return status;
       }
 
      protected:
@@ -152,7 +163,8 @@ class SqlDatasetOp : public DatasetOpKernel {
         return model::MakeSourceNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (query_connection_initialized_) {
           TF_RETURN_IF_ERROR(
@@ -170,21 +182,23 @@ class SqlDatasetOp : public DatasetOpKernel {
               reader->ReadScalar(full_name("next_calls"), &next_calls_));
           int64 rem_next_calls = next_calls_;
           std::vector<Tensor> out_tensors;
-          bool end_of_sequence = false;
+          end_of_sequence_ = false;
           while (rem_next_calls--) {
             TF_RETURN_IF_ERROR(query_connection_->GetNext(ctx, &out_tensors,
-                                                          &end_of_sequence));
+                                                          &end_of_sequence_));
             out_tensors.clear();
           }
         } else {
           query_connection_initialized_ = false;
+          end_of_sequence_ = false;
         }
         return Status::OK();
       }
 
      private:
-      Status InitializeQueryConnection() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status InitializeQueryConnection() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         query_connection_initialized_ = true;
+        end_of_sequence_ = false;
         query_connection_ =
             sql::DriverManager::CreateQueryConnection(dataset()->driver_name_);
         Status s = query_connection_->Open(dataset()->data_source_name_,
@@ -200,9 +214,11 @@ class SqlDatasetOp : public DatasetOpKernel {
 
       mutex mu_;
       // TODO(b/129062371): explore ways to seek into a SQLite databases.
-      int64 next_calls_ GUARDED_BY(mu_) = 0;
-      std::unique_ptr<sql::QueryConnection> query_connection_ GUARDED_BY(mu_);
-      bool query_connection_initialized_ GUARDED_BY(mu_) = false;
+      int64 next_calls_ TF_GUARDED_BY(mu_) = 0;
+      std::unique_ptr<sql::QueryConnection> query_connection_
+          TF_GUARDED_BY(mu_);
+      bool query_connection_initialized_ TF_GUARDED_BY(mu_) = false;
+      bool end_of_sequence_ TF_GUARDED_BY(mu_) = false;
     };
     const tstring driver_name_;
     const tstring data_source_name_;

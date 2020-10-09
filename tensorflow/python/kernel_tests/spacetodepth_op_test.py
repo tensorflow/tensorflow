@@ -22,11 +22,12 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -159,79 +160,72 @@ class SpaceToDepthTest(test.TestCase):
 
   # Error handling:
 
-  @test_util.run_deprecated_v1
   def testInputWrongDimMissingDepth(self):
     # The input is missing the last dimension ("depth")
     x_np = [[[1, 2], [3, 4]]]
     block_size = 2
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
-  @test_util.run_deprecated_v1
   def testInputWrongDimMissingBatch(self):
     # The input is missing the first dimension ("batch")
     x_np = [[[1], [2]], [[3], [4]]]
     block_size = 2
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       _ = array_ops.space_to_depth(x_np, block_size)
 
-  @test_util.run_deprecated_v1
   def testBlockSize0(self):
     # The block size is 0.
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 0
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
-  @test_util.run_deprecated_v1
   def testBlockSizeOne(self):
     # The block size is 1. The block size needs to be > 1.
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 1
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
-  @test_util.run_deprecated_v1
   def testBlockSizeLarger(self):
     # The block size is too large for this input.
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 10
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
-  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleWidth(self):
     # The block size divides width but not height.
     x_np = [[[[1], [2], [3]], [[3], [4], [7]]]]
     block_size = 3
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       _ = array_ops.space_to_depth(x_np, block_size)
 
-  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleHeight(self):
     # The block size divides height but not width.
     x_np = [[[[1], [2]], [[3], [4]], [[5], [6]]]]
     block_size = 3
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       _ = array_ops.space_to_depth(x_np, block_size)
 
-  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleBoth(self):
     # The block size does not divide neither width or height.
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 3
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       _ = array_ops.space_to_depth(x_np, block_size)
 
-  @test_util.run_deprecated_v1
   def testUnknownShape(self):
-    t = array_ops.space_to_depth(
-        array_ops.placeholder(dtypes.float32), block_size=4)
-    self.assertEqual(4, t.get_shape().ndims)
+    # Testing an unkown shape in graph.
+    with ops.Graph().as_default():
+      t = array_ops.space_to_depth(
+          array_ops.placeholder(dtypes.float32), block_size=4)
+      self.assertEqual(4, t.get_shape().ndims)
 
   def spaceToDepthUsingTranspose(self, tensor, block_size, data_format):
     block_size_sq = block_size * block_size
@@ -315,8 +309,7 @@ class SpaceToDepthTest(test.TestCase):
       actual_vals, expected_vals = self.evaluate([actual, expected])
       self.assertTrue(np.array_equal(actual_vals, expected_vals))
 
-  # TODO(jingyue): figure out why this test failed in eager mode.
-  @test_util.run_deprecated_v1
+  @test_util.disable_tfrt("b/169901260")
   def testAgainstTranspose(self):
     self.compareToTranspose(3, 2, 3, 1, 2, "NHWC", dtypes.float32, False)
     self.compareToTranspose(1, 2, 3, 2, 2, "NHWC", dtypes.float32, False)
@@ -350,19 +343,15 @@ class SpaceToDepthGradientTest(test.TestCase):
       return
 
     assert 4 == x.ndim
-    with self.cached_session(use_gpu=True):
-      tf_x = ops.convert_to_tensor(x)
-      tf_y = array_ops.space_to_depth(tf_x, block_size, data_format=data_format)
-      epsilon = 1e-2
-      ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
-          tf_x,
-          x.shape,
-          tf_y,
-          tf_y.get_shape().as_list(),
-          x_init_value=x,
-          delta=epsilon)
 
-    self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=epsilon)
+    def func(x):
+      return array_ops.space_to_depth(x, block_size, data_format=data_format)
+
+    with test_util.use_gpu():
+      with self.cached_session():
+        theoretical, numerical = gradient_checker_v2.compute_gradient(
+            func, [ops.convert_to_tensor(x)])
+        self.assertAllClose(theoretical, numerical, rtol=1e-2, atol=1e-2)
 
   # Tests a gradient for space_to_depth of x which is a four dimensional
   # tensor of shape [b, h * block_size, w * block_size, d].
@@ -379,7 +368,6 @@ class SpaceToDepthGradientTest(test.TestCase):
 
   # Don't use very large numbers as dimensions here as the result is tensor
   # with cartesian product of the dimensions.
-  @test_util.run_deprecated_v1
   def testSmall(self):
     block_size = 2
     self._compare(1, 2, 3, 5, block_size, "NHWC")

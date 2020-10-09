@@ -20,13 +20,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import compat
 
 
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
@@ -406,6 +409,31 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         op_def_library.apply_op("FuncAttr", f=3)
       self.assertEqual(str(cm.exception),
                        "Don't know how to convert 3 to a func for argument f")
+
+  def testAttrFuncWithFuncWithAttrs(self):
+    with ops.Graph().as_default():
+      @eager_function.defun_with_attributes(
+          input_signature=(tensor_spec.TensorSpec(None, dtypes.float32),),
+          autograph=False,
+          attributes={"_dummy_attr": 15})
+      def fn(x):
+        return 2 + x
+
+      concrete_fn = fn.get_concrete_function()
+
+      op = op_def_library.apply_op("FuncAttr", f=concrete_fn, name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncAttr'
+        attr {
+          key: 'f'
+          value {
+            func {
+              name: '%s'
+              attr { key: "_dummy_attr" value { i: 15 } }
+            }
+          }
+        }
+        """ % compat.as_str(concrete_fn.name), op.node_def)
 
   def testAttrFuncList(self):
     with ops.Graph().as_default():
@@ -1048,11 +1076,33 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'M' value { i: 0 } }
         """, op.node_def)
 
-      with self.assertRaises(TypeError) as cm:
-        op_def_library.apply_op("InPolymorphicTwice", a=[], b=[3, 4, 5])
-      self.assertEqual(str(cm.exception),
-                       "Don't know how to infer type variable from empty input "
-                       "list passed to input 'a' of 'InPolymorphicTwice' Op.")
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[3, 4], name="p")
+      self.assertProtoEquals("""
+        name: 'p' op: 'InPolymorphicTwice' input: 'p/b_0' input: 'p/b_1'
+        attr { key: 'T' value { type: DT_INT32 } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 2 } }
+        """, op.node_def)
+
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[3.0, 4.0], name="q")
+      self.assertProtoEquals("""
+        name: 'q' op: 'InPolymorphicTwice' input: 'q/b_0' input: 'q/b_1'
+        attr { key: 'T' value { type: DT_FLOAT } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 2 } }
+        """, op.node_def)
+
+      # Empty input lists: assume default type for T.
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[], name="r")
+      self.assertProtoEquals("""
+        name: 'r' op: 'InPolymorphicTwice'
+        attr { key: 'T' value { type: DT_INT32 } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 0 } }
+        """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op(

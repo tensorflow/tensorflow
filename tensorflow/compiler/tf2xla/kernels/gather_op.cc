@@ -193,10 +193,10 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
     axis = axis.value_or(batch_dims);
 
     if (batch_dims < -indices_shape.dims() ||
-        batch_dims >= indices_shape.dims()) {
+        batch_dims > indices_shape.dims()) {
       return errors::InvalidArgument(
           "Expected batch_dims in the range [", -indices_shape.dims(), ", ",
-          indices_shape.dims(), "), but got ", batch_dims);
+          indices_shape.dims(), "], but got ", batch_dims);
     }
 
     if (batch_dims >= input_shape.dims()) {
@@ -257,7 +257,7 @@ class GatherOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
 
   // The number of batch dimensions, as passed in the batch_dims attribute.
-  // It must be less than rank(indices).
+  // It must be less than or equal to rank(indices).
   int32 batch_dims_ = 0;
 };
 

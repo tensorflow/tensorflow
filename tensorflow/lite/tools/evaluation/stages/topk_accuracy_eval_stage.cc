@@ -104,12 +104,7 @@ TfLiteStatus TopkAccuracyEvalStage::Run() {
   }
 
   std::vector<int> top_k = GetTopKIndices(probabilities, params.k());
-  int ground_truth_index = GroundTruthIndex(*ground_truth_label_);
-  if (ground_truth_index < 0) {
-    LOG(ERROR) << "Invalid ground truth label";
-    return kTfLiteError;
-  }
-  UpdateCounts(top_k, ground_truth_index);
+  UpdateCounts(top_k);
   return kTfLiteOk;
 }
 
@@ -126,10 +121,9 @@ EvaluationStageMetrics TopkAccuracyEvalStage::LatestMetrics() {
   return metrics;
 }
 
-void TopkAccuracyEvalStage::UpdateCounts(const std::vector<int>& topk_indices,
-                                         int ground_truth_index) {
+void TopkAccuracyEvalStage::UpdateCounts(const std::vector<int>& topk_indices) {
   for (size_t i = 0; i < topk_indices.size(); ++i) {
-    if (ground_truth_index == topk_indices[i]) {
+    if (*ground_truth_label_ == ground_truth_labels_[topk_indices[i]]) {
       for (size_t j = i; j < topk_indices.size(); j++) {
         accuracy_counts_[j] += 1;
       }
@@ -137,16 +131,6 @@ void TopkAccuracyEvalStage::UpdateCounts(const std::vector<int>& topk_indices,
     }
   }
   num_runs_++;
-}
-
-int TopkAccuracyEvalStage::GroundTruthIndex(const std::string& label) const {
-  auto index = std::find(ground_truth_labels_.cbegin(),
-                         ground_truth_labels_.cend(), label);
-  if (index == ground_truth_labels_.end()) {
-    LOG(ERROR) << "Invalid label: " << label;
-    return -1;
-  }
-  return std::distance(ground_truth_labels_.cbegin(), index);
 }
 
 }  // namespace evaluation

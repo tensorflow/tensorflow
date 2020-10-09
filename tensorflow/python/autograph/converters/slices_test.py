@@ -18,11 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.autograph.converters import directives as directives_converter
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import list_ops
@@ -33,42 +32,26 @@ class SliceTest(converter_testing.TestCase):
 
   def test_index_access(self):
 
-    def test_fn(l):
+    def f(l):
+      directives.set_element_type(l, dtypes.int32)
       return l[1]
 
-    node, ctx = self.prepare(test_fn, {})
-    def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
-    def_.directives[directives.set_element_type] = {
-        'dtype': parser.parse_expression('tf.int32')
-    }
-    node = slices.transform(node, ctx)
+    tr = self.transform(f, (directives_converter, slices))
 
-    with self.compiled(node, {}, (dtypes.int32,)) as result:
-      with self.cached_session() as sess:
-        tl = list_ops.tensor_list_from_tensor(
-            [1, 2], element_shape=constant_op.constant([], dtype=dtypes.int32))
-        y = result.test_fn(tl)
-        self.assertEqual(2, self.evaluate(y))
+    tl = list_ops.tensor_list_from_tensor(
+        [1, 2], element_shape=constant_op.constant([], dtype=dtypes.int32))
+    y = tr(tl)
+    self.assertEqual(2, self.evaluate(y))
 
   def test_index_access_multiple_definitions(self):
 
-    def test_fn(l):
+    def f(l):
+      directives.set_element_type(l, dtypes.int32)
       if l:
         l = []
       return l[1]
 
-    node, ctx = self.prepare(test_fn, {})
-    def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
-    def_.directives[directives.set_element_type] = {
-        'dtype': parser.parse_expression('tf.int32')
-    }
-    def_, = anno.getanno(node.body[0].body[0].targets[0],
-                         anno.Static.DEFINITIONS)
-    def_.directives[directives.set_element_type] = {
-        'dtype': parser.parse_expression('tf.float32')
-    }
-    with self.assertRaises(ValueError):
-      slices.transform(node, ctx)
+    self.transform(f, (directives_converter, slices))
 
 
 if __name__ == '__main__':

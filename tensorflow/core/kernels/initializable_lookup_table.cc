@@ -68,16 +68,13 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
     return iter.status();
   }
 
-  // Prevent compiler/memory reordering of is_initialized and
-  // the initialization itself.
-  std::atomic_thread_fence(std::memory_order_release);
-  is_initialized_ = true;
+  is_initialized_.store(true, std::memory_order_release);
   return Status::OK();
 }
 
 Status InitializableLookupTable::AreEntriesSame(const InitTableIterator& iter,
                                                 bool* result) {
-  *result = iter.total_size() == size();
+  *result = static_cast<size_t>(iter.total_size()) == size();
   return Status::OK();
 }
 

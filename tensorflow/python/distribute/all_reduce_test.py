@@ -40,8 +40,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testFlattenTensorsShapesDefined(self):
     x = array_ops.placeholder(types_pb2.DT_FLOAT, [None])
-    with self.assertRaisesRegexp(ValueError,
-                                 "must have statically known shape"):
+    with self.assertRaisesRegex(ValueError, "must have statically known shape"):
       ar._flatten_tensors([x, x])
 
   def testRingPermutations(self):
@@ -123,12 +122,12 @@ class AllReduceTest(test_util.TensorFlowTestCase):
     for otl in output_tensors:
       self.assertEqual(len(otl), num_chunks)
       for ot in otl:
-        self.assertEqual(ot.shape, [tlen/num_chunks])
+        self.assertEqual(ot.shape, [tlen//num_chunks])
 
   def _buildInitialVars(self, shape, dev_list):
     values = []
     num_devices = len(dev_list)
-    dim = np.prod(shape) if shape else 1
+    dim = np.prod(shape, dtype=int) if shape else 1
     for d in range(0, num_devices):
       with ops.device(dev_list[d]):
         npt = np.zeros(shape).astype(np.float32)
@@ -161,7 +160,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
       output_tensors = build_f(input_tensors, un_op)
       sum_reduced = math_ops.add_n(output_tensors)
       sum_reduced.op.run()
-      self.assertAllClose(sum_reduced.eval(), self.evaluate(simple_sum))
+      self.assertAllClose(sum_reduced, self.evaluate(simple_sum))
 
   def _testRingAllReduce(self, num_workers, num_gpus, shape, subdiv):
     start_time = time.time()

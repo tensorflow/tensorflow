@@ -79,20 +79,38 @@ def parse_args():
       default=False,
       help="Use fake MNIST data for unit testing")
   parser.add_argument(
-      "--debug",
+      "--check_numerics",
       type="bool",
       nargs="?",
       const=True,
       default=False,
-      help="Use debugger to track down bad values during training. "
-      "Mutually exclusive with the --tensorboard_debug_address flag.")
+      help="Use tfdbg to track down bad values during training. "
+      "Mutually exclusive with the --dump_dir flag.")
   parser.add_argument(
-      "--tensorboard_debug_address",
+      "--dump_dir",
       type=str,
       default=None,
-      help="Connect to the TensorBoard Debugger Plugin backend specified by "
-      "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
-      "--debug flag.")
+      help="Dump TensorFlow program debug data to the specified directory. "
+      "The dumped data contains information regarding tf.function building, "
+      "execution of ops and tf.functions, as well as their stack traces and "
+      "associated source-code snapshots. "
+      "Mutually exclusive with the --check_numerics flag.")
+  parser.add_argument(
+      "--dump_tensor_debug_mode",
+      type=str,
+      default="FULL_HEALTH",
+      help="Mode for dumping tensor values. Options: NO_TENSOR, CURT_HEALTH, "
+      "CONCISE_HEALTH, SHAPE, FULL_HEALTH. This is relevant only when "
+      "--dump_dir is set.")
+  # TODO(cais): Add more tensor debug mode strings once they are supported.
+  parser.add_argument(
+      "--dump_circular_buffer_size",
+      type=int,
+      default=-1,
+      help="Size of the circular buffer used to dump execution events. "
+      "A value <= 0 disables the circular-buffer behavior and causes "
+      "all instrumented tensor values to be dumped. "
+      "This is relevant only when --dump_dir is set.")
   parser.add_argument(
       "--use_random_config_path",
       type="bool",
@@ -105,18 +123,17 @@ def parse_args():
 
 
 def main(_):
-  # TODO(anthonyjliu): Enable debugger from flags
-  if FLAGS.debug and FLAGS.tensorboard_debug_address:
+  if FLAGS.check_numerics and FLAGS.dump_dir:
     raise ValueError(
-        "The --debug and --tensorboard_debug_address flags are mutually "
+        "The --check_numerics and --dump_dir flags are mutually "
         "exclusive.")
-  if FLAGS.debug:
+  if FLAGS.check_numerics:
     tf.debugging.enable_check_numerics()
-  elif FLAGS.tensorboard_debug_address:
-    raise NotImplementedError(
-        "Tensorboard Debugger Plugin support for debug_mnist_v2 is not "
-        "implemented yet"
-    )
+  elif FLAGS.dump_dir:
+    tf.debugging.experimental.enable_dump_debug_info(
+        FLAGS.dump_dir,
+        tensor_debug_mode=FLAGS.dump_tensor_debug_mode,
+        circular_buffer_size=FLAGS.dump_circular_buffer_size)
 
   # Import data
   if FLAGS.fake_data:
@@ -163,9 +180,9 @@ def main(_):
     return activations
 
   # init model
-  hidden = get_dense_weights(IMAGE_SIZE**2, HIDDEN_SIZE)
-  logits = get_dense_weights(HIDDEN_SIZE, NUM_LABELS)
-  variables = hidden + logits
+  hidden_weights = get_dense_weights(IMAGE_SIZE**2, HIDDEN_SIZE)
+  output_weights = get_dense_weights(HIDDEN_SIZE, NUM_LABELS)
+  variables = hidden_weights + output_weights
 
   @tf.function
   def model(x):
@@ -178,15 +195,25 @@ def main(_):
     Returns:
       A (?, 10) tensor containing the class scores for each example.
     """
-    hidden_act = dense_layer(hidden, x)
-    logits_act = dense_layer(logits, hidden_act, tf.identity)
+    hidden_act = dense_layer(hidden_weights, x)
+    logits_act = dense_layer(output_weights, hidden_act, tf.identity)
     y = tf.nn.softmax(logits_act)
     return y
 
   @tf.function
-  def loss(logits, labels):
-    """Calculates cross entropy loss."""
-    diff = -(labels * tf.math.log(logits))
+  def loss(probs, labels):
+    """Calculates cross entropy loss.
+
+    Args:
+      probs: Class probabilities predicted by the model. The shape is expected
+        to be (?, 10).
+      labels: Truth labels for the classes, as one-hot encoded vectors. The
+        shape is expected to be the same as `probs`.
+
+    Returns:
+      A scalar loss tensor.
+    """
+    diff = -labels * tf.math.log(probs)
     loss = tf.reduce_mean(diff)
     return loss
 

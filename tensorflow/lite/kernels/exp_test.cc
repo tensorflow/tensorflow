@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <math.h>
+
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -50,14 +55,17 @@ class ExpOpModel : public SingleOpModel {
 };
 
 TEST(ExpOpTest, FloatTest) {
-  std::initializer_list<float> data = {1.0, 0.0, -1.0, 1.0, 1.0, -1.0};
-  ExpOpModel m({TensorType_FLOAT32, {3, 1, 2}}, TensorType_FLOAT32);
+  std::initializer_list<float> data = {0.0f,    1.0f,  -1.0f, 100.0f,
+                                       -100.0f, 0.01f, -0.01f};
+  ExpOpModel m({TensorType_FLOAT32, {1, 1, 7}}, TensorType_FLOAT32);
   m.SetInput<float>(data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1, 2}));
-  EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {2.71828, 1, 0.367879, 2.71828, 2.71828, 0.367879})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 7}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear(
+          {std::exp(0.0f), std::exp(1.0f), std::exp(-1.0f), std::exp(100.0f),
+           std::exp(-100.0f), std::exp(0.01f), std::exp(-0.01f)})));
 }
 
 }  // namespace

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
 #include <unistd.h>
+
 #include <cmath>
 #include <vector>
 
@@ -104,12 +105,12 @@ Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
   auto urhs = absl::bit_cast<UnsignedT>(GetRawValue(rhs));
   auto lhs_double = static_cast<double>(lhs);
   auto rhs_double = static_cast<double>(rhs);
-    return InvalidArgument(
-        "floating values are not bitwise-equal; and equality testing "
-        "was requested: %s=%g=%a vs %s=%g=%a at array index %s",
-        StrCat(absl::Hex(ulhs)), lhs_double, lhs_double,
-        StrCat(absl::Hex(urhs)), rhs_double, rhs_double,
-        LiteralUtil::MultiIndexAsString(multi_index));
+  return InvalidArgument(
+      "floating values are not bitwise-equal; and equality testing "
+      "was requested: %s=%s=%a vs %s=%s=%a at array index %s",
+      StrCat(absl::Hex(ulhs)), RoundTripFpToString(lhs), lhs_double,
+      StrCat(absl::Hex(urhs)), RoundTripFpToString(rhs), rhs_double,
+      LiteralUtil::MultiIndexAsString(multi_index));
 }
 
 template <typename NativeT>
@@ -217,39 +218,39 @@ int64 RecursiveElementCount(const Shape& shape) {
 // Returns whether the given value is infinity.
 template <typename NativeT>
 bool IsInf(NativeT val) {
-  return std::isinf(val);
+  return Eigen::numext::isinf(val);
 }
-
-template <>
-bool IsInf<half>(half val) {
-  return std::isinf(static_cast<float>(val));
-}
-
 // Returns whether the given value is nan.
 template <typename NativeT>
-float IsNan(NativeT value) {
-  return std::isnan(value);
-}
-
-template <>
-float IsNan(half value) {
-  return IsNan<float>(static_cast<float>(value));
+bool IsNan(NativeT value) {
+  return Eigen::numext::isnan(value);
 }
 
 // Converts the given floating-point value to a string.
-template <typename NativeT>
-string FpValueToString(NativeT value) {
-  return absl::StrFormat("%8.4g", static_cast<double>(value));
+string FpValueToString(bfloat16 value) {
+  return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
 
-template <>
-string FpValueToString<complex64>(complex64 value) {
-  return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
+string FpValueToString(half value) {
+  return absl::StrFormat("%11.5g", static_cast<double>(value));
 }
 
-template <>
-string FpValueToString<complex128>(complex128 value) {
-  return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
+string FpValueToString(float value) {
+  return absl::StrFormat("%15.9g", static_cast<double>(value));
+}
+
+string FpValueToString(double value) {
+  return absl::StrFormat("%24.17g", value);
+}
+
+string FpValueToString(complex64 value) {
+  return absl::StrCat(FpValueToString(value.real()), " + ",
+                      FpValueToString(value.imag()));
+}
+
+string FpValueToString(complex128 value) {
+  return absl::StrCat(FpValueToString(value.real()), " + ",
+                      FpValueToString(value.imag()));
 }
 
 // A wrapper of std::abs to include data types that are not supported by
@@ -421,7 +422,7 @@ class NearComparator {
       }
     } else if (IsInf(expected) || IsInf(actual)) {
       // If either the expected or actual value is infinity but not both,
-      // then both absolute and relative error are regarded as inifity.
+      // then both absolute and relative error are regarded as infinity.
       CHECK(!CompareEqual(expected, actual, {linear_index}));
       abs_error = std::numeric_limits<float>::infinity();
       rel_error = std::numeric_limits<float>::infinity();

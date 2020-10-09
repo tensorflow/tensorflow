@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/version.h"
@@ -76,8 +76,30 @@ void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
 
 // Returns a data value that is dead iff `control` is dead.
 Output ControlToData(const Scope& scope, Node* control) {
+  // The choice of data type here is important.
+  //
+  // We implement a "control merge", which is a control edge that is alive if
+  // either of two nodes (denoted as A and B below) are alive, in the following
+  // manner:
+  //
+  //   A --ctrl--> Const0 --data--> Merge --data--> Identity
+  //                                 ^                 |
+  //                                 |                ctrl
+  //   B --ctrl--> Const1 --data-----+                 |
+  //                                                   v
+  //                                                  ***
+  //
+  // where *** denotes the merged control output.
+  //
+  // We want everything starting from Const{0/1} to Identity to either wholly
+  // live on the host or wholly live on device so we need to pick a data type
+  // that is either consistently assigned to the device (e.g. float) or
+  // consistently assigned to the host (e.g. int32).  We should *not* pick a
+  // data type that partly placed on the host and partly on the device
+  // (e.g. bool constants are placed on the device but bool Identity is placed
+  // on the host).
   Output data = ops::Const(scope.WithOpName("ctrl_as_data"),
-                           Tensor(DT_BOOL, TensorShape({0})));
+                           Tensor(DT_INT32, TensorShape({0})));
   scope.graph()->AddControlEdge(control, data.node());
   return Output(data.node());
 }
@@ -135,9 +157,9 @@ void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node,
         new_output = check_numerics_op;
       }
 
-      ops::Merge merge_op(s.WithOpName("merge_oidx_", oidx),
-                          {Output(old_node, oidx), new_output});
-      merged_output = merged_outputs[oidx] = merge_op.output;
+      ops::_XlaMerge xla_merge_op(s.WithOpName("merge_oidx_", oidx),
+                                  Output(old_node, oidx), new_output);
+      merged_output = merged_outputs[oidx] = xla_merge_op.output;
     }
 
     Node* dst = e->dst();
@@ -430,7 +452,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
   root.graph()->AddControlEdge(predicate_as_control.node(),
                                identity_n.operation.node());
 
-  for (int i = 0; i < int32_inputs.size(); i++) {
+  for (int i = 0, end = int32_inputs.size(); i < end; i++) {
     TF_RETURN_IF_ERROR(root.graph()->UpdateEdge(identity_n[i].node(), i, n,
                                                 int32_inputs_input_idxs[i]));
   }

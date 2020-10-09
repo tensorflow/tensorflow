@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
@@ -32,7 +32,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -52,9 +51,9 @@ def _replica_id():
 def _mimic_two_cpus():
   cpus = config.list_physical_devices("CPU")
 
-  config.set_virtual_device_configuration(cpus[0], [
-      context.VirtualDeviceConfiguration(),
-      context.VirtualDeviceConfiguration(),
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration(),
   ])
 
 
@@ -81,15 +80,24 @@ class MirroredVariableCreationTest(test.TestCase):
   def setUpClass(cls):
     _mimic_two_cpus()
 
+  def assertAllDifferent(self, objs):
+    for i in range(len(objs)):
+      for j in range(len(objs)):
+        if i == j:
+          continue
+        self.assertIsNot(objs[i], objs[j])
+
   # TODO(priyag): Modify more tests to use this helper and check more
   # properties.
   def _test_mv_properties(self, var, name, strategy):
-    self.assertIsInstance(var, values.MirroredVariable)
+    self.assertTrue(distribute_utils.is_mirrored(var))
     self.assertEqual(name, var.name)
     self.assertIs(strategy, var.distribute_strategy)
-    for d in var.devices:
-      self.assertEqual(d, var.get(d).device)
-      self.assertIs(strategy, var.get(d)._distribute_strategy)  # pylint: disable=protected-access
+    for i, d in enumerate(var._devices):
+      self.assertEqual(d, strategy.experimental_local_results(var)[i].device)
+      self.assertIs(
+          strategy,
+          strategy.experimental_local_results(var)[i]._distribute_strategy)  # pylint: disable=protected-access
 
   def testVariableInFuncGraph(self, distribution):
 
@@ -178,7 +186,7 @@ class MirroredVariableCreationTest(test.TestCase):
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
       for v in result:
-        self.assertIsInstance(v, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(v))
       self.assertEqual(4, len(result))
       self.assertEqual("foo/bar:0", result[0].name)
       self.assertEqual("foo_1/bar:0", result[1].name)
@@ -195,39 +203,9 @@ class MirroredVariableCreationTest(test.TestCase):
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self.assertIsInstance(result, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(result))
       # The resulting mirrored variable will use the name from the first device.
       self.assertEqual("foo_0:0", result.name)
-
-  def testWithLayers(self, distribution):
-
-    def model_fn(features):
-      with variable_scope.variable_scope("common"):
-        layer1 = core.Dense(1)
-        layer1(features)
-        layer2 = core.Dense(1)
-        layer2(features)
-        # This will pause the current thread, and execute the other thread.
-        ds_context.get_replica_context().merge_call(lambda _: _)
-        layer3 = core.Dense(1)
-        layer3(features)
-        return [(layer1.kernel, layer1.bias), (layer2.kernel, layer2.bias),
-                (layer3.kernel, layer3.bias)]
-
-    iterator = distribution.make_input_fn_iterator(
-        lambda _: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
-    self.evaluate(iterator.initialize())
-    features = iterator.get_next()
-
-    with distribution.scope():
-      result = distribution.extended.call_for_each_replica(
-          model_fn, args=(features,))
-      suffixes = ["", "_1", "_2"]
-      for (kernel, bias), suffix in zip(result, suffixes):
-        self.assertIsInstance(kernel, values.MirroredVariable)
-        self.assertEqual("common/dense" + suffix + "/kernel:0", kernel.name)
-        self.assertIsInstance(bias, values.MirroredVariable)
-        self.assertEqual("common/dense" + suffix + "/bias:0", bias.name)
 
   def testWithVariableAndVariableScope(self, distribution):
 
@@ -257,14 +235,14 @@ class MirroredVariableCreationTest(test.TestCase):
       result = distribution.extended.call_for_each_replica(model_fn)
       self.assertEqual(4, len(result))
       v0, v1, v2, v3 = result
-      self.assertIsInstance(v0, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(v0))
       self.assertEqual("var0:0", v0.name)
-      self.assertIsInstance(v1, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(v1))
       self.assertEqual("common/var1:0", v1.name)
-      self.assertIsInstance(v2, values.SyncOnReadVariable)
+      self.assertTrue(distribute_utils.is_sync_on_read(v2))
       self.assertEqual("common/var2:0", v2.name)
       self.assertEqual(variable_scope.VariableAggregation.SUM, v2.aggregation)
-      self.assertIsInstance(v3, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(v3))
       self.assertEqual("common/var3:0", v3.name)
       self.assertEqual(variable_scope.VariableAggregation.MEAN, v3.aggregation)
 
@@ -295,14 +273,14 @@ class MirroredVariableCreationTest(test.TestCase):
         result = distribution.extended.call_for_each_replica(model_fn)
         self.assertEqual(4, len(result))
         v0, v1, v2, v3 = result
-        self.assertIsInstance(v0, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(v0))
         self.assertEqual("main/var0:0", v0.name)
-        self.assertIsInstance(v1, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(v1))
         self.assertEqual("main/common/var1:0", v1.name)
-        self.assertIsInstance(v2, values.SyncOnReadVariable)
+        self.assertTrue(distribute_utils.is_sync_on_read(v2))
         self.assertEqual("main/common/var2:0", v2.name)
         self.assertEqual(variable_scope.VariableAggregation.SUM, v2.aggregation)
-        self.assertIsInstance(v3, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(v3))
         self.assertEqual("main/common/var3:0", v3.name)
         self.assertEqual(variable_scope.VariableAggregation.MEAN,
                          v3.aggregation)
@@ -323,16 +301,19 @@ class MirroredVariableCreationTest(test.TestCase):
           aggregation=aggregation)
       return v0, v1
 
-    devices = distribution.extended.worker_devices
     with distribution.scope():
       v0, v1 = distribution.extended.call_for_each_replica(create_fn)
       self.evaluate(v0.initializer)
-      self.assertEqual(2.0, self.evaluate(v0.get(devices[0])))
-      self.assertEqual(2.0, self.evaluate(v0.get(devices[1])))
+      self.assertEqual(
+          2.0, self.evaluate(distribution.experimental_local_results(v0)[0]))
+      self.assertEqual(
+          2.0, self.evaluate(distribution.experimental_local_results(v0)[1]))
       self.assertEqual(2.0, self.evaluate(distribution.extended.read_var(v0)))
       self.evaluate(v1.initializer)
-      self.assertEqual(3.0, self.evaluate(v1.get(devices[0])))
-      self.assertEqual(3.0, self.evaluate(v1.get(devices[1])))
+      self.assertEqual(
+          3.0, self.evaluate(distribution.experimental_local_results(v1)[0]))
+      self.assertEqual(
+          3.0, self.evaluate(distribution.experimental_local_results(v1)[1]))
       self.assertEqual(3.0, self.evaluate(distribution.extended.read_var(v1)))
 
       def replica_id_plus_one():
@@ -349,20 +330,23 @@ class MirroredVariableCreationTest(test.TestCase):
 
       # Update "sync on read" variable.
       self.evaluate(distribution.group(update0a))
-      self.assertEqual(2.0 + 5.0, self.evaluate(v0.get(devices[0])))
+      local_results = self.evaluate(distribution.experimental_local_results(v0))
+      self.assertEqual(2.0 + 5.0, local_results[0])
       # Writes are not synchronized for "sync on read" variables,
       # so device[1] can end up with a different value.
-      self.assertEqual(2.0 + 2 * 5.0, self.evaluate(v0.get(devices[1])))
+      self.assertEqual(2.0 + 2 * 5.0, local_results[1])
       # Always reads from device 0.
       self.assertEqual(2.0 + 5.0,
                        self.evaluate(distribution.extended.read_var(v0)))
 
       # Update "sync on write" variable.
       self.evaluate(distribution.group(update1a))
-      self.assertEqual(3.0 + 7.0, self.evaluate(v1.get(devices[0])))
+      local_results1 = self.evaluate(
+          distribution.experimental_local_results(v1))
+      self.assertEqual(3.0 + 7.0, local_results1[0])
       # Writes are synchronized for v1, only the argument to assign_add on
       # device[0] is used.
-      self.assertEqual(3.0 + 7.0, self.evaluate(v1.get(devices[1])))
+      self.assertEqual(3.0 + 7.0, local_results1[1])
       self.assertEqual(3.0 + 7.0,
                        self.evaluate(distribution.extended.read_var(v1)))
 
@@ -377,35 +361,35 @@ class MirroredVariableCreationTest(test.TestCase):
       self.evaluate(distribution.group(update0b))
 
       # Update "sync on read" variable.
-      self.assertEqual(2.0 + 5.0 + 11.0, self.evaluate(v0.get(devices[0])))
-      self.assertEqual(2.0 + 2 * 5.0 + 2 * 11.0,
-                       self.evaluate(v0.get(devices[1])))
+      local_results = self.evaluate(distribution.experimental_local_results(v0))
+      self.assertEqual(2.0 + 5.0 + 11.0, local_results[0])
+      self.assertEqual(2.0 + 2 * 5.0 + 2 * 11.0, local_results[1])
       self.assertEqual(2.0 + 5.0 + 11.0,
                        self.evaluate(distribution.extended.read_var(v0)))
 
       # Update "sync on write" variable.
       self.evaluate(distribution.group(update1b))
-      self.assertEqual(3.0 + 7.0 + 13.0, self.evaluate(v1.get(devices[0])))
-      self.assertEqual(3.0 + 7.0 + 13.0, self.evaluate(v1.get(devices[1])))
+      local_results1 = self.evaluate(
+          distribution.experimental_local_results(v1))
+      self.assertEqual(3.0 + 7.0 + 13.0, local_results1[0])
+      self.assertEqual(3.0 + 7.0 + 13.0, local_results1[1])
       self.assertEqual(3.0 + 7.0 + 13.0,
                        self.evaluate(distribution.extended.read_var(v1)))
 
   def testNoneSynchronizationWithGetVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
-          "supported with `Mirrored` distribution strategy. Please change "
-          "the `synchronization` for variable: v"):
+          "supported with "):
         variable_scope.get_variable(
             "v", [1],
             synchronization=variable_scope.VariableSynchronization.NONE)
 
   def testNoneSynchronizationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
-          "supported with `Mirrored` distribution strategy. Please change "
-          "the `synchronization` for variable: v"):
+          "supported with "):
         variable_scope.variable(
             1.0,
             name="v",
@@ -413,14 +397,14 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testInvalidSynchronizationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable synchronization mode: Invalid for "
           "variable: v"):
         variable_scope.variable(1.0, name="v", synchronization="Invalid")
 
   def testInvalidAggregationWithGetVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable aggregation mode: invalid for "
           "variable: v"):
         variable_scope.get_variable(
@@ -430,7 +414,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testInvalidAggregationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable aggregation mode: invalid for "
           "variable: v"):
         variable_scope.variable(
@@ -440,7 +424,6 @@ class MirroredVariableCreationTest(test.TestCase):
             aggregation="invalid")
 
   def testNonMatchingVariableCreation(self, distribution):
-    self.skipTest("b/123075960")
 
     def model_fn(name):
       v = variable_scope.variable(1.0, name=name)
@@ -448,8 +431,7 @@ class MirroredVariableCreationTest(test.TestCase):
       return v
 
     with distribution.scope():
-      device_map = values.ReplicaDeviceMap(distribution.extended.worker_devices)
-      names = values.DistributedValues(device_map, ("foo", "bar"))
+      names = values.PerReplica(("foo", "bar"))
       with self.assertRaises(RuntimeError):
         _ = distribution.extended.call_for_each_replica(model_fn, args=(names,))
 
@@ -472,16 +454,16 @@ class MirroredVariableCreationTest(test.TestCase):
           4.0,
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           aggregation=variable_scope.VariableAggregation.MEAN)
-      self.assertIsInstance(v_sum, values.SyncOnReadVariable)
-      self.assertIsInstance(v_mean, values.SyncOnReadVariable)
+      self.assertTrue(distribute_utils.is_sync_on_read(v_sum))
+      self.assertTrue(distribute_utils.is_sync_on_read(v_mean))
       updates = [
           v_sum.assign_add(2.0 + replica_id),
           v_mean.assign(6.0 * replica_id)
       ]
       all_v_sum[replica_id] = v_sum
       all_v_mean[replica_id] = v_mean
-      c_sum = v_sum.get()
-      c_mean = v_mean.get()
+      c_sum = v_sum._get()
+      c_mean = v_mean._get()
       components_sum[replica_id] = c_sum
       components_mean[replica_id] = c_mean
       self.assertIsNot(v_sum, c_sum)
@@ -512,10 +494,12 @@ class MirroredVariableCreationTest(test.TestCase):
       ])
       expected_sum = 0.0
       expected_mean = 0.0
-      for i, d in enumerate(distribution.extended.worker_devices):
+      for i, _ in enumerate(distribution.extended.worker_devices):
         # Should see different values on different devices.
-        v_sum_value = self.evaluate(ret_v_sum.get(d).read_value())
-        v_mean_value = self.evaluate(ret_v_mean.get(d).read_value())
+        v_sum_value = self.evaluate(
+            distribution.experimental_local_results(ret_v_sum)[i].read_value())
+        v_mean_value = self.evaluate(
+            distribution.experimental_local_results(ret_v_mean)[i].read_value())
         expected = i + 3.0
         self.assertEqual(expected, v_sum_value)
         expected_sum += expected
@@ -531,8 +515,8 @@ class MirroredVariableCreationTest(test.TestCase):
           distribution.extended.read_var(ret_v_sum)))
       self.assertEqual(expected_mean, self.evaluate(
           distribution.extended.read_var(ret_v_mean)))
-      self.assertEqual(expected_sum, self.evaluate(ret_v_sum.get()))
-      self.assertEqual(expected_mean, self.evaluate(ret_v_mean.get()))
+      self.assertEqual(expected_sum, self.evaluate(ret_v_sum._get()))
+      self.assertEqual(expected_mean, self.evaluate(ret_v_mean._get()))
       self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
       self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
 
@@ -565,7 +549,7 @@ class MirroredVariableCreationTest(test.TestCase):
           1.0,
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           aggregation=variable_scope.VariableAggregation.SUM)
-      self.assertIsInstance(v_sum, values.SyncOnReadVariable)
+      self.assertTrue(distribute_utils.is_sync_on_read(v_sum))
       return v_sum
 
     def update(var, value):
@@ -581,8 +565,8 @@ class MirroredVariableCreationTest(test.TestCase):
       self.assertEqual(
           1.0,
           self.evaluate(
-              ret_v_sum.get(
-                  distribution.extended.worker_devices[0]).read_value()))
+              distribution.experimental_local_results(ret_v_sum)
+              [0].read_value()))
       self.assertEqual(2.0, self.evaluate(ret_v_sum))
 
       # Apply updates.
@@ -594,8 +578,8 @@ class MirroredVariableCreationTest(test.TestCase):
       self.assertEqual(
           5.0,
           self.evaluate(
-              ret_v_sum.get(
-                  distribution.extended.worker_devices[0]).read_value()))
+              distribution.experimental_local_results(ret_v_sum)
+              [0].read_value()))
       self.assertEqual(10.0, self.evaluate(ret_v_sum))
 
   def testVarDistributeStrategy(self, distribution):

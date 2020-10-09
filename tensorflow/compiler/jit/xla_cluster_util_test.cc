@@ -23,11 +23,11 @@ limitations under the License.
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -50,7 +50,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughEnterExitRegion) {
 
   GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
-  EXPECT_FALSE(cycles.ContractEdge(a.node()->id(), b.node()->id()));
+  EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
 
 TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
@@ -69,7 +69,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
 
   GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
-  EXPECT_FALSE(cycles.ContractEdge(a.node()->id(), b.node()->id()));
+  EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
 
 TEST(CreateCycleDetectionGraph, ReachingEnterExit) {
@@ -148,9 +148,9 @@ xla::StatusOr<std::vector<string>> GetNodesRelatedToRefVarsSorted(
   TF_RETURN_IF_ERROR(scope.ToGraph(graph.get()));
 
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, Env::Default(),
-                                        TF_GRAPH_DEF_VERSION, flib_def,
-                                        OptimizerOptions{}));
+      new ProcessFunctionLibraryRuntime(
+          nullptr, Env::Default(), /*config=*/nullptr, TF_GRAPH_DEF_VERSION,
+          flib_def, OptimizerOptions{}));
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 

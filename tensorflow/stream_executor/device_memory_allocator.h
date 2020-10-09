@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -57,7 +59,9 @@ class ScopedDeviceMemory {
   //             out of scope.
   ScopedDeviceMemory(DeviceMemoryBase mem, int device_ordinal,
                      DeviceMemoryAllocator *allocator)
-      : wrapped_(mem), device_ordinal_(device_ordinal), allocator_(allocator) {}
+      : wrapped_(mem), device_ordinal_(device_ordinal), allocator_(allocator) {
+    DCHECK_GE(device_ordinal_, 0);
+  }
 
   // A helper constructor to generate a scoped device memory given an already
   // allocated memory and a stream executor.
@@ -77,8 +81,9 @@ class ScopedDeviceMemory {
   //
   // Postcondition: other == nullptr.
   ScopedDeviceMemory(ScopedDeviceMemory &&other)
-      : ScopedDeviceMemory(other.Release(), other.device_ordinal_,
-                           other.allocator_) {}
+      : wrapped_(other.Release()),
+        device_ordinal_(other.device_ordinal_),
+        allocator_(other.allocator_) {}
 
   // Releases the memory that was provided in the constructor, through the
   // "parent" StreamExecutor.
@@ -211,15 +216,11 @@ class DeviceMemoryAllocator {
   // a stream, or do we have to wait for the computation to complete first?
   virtual bool AllowsAsynchronousDeallocation() const { return false; }
 
-  // Returns nullable stream pointer.
-  //
-  // If the pointer is non-null, then it is always safe to access the memory
-  // allocated by the allocator on the returned stream. This condition is not
-  // required though, as streams could be synchronized by other means.
-  //
-  // TODO(cheshire): clean up the interface, it might be cleaner to explicitly
-  // pass the stream to Compiler.
-  virtual Stream *GetStream() const { return nullptr; }
+  // Returns a stream pointer on which it is always safe to access memory
+  // allocated by this allocator. It is not necessary to use the returned stream
+  // though, as clients may have additional information letting them safely use
+  // a different stream.
+  virtual port::StatusOr<Stream *> GetStream(int device_ordinal) = 0;
 
  protected:
   const Platform* platform_;
@@ -251,12 +252,22 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
 
   bool AllowsAsynchronousDeallocation() const override;
 
- private:
-  port::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal);
+  // Gets-or-creates a stream for a given `device_ordinal` from an appropriate
+  // stream executor.
+  port::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
+  // Gets the stream executor for given device ordinal.
+  port::StatusOr<StreamExecutor *> GetStreamExecutor(int device_ordinal) const;
+
+ private:
   // Available stream executors. Each stream executor has a different device
   // ordinal.
   std::vector<StreamExecutor *> stream_executors_;
+
+  absl::Mutex mutex_;
+
+  // Cache of streams for GetStream.
+  std::map<int, Stream> streams_ TF_GUARDED_BY(mutex_);
 };
 
 template <typename ElemT>

@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class BenchmarkTest(test.TestCase, benchmark.TensorFlowBenchmark):
 
   def testReportBenchmark(self):
-    output_dir = '/tmp/'
+    output_dir = self.get_temp_dir() + os.path.sep
     os.environ['TEST_REPORT_FILE_PREFIX'] = output_dir
     proto_file_path = os.path.join(output_dir,
                                    'BenchmarkTest.testReportBenchmark')
@@ -80,4 +80,3 @@ class BenchmarkTest(test.TestCase, benchmark.TensorFlowBenchmark):
 
 if __name__ == '__main__':
   test.main()
-

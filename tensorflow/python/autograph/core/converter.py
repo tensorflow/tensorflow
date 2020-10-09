@@ -23,10 +23,10 @@ The class hierarchy is as follows:
       [extends] converter.Base
         [extends] transformer.Base
             [extends] gast.nodeTransformer
-          [uses] transfomer.SourceInfo
+          [uses] transformer.SourceInfo
         [uses] converter.EntityContext
           [uses] converter.ProgramContext
-          [uses] transfomer.SourceInfo
+          [uses] transformer.SourceInfo
 
 converter.Base is a specialization of transformer.Base for AutoGraph. It's a
 very lightweight subclass that adds a `ctx` attribute holding the corresponding
@@ -63,20 +63,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import enum
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
-from tensorflow.python.autograph.pyct import cfg
-from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.static_analysis import activity
-from tensorflow.python.autograph.pyct.static_analysis import liveness
-from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.util.tf_export import tf_export
 
 # TODO(mdan): These contexts can be refactored into first class objects.
@@ -240,37 +233,17 @@ STANDARD_OPTIONS = ConversionOptions(
     optional_features=None)
 
 
-class ProgramContext(
-    collections.namedtuple('ProgramContext', ('options', 'autograph_module'))):
+class ProgramContext(object):
   """ProgramContext keeps track of converting function hierarchies.
-
-  This object is mutable, and is updated during conversion. Not thread safe.
 
   Attributes:
     options: ConversionOptions
-    autograph_module: Module, a reference to the autograph module. This needs to
-      be specified by the caller to avoid circular dependencies.
-  """
-  pass
-
-
-class EntityContext(transformer.Context):
-  """Tracks the conversion of a single entity.
-
-  This object is mutable, and is updated during conversion. Not thread safe.
-
-  Attributes:
-    namer: Namer
-    info: transformer.EntityInfo
-    program: ProgramContext,
-    targe_name: Text
+    autograph_module: Deprecated. Do not use.
   """
 
-  def __init__(self, namer, entity_info, program_ctx, target_name=None):
-    super(EntityContext, self).__init__(entity_info)
-    self.namer = namer
-    self.program = program_ctx
-    self.target_name = target_name
+  def __init__(self, options, autograph_module=None):
+    self.options = options
+    self.autograph_module = autograph_module
 
 
 class Base(transformer.Base):
@@ -329,10 +302,10 @@ class Base(transformer.Base):
     for other_value in arg_values_found[1:]:
       if not ast_util.matches(first_value, other_value):
         qn = anno.getanno(node, anno.Basic.QN)
-        raise ValueError('%s has ambiguous annotations for %s(%s): %s, %s' %
-                         (qn, directive.__name__, arg,
-                          compiler.ast_to_source(other_value).strip(),
-                          compiler.ast_to_source(first_value).strip()))
+        raise ValueError(
+            '%s has ambiguous annotations for %s(%s): %s, %s' %
+            (qn, directive.__name__, arg, parser.unparse(other_value).strip(),
+             parser.unparse(first_value).strip()))
     return first_value
 
   def visit(self, node):
@@ -346,65 +319,3 @@ class Base(transformer.Base):
       return super(Base, self).visit(node)
     finally:
       self._ast_depth -= 1
-
-
-class AnnotatedDef(reaching_definitions.Definition):
-
-  def __init__(self):
-    super(AnnotatedDef, self).__init__()
-    self.directives = {}
-
-
-class AgAnno(enum.Enum):
-  """Annotation labels specific to AutoGraph. See anno.py."""
-
-  DIRECTIVES = 'User directives associated with the annotated statement.'
-
-  def __repr__(self):
-    return self.name
-
-
-def standard_analysis(node, context, is_initial=False):
-  """Performs a complete static analysis of the given code.
-
-  Args:
-    node: ast.AST
-    context: converter.EntityContext
-    is_initial: bool, whether this is the initial analysis done on the input
-      source code
-
-  Returns:
-    ast.AST, same as node, with the static analysis annotations added
-  """
-  # TODO(mdan): Clear static analysis here.
-  # TODO(mdan): Consider not running all analyses every time.
-  # TODO(mdan): Don't return a node because it's modified by reference.
-  graphs = cfg.build(node)
-  node = qual_names.resolve(node)
-  node = activity.resolve(node, context, None)
-  node = reaching_definitions.resolve(node, context, graphs, AnnotatedDef)
-  node = liveness.resolve(node, context, graphs)
-  if is_initial:
-    anno.dup(
-        node,
-        {
-            anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
-        },
-    )
-  return node
-
-
-def apply_(node, context, converter_module):
-  """Applies a converter to an AST.
-
-  Args:
-    node: ast.AST
-    context: converter.EntityContext
-    converter_module: converter.Base
-
-  Returns:
-    ast.AST, the result of applying converter to node
-  """
-  node = standard_analysis(node, context)
-  node = converter_module.transform(node, context)
-  return node

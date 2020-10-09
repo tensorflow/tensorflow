@@ -23,45 +23,60 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.framework import config
+from tensorflow.python.distribute import test_util
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
 
-  def setUp(self):
-    # Need to call set_virtual_cpus_to_at_least() in setUp with the maximum
-    # value needed in any test.
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
-    super(StrategyCombinationsTest, self).setUp()
+  @combinations.generate(
+      combinations.combine(
+          strategy=strategy_combinations.two_replica_strategies,
+          mode=["graph", "eager"]))
+  def testTwoReplicaStrategy(self, strategy):
+    with strategy.scope():
 
-  def test3VirtualCPUs(self):
-    cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_virtual_device_configuration(cpu_device), 3)
+      @def_function.function
+      def one():
+        return array_ops.identity(1.)
 
-  def testSetVirtualCPUsAgain(self):
-    strategy_combinations.set_virtual_cpus_to_at_least(2)
-    cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_virtual_device_configuration(cpu_device), 3)
+      one_per_replica = strategy.run(one)
+      num_replicas = strategy.reduce(
+          reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
+      self.assertEqual(self.evaluate(num_replicas), 2.)
 
-  def testSetVirtualCPUsErrors(self):
-    with self.assertRaises(ValueError):
-      strategy_combinations.set_virtual_cpus_to_at_least(0)
-    with self.assertRaisesRegexp(RuntimeError, "with 3 < 5 virtual CPUs"):
-      strategy_combinations.set_virtual_cpus_to_at_least(5)
+  @combinations.generate(
+      combinations.combine(
+          strategy=strategy_combinations.four_replica_strategies,
+          mode=["graph", "eager"]))
+  def testFourReplicaStrategy(self, strategy):
+    with strategy.scope():
 
-  @combinations.generate(combinations.combine(
-      distribution=[strategy_combinations.mirrored_strategy_with_cpu_1_and_2],
-      mode=["graph", "eager"]))
+      @def_function.function
+      def one():
+        return array_ops.identity(1.)
+
+      one_per_replica = strategy.run(one)
+      num_replicas = strategy.reduce(
+          reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
+      self.assertEqual(self.evaluate(num_replicas), 4.)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
+          ],
+          mode=["graph", "eager"]))
   def testMirrored2CPUs(self, distribution):
     with distribution.scope():
-      one_per_replica = distribution.experimental_run_v2(
-          lambda: constant_op.constant(1))
+      one_per_replica = distribution.run(lambda: constant_op.constant(1))
       num_replicas = distribution.reduce(
           reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
       self.assertEqual(2, self.evaluate(num_replicas))
 
 
 if __name__ == "__main__":
-  test.main()
+  test_util.main()

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/reporter.h"
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
@@ -88,6 +88,14 @@ Status TestReporter::SetProperty(const string& name, const string& value) {
 Status TestReporter::SetProperty(const string& name, double value) {
   if (report_file_.IsClosed()) return Status::OK();
   (*benchmark_entry_.mutable_extras())[name].set_double_value(value);
+  return Status::OK();
+}
+
+Status TestReporter::AddMetric(const string& name, double value) {
+  if (report_file_.IsClosed()) return Status::OK();
+  auto* metric = benchmark_entry_.add_metrics();
+  metric->set_name(name);
+  metric->set_value(value);
   return Status::OK();
 }
 

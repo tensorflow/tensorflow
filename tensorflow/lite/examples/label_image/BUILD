@@ -23,21 +23,35 @@ cc_binary(
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE
             "-lm",  # some builtin ops, e.g., tanh, need -lm
+            "-Wl,-rpath=/data/local/tmp",  # for hexagon delegate
         ],
         "//conditions:default": [],
     }),
     deps = [
         ":bitmap_helpers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+        "//tensorflow/lite/tools/delegates:tflite_execution_providers",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@com_google_absl//absl/memory",
     ] + select({
-        "//tensorflow:android": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
-        "//tensorflow:android_arm64": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
+        "//tensorflow:android_arm64": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
         "//conditions:default": [],
     }),
 )
@@ -58,8 +72,14 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
-        "//tensorflow:android": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
-        "//tensorflow:android_arm64": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
+        "//tensorflow:android_arm64": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
         "//conditions:default": [],
     }),
 )
@@ -76,6 +96,7 @@ cc_test(
     ],
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )

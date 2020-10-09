@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
@@ -37,11 +39,24 @@ class GpuInstructionFusion : public InstructionFusion {
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 
+  StatusOr<bool> Run(HloModule* module) override {
+    fusion_node_evaluations_.clear();
+    return InstructionFusion::Run(module);
+  }
+
  private:
   // This method is called by ShouldFuse() to do all the computationally
   // inexpensive checks whether we should fuse the operand into 'consumer'.
   bool ShouldFuseInexpensiveChecks(HloInstruction* consumer,
                                    int64 operand_index);
+
+  HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
+                                  HloInstruction* producer) override;
+
+  // Keep track of the number of times each instruction inside a fusion node is
+  // indexed with different index vectors.
+  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
+      fusion_node_evaluations_;
 };
 
 }  // namespace gpu

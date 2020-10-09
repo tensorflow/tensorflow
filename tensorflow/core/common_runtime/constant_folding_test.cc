@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
+
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/cc/ops/nn_ops.h"
-#include "tensorflow/core/common_runtime/constant_folding.h"
-
 #include "tensorflow/cc/ops/array_ops_internal.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -631,6 +631,13 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
   }
 }
 
+// Disabling the following test on the ROCm platform because it relies on the
+// "topK" operator being supported on the ROCm platform (which is currently not
+// the case)
+// TODO(rocm) :
+// re-enable this test once support for "topK" operator is available on ROCm
+
+#ifndef TENSORFLOW_USE_ROCM
 TEST_F(ConstantFoldingTest, NoReplacePartialOutput) {
   Graph g(OpRegistry::Global());
   {
@@ -655,6 +662,7 @@ TEST_F(ConstantFoldingTest, NoReplacePartialOutput) {
       &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
 }
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -679,8 +687,10 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
       : ::tensorflow::NullFileSystem(),
         data_tensor_(test::AsTensor<double>({1., 2., 3., 4.}, {2, 2})) {}
 
+  using ::tensorflow::NullFileSystem::NewReadOnlyMemoryRegionFromFile;
+
   ::tensorflow::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, ::tensorflow::TransactionToken* token,
       std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result) override {
     if (fname != kTestMemRegionName) {
       return ::tensorflow::errors::Unimplemented(
@@ -696,7 +706,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   ::tensorflow::Tensor data_tensor_;
 };
 
-// A test TF environent that checks that the environment was used.
+// A test TF environment that checks that the environment was used.
 class TestTFEnvironment : public ::tensorflow::EnvWrapper {
  public:
   using tf_base = ::tensorflow::EnvWrapper;

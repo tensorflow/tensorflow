@@ -23,8 +23,10 @@ import functools
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -35,6 +37,7 @@ from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import nest
 
 
 class _Initializer(tracking.CapturableResource):
@@ -44,7 +47,7 @@ class _Initializer(tracking.CapturableResource):
   original SavedModel's initialization procedure.
 
   Created when `tf.saved_model.load` loads a TF 1.x-style SavedModel with an
-  initialization op. This object holds a function which runs the
+  initialization op. This object holds a function that runs the
   initialization. It does not require any manual user intervention;
   `tf.saved_model.save` will see this object and automatically add it to the
   exported SavedModel, and `tf.saved_model.load` runs the initialization
@@ -91,19 +94,24 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     # pylint: enable=protected-access
     returns[0] = saver
 
-  def restore_variables(self, wrapped, saver):
+  def _extract_saver_restore(self, wrapped, saver):
+    if saver is None:
+      return None
+    saver_def = saver.saver_def
+    filename_tensor = wrapped.graph.as_graph_element(
+        saver_def.filename_tensor_name)
+    # We both feed and fetch filename_tensor so we have an operation to use to
+    # feed into variable initializers (only relevant for v1 graph building).
+    return wrapped.prune(
+        feeds=[filename_tensor],
+        fetches=[filename_tensor,
+                 wrapped.graph.as_graph_element(saver_def.restore_op_name)])
+
+  def restore_variables(self, wrapped, restore_from_saver):
     """Restores variables from the checkpoint."""
-    if saver is not None:
-      saver_def = saver.saver_def
-      filename_tensor = wrapped.graph.as_graph_element(
-          saver_def.filename_tensor_name)
-      # We both feed and fetch filename_tensor so we have an operation to use to
-      # feed into variable initializers (only relevant for v1 graph building).
-      restore_fn = wrapped.prune(
-          feeds=[filename_tensor],
-          fetches=[filename_tensor,
-                   wrapped.graph.as_graph_element(saver_def.restore_op_name)])
-      initializer, _ = restore_fn(constant_op.constant(self._variables_path))
+    if restore_from_saver is not None:
+      initializer, _ = restore_from_saver(
+          constant_op.constant(self._variables_path))
       if not ops.executing_eagerly_outside_functions():
         # Add the initialization operation to the table initializers collection
         # in case we don't have any lifted variables to attach it to. There
@@ -138,6 +146,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           for input_spec in input_specs
       ]
       input_names = []
+      input_tensors = []
       for original_input_name, feed in zip(original_input_names, feeds):
         if isinstance(feed, sparse_tensor.SparseTensor):
           # We have to give explicit name for SparseTensor arguments, because
@@ -146,8 +155,15 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           values_name = "%s_values" % original_input_name
           dense_shape_name = "%s_dense_shape" % original_input_name
           input_names.extend([indices_name, values_name, dense_shape_name])
+          input_tensors.extend([feed.indices, feed.values, feed.dense_shape])
+        elif isinstance(feed, composite_tensor.CompositeTensor):
+          component_tensors = nest.flatten(feed, expand_composites=True)
+          input_names.extend("%s_component_%d" % (original_input_name, n)
+                             for n in range(len(component_tensors)))
+          input_tensors.extend(component_tensors)
         else:
           input_names.append(original_input_name)
+          input_tensors.append(feed)
       fetches = {name: out for name, out in signature_def.outputs.items()}
       try:
         signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
@@ -168,6 +184,11 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         raise
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
+      signature_fn._func_graph.structured_input_signature = (
+          (),
+          func_graph.convert_structure_to_signature(
+              dict(zip(input_names, input_tensors))))
+
       if len(input_names) == 1:
         # Allowing positional arguments does not create any ambiguity if there's
         # only one.
@@ -203,7 +224,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         functools.partial(self.load_graph, load_graph_returns, meta_graph_def),
         signature=[])
     saver, = load_graph_returns
-    self.restore_variables(wrapped, saver)
+    restore_from_saver = self._extract_saver_restore(wrapped, saver)
+    self.restore_variables(wrapped, restore_from_saver)
     with wrapped.graph.as_default():
       init_op = loader_impl.get_init_op(
           meta_graph_def) or monitored_session.Scaffold.default_local_init_op()
@@ -211,6 +233,9 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       init_anchor = constant_op.constant(0., name="dummy_fetch")
 
     root = tracking.AutoTrackable()
+    if restore_from_saver is not None:
+      root.restore = (
+          lambda path: restore_from_saver(constant_op.constant(path)))
     asset_feed_tensors = []
     asset_paths = []
     for tensor_name, value in loader_impl.get_asset_tensors(

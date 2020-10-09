@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -25,11 +29,11 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::Matcher;
 
-template <typename RegularInputOuput>
+template <typename RegularInputOutput>
 class PadOpModel : public SingleOpModel {
  public:
-  void SetInput(std::initializer_list<RegularInputOuput> data) {
-    PopulateTensor<RegularInputOuput>(input_, data);
+  void SetInput(std::initializer_list<RegularInputOutput> data) {
+    PopulateTensor<RegularInputOutput>(input_, data);
   }
 
   template <typename QuantizedInputOutput>
@@ -46,8 +50,8 @@ class PadOpModel : public SingleOpModel {
     PopulateTensor<int>(paddings_, paddings);
   }
 
-  std::vector<RegularInputOuput> GetOutput() {
-    return ExtractVector<RegularInputOuput>(output_);
+  std::vector<RegularInputOutput> GetOutput() {
+    return ExtractVector<RegularInputOutput>(output_);
   }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
@@ -128,17 +132,17 @@ class PadOpConstModel : public PadOpModel<float> {
 };
 
 // Test case where paddings is a non-const tensor.
-template <typename RegularInputOuput>
-class PadV2OpDynamicModel : public PadOpModel<RegularInputOuput> {
+template <typename RegularInputOutput>
+class PadV2OpDynamicModel : public PadOpModel<RegularInputOutput> {
  public:
   PadV2OpDynamicModel(const TensorData& input,
                       std::initializer_list<int> paddings_shape,
-                      RegularInputOuput constant_values,
+                      RegularInputOutput constant_values,
                       const TensorData& output) {
     this->input_ = this->AddInput(input);
     this->paddings_ = this->AddInput(TensorType_INT32);
     this->constant_values_ = this->AddConstInput(
-        GetTensorType<RegularInputOuput>(), {constant_values}, {1});
+        GetTensorType<RegularInputOutput>(), {constant_values}, {1});
     this->output_ = this->AddOutput(output);
 
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
@@ -189,7 +193,7 @@ TEST(PadOpTest, TooManyDimensions) {
       PadOpConstModel({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
                       {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
                       {TensorType_FLOAT32}),
-      "dims <= 4");
+      "dims <= reference_ops::PadKernelMaxDimensionCount()");
 }
 
 TEST(PadOpTest, UnequalDimensions) {
@@ -271,6 +275,16 @@ TEST(PadOpTest, SimpleDynamicTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
+TEST(PadOpTest, DynamicUnequalDimensions) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  PadOpDynamicModel m({TensorType_FLOAT32, {}}, {3, 2}, {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions.";
+}
+
 TEST(PadOpTest, AdvancedConstTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
                     {1, 0, 0, 2, 0, 3, 0, 0}, {TensorType_FLOAT32});
@@ -332,20 +346,27 @@ TEST_F(QuantizedPadOpTest, UInt8ZeroNotInQuantizationRange) {
 TEST_F(QuantizedPadOpTest, Int8ZeroNotInQuantizationRange) {
   ZeroNotInQuantizationRange<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16ZeroNotInQuantizationRange) {
+  ZeroNotInQuantizationRange<int16_t, TensorType_INT16>();
+}
 #endif
 
 template <typename integer_type, TensorType tensor_dtype>
 void SimpleConstTest() {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadOpConstModel m({tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
-                    {0, 0, 1, 1, 1, 1, 0, 0}, {tensor_dtype, {}, -1.0, 1.0});
+
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpConstModel m({tensor_dtype, {1, 2, 2, 1}, kMin, kMax}, {4, 2},
+                    {0, 0, 1, 1, 1, 1, 0, 0}, {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.Invoke();
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
@@ -355,18 +376,24 @@ TEST_F(QuantizedPadOpTest, UInt8SimpleConstTest) {
 TEST_F(QuantizedPadOpTest, Int8SimpleConstTest) {
   SimpleConstTest<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16SimpleConstTest) {
+  SimpleConstTest<int16_t, TensorType_INT16>();
+}
 
 template <typename integer_type, TensorType tensor_dtype>
 void SimpleDynamicTest() {
-  PadOpDynamicModel m({tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
-                      {tensor_dtype, {}, -1.0, 1.0});
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpDynamicModel m({tensor_dtype, {1, 2, 2, 1}, kMin, kMax}, {4, 2},
+                      {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
   m.Invoke();
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
@@ -376,18 +403,24 @@ TEST_F(QuantizedPadOpTest, UInt8SimpleDynamicTest) {
 TEST_F(QuantizedPadOpTest, Int8SimpleDynamicTest) {
   SimpleDynamicTest<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16SimpleDynamicTest) {
+  SimpleDynamicTest<int16_t, TensorType_INT16>();
+}
 
 template <typename integer_type, TensorType tensor_dtype>
 void AdvancedConstTest() {
-  PadOpConstModel m({tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
-                    {0, 0, 0, 2, 1, 3, 0, 0}, {tensor_dtype, {}, -1.0, 1.0});
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpConstModel m({tensor_dtype, {1, 2, 3, 1}, kMin, kMax}, {4, 2},
+                    {0, 0, 0, 2, 1, 3, 0, 0}, {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.Invoke();
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
                    0, 0,    0,   0,   0, 0, 0, 0, 0,   0,   0,    0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
 }
 
@@ -397,11 +430,17 @@ TEST_F(QuantizedPadOpTest, UInt8AdvancedConstTest) {
 TEST_F(QuantizedPadOpTest, Int8AdvancedConstTest) {
   AdvancedConstTest<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16AdvancedConstTest) {
+  AdvancedConstTest<int16_t, TensorType_INT16>();
+}
 
 template <typename integer_type, TensorType tensor_dtype>
 void AdvancedDynamicTest() {
-  PadOpDynamicModel m({tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
-                      {tensor_dtype, {}, -1.0, 1.0});
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpDynamicModel m({tensor_dtype, {1, 2, 3, 1}, kMin, kMax}, {4, 2},
+                      {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
   m.Invoke();
@@ -409,7 +448,7 @@ void AdvancedDynamicTest() {
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
                    0, 0,    0,   0,   0, 0, 0, 0, 0,   0,   0,    0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
 }
 
@@ -419,6 +458,9 @@ TEST_F(QuantizedPadOpTest, UInt8AdvancedDynamicTest) {
 TEST_F(QuantizedPadOpTest, Int8AdvancedDynamicTest) {
   AdvancedDynamicTest<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16AdvancedDynamicTest) {
+  AdvancedDynamicTest<int16_t, TensorType_INT16>();
+}
 
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(PadV2OpTest, TooManyDimensions) {
@@ -426,7 +468,7 @@ TEST(PadV2OpTest, TooManyDimensions) {
   EXPECT_DEATH(f({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
                  {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9}, 0.0,
                  {TensorType_FLOAT32}),
-               "dims <= 4");
+               "dims <= reference_ops::PadKernelMaxDimensionCount()");
 }
 
 TEST(PadV2OpTest, UnequalDimensions) {
@@ -526,6 +568,17 @@ TEST(PadV2OpTest, SimpleDynamicTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, DynamicUnequalDimensions) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {}}, {4, 2}, 0.0,
+                               {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions";
 }
 
 TEST(PadV2OpTest, SimpleDynamicValuedTest) {

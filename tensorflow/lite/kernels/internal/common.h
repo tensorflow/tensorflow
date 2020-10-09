@@ -21,11 +21,16 @@ limitations under the License.
 #endif
 #endif
 
+#include <functional>
+
 #include "fixedpoint/fixedpoint.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
+
+constexpr int kReverseShift = -1;
 
 inline void GetActivationMinMax(FusedActivationFunctionType ac,
                                 float* output_activation_min,
@@ -50,9 +55,12 @@ inline void GetActivationMinMax(FusedActivationFunctionType ac,
   }
 }
 
-inline float ActivationFunctionWithMinMax(float x, float output_activation_min,
-                                          float output_activation_max) {
-  return std::min(std::max(x, output_activation_min), output_activation_max);
+template <typename T>
+inline T ActivationFunctionWithMinMax(T x, T output_activation_min,
+                                      T output_activation_max) {
+  using std::max;
+  using std::min;
+  return min(max(x, output_activation_min), output_activation_max);
 }
 
 // Legacy function, left for compatibility only.
@@ -130,23 +138,24 @@ inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
 #endif
 }
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOneExp(
-    int32 x, int32 quantized_multiplier, int left_shift) {
+inline int32_t MultiplyByQuantizedMultiplierSmallerThanOneExp(
+    int32_t x, int32_t quantized_multiplier, int left_shift) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   return RoundingDivideByPOT(
       SaturatingRoundingDoublingHighMul(x, quantized_multiplier), -left_shift);
 }
 
-inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(
-    int32 x, int32 quantized_multiplier, int left_shift) {
+inline int32_t MultiplyByQuantizedMultiplierGreaterThanOne(
+    int32_t x, int32_t quantized_multiplier, int left_shift) {
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
                                            quantized_multiplier);
 }
 
-inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
-                                           int shift) {
+inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   int left_shift = shift > 0 ? shift : 0;
@@ -154,6 +163,27 @@ inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
   return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
                                  x * (1 << left_shift), quantized_multiplier),
                              right_shift);
+}
+
+inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
+  // Inputs:
+  // - quantized_multiplier has fixed point at bit 31
+  // - shift is -31 to +7 (negative for right shift)
+  //
+  // Assumptions: The following input ranges are assumed
+  // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
+  // - scaling is chosen so final scaled result fits in int32_t
+  // - input x is in the range -(1<<47) <= x < (1<<47)
+  assert(quantized_multiplier >= 0);
+  assert(shift >= -31 && shift < 8);
+
+  int32_t reduced_multiplier = (quantized_multiplier + (1 << 15)) >> 16;
+  int total_shift = 15 - shift;
+  x = (x * (int64_t)reduced_multiplier) + ((int64_t)1 << (total_shift - 1));
+  int32_t result = x >> total_shift;
+  return result;
 }
 
 template <typename T>
@@ -189,11 +219,132 @@ inline int CountLeadingSignBits(T integer_input) {
   using U = typename std::make_unsigned<T>::type;
   return integer_input >= 0
              ? CountLeadingZeros(static_cast<U>(integer_input)) - 1
-             : integer_input != std::numeric_limits<T>::min()
-                   ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
-                   : 0;
+         : integer_input != std::numeric_limits<T>::min()
+             ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
+             : 0;
 #endif
 }
+
+// Use "count leading zeros" helper functions to do a fast Floor(log_2(x)).
+template <typename Integer>
+inline Integer FloorLog2(Integer n) {
+  static_assert(std::is_integral<Integer>::value, "");
+  static_assert(std::is_signed<Integer>::value, "");
+  static_assert(sizeof(Integer) == 4 || sizeof(Integer) == 8, "");
+  TFLITE_CHECK_GT(n, 0);
+  if (sizeof(Integer) == 4) {
+    return 30 - CountLeadingSignBits(n);
+  } else {
+    return 62 - CountLeadingSignBits(n);
+  }
+}
+
+// generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
+// softmax
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(double (*func)(double), double min, double max,
+                    int16_t* table, const int num) {
+  // size of table should equal to num + 1
+  // last element only for slope calculation
+  double step = (max - min) / (num - 1);
+  double half_step = step / 2.0;
+  for (int i = 0; i < num - 1; i++) {
+    double sample_val = TfLiteRound(func(min + i * step) * 32768.0);
+    double midpoint_interp_val =
+        TfLiteRound((func(min + (i + 1) * step) * 32768.0 +
+                     TfLiteRound(func(min + i * step) * 32768.0)) /
+                    2.0);
+    double midpoint_val =
+        TfLiteRound(func(min + i * step + half_step) * 32768.0);
+    double midpoint_err = midpoint_interp_val - midpoint_val;
+    double bias = TfLiteRound(midpoint_err / 2.0);
+    table[i] = std::min(std::max(sample_val - bias, -32768.0), 32767.0);
+  }
+  table[num - 1] =
+      std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
+}
+
+// generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
+// softmax
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(float (*func)(float), float min, float max, int16_t* table,
+                    const int num) {
+  // size of table should equal to num + 1
+  // last element only for slope calculation
+  float step = (max - min) / (num - 1);
+  float half_step = step / 2.0f;
+  for (int i = 0; i < num - 1; i++) {
+    float sample_val = TfLiteRound(func(min + i * step) * 32768.0f);
+    float midpoint_interp_val =
+        TfLiteRound((func(min + (i + 1) * step) * 32768.0f +
+                     TfLiteRound(func(min + i * step) * 32768.0f)) /
+                    2.0f);
+    float midpoint_val =
+        TfLiteRound(func(min + i * step + half_step) * 32768.0f);
+    float midpoint_err = midpoint_interp_val - midpoint_val;
+    float bias = TfLiteRound(midpoint_err / 2.0f);
+    table[i] = std::min(std::max(sample_val - bias, -32768.0f), 32767.0f);
+  }
+  table[num - 1] = std::min(
+      std::max(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
+}
+
+// int16_t func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax
+inline int16_t generic_int16_table_lookup(int16_t value, const int16_t* lut) {
+  // 512 base value, lut[513] only for calculate slope
+  uint16_t index = static_cast<uint16_t>(256 + (value >> 7));
+  assert(index < 512 && "LUT index out of range.");
+  int16_t offset = value & 0x7f;
+
+  // base and slope are Q0.15
+  int16_t base = lut[index];
+  int16_t slope = lut[index + 1] - lut[index];
+
+  // Q0.15 * Q0.7 = Q0.22
+  // Round and convert from Q0.22 to Q0.15
+  int32_t delta = (static_cast<int32_t>(slope) * offset + 64) >> 7;
+
+  // Q0.15 + Q0.15
+  return base + delta;
+}
+
+// Table of sigmoid(i/24) at 0.16 format - 256 elements.
+
+// We use combined sigmoid and tanh look-up table, since
+// tanh(x) = 2*sigmoid(2*x) -1.
+// Both functions are symmetric, so the LUT table is only needed
+// for the absolute value of the input.
+static const uint16_t sigmoid_table_uint16[256] = {
+    32768, 33451, 34133, 34813, 35493, 36169, 36843, 37513, 38180, 38841, 39498,
+    40149, 40794, 41432, 42064, 42688, 43304, 43912, 44511, 45102, 45683, 46255,
+    46817, 47369, 47911, 48443, 48964, 49475, 49975, 50464, 50942, 51409, 51865,
+    52311, 52745, 53169, 53581, 53983, 54374, 54755, 55125, 55485, 55834, 56174,
+    56503, 56823, 57133, 57433, 57724, 58007, 58280, 58544, 58800, 59048, 59288,
+    59519, 59743, 59959, 60168, 60370, 60565, 60753, 60935, 61110, 61279, 61441,
+    61599, 61750, 61896, 62036, 62172, 62302, 62428, 62549, 62666, 62778, 62886,
+    62990, 63090, 63186, 63279, 63368, 63454, 63536, 63615, 63691, 63765, 63835,
+    63903, 63968, 64030, 64090, 64148, 64204, 64257, 64308, 64357, 64405, 64450,
+    64494, 64536, 64576, 64614, 64652, 64687, 64721, 64754, 64786, 64816, 64845,
+    64873, 64900, 64926, 64950, 64974, 64997, 65019, 65039, 65060, 65079, 65097,
+    65115, 65132, 65149, 65164, 65179, 65194, 65208, 65221, 65234, 65246, 65258,
+    65269, 65280, 65291, 65301, 65310, 65319, 65328, 65337, 65345, 65352, 65360,
+    65367, 65374, 65381, 65387, 65393, 65399, 65404, 65410, 65415, 65420, 65425,
+    65429, 65433, 65438, 65442, 65445, 65449, 65453, 65456, 65459, 65462, 65465,
+    65468, 65471, 65474, 65476, 65479, 65481, 65483, 65485, 65488, 65489, 65491,
+    65493, 65495, 65497, 65498, 65500, 65501, 65503, 65504, 65505, 65507, 65508,
+    65509, 65510, 65511, 65512, 65513, 65514, 65515, 65516, 65517, 65517, 65518,
+    65519, 65520, 65520, 65521, 65522, 65522, 65523, 65523, 65524, 65524, 65525,
+    65525, 65526, 65526, 65526, 65527, 65527, 65528, 65528, 65528, 65529, 65529,
+    65529, 65529, 65530, 65530, 65530, 65530, 65531, 65531, 65531, 65531, 65531,
+    65532, 65532, 65532, 65532, 65532, 65532, 65533, 65533, 65533, 65533, 65533,
+    65533, 65533, 65533, 65534, 65534, 65534, 65534, 65534, 65534, 65534, 65534,
+    65534, 65534, 65535};
 
 // TODO(b/77858996): Add these to gemmlowp.
 template <typename IntegerType>
@@ -295,6 +446,23 @@ SaturatingRoundingMultiplyByPOTParam(
       SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
+// Convert int32_t multiplier to int16_t with rounding.
+inline void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32_t,
+                                            int16_t* multiplier_int16_t) {
+  TFLITE_DCHECK_GE(multiplier_int32_t, 0);
+  static constexpr int32_t kRoundingOffset = 1 << 15;
+  if (multiplier_int32_t >=
+      std::numeric_limits<int32_t>::max() - kRoundingOffset) {
+    *multiplier_int16_t = std::numeric_limits<int16_t>::max();
+    return;
+  }
+  const int32_t result = (multiplier_int32_t + kRoundingOffset) >> 16;
+  TFLITE_DCHECK_LE(result << 16, multiplier_int32_t + kRoundingOffset);
+  TFLITE_DCHECK_GT(result << 16, multiplier_int32_t - kRoundingOffset);
+  *multiplier_int16_t = result;
+  TFLITE_DCHECK_EQ(*multiplier_int16_t, result);
+}
+
 // Minimum output bits to accommodate log of maximum input range.  It actually
 // does not matter if one considers, say, [-64,64] or [-64,64).
 //
@@ -303,15 +471,13 @@ SaturatingRoundingMultiplyByPOTParam(
 //  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
 //  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
 constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90
-             ? 7
-             : input_bits > 44
-                   ? 6
-                   : input_bits > 21
-                         ? 5
-                         : input_bits > 10
-                               ? 4
-                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
+  return input_bits > 90   ? 7
+         : input_bits > 44 ? 6
+         : input_bits > 21 ? 5
+         : input_bits > 10 ? 4
+         : input_bits > 4  ? 3
+         : input_bits > 1  ? 2
+                           : 1;
 }
 
 // Although currently the name of this function says that it cannot handle
@@ -319,17 +485,17 @@ constexpr int min_log_x_output_bits(int input_bits) {
 // x_max is the largest representable input.  In other words, the output range
 // is symmetric.
 template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+inline gemmlowp::FixedPoint<int32_t, OutputIntegerBits>
 log_x_for_x_greater_than_or_equal_to_1_impl(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  // assert(__builtin_clz(0u) >= std::numeric_limits<uint32>::digits - 1);
-  // assert(__builtin_clz(0u) <= std::numeric_limits<uint32>::digits);
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+    gemmlowp::FixedPoint<int32_t, InputIntegerBits> input_val) {
+  // assert(__builtin_clz(0u) >= std::numeric_limits<uint32_t>::digits - 1);
+  // assert(__builtin_clz(0u) <= std::numeric_limits<uint32_t>::digits);
+  using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
   // The reason for accumulating the result with an extra bit of headroom is
   // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
   // recip_denom will otherwise introduce an error.
   static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
+  using FixedPointAccum = gemmlowp::FixedPoint<int32_t, kAccumIntegerBits>;
 
   const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
       FixedPoint0, 1488522236, std::log(2.0));
@@ -357,10 +523,10 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
   // required shift "ourselves" instead of using, say, Rescale.
   FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
   // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
+  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32_t>(z_a.raw()));
   FixedPoint0 r_a_tmp =
       SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
-  const int32 r_a_raw =
+  const int32_t r_a_raw =
       SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
   // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
   // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
@@ -372,8 +538,8 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
 
   // z_b is treated like z_a, but premultiplying by sqrt(0.5).
   FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
-  const int32 r_b_raw =
+  int z_b_headroom = CountLeadingZeros(static_cast<uint32_t>(z_b.raw())) - 1;
+  const int32_t r_b_raw =
       SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
   const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
       FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
@@ -401,45 +567,56 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
 }
 
 template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+inline gemmlowp::FixedPoint<int32_t, OutputIntegerBits>
 log_x_for_x_greater_than_or_equal_to_1(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
+    gemmlowp::FixedPoint<int32_t, InputIntegerBits> input_val) {
   static_assert(
       OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
+      "Output integer bits must be sufficient to accommodate logs of inputs.");
   return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
                                                      InputIntegerBits>(
       input_val);
 }
 
-inline int32 GetReciprocal(int32 x, int x_integer_digits,
-                           int* num_bits_over_unit) {
-  int headroom_plus_one = CountLeadingZeros(static_cast<uint32>(x));
+inline int32_t GetReciprocal(int32_t x, int x_integer_digits,
+                             int* num_bits_over_unit) {
+  int headroom_plus_one = CountLeadingZeros(static_cast<uint32_t>(x));
   // This is the number of bits to the left of the binary point above 1.0.
   // Consider x=1.25.  In that case shifted_scale=0.8 and
   // no later adjustment will be needed.
   *num_bits_over_unit = x_integer_digits - headroom_plus_one;
-  const int32 shifted_sum_minus_one =
-      static_cast<int32>((static_cast<uint32>(x) << headroom_plus_one) -
-                         (static_cast<uint32>(1) << 31));
+  const int32_t shifted_sum_minus_one =
+      static_cast<int32_t>((static_cast<uint32_t>(x) << headroom_plus_one) -
+                           (static_cast<uint32_t>(1) << 31));
 
-  gemmlowp::FixedPoint<int32, 0> shifted_scale =
+  gemmlowp::FixedPoint<int32_t, 0> shifted_scale =
       gemmlowp::one_over_one_plus_x_for_x_in_0_1(
-          gemmlowp::FixedPoint<int32, 0>::FromRaw(shifted_sum_minus_one));
+          gemmlowp::FixedPoint<int32_t, 0>::FromRaw(shifted_sum_minus_one));
   return shifted_scale.raw();
 }
 
-inline void GetInvSqrtQuantizedMultiplierExp(int32 input, int reverse_shift,
-                                             int32* output_inv_sqrt,
+inline void GetInvSqrtQuantizedMultiplierExp(int32_t input, int reverse_shift,
+                                             int32_t* output_inv_sqrt,
                                              int* output_shift) {
+  TFLITE_DCHECK_GE(input, 0);
+  if (input <= 1) {
+    // Handle the input value 1 separately to avoid overflow in that case
+    // in the general computation below (b/143972021). Also handle 0 as if it
+    // were a 1. 0 is an invalid input here (divide by zero) and 1 is a valid
+    // but rare/unrealistic input value. We can expect both to occur in some
+    // incompletely trained models, but probably not in fully trained models.
+    *output_inv_sqrt = std::numeric_limits<std::int32_t>::max();
+    *output_shift = 0;
+    return;
+  }
+  TFLITE_DCHECK_GT(input, 1);
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
     ++*output_shift;
   }
-  TFLITE_DCHECK_GT(input, 0);
   const unsigned max_left_shift_bits =
-      CountLeadingZeros(static_cast<uint32>(input)) - 1;
+      CountLeadingZeros(static_cast<uint32_t>(input)) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
   const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
   *output_shift -= left_shift_bit_pairs;
@@ -451,8 +628,8 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input, int reverse_shift,
   using gemmlowp::SaturatingRoundingMultiplyByPOT;
   // Using 3 integer bits gives us enough room for the internal arithmetic in
   // this Newton-Raphson iteration.
-  using F3 = FixedPoint<int32, 3>;
-  using F0 = FixedPoint<int32, 0>;
+  using F3 = FixedPoint<int32_t, 3>;
+  using F0 = FixedPoint<int32_t, 0>;
   const F3 fixedpoint_input = F3::FromRaw(input >> 1);
   const F3 fixedpoint_half_input =
       SaturatingRoundingMultiplyByPOT<-1>(fixedpoint_input);
@@ -513,6 +690,12 @@ inline int SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1, int i2,
          i3 * desc.strides[3];
 }
 
+inline int SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
+  return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
+         indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
+         indexes[4] * desc.strides[4];
+}
+
 // Given the dimensions of the operands for an element-wise binary broadcast,
 // adjusts them so that they can be directly iterated over with simple loops.
 // Returns the adjusted dims as instances of NdArrayDesc in 'desc0_out' and
@@ -570,6 +753,18 @@ inline void NdArrayDescsForElementwiseBroadcast(const Dims<N>& input0_dims,
   }
 }
 
+// Copies dims to desc, calculating strides.
+template <int N>
+inline void CopyDimsToDesc(const RuntimeShape& input_shape,
+                           NdArrayDesc<N>* desc_out) {
+  int desc_stride = 1;
+  for (int i = N - 1; i >= 0; --i) {
+    desc_out->extents[i] = input_shape.Dims(i);
+    desc_out->strides[i] = desc_stride;
+    desc_stride *= input_shape.Dims(i);
+  }
+}
+
 template <int N>
 inline void NdArrayDescsForElementwiseBroadcast(
     const RuntimeShape& input0_shape, const RuntimeShape& input1_shape,
@@ -581,16 +776,8 @@ inline void NdArrayDescsForElementwiseBroadcast(
   auto extended_input1_shape = RuntimeShape::ExtendedShape(N, input1_shape);
 
   // Copy dims to desc, calculating strides.
-  int desc0_stride = 1;
-  int desc1_stride = 1;
-  for (int i = N - 1; i >= 0; --i) {
-    desc0_out->extents[i] = extended_input0_shape.Dims(i);
-    desc0_out->strides[i] = desc0_stride;
-    desc0_stride *= extended_input0_shape.Dims(i);
-    desc1_out->extents[i] = extended_input1_shape.Dims(i);
-    desc1_out->strides[i] = desc1_stride;
-    desc1_stride *= extended_input1_shape.Dims(i);
-  }
+  CopyDimsToDesc<N>(extended_input0_shape, desc0_out);
+  CopyDimsToDesc<N>(extended_input1_shape, desc1_out);
 
   // Walk over each dimension. If the extents are equal do nothing.
   // Otherwise, set the desc with extent 1 to have extent equal to the other and
@@ -611,6 +798,92 @@ inline void NdArrayDescsForElementwiseBroadcast(
   }
 }
 
+template <int N>
+inline void NdArrayDescsForElementwiseBroadcast(
+    const RuntimeShape& input0_shape, const RuntimeShape& input1_shape,
+    const RuntimeShape& input2_shape, NdArrayDesc<N>* desc0_out,
+    NdArrayDesc<N>* desc1_out, NdArrayDesc<N>* desc2_out) {
+  TFLITE_DCHECK(desc0_out != nullptr);
+  TFLITE_DCHECK(desc1_out != nullptr);
+  TFLITE_DCHECK(desc2_out != nullptr);
+
+  auto extended_input0_shape = RuntimeShape::ExtendedShape(N, input0_shape);
+  auto extended_input1_shape = RuntimeShape::ExtendedShape(N, input1_shape);
+  auto extended_input2_shape = RuntimeShape::ExtendedShape(N, input2_shape);
+
+  // Copy dims to desc, calculating strides.
+  CopyDimsToDesc<N>(extended_input0_shape, desc0_out);
+  CopyDimsToDesc<N>(extended_input1_shape, desc1_out);
+  CopyDimsToDesc<N>(extended_input2_shape, desc2_out);
+
+  // Walk over each dimension. If the extents are equal do nothing.
+  // Otherwise, set the desc with extent 1 to have extent equal to the other and
+  // stride 0.
+  for (int i = 0; i < N; ++i) {
+    const int extent0 = extended_input0_shape.Dims(i);
+    const int extent1 = extended_input1_shape.Dims(i);
+    const int extent2 = extended_input2_shape.Dims(i);
+
+    int extent = extent0;
+    if (extent1 != 1) extent = extent1;
+    if (extent2 != 1) extent = extent2;
+
+    TFLITE_DCHECK(extent0 == 1 || extent0 == extent);
+    TFLITE_DCHECK(extent1 == 1 || extent1 == extent);
+    TFLITE_DCHECK(extent2 == 1 || extent2 == extent);
+
+    if (!(extent0 == extent1 && extent1 == extent2)) {
+      if (extent0 == 1) {
+        desc0_out->strides[i] = 0;
+        desc0_out->extents[i] = extent;
+      }
+      if (extent1 == 1) {
+        desc1_out->strides[i] = 0;
+        desc1_out->extents[i] = extent;
+      }
+      if (extent2 == 1) {
+        desc2_out->strides[i] = 0;
+        desc2_out->extents[i] = extent;
+      }
+    }
+  }
+}
+
+// Detailed implementation of NDOpsHelper, the indexes must be a zero array.
+// This implementation is equivalent to N nested loops. Ex, if N=4, it can be
+// re-writen as:
+// for (int b = 0; b < output.extents[0]; ++b) {
+//   for (int y = 0; y < output.extents[1]; ++y) {
+//     for (int x = 0; x < output.extents[2]; ++x) {
+//       for (int c = 0; c < output.extents[3]; ++c) {
+//           calc({b,y,x,c});
+//       }
+//     }
+//   }
+// }
+template <int N, int DIM, typename Calc>
+typename std::enable_if<DIM != N - 1, void>::type NDOpsHelperImpl(
+    const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
+  for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
+    NDOpsHelperImpl<N, DIM + 1, Calc>(output, calc, indexes);
+  }
+}
+
+template <int N, int DIM, typename Calc>
+typename std::enable_if<DIM == N - 1, void>::type NDOpsHelperImpl(
+    const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
+  for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
+    calc(indexes);
+  }
+}
+
+// Execute the calc function in the innermost iteration based on the shape of
+// the output. The calc function should take a single argument of type int[N].
+template <int N, typename Calc>
+inline void NDOpsHelper(const NdArrayDesc<N>& output, const Calc& calc) {
+  int indexes[N] = {0};
+  NDOpsHelperImpl<N, 0, Calc>(output, calc, indexes);
+}
 // Copied from gemmlowp::RoundDown when we dropped direct dependency on
 // gemmlowp.
 //

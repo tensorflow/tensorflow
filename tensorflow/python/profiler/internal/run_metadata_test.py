@@ -79,7 +79,7 @@ def _run_model():
     opts['output'] = 'none'
     _ = sess.run(y,
                  options=config_pb2.RunOptions(
-                     trace_level=config_pb2.RunOptions.FULL_TRACE),
+                     trace_level=config_pb2.RunOptions.SOFTWARE_TRACE),
                  run_metadata=run_metadata)
     tfprof_node = model_analyzer.profile(
         sess.graph,
@@ -101,7 +101,7 @@ def _run_loop_model():
     run_meta = config_pb2.RunMetadata()
     _ = sess.run(x,
                  options=config_pb2.RunOptions(
-                     trace_level=config_pb2.RunOptions.FULL_TRACE),
+                     trace_level=config_pb2.RunOptions.SOFTWARE_TRACE),
                  run_metadata=run_meta)
 
     opts = builder.time_and_memory()

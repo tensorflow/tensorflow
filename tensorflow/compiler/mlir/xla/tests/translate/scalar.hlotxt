@@ -1,9 +1,0 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
-
-HloModule main.5
-
-// CHECK-LABEL: func @main(%arg0: tensor<f32>) -> tensor<f32> {
-ENTRY %main.5 (Arg_0.1: f32[]) -> f32[] {
-  // CHECK-NEXT:   return %arg0 : tensor<f32>
-  ROOT %Arg_0.1 = f32[] parameter(0)
-}

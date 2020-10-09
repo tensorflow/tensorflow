@@ -252,6 +252,17 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
         `{is_self_adjoint, is_non_singular, is_positive_definite}`.
       TypeError:  If `num_rows` or `batch_shape` is ref-type (e.g. Variable).
     """
+    parameters = dict(
+        num_rows=num_rows,
+        batch_shape=batch_shape,
+        dtype=dtype,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        assert_proper_shapes=assert_proper_shapes,
+        name=name)
+
     dtype = dtype or dtypes.float32
     self._assert_proper_shapes = assert_proper_shapes
 
@@ -272,6 +283,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
 
       linear_operator_util.assert_not_ref_type(num_rows, "num_rows")
@@ -394,10 +406,16 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
     with self._name_scope(name):
-      mat = ops.convert_to_tensor(mat, name="mat")
+      mat = ops.convert_to_tensor_v2_with_dispatch(mat, name="mat")
       mat_diag = array_ops.matrix_diag_part(mat)
       new_diag = 1 + mat_diag
       return array_ops.matrix_set_diag(mat, new_diag)
+
+  def _eigvals(self):
+    return self._ones_diag()
+
+  def _cond(self):
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
 
   def _check_num_rows_possibly_add_asserts(self):
     """Static check of init arg `num_rows`, possibly add asserts."""
@@ -590,6 +608,16 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       ValueError:  If `num_rows` is determined statically to be non-scalar, or
         negative.
     """
+    parameters = dict(
+        num_rows=num_rows,
+        multiplier=multiplier,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        assert_proper_shapes=assert_proper_shapes,
+        name=name)
+
     self._assert_proper_shapes = assert_proper_shapes
 
     with ops.name_scope(name, values=[multiplier, num_rows]):
@@ -614,6 +642,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
 
       self._num_rows = linear_operator_util.shape_tensor(
@@ -714,7 +743,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       multiplier_vector = array_ops.expand_dims(self.multiplier, -1)
 
       # Shape [C1,...,Cc, M, M]
-      mat = ops.convert_to_tensor(mat, name="mat")
+      mat = ops.convert_to_tensor_v2_with_dispatch(mat, name="mat")
 
       # Shape [C1,...,Cc, M]
       mat_diag = array_ops.matrix_diag_part(mat)
@@ -723,6 +752,17 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       new_diag = multiplier_vector + mat_diag
 
       return array_ops.matrix_set_diag(mat, new_diag)
+
+  def _eigvals(self):
+    return self._ones_diag() * self.multiplier[..., array_ops.newaxis]
+
+  def _cond(self):
+    # Condition number for a scalar time identity matrix is one, except when the
+    # scalar is zero.
+    return array_ops.where_v2(
+        math_ops.equal(self._multiplier, 0.),
+        math_ops.cast(np.nan, dtype=self.dtype),
+        math_ops.cast(1., dtype=self.dtype))
 
   @property
   def multiplier(self):

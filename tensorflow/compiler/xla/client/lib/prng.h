@@ -58,10 +58,10 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
 // 4x32_10 version of the algorithm for the following reasons:
 //   . 4x32 uses 32-bit multiplication which is fast on GPUs.
 //   . The authors recommend the 10-round variant, and TensorFlow also uses it.
-// 'scramble` controls whether to scramble 'key' and 'initial_state' to form
-// the actual key and state fed to the Philox algorithm.
-RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
-                             bool scramble);
+RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
+                             const Shape& shape);
+// Returns a scrambled pair of (state, key) from a single key.
+std::pair<XlaOp, XlaOp> ScramblePhiloxKey(XlaOp key);
 
 // Uses the given bit generator to generate random bits and then converts the
 // random bits to random numbers of uniform distribution in the given range.
@@ -88,6 +88,9 @@ RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
 // Concatenates scalars into a vector.
 xla::XlaOp ConcatScalars(xla::XlaBuilder* builder,
                          absl::Span<const xla::XlaOp> scalars);
+
+// Increases Philox counter (an uint128) by a delta (an uint64).
+xla::XlaOp PhiloxIncreaseCounter(xla::XlaOp counter, xla::XlaOp delta);
 
 }  // namespace xla
 

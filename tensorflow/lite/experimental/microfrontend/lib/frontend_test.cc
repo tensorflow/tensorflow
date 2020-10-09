@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
-#include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
 
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace {
 
@@ -123,7 +123,7 @@ TF_LITE_MICRO_TEST(FrontendTest_CheckNotEnoughSamples) {
       &num_samples_read);
 
   TF_LITE_MICRO_EXPECT_EQ(output.size, 0);
-  TF_LITE_MICRO_EXPECT_EQ(output.values, nullptr);
+  TF_LITE_MICRO_EXPECT(output.values == nullptr);
 
   FrontendFreeStateContents(&state);
 }

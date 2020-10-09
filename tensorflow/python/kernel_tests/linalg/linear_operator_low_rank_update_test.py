@@ -199,7 +199,7 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = True
   _is_diag_update_positive = False
@@ -242,7 +242,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = False
   _is_diag_update_positive = None
@@ -270,7 +270,7 @@ class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
   _use_v = True
 
 
-class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
+class LinearOperatorLowRankUpdateBroadcastsShape(test.TestCase):
   """Test that the operator's shape is the broadcast of arguments."""
 
   def test_static_shape_broadcasts_up_from_operator_to_other_args(self):
@@ -310,34 +310,34 @@ class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
     u = rng.rand(5, 3, 2)
     v = rng.rand(4, 3, 2)
-    with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
+    with self.assertRaisesRegex(ValueError, "Incompatible shapes"):
       linalg.LinearOperatorLowRankUpdate(base_operator, u=u, v=v)
 
   def test_u_and_base_operator_incompatible_batch_shape_raises(self):
     base_operator = linalg.LinearOperatorIdentity(
         num_rows=3, batch_shape=[4], dtype=np.float64)
     u = rng.rand(5, 3, 2)
-    with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
+    with self.assertRaisesRegex(ValueError, "Incompatible shapes"):
       linalg.LinearOperatorLowRankUpdate(base_operator, u=u)
 
   def test_u_and_base_operator_incompatible_domain_dimension(self):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
     u = rng.rand(5, 4, 2)
-    with self.assertRaisesRegexp(ValueError, "not compatible"):
+    with self.assertRaisesRegex(ValueError, "not compatible"):
       linalg.LinearOperatorLowRankUpdate(base_operator, u=u)
 
   def test_u_and_diag_incompatible_low_rank_raises(self):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
     u = rng.rand(5, 3, 2)
     diag = rng.rand(5, 4)  # Last dimension should be 2
-    with self.assertRaisesRegexp(ValueError, "not compatible"):
+    with self.assertRaisesRegex(ValueError, "not compatible"):
       linalg.LinearOperatorLowRankUpdate(base_operator, u=u, diag_update=diag)
 
   def test_diag_incompatible_batch_shape_raises(self):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
     u = rng.rand(5, 3, 2)
     diag = rng.rand(4, 2)  # First dimension should be 5
-    with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
+    with self.assertRaisesRegex(ValueError, "Incompatible shapes"):
       linalg.LinearOperatorLowRankUpdate(base_operator, u=u, diag_update=diag)
 
 

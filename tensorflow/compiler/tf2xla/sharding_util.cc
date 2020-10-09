@@ -26,22 +26,6 @@ const char kShardingAttribute[] = "_XlaSharding";
 }  // namespace
 
 namespace {
-xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
-    const NodeDef& node_def) {
-  if (!HasNodeAttr(node_def, kShardingAttribute)) {
-    return absl::optional<xla::OpSharding>();
-  }
-  string value;
-  xla::OpSharding sharding;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
-  if (!sharding.ParseFromString(value)) {
-    return xla::InvalidArgument(
-        "Experimental _XlaSharding attribute was not a valid encoded "
-        "xla::OpSharding proto.");
-  }
-  return absl::optional<xla::OpSharding>(sharding);
-}
-
 Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
   return errors::InvalidArgument(
       "Invalid replicated core id: ", core,
@@ -96,6 +80,30 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
   return ParseShardingFromDevice(device_name, num_cores_per_replica, sharding);
 }
 
+xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+    const Edge& edge, int num_cores_per_replica) {
+  if (edge.src() == nullptr) {
+    return tensorflow::errors::InvalidArgument(
+        "Null src for ParseShardingFromEdgeSource edge=", edge.DebugString());
+  }
+  TF_ASSIGN_OR_RETURN(
+      absl::optional<xla::OpSharding> sharding,
+      ParseShardingFromDevice(*edge.src(), num_cores_per_replica));
+  if (sharding.has_value() &&
+      sharding.value().type() == xla::OpSharding::TUPLE) {
+    if (edge.src_output() < 0 ||
+        edge.src_output() >= sharding.value().tuple_shardings_size()) {
+      return tensorflow::errors::InvalidArgument(
+          "Tuple index out of bound: edge=", edge.DebugString(),
+          " sharding=", sharding->DebugString());
+    }
+    absl::optional<xla::OpSharding> subsharding =
+        sharding.value().tuple_shardings(edge.src_output());
+    return subsharding;
+  }
+  return sharding;
+}
+
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
   string device_name = src.assigned_device_name();
   if (device_name.empty()) {
@@ -107,4 +115,19 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
   }
 }
 
+xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
+    const NodeDef& node_def) {
+  if (!HasNodeAttr(node_def, kShardingAttribute)) {
+    return absl::optional<xla::OpSharding>();
+  }
+  string value;
+  xla::OpSharding sharding;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
+  if (!sharding.ParseFromString(value)) {
+    return xla::InvalidArgument(
+        "Experimental _XlaSharding attribute was not a valid encoded "
+        "xla::OpSharding proto.");
+  }
+  return absl::optional<xla::OpSharding>(sharding);
+}
 }  // namespace tensorflow

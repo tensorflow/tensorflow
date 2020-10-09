@@ -14,15 +14,13 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Sequential LSTM op.
 
-#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -38,7 +36,8 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
                             float proj_clip,
                             const std::vector<std::vector<int>>& input_shapes,
                             const TensorType& weights_type = TensorType_FLOAT32,
-                            bool is_layer_norm = false)
+                            bool is_layer_norm = false,
+                            bool asymmetric_quantize_inputs = false)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_cell_(n_cell),
@@ -86,7 +85,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
       input_gate_bias_ = AddInput(TensorType_FLOAT32);
     }
     forget_gate_bias_ = AddInput(TensorType_FLOAT32);
-    cell_bias_ = AddInput(TensorType_FLOAT32);
+    cell_gate_bias_ = AddInput(TensorType_FLOAT32);
     output_gate_bias_ = AddInput(TensorType_FLOAT32);
 
     if (use_projection_weights) {
@@ -101,13 +100,11 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    // Adding the 2 input state tensors.
-    input_activation_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}},
-                 /*is_variable=*/true);
-    input_cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}},
-                 /*is_variable=*/true);
+    // Adding the 2 state tensors.
+    output_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}});
+    cell_state_ =
+        AddVariableInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}});
 
     // Layer norm weights.
     if (is_layer_norm) {
@@ -131,7 +128,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
                  BuiltinOptions_UnidirectionalSequenceLSTMOptions,
                  CreateUnidirectionalSequenceLSTMOptions(
                      builder_, ActivationFunctionType_TANH, cell_clip,
-                     proj_clip, time_major)
+                     proj_clip, time_major, asymmetric_quantize_inputs)
                      .Union());
     BuildInterpreter(input_shapes);
   }
@@ -189,7 +186,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
   }
 
   void SetCellBias(const std::vector<float>& f) {
-    PopulateTensor(cell_bias_, f);
+    PopulateTensor(cell_gate_bias_, f);
   }
 
   void SetOutputGateBias(const std::vector<float>& f) {
@@ -251,14 +248,14 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
 
   int input_gate_bias_;
   int forget_gate_bias_;
-  int cell_bias_;
+  int cell_gate_bias_;
   int output_gate_bias_;
 
   int projection_weights_;
   int projection_bias_;
 
-  int input_activation_state_;
-  int input_cell_state_;
+  int output_state_;
+  int cell_state_;
 
   int input_layer_norm_coefficients_;
   int forget_layer_norm_coefficients_;
@@ -292,11 +289,12 @@ class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
       bool time_major, bool use_cifg, bool use_peephole,
       bool use_projection_weights, bool use_projection_bias, float cell_clip,
       float proj_clip, const std::vector<std::vector<int>>& input_shapes,
-      TensorType tensor_type)
+      TensorType tensor_type, bool asymmetric_quantize_inputs)
       : UnidirectionalLSTMOpModel(
             n_batch, n_input, n_cell, n_output, sequence_length, time_major,
             use_cifg, use_peephole, use_projection_weights, use_projection_bias,
-            cell_clip, proj_clip, input_shapes, tensor_type) {
+            cell_clip, proj_clip, input_shapes, tensor_type, false,
+            asymmetric_quantize_inputs) {
     tensor_type_ = tensor_type;
   }
 
@@ -360,7 +358,7 @@ class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
   TensorType tensor_type_;
 };
 
-class BaseUnidirectionalLstmTest : public ::testing::Test {
+class BaseUnidirectionalLstmTest : public ::testing::TestWithParam<bool> {
  protected:
   // Weights of the LSTM model. Some are optional.
   std::vector<float> input_to_input_weights_;
@@ -531,13 +529,13 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -593,13 +591,13 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -626,7 +624,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
                 /*time_major=*/false);
 }
 
-TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestUint8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -659,16 +657,16 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_UINT8);
+      TensorType_UINT8, GetParam());
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -689,7 +687,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
                 /*tolerance=*/0.0157651);
 }
 
-TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestInt8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -722,16 +720,16 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_INT8);
+      TensorType_INT8, GetParam());
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -834,13 +832,13 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -862,7 +860,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestUint8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -880,11 +878,10 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
       {
           {sequence_length, n_batch, n_input},  // input tensor
 
-          {0, 0},             // input_to_input_weight tensor
-          {n_cell, n_input},  // input_to_forget_weight tensor
-          {n_cell, n_input},  // input_to_cell_weight tensor
-          {n_cell, n_input},  // input_to_output_weight tensor
-
+          {0, 0},              // input_to_input_weight tensor
+          {n_cell, n_input},   // input_to_forget_weight tensor
+          {n_cell, n_input},   // input_to_cell_weight tensor
+          {n_cell, n_input},   // input_to_output_weight tensor
           {0, 0},              // recurrent_to_input_weight tensor
           {n_cell, n_output},  // recurrent_to_forget_weight tensor
           {n_cell, n_output},  // recurrent_to_cell_weight tensor
@@ -896,16 +893,16 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_UINT8);
+      TensorType_UINT8, GetParam());
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -925,7 +922,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
 }
 
-TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestInt8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -959,16 +956,16 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_INT8);
+      TensorType_INT8, GetParam());
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -1621,13 +1618,13 @@ TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -1655,14 +1652,16 @@ TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
+TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestUint8) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 20;
   const int n_output = 16;
   const int sequence_length = 4;
-
+  if (GetParam()) {
+    return;
+  }
   HybridUnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
       /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/true,
@@ -1688,16 +1687,16 @@ TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_UINT8);
+      TensorType_UINT8, GetParam());
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -1723,8 +1722,11 @@ TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.00467);
 }
 
-TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
+TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestInt8) {
+  if (GetParam()) {
+    return;
+  }
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 20;
@@ -1756,16 +1758,16 @@ TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_INT8);
+      TensorType_INT8, GetParam());
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -2427,13 +2429,13 @@ TEST_F(NoCifgPeepholeProjectionAndBiasClippingUnidirectionalLstmTest,
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
           {n_output},          // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -2633,13 +2635,13 @@ TEST_F(CifgPeepholeNoProjectionNoClippingLayerNormUnidirectionalLstmTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {0},       // input_layer_norm_coefficient tensor
@@ -2704,13 +2706,13 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {0},  // input_layer_norm_coefficient tensor
@@ -2737,5 +2739,14 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
+#define QUANTIZE_PARAMETER_TEST(test) \
+  INSTANTIATE_TEST_SUITE_P(test, test, ::testing::ValuesIn({false, true}));
+
+QUANTIZE_PARAMETER_TEST(
+    CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest);
+QUANTIZE_PARAMETER_TEST(
+    NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest);
+QUANTIZE_PARAMETER_TEST(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest);
+#undef QUANTIZE_PARAMETER_TEST
 }  // namespace
 }  // namespace tflite

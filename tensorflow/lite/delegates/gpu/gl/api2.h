@@ -29,18 +29,7 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-struct InferenceOptions {
-  // Allows to quantify tensors, downcast values, process in float16 etc.
-  bool allow_precision_loss = false;
-
-  // When set few operations are fused into a single shader. Therefore, there
-  // will be less shaders, but each shader will become larger.
-  bool fuse_operations = true;
-
-  // Parameters will be inlined into a shader. This in turn will generated more
-  // unique shaders where each will need to be compiled.
-  bool inline_parameters = false;
-};
+struct InferenceOptions : public tflite::gpu::InferenceOptions {};
 
 struct InferenceEnvironmentProperties {
   bool is_opengl_available = false;
@@ -52,7 +41,7 @@ class InferenceEnvironment {
  public:
   virtual ~InferenceEnvironment() = default;
 
-  virtual Status NewInferenceBuilder(
+  virtual absl::Status NewInferenceBuilder(
       GraphFloat32&& model, const InferenceOptions& options,
       std::unique_ptr<InferenceBuilder>* builder) = 0;
 };
@@ -63,7 +52,7 @@ struct InferenceEnvironmentOptions {
 
 // Creates a new OpenGL environment that needs to stay around until all
 // inference runners are destroyed.
-Status NewInferenceEnvironment(
+absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties /* optional */);

@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 
+#include <math.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -59,27 +65,33 @@ struct StridedSliceContext {
   int dims;
 };
 
-// This Op only supports 1-4D cases and since we use the reference 4D
-// implementation, the 1-3D tensors are mapped to 4D.
-const int kMaxDim = 4;
-
 StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
   StridedSliceParams op_params;
   op_params.start_indices_count = op_context->dims;
   op_params.stop_indices_count = op_context->dims;
   op_params.strides_count = op_context->dims;
 
-  for (int i = 0; i < op_context->dims; ++i) {
-    op_params.start_indices[i] = GetTensorData<int32_t>(op_context->begin)[i];
-    op_params.stop_indices[i] = GetTensorData<int32_t>(op_context->end)[i];
-    op_params.strides[i] = GetTensorData<int32_t>(op_context->strides)[i];
-  }
-
   op_params.begin_mask = op_context->params->begin_mask;
   op_params.ellipsis_mask = 0;
   op_params.end_mask = op_context->params->end_mask;
   op_params.new_axis_mask = 0;
   op_params.shrink_axis_mask = op_context->params->shrink_axis_mask;
+
+  int begin_count = GetTensorShape(op_context->begin).Dims(0);
+  for (int i = 0; i < begin_count; ++i) {
+    op_params.start_indices[i] = GetTensorData<int32_t>(op_context->begin)[i];
+    op_params.stop_indices[i] = GetTensorData<int32_t>(op_context->end)[i];
+    op_params.strides[i] = GetTensorData<int32_t>(op_context->strides)[i];
+  }
+
+  // If the length of begin and end smaller than number of input dims, set the
+  // mask bit of begin and end for that index.
+  for (int i = begin_count; i < op_context->dims; ++i) {
+    op_params.start_indices[i] = op_params.stop_indices[i] = 0;
+    op_params.strides[i] = 1;
+    op_params.begin_mask |= (1 << i);
+    op_params.end_mask |= (1 << i);
+  }
   return op_params;
 }
 
@@ -93,7 +105,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   RuntimeShape input_shape = GetTensorShape(op_context->input);
 
   for (int idx = op_context->dims - 1; idx >= 0; --idx) {
-    int32_t stride = GetTensorData<int32_t>(op_context->strides)[idx];
+    int32_t stride = op_params.strides[idx];
     TF_LITE_ENSURE_MSG(context, stride != 0, "stride value has to be non-zero");
 
     int32_t begin =
@@ -143,13 +155,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
   // Only INT32 begin/end/strides are supported
   // TODO(soroosh) add support for INT64
-  TF_LITE_ENSURE_EQ(context, op_context.begin->type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, op_context.end->type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, op_context.strides->type, kTfLiteInt32);
-  TF_LITE_ENSURE_MSG(context, op_context.dims <= 4,
-                     "StridedSlice op only supports 1D-4D input arrays.");
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.begin->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.end->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.strides->type, kTfLiteInt32);
+  TF_LITE_ENSURE_MSG(context, op_context.dims <= 5,
+                     "StridedSlice op only supports 1D-5D input arrays.");
 
-  // TODO(soroosh): add the following missing functionalities
+  // TODO(b/138098220): Remove when bug is resolved.
+  // Currently, working on using the compiler to cannonize strided_slice,
+  // so ellipis_mask will become part of begin/end mask, new_axis_mask will
+  // involve in a reshape to pad the dimensions.
   TF_LITE_ENSURE_MSG(context, op_context.params->ellipsis_mask == 0,
                      "ellipsis_mask is not implemented yet.");
   TF_LITE_ENSURE_MSG(context, op_context.params->new_axis_mask == 0,
@@ -207,11 +222,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_STRIDED_SLICE(reference_ops, int8_t);
       }
       break;
+    case kTfLiteInt16:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, int16_t);
+      }
+      break;
+    case kTfLiteBool:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, bool);
+      }
+      break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported "
-                           "by StridedSlice.",
-                           op_context.input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s is currently not supported "
+                         "by StridedSlice.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_STRIDED_SLICE

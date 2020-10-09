@@ -23,9 +23,9 @@ import sys
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
+from tensorflow.python.training import py_checkpoint_reader
 
 FLAGS = None
 
@@ -72,7 +72,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
     count_exclude_pattern: Regex string, pattern to exclude tensors when count.
   """
   try:
-    reader = pywrap_tensorflow.NewCheckpointReader(file_name)
+    reader = py_checkpoint_reader.NewCheckpointReader(file_name)
     if all_tensors or all_tensor_names:
       var_to_shape_map = reader.get_variable_to_shape_map()
       var_to_dtype_map = reader.get_variable_to_dtype_map()

@@ -20,10 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
+from tensorflow.python.autograph.operators import variables
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.util import nest
+
+
+# TODO(mdan): Move this into operators - it represents a function definition.
 
 
 class FunctionScope(object):
@@ -34,7 +38,7 @@ class FunctionScope(object):
     * optional TF name scopes - these name scopes match the name of the
         function, for easy visualization in tensorBoard;
     * optional automatic control dependencies - this adds the same mechanism
-        for control dependenecies that is used by `@tf.function`; it can be
+        for control dependencies that is used by `@tf.function`; it can be
         optionally enabled when using `tf.autograph.to_graph`;
     * tracking of autograph conversion state (whether it's enabled by the user,
         conversion options;
@@ -84,8 +88,13 @@ class FunctionScope(object):
     if self.use_auto_deps:
       self.autodeps_scope.__exit__(exc_type, exc_val, exc_tb)
 
-  def mark_return_value(self, value):
+  def ret(self, value, did_return):
     """Marks a value as returned from the function guarded by the scope."""
+    del did_return
+
+    if isinstance(value, variables.UndefinedReturnValue):
+      return None
+
     if self.use_auto_deps:
       self._return_value_marked = True
       if value is None:

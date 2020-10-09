@@ -18,12 +18,20 @@ namespace tflite {
 
 namespace {
 static int num_test_registerer_calls = 0;
+
+TfLiteRegistration* GetFakeRegistration() {
+  static TfLiteRegistration fake_op;
+  return &fake_op;
+}
+
 }  // namespace
 
-// Dummy registerer function with the correct signature. Ignores the resolver
-// but increments the num_test_registerer_calls counter by one. The TF_ prefix
-// is needed to get past the version script in the OSS build.
+// Dummy registerer function with the correct signature. Registers a fake custom
+// op needed by test models. Increments the num_test_registerer_calls counter by
+// one. The TF_ prefix is needed to get past the version script in the OSS
+// build.
 extern "C" void TF_TestRegisterer(tflite::MutableOpResolver *resolver) {
+  resolver->AddCustom("FakeOp", GetFakeRegistration());
   num_test_registerer_calls++;
 }
 

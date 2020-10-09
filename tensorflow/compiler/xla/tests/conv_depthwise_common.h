@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/despecializer.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -32,7 +31,8 @@ namespace xla {
 string GetFloatDataType(bool use_bfloat16);
 
 struct DepthwiseConvolution2DSpec {
-  int64 output_feature, window, stride, pad, lhs_dilate;
+  int64 output_feature = -1, window = -1, stride = -1, pad = -1,
+        lhs_dilate = -1;
   std::vector<int64> activation_dims;
   std::vector<int64> activation_layout;
   std::vector<int64> kernel_dims;

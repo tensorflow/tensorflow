@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -98,6 +99,10 @@ struct ComputeTaskDescriptor {
   //   $2
   //   output_buffer[linear_index] = value;
   // }
+
+  // when operation associative, we can rearrange input tensors
+  // for example add is associative
+  bool is_associative_op = false;
   std::string shader_source;
   std::vector<InputBufferDescriptor> input_buffers;
   // A single per-operation output is supported now.
@@ -108,13 +113,14 @@ struct ComputeTaskDescriptor {
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
+  std::string description;
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;
 
 /// Helper function to convert buffer's content into stream of bytes
 template <typename T>
-std::vector<uint8_t> VectorToUint8Vector(const std::vector<T>& input_vector) {
+std::vector<uint8_t> GetByteBuffer(const std::vector<T>& input_vector) {
   std::vector<uint8_t> result;
   result.insert(result.begin(),
                 reinterpret_cast<const uint8_t*>(input_vector.data()),
@@ -123,8 +129,16 @@ std::vector<uint8_t> VectorToUint8Vector(const std::vector<T>& input_vector) {
   return result;
 }
 
-/// Helper function to convert FP32 to FP16 and into stream of bytes
-std::vector<uint8_t> VectorFloatToHalf(const std::vector<float>& input_vector);
+/// Converts float to destination type (if needed) and stores as bytes array.
+std::vector<uint8_t> GetByteBufferConverted(
+    const std::vector<float>& input_vector,
+    RuntimeOptions::Precision destination_type);
+
+/// Resizes, Converts float to destination type (if needed) and stores as bytes
+/// array.
+std::vector<uint8_t> GetByteBufferConvertedResized(
+    const std::vector<float>& input_vector,
+    RuntimeOptions::Precision destination_type, size_t elements_count);
 
 }  // namespace metal
 }  // namespace gpu

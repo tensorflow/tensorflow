@@ -19,7 +19,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
-#if !defined(PYBIND11_CPP17)
+#ifndef ABSL_USES_STD_STRING_VIEW
 
 namespace pybind11 {
 namespace detail {
@@ -36,5 +36,5 @@ struct type_caster<tensorflow::StringPiece>
 }  // namespace detail
 }  // namespace pybind11
 
-#endif  // !defined(PYBIND11_CPP17)
+#endif  // ABSL_USES_STD_STRING_VIEW
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_ABSL_H_

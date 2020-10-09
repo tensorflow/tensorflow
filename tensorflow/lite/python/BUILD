@@ -1,8 +1,16 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["tflite_convert.py"])
+
+flatbuffer_py_library(
+    name = "schema_py",
+    srcs = ["//tensorflow/lite/schema:schema.fbs"],
 )
 
 py_library(
@@ -10,10 +18,12 @@ py_library(
     srcs = [
         "interpreter.py",
     ],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
+        "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
+        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )
@@ -22,33 +32,10 @@ py_test(
     name = "interpreter_test",
     srcs = ["interpreter_test.py"],
     data = [
+        "//tensorflow/lite:testdata/sparse_tensor.bin",
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",
-        "noasan",  # TODO(b/137568139): enable after this is fixed.
-        "nomsan",  # TODO(b/137568139): enable after this is fixed.
-    ],
-    deps = [
-        ":interpreter",
-        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "interpreter_test_py3",
-    srcs = ["interpreter_test.py"],
-    data = [
-        "//tensorflow/lite/python/testdata:interpreter_test_data",
-        "//tensorflow/lite/python/testdata:test_delegate.so",
-    ],
-    main = "interpreter_test.py",
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
@@ -58,21 +45,25 @@ py_test(
     ],
     deps = [
         ":interpreter",
-        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
+        "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
 py_binary(
     name = "tflite_convert",
     srcs = ["tflite_convert.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":tflite_convert_main_lib"],
+    deps = [
+        ":tflite_convert_main_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -80,7 +71,10 @@ py_library(
     srcs = ["tflite_convert.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":tflite_convert_lib"],
+    deps = [
+        ":tflite_convert_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -90,17 +84,29 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lite",
+        "//tensorflow/lite/toco/logging:gen_html",
+        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "tflite_convert_test",
     srcs = ["tflite_convert_test.py"],
-    data = [":tflite_convert.par"],
+    data = [
+        ":tflite_convert.par",
+        "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
+    ],
+    python_version = "PY3",
+    # Increased thread count for reducing timeout failures.
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "no_pip",
+        "no_windows",
+        "noasan",  # b/144707533
+        "notsan",  # b/160824139
     ],
     deps = [
         ":tflite_convert",
@@ -124,11 +130,13 @@ py_library(
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
+        "//tensorflow/lite/python/keras/saving:saving_utils",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
+        "@six_archive//:six",
     ],
 )
 
@@ -136,6 +144,7 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
@@ -145,12 +154,34 @@ py_test(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
+    python_version = "PY3",
+    shard_count = 12,
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        ":lite_v2_test_util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "lite_v2_test_util",
+    testonly = 1,
+    srcs = ["lite_v2_test_util.py"],
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -159,32 +190,15 @@ py_test(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "lite_flex_test",
     srcs = ["lite_flex_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        # TODO(b/111881877): Enable in oss after resolving op registry issues.
-        "no_oss",
-        "no_windows",
-    ],
-    deps = [
-        ":lite",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "lite_mlir_test",
-    srcs = ["lite_mlir_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",
-    ],
     deps = [
         ":lite",
         "//tensorflow/python:client_testlib",
@@ -200,24 +214,47 @@ py_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
-        ":lite_constants",
         ":op_hint",
+        ":schema_py",
+        "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:error_interpolation",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:tf_optimizer",
-        "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/training:saver",
+        "@absl_py//absl/logging",
+        "@flatbuffers//:runtime_py",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "util_test",
     srcs = ["util_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
+        ":lite_constants",
         ":util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
     ],
 )
 
@@ -226,7 +263,9 @@ py_library(
     srcs = [
         "wrap_toco.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
@@ -256,6 +295,7 @@ py_library(
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -275,6 +315,7 @@ py_library(
 py_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":convert",
@@ -306,6 +347,7 @@ py_library(
 py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -322,4 +364,23 @@ py_test(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ],
+)
+
+py_binary(
+    name = "convert_file_to_c_source",
+    srcs = ["convert_file_to_c_source.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lite",
+        ":util",
+        "@six_archive//:six",
+    ],
+)
+
+sh_test(
+    name = "convert_file_to_c_source_test",
+    srcs = ["convert_file_to_c_source_test.sh"],
+    data = [":convert_file_to_c_source"],
 )

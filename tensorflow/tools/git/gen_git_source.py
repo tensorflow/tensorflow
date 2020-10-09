@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,8 +27,9 @@ NOTE: this script is only used in opensource.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from builtins import bytes  # pylint: disable=redefined-builtin
+
 import argparse
+from builtins import bytes  # pylint: disable=redefined-builtin
 import json
 import os
 import shutil
@@ -161,10 +163,13 @@ def get_git_version(git_base_path, git_tag_override):
   unknown_label = b"unknown"
   try:
     # Force to bytes so this works on python 2 and python 3
-    val = bytes(subprocess.check_output([
-        "git", str("--git-dir=%s/.git" % git_base_path),
-        str("--work-tree=" + git_base_path), "describe", "--long", "--tags"
-    ]).strip())
+    val = bytes(
+        subprocess.check_output([
+            "git",
+            str("--git-dir=%s/.git" % git_base_path),
+            str("--work-tree=%s" % git_base_path), "describe", "--long",
+            "--tags"
+        ]).strip())
     version_separator = b"-"
     if git_tag_override and val:
       split_val = val.split(version_separator)

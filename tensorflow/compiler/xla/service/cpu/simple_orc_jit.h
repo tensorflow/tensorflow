@@ -45,7 +45,8 @@ namespace cpu {
 class SimpleOrcJIT {
  public:
   using ObjLayerT = llvm::orc::LegacyRTDyldObjectLinkingLayer;
-  using CompileFtor = std::function<ObjLayerT::ObjectPtr(llvm::Module&)>;
+  using CompileFtor =
+      std::function<llvm::Expected<ObjLayerT::ObjectPtr>(llvm::Module&)>;
   using CompileLayerT = llvm::orc::LegacyIRCompileLayer<ObjLayerT, CompileFtor>;
   using VModuleKeyT = llvm::orc::VModuleKey;
 
@@ -57,7 +58,7 @@ class SimpleOrcJIT {
   SimpleOrcJIT(
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-      bool disable_expensive_passes,
+      bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
       std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
@@ -87,6 +88,10 @@ class SimpleOrcJIT {
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level);
 
+  int64 SizeOfGeneratedCodeInBytes() const {
+    return size_of_generated_code_in_bytes_;
+  }
+
  private:
   llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
 
@@ -102,6 +107,7 @@ class SimpleOrcJIT {
   std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
+  int64 size_of_generated_code_in_bytes_ = 0;
 
   // Non owning pointer to a JIT event listener that registers the JIT events
   // with an attached GDB.

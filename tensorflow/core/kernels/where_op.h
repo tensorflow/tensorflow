@@ -41,7 +41,7 @@ struct NumTrue {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const Device& d,
       typename TTypes<T>::ConstFlat input,
-      typename TTypes<TIndex>::Scalar num_true);
+      typename TTypes<TIndex>::UnalignedScalar num_true);
 };
 
 template <typename Device, int NDIM, typename T, typename TIndex>

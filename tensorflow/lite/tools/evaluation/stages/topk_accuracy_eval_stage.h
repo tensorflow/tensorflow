@@ -61,12 +61,10 @@ class TopkAccuracyEvalStage : public EvaluationStage {
   }
 
  private:
-  // Returns the index of label from ground_truth_labels_.
-  int GroundTruthIndex(const std::string& label) const;
-  // Updates accuracy_counts_ based on the top k indices & index of the ground
-  // truth.
-  void UpdateCounts(const std::vector<int>& topk_indices,
-                    int ground_truth_index);
+  // Updates accuracy_counts_ based on comparing top k labels and the
+  // groundtruth one. Using string comparison since there are some duplicate
+  // labels in the imagenet dataset.
+  void UpdateCounts(const std::vector<int>& topk_indices);
 
   std::vector<std::string> ground_truth_labels_;
   TfLiteType model_output_type_ = kTfLiteNoType;

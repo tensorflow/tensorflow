@@ -35,6 +35,10 @@ tf_class {
     name: "table_to_config_dict"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "tensor_core_feature_columns"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
   }

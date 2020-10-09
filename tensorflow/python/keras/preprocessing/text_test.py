@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import keras
+from tensorflow.python.keras.preprocessing import text as preprocessing_text
 from tensorflow.python.platform import test
 
 
@@ -29,14 +29,14 @@ class TestText(test.TestCase):
 
   def test_one_hot(self):
     text = 'The cat sat on the mat.'
-    encoded = keras.preprocessing.text.one_hot(text, 5)
+    encoded = preprocessing_text.one_hot(text, 5)
     self.assertEqual(len(encoded), 6)
     self.assertLessEqual(np.max(encoded), 4)
     self.assertGreaterEqual(np.min(encoded), 0)
 
     # Test on unicode.
     text = u'The cat sat on the mat.'
-    encoded = keras.preprocessing.text.one_hot(text, 5)
+    encoded = preprocessing_text.one_hot(text, 5)
     self.assertEqual(len(encoded), 6)
     self.assertLessEqual(np.max(encoded), 4)
     self.assertGreaterEqual(np.min(encoded), 0)
@@ -47,7 +47,7 @@ class TestText(test.TestCase):
         'The dog sat on the log.',
         'Dogs and cats living together.'
     ]
-    tokenizer = keras.preprocessing.text.Tokenizer(num_words=10)
+    tokenizer = preprocessing_text.Tokenizer(num_words=10)
     tokenizer.fit_on_texts(texts)
 
     sequences = []
@@ -64,14 +64,14 @@ class TestText(test.TestCase):
 
   def test_hashing_trick_hash(self):
     text = 'The cat sat on the mat.'
-    encoded = keras.preprocessing.text.hashing_trick(text, 5)
+    encoded = preprocessing_text.hashing_trick(text, 5)
     self.assertEqual(len(encoded), 6)
     self.assertLessEqual(np.max(encoded), 4)
     self.assertGreaterEqual(np.min(encoded), 1)
 
   def test_hashing_trick_md5(self):
     text = 'The cat sat on the mat.'
-    encoded = keras.preprocessing.text.hashing_trick(
+    encoded = preprocessing_text.hashing_trick(
         text, 5, hash_function='md5')
     self.assertEqual(len(encoded), 6)
     self.assertLessEqual(np.max(encoded), 4)
@@ -82,13 +82,13 @@ class TestText(test.TestCase):
     x_test = ['This text has some unknown words']  # 2 OOVs: some, unknown
 
     # Default, without OOV flag
-    tokenizer = keras.preprocessing.text.Tokenizer()
+    tokenizer = preprocessing_text.Tokenizer()
     tokenizer.fit_on_texts(x_train)
     x_test_seq = tokenizer.texts_to_sequences(x_test)
     self.assertEqual(len(x_test_seq[0]), 4)  # discards 2 OOVs
 
     # With OOV feature
-    tokenizer = keras.preprocessing.text.Tokenizer(oov_token='<unk>')
+    tokenizer = preprocessing_text.Tokenizer(oov_token='<unk>')
     tokenizer.fit_on_texts(x_train)
     x_test_seq = tokenizer.texts_to_sequences(x_test)
     self.assertEqual(len(x_test_seq[0]), 6)  # OOVs marked in place
@@ -100,7 +100,7 @@ class TestText(test.TestCase):
     ]
     word_sequences = [['The', 'cat', 'is', 'sitting'],
                       ['The', 'dog', 'is', 'standing']]
-    tokenizer = keras.preprocessing.text.Tokenizer()
+    tokenizer = preprocessing_text.Tokenizer()
     tokenizer.fit_on_texts(texts)
     tokenizer.fit_on_texts(word_sequences)
 
@@ -111,29 +111,29 @@ class TestText(test.TestCase):
 
   def test_text_to_word_sequence(self):
     text = 'hello! ? world!'
-    seq = keras.preprocessing.text.text_to_word_sequence(text)
+    seq = preprocessing_text.text_to_word_sequence(text)
     self.assertEqual(seq, ['hello', 'world'])
 
   def test_text_to_word_sequence_multichar_split(self):
     text = 'hello!stop?world!'
-    seq = keras.preprocessing.text.text_to_word_sequence(text, split='stop')
+    seq = preprocessing_text.text_to_word_sequence(text, split='stop')
     self.assertEqual(seq, ['hello', 'world'])
 
   def test_text_to_word_sequence_unicode(self):
     text = u'ali! veli? kırk dokuz elli'
-    seq = keras.preprocessing.text.text_to_word_sequence(text)
+    seq = preprocessing_text.text_to_word_sequence(text)
     self.assertEqual(seq, [u'ali', u'veli', u'kırk', u'dokuz', u'elli'])
 
   def test_text_to_word_sequence_unicode_multichar_split(self):
     text = u'ali!stopveli?stopkırkstopdokuzstopelli'
-    seq = keras.preprocessing.text.text_to_word_sequence(text, split='stop')
+    seq = preprocessing_text.text_to_word_sequence(text, split='stop')
     self.assertEqual(seq, [u'ali', u'veli', u'kırk', u'dokuz', u'elli'])
 
   def test_tokenizer_unicode(self):
     texts = [
         u'ali veli kırk dokuz elli', u'ali veli kırk dokuz elli veli kırk dokuz'
     ]
-    tokenizer = keras.preprocessing.text.Tokenizer(num_words=5)
+    tokenizer = preprocessing_text.Tokenizer(num_words=5)
     tokenizer.fit_on_texts(texts)
 
     self.assertEqual(len(tokenizer.word_counts), 5)

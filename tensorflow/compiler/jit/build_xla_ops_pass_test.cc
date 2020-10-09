@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/node_matchers.h"
+#include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -72,11 +73,11 @@ Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
 
   FixupSourceAndSinkEdges(graph.get());
 
-  SessionOptions session_options;
-  GraphOptimizationPassOptions opt_options;
-  opt_options.session_options = &session_options;
+  GraphOptimizationPassWrapper wrapper;
+  GraphOptimizationPassOptions opt_options =
+      wrapper.CreateGraphOptimizationPassOptions(&graph);
   opt_options.flib_def = &flib_def;
-  opt_options.graph = &graph;
+
   BuildXlaOpsPass pass(/*enable_lazy_compilation=*/true);
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
   VLOG(3) << graph->ToGraphDefDebug().DebugString();
@@ -124,17 +125,6 @@ FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
       /*function_name=*/name, /*in_def=*/{}, /*out_def=*/{"out: float"},
       /*attr_def*/
       {}, /*node_def=*/{FunctionDefHelper::Const("one", 1.0f)},
-      /*ret_def=*/{{"out", "out:output:0"}});
-  *fdef_lib.add_function() = std::move(func);
-  return fdef_lib;
-}
-
-FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
-  FunctionDefLibrary fdef_lib;
-  FunctionDef func = FunctionDefHelper::Create(
-      /*function_name=*/name, /*in_def=*/{"in: int32"},
-      /*out_def=*/{"out: int32"},
-      /*attr_def=*/{}, /*node_def=*/{{{"out"}, "Identity", {"in"}}},
       /*ret_def=*/{{"out", "out:output:0"}});
   *fdef_lib.add_function() = std::move(func);
   return fdef_lib;
@@ -207,7 +197,7 @@ TEST_F(BuildXlaOpsTest, OnNonXlaDevice) {
       NodeWith(Op("PartitionedCall"),
                CtrlDeps(NodeWith(Op("Identity"),
                                  Inputs(Out(0, predicated_compilation_key)))));
-  auto merge = NodeWith(Op("Merge"), Inputs(Out(tf_call), Out(xla_run)));
+  auto merge = NodeWith(Op("_XlaMerge"), Inputs(Out(tf_call), Out(xla_run)));
   auto assign_var = NodeWith(Op("AssignVariableOp"), Inputs(_, Out(merge)));
 
   std::unique_ptr<Graph> graph;
@@ -268,6 +258,17 @@ TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
 }
 
 #ifdef GOOGLE_CUDA
+FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
+  FunctionDefLibrary fdef_lib;
+  FunctionDef func = FunctionDefHelper::Create(
+      /*function_name=*/name, /*in_def=*/{"in: int32"},
+      /*out_def=*/{"out: int32"},
+      /*attr_def=*/{}, /*node_def=*/{{{"out"}, "Identity", {"in"}}},
+      /*ret_def=*/{{"out", "out:output:0"}});
+  *fdef_lib.add_function() = std::move(func);
+  return fdef_lib;
+}
+
 // This tests a rewrite that only makes sense and is active in a CUDA-enabled
 // build.  Specifically we check that we insert an IdentityN op to avoid extra
 // device-to-host copies.

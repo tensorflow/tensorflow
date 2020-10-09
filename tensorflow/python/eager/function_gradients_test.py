@@ -55,11 +55,11 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     super(FunctionGradientsTest, self).setUp()
     cpus = config.list_physical_devices('CPU')
     # Set 4 virtual CPUs
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
 
   def testGraphModeWithGradients(self):
@@ -85,7 +85,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       node = f()
       grads, = gradients_impl.gradients(node, v)
       v.initializer.run()
-      self.assertAllEqual(grads.eval(), 2.0)
+      self.assertAllEqual(grads, 2.0)
       self.assertEqual(grads.shape, v.shape)
 
   def testSymbolicHigherOrder(self):
@@ -372,8 +372,8 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
             'v', initializer=constant_op.constant(1.0))
         return x * constant_op.constant(2.0)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'No trainable variables were accessed'):
+      with self.assertRaisesRegex(ValueError,
+                                  'No trainable variables were accessed'):
         backprop.implicit_val_and_grad(f)()
 
   def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):
@@ -825,7 +825,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
         return middle_fn(x, v)
 
       x = constant_op.constant(5.0)
-      self.assertAllEqual(outer_fn(x).eval(), 5.0 * (5.0 + 3.0))
+      self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
 
       grad, = gradients_impl.gradients(outer_fn(x), x)
 

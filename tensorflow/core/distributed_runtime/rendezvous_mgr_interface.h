@@ -40,6 +40,9 @@ class RemoteRendezvous : public Rendezvous {
  public:
   // Fully construct the RemoteRendezvous.
   virtual Status Initialize(WorkerSession* session) = 0;
+
+ protected:
+  bool is_cross_process() override { return true; }
 };
 
 // RendezvousMgr keeps track of a set of local rendezvous instances.
@@ -90,9 +93,6 @@ class RendezvousMgrInterface {
   // TODO(zhifengc): Have a background thread in worker that
   // periodically calls CleanupAll().
   virtual void Cleanup(int64 step_id) = 0;
-
-  // Removes all rendezvous.
-  virtual void CleanupAll() = 0;
 };
 
 }  // end namespace tensorflow

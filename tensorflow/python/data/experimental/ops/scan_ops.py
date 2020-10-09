@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -125,8 +124,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
     self._scan_func = wrapped_func
     self._scan_func.function.add_to_graph(ops.get_default_graph())
     # pylint: disable=protected-access
-    if compat.forward_compatible(2019, 10,
-                                 15) or use_default_device is not None:
+    if use_default_device is not None:
       variant_tensor = gen_experimental_dataset_ops.scan_dataset(
           self._input_dataset._variant_tensor,
           structure.to_tensor_list(self._state_structure, self._initial_state),
@@ -169,7 +167,7 @@ def scan(initial_state, scan_func):
     initial_state: A nested structure of tensors, representing the initial state
       of the accumulator.
     scan_func: A function that maps `(old_state, input_element)` to
-      `(new_state, output_element). It must take two arguments and return a
+      `(new_state, output_element)`. It must take two arguments and return a
       pair of nested structures of tensors. The `new_state` must match the
       structure of `initial_state`.
 

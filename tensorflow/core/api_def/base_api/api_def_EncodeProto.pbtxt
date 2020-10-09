@@ -1,6 +1,5 @@
 op {
   graph_op_name: "EncodeProto"
-  visibility: HIDDEN
   in_arg {
     name: "sizes"
     description: <<END

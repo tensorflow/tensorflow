@@ -20,44 +20,6 @@ package xla;
 import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
-// Options for the HLO insert-reduce-precision-operations pass.
-message HloReducePrecisionOptions {
-  // Where and when the reduce-precision operations will be added.
-  enum Location {
-    // Add reduce-precision operations to the inputs of selected instructions.
-    // This is done before any optimization occurs.
-    OP_INPUTS = 0;
-    // Add reduce-precision operations to the outputs of selected instructions.
-    // This is done before any optimization occurs.
-    OP_OUTPUTS = 1;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any selected instructions that have not been fused into
-    // fusion instructions.
-    UNFUSED_OP_OUTPUTS = 2;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any fusion instructions that contain operations matching the
-    // selection criteria.
-    FUSION_INPUTS_BY_CONTENT = 3;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any fusion instructions that contain operations matching the
-    // selection criteria.
-    FUSION_OUTPUTS_BY_CONTENT = 4;
-  }
-  Location location = 1;
-
-  // Exponent and mantissa bit counts for the reduced precision.
-  uint32 exponent_bits = 2;
-  uint32 mantissa_bits = 3;
-
-  // Operations matching these opcodes should be suffixed with reduce-precision
-  // operations.
-  repeated uint32 opcodes_to_suffix = 4;
-
-  // Operations with names containing these substrings should be suffixed with
-  // reduce-precision operations.
-  repeated string opname_substrings_to_suffix = 5;
-}
-
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
 message DebugOptions {
@@ -107,6 +69,10 @@ message DebugOptions {
   // Disable multi-streaming in the GPU backend.
   bool xla_gpu_disable_multi_streaming = 63;
 
+  // Debugging feature: if enabled, the GPU backend will assign HLO operators to
+  // randomly chosen streams. This is intended to trigger concurrency bugs.
+  bool xla_gpu_use_random_streams = 134;
+
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.
   bool xla_llvm_enable_alias_scope_metadata = 70;
@@ -122,10 +88,7 @@ message DebugOptions {
   // If true, a set of expensive LLVM optimization passes will not be run.
   bool xla_llvm_disable_expensive_passes = 73;
 
-  // Options for inserting reduce-precision operations for numerical
-  // experimentation.  This is a repeated field, as we may want to have
-  // multiple passes with different parameters.
-  repeated HloReducePrecisionOptions hlo_reduce_precision_options = 80;
+  reserved 80;  // Was hlo_reduce_precision_options
 
   // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
   // computation will run n! times with all permunations of layouts for the
@@ -185,9 +148,20 @@ message DebugOptions {
   // xla_cpu_enable_fast_math is false.
   bool xla_cpu_fast_math_honor_functions = 129;
 
+  // When false we lower the Minimum and Maximum hlos in the CPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
+  // this is false we always propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the gpu flag
+  // below!
+  bool xla_cpu_enable_fast_min_max = 140;
+
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
   // this is true we don't propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the cpu flag
+  // above!
   bool xla_gpu_enable_fast_min_max = 100;
 
   // Allows xla to increase the output precision of floating point operations.
@@ -199,7 +173,7 @@ message DebugOptions {
   bool xla_gpu_crash_on_verification_failures = 101;
 
   // Disable GEMM and Convolution auto-tuning.
-  bool xla_gpu_disable_autotune = 123;
+  int32 xla_gpu_autotune_level = 123;
 
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
@@ -281,6 +255,12 @@ message DebugOptions {
   // directory.
   bool xla_dump_hlo_snapshots = 118;
 
+  // Include a timestamp in the dumped filenames.
+  bool xla_dump_include_timestamp = 131;
+
+  // Max number of hlo module dumps in a directory. Set to < 0 for unbounded.
+  int32 xla_dump_max_hlo_modules = 132;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -290,17 +270,36 @@ message DebugOptions {
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
 
-  // Blacklist for cuDNN convolutions.
-  string xla_gpu_algorithm_blacklist_path = 128;
+  // Denylist for cuDNN convolutions.
+  string xla_gpu_algorithm_denylist_path = 128;
 
-  // Next id: 130
+  // Guarantee run-to-run determinism from reductions on XLA:GPU.
+  bool xla_gpu_deterministic_reductions = 130;
+
+  // Debug options that trigger execution errors when NaN or Inf are detected.
+  bool xla_tpu_detect_nan = 135;
+  bool xla_tpu_detect_inf = 136;
+
+  // True if TraceMe annotations are enabled for XLA:CPU.
+  bool xla_cpu_enable_xprof_traceme = 137;
+
+  // It is usually preferable to not fallback to the driver; it can consume more
+  // memory, or have bugs.
+  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
+
+  // Extra parameters to pass the GPU assembler.
+  string xla_gpu_asm_extra_flags = 141;
+
+  // Next id: 142
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 
-  reserved 117;  // was xla_dump_to
-  reserved 5;    // Was xla_hlo_dump_as_graphdef
+  reserved 5, 117, 133,
+      139;  // were xla_hlo_dump_as_graphdef, xla_dump_to,
+            // xla_gpu_use_horizontal_fusion, and
+            // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings
@@ -339,6 +338,21 @@ message ExecutionOptions {
   // Alias input and output buffers for parameters that are passed-through XLA
   // modules without being changed.
   bool alias_passthrough_params = 8;
+
+  // Number of partitions of the computation to run (model parallelism).
+  // If zero, uses the default number of partitions for the XLA service.
+  int32 num_partitions = 9;
+
+  // Used to identify a set of programs that should be launch together.
+  int32 launch_id = 10;
+
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning = 11;
+
+  // If set, deduplicate hlo into function calls to reduce binary size. Only
+  // works on TPU.
+  bool deduplicate_hlo = 12;
 }
 
 message GetDeviceHandlesRequest {

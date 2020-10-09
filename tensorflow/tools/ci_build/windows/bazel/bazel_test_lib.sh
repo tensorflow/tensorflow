@@ -28,7 +28,7 @@ function run_configure_for_gpu_build {
 
 function set_remote_cache_options {
   echo "build --remote_instance_name=projects/tensorflow-testing/instances/default_instance" >> "${TMP_BAZELRC}"
-  echo "build --remote_default_platform_properties='properties:{name:\"build\" value:\"windows-x64\"}'" >> "${TMP_BAZELRC}"
+  echo "build --remote_default_exec_properties=build=windows-x64" >> "${TMP_BAZELRC}"
   echo "build --remote_cache=remotebuildexecution.googleapis.com" >> "${TMP_BAZELRC}"
   echo "build --tls_enabled=true" >> "${TMP_BAZELRC}"
   echo "build --remote_timeout=3600" >> "${TMP_BAZELRC}"

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
+#include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
@@ -34,7 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
+#include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
@@ -82,14 +83,12 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
 
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CholeskyExpander>();
+  pipeline.AddPass<QrExpander>();
+  pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(),
       LayoutAssignment::InstructionCanChangeLayout);
-
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, hlo_module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   return pipeline.Run(hlo_module).status();
 }
@@ -109,9 +108,8 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   VLOG(1) << "Run backend " << hlo_module->name();
 
-  // Typically you would visit the HLO graph, building up a compiled equivalent
-  // In this case we are using an HloEvaluator at execution time, so we don't
-  // need to compile anything
+  TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
+                      DynamicDimensionInference::Run(hlo_module.get()));
 
   auto evaluator = absl::make_unique<HloEvaluator>();
   evaluator->set_use_fast_path(
@@ -120,8 +118,9 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   // Create executable from only the Hlo module.
   std::unique_ptr<Executable> executable =
-      absl::make_unique<InterpreterExecutable>(std::move(hlo_module),
-                                               std::move(evaluator));
+      absl::make_unique<InterpreterExecutable>(
+          std::move(hlo_module), std::move(evaluator),
+          std::move(dynamic_dimension_inference));
 
   return std::move(executable);
 }

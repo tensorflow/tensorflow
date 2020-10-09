@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -22,7 +23,7 @@ namespace {
 
 constexpr char kNodeName[] = "tensor_slice_dataset";
 
-class TensorSliceDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class TensorSliceDatasetOpTest : public DatasetOpsTestBase {};
 
 TensorSliceDatasetParams PlainTensorSliceDatasetParams() {
   std::vector<Tensor> components = {
@@ -304,11 +305,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
       EXPECT_TRUE(end_of_sequence);
     }
 
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_ASSERT_OK(iterator_->Save(serialization_context.get(), &writer));
-    TF_ASSERT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, "Iterator",
                                  *dataset_, &iterator_));
   }
@@ -317,6 +318,30 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
 INSTANTIATE_TEST_SUITE_P(
     TensorSliceDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
     ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
+
+TEST_F(TensorSliceDatasetOpTest, SplitProvider) {
+  auto params = TensorSliceDatasetParams(
+      CreateTensors<int64>(TensorShape({7}), {{6, 2, 3, 8, 7, 0, 10}}),
+      kNodeName);
+  TF_ASSERT_OK(InitializeRuntime(params));
+  TF_EXPECT_OK(CheckSplitProviderFullIteration(
+      params, CreateTensors<int64>(TensorShape({}),
+                                   {{6}, {2}, {3}, {8}, {7}, {0}, {10}})));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/3, /*shard_index=*/1,
+      CreateTensors<int64>(TensorShape({}), {{2}, {7}})));
+}
+
+TEST_F(TensorSliceDatasetOpTest, SplitProviderEmpty) {
+  auto params = TensorSliceDatasetParams(
+      CreateTensors<int64>(TensorShape({0}), {{}}), kNodeName);
+  TF_ASSERT_OK(InitializeRuntime(params));
+  TF_EXPECT_OK(CheckSplitProviderFullIteration(
+      params, CreateTensors<int64>(TensorShape({}), {})));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/3, /*shard_index=*/1,
+      CreateTensors<int64>(TensorShape({}), {})));
+}
 
 }  // namespace
 }  // namespace data

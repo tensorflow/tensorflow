@@ -38,16 +38,17 @@ class ResourceHandle {
   ~ResourceHandle();
 
   // Unique name for the device containing the resource.
-  const string& device() const { return device_; }
-  void set_device(const string& device) { device_ = device; }
+  const std::string& device() const { return device_; }
+
+  void set_device(const std::string& device) { device_ = device; }
 
   // Container in which this resource is placed.
-  const string& container() const { return container_; }
-  void set_container(const string& container) { container_ = container; }
+  const std::string& container() const { return container_; }
+  void set_container(const std::string& container) { container_ = container; }
 
   // Unique name of this resource.
-  const string& name() const { return name_; }
-  void set_name(const string& name) { name_ = name; }
+  const std::string& name() const { return name_; }
+  void set_name(const std::string& name) { name_ = name; }
 
   // Hash code for the type of the resource. Is only valid in the same device
   // and in the same execution.
@@ -56,8 +57,10 @@ class ResourceHandle {
 
   // For debug-only, the name of the type pointed to by this handle, if
   // available.
-  const string& maybe_type_name() const { return maybe_type_name_; }
-  void set_maybe_type_name(const string& value) { maybe_type_name_ = value; }
+  const std::string& maybe_type_name() const { return maybe_type_name_; }
+  void set_maybe_type_name(const std::string& value) {
+    maybe_type_name_ = value;
+  }
 
   // Data types and shapes for the underlying resource.
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes() const {
@@ -73,10 +76,10 @@ class ResourceHandle {
   void FromProto(const ResourceHandleProto& proto);
 
   // Serialization via ResourceHandleProto
-  string SerializeAsString() const;
-  bool ParseFromString(const string& s);
+  std::string SerializeAsString() const;
+  bool ParseFromString(const std::string& s);
 
-  string DebugString() const;
+  std::string DebugString() const;
 
   // GUID for anonymous resources. Resources with this shared_name will have
   // their shared_name replaced with a GUID at creation time
@@ -84,16 +87,16 @@ class ResourceHandle {
       "cd2c89b7-88b7-44c8-ad83-06c2a9158347";
 
  public:
-  string device_;
-  string container_;
-  string name_;
+  std::string device_;
+  std::string container_;
+  std::string name_;
   uint64 hash_code_ = 0;
-  string maybe_type_name_;
+  std::string maybe_type_name_;
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes_;
 };
 
 // For backwards compatibility for when this was a proto
-string ProtoDebugString(const ResourceHandle& handle);
+std::string ProtoDebugString(const ResourceHandle& handle);
 
 // Encodes a list of ResourceHandle protos in the given StringListEncoder.
 void EncodeResourceHandleList(const ResourceHandle* p, int64 n,

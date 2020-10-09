@@ -75,6 +75,9 @@ class InputBuffer {
   // read will trigger a File::Read().
   Status Seek(int64 position);
 
+  // Provides a hint about future reads, which may improve their performance.
+  Status Hint(int64 bytes_to_read);
+
   // Returns the position in the file.
   int64 Tell() const { return file_pos_ - (limit_ - pos_); }
 
@@ -111,9 +114,7 @@ class InputBuffer {
 
 // Explicit instantiations defined in inputbuffer.cc.
 extern template Status InputBuffer::ReadLine<string>(string* result);
-#ifdef USE_TSTRING
 extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
-#endif  // USE_TSTRING
 
 // Inlined for performance.
 inline Status InputBuffer::ReadVarint32(uint32* result) {

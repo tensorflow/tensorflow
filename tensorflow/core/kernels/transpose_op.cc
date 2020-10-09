@@ -91,20 +91,6 @@ REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                             .HostMemory("y"),
                         InvertPermutationOp<int64>);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("x")
-                            .HostMemory("y"),
-                        InvertPermutationOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int64>("T")
-                            .HostMemory("x")
-                            .HostMemory("y"),
-                        InvertPermutationOp<int64>);
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 template <typename Tperm>
@@ -263,33 +249,4 @@ TF_CALL_POD_TYPES(REGISTER);
 #undef REGISTER
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-Status TransposeSyclOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                    gtl::ArraySlice<int32> perm, Tensor* out) {
-  typedef Eigen::SyclDevice SYCLDevice;
-  return ::tensorflow::DoTranspose(ctx->eigen_device<SYCLDevice>(), in, perm,
-                                   out);
-}
-Status ConjugateTransposeSyclOp::DoTranspose(OpKernelContext* ctx,
-                                             const Tensor& in,
-                                             gtl::ArraySlice<int32> perm,
-                                             Tensor* out) {
-  typedef Eigen::SyclDevice SYCLDevice;
-  return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<SYCLDevice>(), in,
-                                            perm, out);
-}
-#define REGISTER(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
-                              .Device(DEVICE_SYCL)    \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
-                          TransposeSyclOp);           \
-  REGISTER_KERNEL_BUILDER(Name("ConjugateTranspose")  \
-                              .Device(DEVICE_SYCL)    \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
-                          ConjugateTransposeSyclOp);
-TF_CALL_POD_TYPES(REGISTER);
-#undef REGISTER
-#endif
 }  // namespace tensorflow

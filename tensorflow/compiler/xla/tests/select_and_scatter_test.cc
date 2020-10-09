@@ -42,8 +42,8 @@ struct SelectAndScatterTestParam {
   std::vector<int64> operand_shape;
   std::vector<int64> source_shape;
   Padding padding_type;
-  absl::Span<const int64> window_dimensions;
-  absl::Span<const int64> window_strides;
+  std::vector<int64> window_dimensions;
+  std::vector<int64> window_strides;
 };
 
 class SelectAndScatterTest
@@ -186,6 +186,11 @@ INSTANTIATE_TEST_CASE_P(
                                   Padding::kValid,
                                   {2, 1, 1},
                                   {3, 1, 1}},
+        SelectAndScatterTestParam{{10, 10, 8, 256},
+                                  {5, 5, 8, 256},
+                                  Padding::kSame,
+                                  {2, 2, 1, 1},
+                                  {2, 2, 1, 1}},
         SelectAndScatterTestParam{
             {9, 16, 128}, {3, 16, 128}, Padding::kValid, {3, 1, 1}, {3, 1, 1}},
         SelectAndScatterTestParam{

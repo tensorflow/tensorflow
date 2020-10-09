@@ -1,9 +1,9 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-data-types=DT_INT32 -tf-input-shapes='' -tf-output-arrays=while:2 -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input -tf-input-data-types=DT_INT32 -tf-input-shapes='' -tf-output-arrays=while:2 -o - | FileCheck %s
 
 # This check that we don't error out when importing GraphDef containing
 # functions with arg name that are the same as the graph input name
 
-# CHECK: func @main(%arg0: tensor<i32>) -> tensor<i32>
+# CHECK: func @main(%arg0: tensor<{{.*}}i32>) -> tensor<{{.*}}i32>
 # CHECK: func @while_body
 # CHECK: func @while_cond
 

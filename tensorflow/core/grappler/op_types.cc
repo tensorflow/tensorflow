@@ -51,10 +51,13 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyBatchMatMul(const NodeDef& node) {
+  return node.op() == "BatchMatMul" || node.op() == "BatchMatMulV2";
+}
+
 bool IsAnyMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
-         IsQuantizedMatMul(node);
+  return node.op() == "MatMul" || node.op() == "SparseMatMul" ||
+         IsAnyBatchMatMul(node) || IsQuantizedMatMul(node);
 }
 
 bool IsAnyMax(const NodeDef& node) {
@@ -71,6 +74,15 @@ bool IsAnyMaxPool(const NodeDef& node) {
 bool IsAnyMin(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
+}
+
+bool IsAnySparseSegmentReduction(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "SparseSegmentSum" || op == "SparseSegmentSumWithNumSegments" ||
+         op == "SparseSegmentMean" ||
+         op == "SparseSegmentMeanWithNumSegments" ||
+         op == "SparseSegmentSqrtN" ||
+         op == "SparseSegmentSqrtNWithNumSegments";
 }
 
 bool IsApproximateEqual(const NodeDef& node) {
@@ -104,6 +116,8 @@ bool IsBiasAdd(const NodeDef& node) {
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
+
+bool IsBroadcastTo(const NodeDef& node) { return node.op() == "BroadcastTo"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
@@ -153,6 +167,7 @@ bool IsControlFlow(const NodeDef& node) {
          node.op() == "Exit" ||
          node.op() == "LoopCond" ||
          node.op() == "Merge" ||
+         node.op() == "_XlaMerge" ||
          node.op() == "NextIteration" ||
          node.op() == "Switch" ||
          node.op() == "_SwitchN";
@@ -170,6 +185,14 @@ bool IsConv2DBackpropInput(const NodeDef& node) {
 }
 
 bool IsConv3D(const NodeDef& node) { return node.op() == "Conv3D"; }
+
+bool IsConv3DBackpropFilterV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropFilterV2";
+}
+
+bool IsConv3DBackpropInputV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropInputV2";
+}
 
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
   return node.op() == "DepthwiseConv2dNative";
@@ -264,6 +287,11 @@ bool IsFusedBatchNormGrad(const NodeDef& node) {
          op == "FusedBatchNormGradV3";
 }
 
+bool IsGather(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Gather" || op == "GatherV2";
+}
+
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
@@ -306,6 +334,12 @@ bool IsImmutableConst(const NodeDef& node) {
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
 
+bool IsLeakyRelu(const NodeDef& node) { return node.op() == "LeakyRelu"; }
+
+bool IsLeakyReluGrad(const NodeDef& node) {
+  return node.op() == "LeakyReluGrad";
+}
+
 bool IsLess(const NodeDef& node) { return node.op() == "Less"; }
 
 bool IsLessEqual(const NodeDef& node) { return node.op() == "LessEqual"; }
@@ -332,7 +366,7 @@ bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
 bool IsMerge(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Merge" || op == "RefMerge";
+  return op == "Merge" || op == "RefMerge" || op == "_XlaMerge";
 }
 
 bool IsMin(const NodeDef& node) { return node.op() == "Min"; }
@@ -409,6 +443,10 @@ bool IsReadVariableOp(const NodeDef& node) {
   return node.op() == "ReadVariableOp";
 }
 
+bool IsReadVariablesOp(const NodeDef& node) {
+  return node.op() == "_ReadVariablesOp";
+}
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }
@@ -456,7 +494,9 @@ bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
-bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
+bool IsSelect(const NodeDef& node) {
+  return node.op() == "Select" || node.op() == "SelectV2";
+}
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
@@ -541,6 +581,8 @@ bool IsSymbolicGradient(const NodeDef& node) {
   return node.op() == "SymbolicGradient";
 }
 
+bool IsTanh(const NodeDef& node) { return node.op() == "Tanh"; }
+
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
 
 bool IsTensorArray(const NodeDef& node) {
@@ -582,6 +624,11 @@ bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
 bool IsTruncateDiv(const NodeDef& node) { return node.op() == "TruncateDiv"; }
 
 bool IsTruncateMod(const NodeDef& node) { return node.op() == "TruncateMod"; }
+
+bool IsUnique(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Unique" || op == "UniqueV2";
+}
 
 bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
 
@@ -689,7 +736,7 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
 
 bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
-  string op_name = node.op();
+  const string& op_name = node.op();
 
   // Ops that modify resource variables effectively modify one of their inputs.
   if (op_name == "AssignVariableOp" || op_name == "AssignAddVariableOp" ||
@@ -700,8 +747,10 @@ bool ModifiesInputsInPlace(const NodeDef& node) {
     return false;
   }
 
-  std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
-  if (absl::StrContains(op_name, "inplace")) {
+  string lower_op_name = op_name;
+  std::transform(lower_op_name.begin(), lower_op_name.end(),
+                 lower_op_name.begin(), ::tolower);
+  if (absl::StrContains(lower_op_name, "inplace")) {
     return true;
   }
   return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
@@ -856,19 +905,25 @@ bool NeverForwardsInputs(const NodeDef& node) {
       (new gtl::FlatSet<string>{"ArgMax",
                                 "ArgMin",
                                 "AudioSpectrogram",
+                                "AvgPool",
                                 "BatchMatMul",
+                                "BatchMatMulV2",
+                                "BatchNormWithGlobalNormalization",
                                 "BatchToSpace",
                                 "BatchToSpaceND",
                                 "Bincount",
                                 "BroadcastArgs",
                                 "BroadcastGradientArgs",
+                                "Bucketize",
                                 "CTCBeamSearchDecoder",
                                 "CTCGreedyDecoder",
                                 "CTCLoss",
+                                "CompareAndBitpack",
                                 "ComplexAbs",
                                 "Concat",
                                 "ConcatOffset",
                                 "ConcatV2",
+                                "Conv2D",
                                 "Copy",
                                 "CopyHost",
                                 "Cross",
@@ -877,12 +932,14 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "CudnnRNNBackpropV2",
                                 "CudnnRNNBackpropV3",
                                 "CudnnRNNCanonicalToParams",
+                                "CudnnRNNCanonicalToParamsV2",
                                 "CudnnRNNParamsSize",
                                 "CudnnRNNParamsToCanonical",
+                                "CudnnRNNParamsToCanonicalV2",
                                 "CudnnRNNV2",
                                 "CudnnRNNV3",
-                                "CumSum",
                                 "CumProd",
+                                "CumSum",
                                 "DebugNanCount",
                                 "DebugNumericSummary",
                                 "DecodeProtoV2",
@@ -912,12 +969,24 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "MatMul",
                                 "MatrixDiag",
                                 "MatrixDiagPart",
+                                "MatrixDiagPartV2",
+                                "MatrixDiagV2",
                                 "Mfcc",
+                                "Multinomial",
                                 "OneHot",
                                 "Pack",
+                                "ParameterizedTruncatedNormal",
                                 "PopulationCount",
+                                "RandomGamma",
+                                "RandomPoisson",
+                                "RandomPoissonV2",
+                                "RandomStandardNormal",
+                                "RandomUniform",
+                                "RandomUniformInt",
                                 "Range",
                                 "Rank",
+                                "RequantizationRange",
+                                "Requantize",
                                 "ReverseSequence",
                                 "Shape",
                                 "ShapeN",
@@ -928,6 +997,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "SparseMatMul",
                                 "Split",
                                 "SplitV",
+                                "TruncatedNormal",
                                 "Unique",
                                 "UniqueV2",
                                 "UniqueWithCounts",
@@ -935,25 +1005,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "Unpack",
                                 "UnravelIndex",
                                 "UpperBound",
-                                "Where",
-                                "CompareAndBitpack",
-                                "Requantize",
-                                "RequantizationRange",
-                                "Bucketize",
-                                "AvgPool",
-                                "BatchNormWithGlobalNormalization",
-                                "FusedBatchNorm",
-                                "FusedBatchNormV2",
-                                "Conv2D",
-                                "RandomUniform",
-                                "RandomUniformInt",
-                                "RandomStandardNormal",
-                                "ParameterizedTruncatedNormal",
-                                "TruncatedNormal",
-                                "Multinomial",
-                                "RandomGamma",
-                                "RandomPoisson",
-                                "RandomPoissonV2"}));
+                                "Where"}));
   const string& op_name = node.op();
   return kNonForwardingOps->count(op_name) > 0 ||
          absl::StrContains(op_name, "Segment") ||

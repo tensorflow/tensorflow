@@ -34,46 +34,36 @@ namespace {
 class AlignedConcatByChannels : public NodeShader {
  public:
   static bool IsSupported(const GenerationContext& ctx) {
-    auto attr =
-        absl::any_cast<ConcatAttributes>(ctx.node->operation.attributes);
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    const auto& attr = absl::any_cast<const ConcatAttributes&>(ctx.op_attr);
 
     // Implementation supports concatenation by channels only.
-    if (attr.axis != Axis::CHANNELS) {
-      return false;
-    }
+    if (attr.axis != Axis::CHANNELS) return false;
 
     // Implementation supports concatenation of 2 tensors only.
-    if (inputs.size() != 2) {
-      return false;
-    }
+    if (ctx.input_shapes.size() != 2) return false;
 
     // H and W must be the same for every concatenated tensor.
-    auto shape0 = inputs[0]->tensor.shape;
-    for (int i = 1; i < inputs.size(); i++) {
-      auto current_shape = inputs[i]->tensor.shape;
-      if (shape0.h != current_shape.h || shape0.w != current_shape.w) {
+    for (int i = 1; i < ctx.input_shapes.size(); i++) {
+      if (ctx.input_shapes[0][1] != ctx.input_shapes[i][1] ||
+          ctx.input_shapes[0][2] != ctx.input_shapes[i][2]) {
         return false;
       }
     }
 
     // Channels must be aligned by 4 for every concatenated tensor.
-    for (int i = 0; i < inputs.size(); i++) {
-      if (inputs[i]->tensor.shape.c % 4 != 0) {
-        return false;
-      }
+    for (const auto& shape : ctx.input_shapes) {
+      if (shape[3] % 4 != 0) return false;
     }
 
     return true;
   }
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     if (!IsSupported(ctx)) {
-      return InvalidArgumentError(
+      return absl::InvalidArgumentError(
           "This case is not supported by aligned concat");
     }
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
 
     // Shader below concatenates 2 tensors which channels are aligned by 4
     std::string source = R"(
@@ -85,7 +75,8 @@ class AlignedConcatByChannels : public NodeShader {
       }
 )";
     *generated_code = {
-        /*parameters=*/{{"border", inputs[0]->tensor.shape.c / 4}},
+        /*parameters=*/{
+            {"border", static_cast<int>(ctx.input_shapes[0][3]) / 4}},
         /*objects=*/{},
         /*shared_variables=*/{},
         /*workload=*/uint3(),
@@ -94,32 +85,25 @@ class AlignedConcatByChannels : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 class ConcatByAnyChannel : public NodeShader {
  public:
   static bool IsSupported(const GenerationContext& ctx) {
-    auto attr =
-        absl::any_cast<ConcatAttributes>(ctx.node->operation.attributes);
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    const auto& attr = absl::any_cast<const ConcatAttributes&>(ctx.op_attr);
 
     // Implementation supports concatenation by channels only.
-    if (attr.axis != Axis::CHANNELS) {
-      return false;
-    }
+    if (attr.axis != Axis::CHANNELS) return false;
 
     // Implementation supports concatenation of more that 1 tensors only.
-    if (inputs.size() <= 1) {
-      return false;
-    }
+    if (ctx.input_shapes.size() <= 1) return false;
 
     // H and W must be the same for every concatenated tensor.
-    auto shape0 = inputs[0]->tensor.shape;
-    for (int i = 1; i < inputs.size(); i++) {
-      auto current_shape = inputs[i]->tensor.shape;
-      if (shape0.h != current_shape.h || shape0.w != current_shape.w) {
+    for (int i = 1; i < ctx.input_shapes.size(); i++) {
+      if (ctx.input_shapes[0][1] != ctx.input_shapes[i][1] ||
+          ctx.input_shapes[0][2] != ctx.input_shapes[i][2]) {
         return false;
       }
     }
@@ -127,14 +111,11 @@ class ConcatByAnyChannel : public NodeShader {
     return true;
   }
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     if (!IsSupported(ctx)) {
-      return UnimplementedError("This case is not supported by concat");
+      return absl::UnimplementedError("This case is not supported by concat");
     }
-
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
-    auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
 
     std::string code = DeclareVariables();
 
@@ -146,12 +127,12 @@ class ConcatByAnyChannel : public NodeShader {
     // This macros instantiate the variable "var" and
     // reads the value from buffer "buff" by address "addr"
     int t = 0;
-    for (int current_input_id = 0; current_input_id < inputs.size();
+    for (int current_input_id = 0; current_input_id < ctx.input_shapes.size();
          current_input_id++) {
       // Start joining next inout tensor
 
       // Grab channels amount
-      int in_ch = inputs[current_input_id]->tensor.shape.c;
+      int in_ch = ctx.input_shapes[current_input_id][3];
       code += PrintStartMessage(current_input_id, in_ch, already_written);
 
       // Construct the buffer name associated with this tensor
@@ -176,13 +157,15 @@ class ConcatByAnyChannel : public NodeShader {
         /*parameters=*/{},
         /*objects=*/{},
         /*shared_variables=*/{},
-        /*workload=*/uint3(output->tensor.shape.w, output->tensor.shape.h, 1),
+        /*workload=*/
+        uint3(static_cast<int>(ctx.output_shapes[0][2]),
+              static_cast<int>(ctx.output_shapes[0][1]), 1),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::ONLY_DEFINITIONS,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -227,7 +210,7 @@ vec4 val = vec4(0.0f);
     // * - you are going to write into these cells
     // @ - you will fill these cells next cycles
     // ^ - first elem you start writing from
-    int blocks_amount = IntegralDivideRoundUp<int>(in_ch, 4);
+    int blocks_amount = DivideRoundUp<int>(in_ch, 4);
     code += "// Aligned case\n";
     code += "// I'm going to make " + std::to_string(blocks_amount) +
             " write(s)\n\n";
@@ -322,25 +305,18 @@ vec4 val = vec4(0.0f);
 class FlatConcatByHeight : public NodeShader {
  public:
   static bool IsSupported(const GenerationContext& ctx) {
-    auto attr =
-        absl::any_cast<ConcatAttributes>(ctx.node->operation.attributes);
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    const auto& attr = absl::any_cast<const ConcatAttributes&>(ctx.op_attr);
 
     // Implementation supports concatenation by height only.
-    if (attr.axis != Axis::HEIGHT) {
-      return false;
-    }
+    if (attr.axis != Axis::HEIGHT) return false;
 
     // Implementation supports concatenation of more that 1 tensors only.
-    if (inputs.size() <= 1) {
-      return false;
-    }
+    if (ctx.input_shapes.size() <= 1) return false;
 
     // C and W must be the same for every concatenated tensor.
-    auto shape0 = inputs[0]->tensor.shape;
-    for (int i = 1; i < inputs.size(); i++) {
-      auto current_shape = inputs[i]->tensor.shape;
-      if (shape0.c != current_shape.c || shape0.w != current_shape.w) {
+    for (int i = 1; i < ctx.input_shapes.size(); i++) {
+      if (ctx.input_shapes[0][3] != ctx.input_shapes[i][3] ||
+          ctx.input_shapes[0][2] != ctx.input_shapes[i][2]) {
         return false;
       }
     }
@@ -348,28 +324,27 @@ class FlatConcatByHeight : public NodeShader {
     return true;
   }
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     std::string code;
     std::vector<Variable> params;
-    for (int i = 0, shift = 0; i < inputs.size();
-         shift += inputs[i]->tensor.shape.h, i++) {
+    for (int i = 0, shift = 0; i < ctx.input_shapes.size();
+         shift += ctx.input_shapes[i][1], i++) {
       code += "if (";
       if (i != 0) {
         code += "$input_data_" + std::to_string(i - 1) + "_h$ <= gid.y && ";
       }
-      code += "gid.y < " + std::to_string(shift + inputs[i]->tensor.shape.h) +
-              ") {\n";
+      code +=
+          "gid.y < " + std::to_string(shift + ctx.input_shapes[i][1]) + ") {\n";
       code += "if (gid.y - " + std::to_string(shift) + " >= $input_data_" +
               std::to_string(i) + "_h$) return;\n";
       code += "value_0 = $input_data_" + std::to_string(i) +
               "[gid.x, gid.y - " + std::to_string(shift) + ", gid.z]$;\n}\n";
-      if (i != inputs.size() - 1) {
+      if (i != ctx.input_shapes.size() - 1) {
         code += " else ";
       }
       params.push_back({"input_data_" + std::to_string(i) + "_h",
-                        inputs[i]->tensor.shape.h});
+                        static_cast<int>(ctx.input_shapes[i][1])});
     }
 
     *generated_code = {
@@ -382,32 +357,25 @@ class FlatConcatByHeight : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 class FlatConcatByWidth : public NodeShader {
  public:
   static bool IsSupported(const GenerationContext& ctx) {
-    auto attr =
-        absl::any_cast<ConcatAttributes>(ctx.node->operation.attributes);
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    const auto& attr = absl::any_cast<const ConcatAttributes&>(ctx.op_attr);
 
     // Implementation supports concatenation by width only.
-    if (attr.axis != Axis::WIDTH) {
-      return false;
-    }
+    if (attr.axis != Axis::WIDTH) return false;
 
     // Implementation supports concatenation of more that 1 tensors only.
-    if (inputs.size() <= 1) {
-      return false;
-    }
+    if (ctx.input_shapes.size() <= 1) return false;
 
     // C and H must be the same for every concatenated tensor.
-    auto shape0 = inputs[0]->tensor.shape;
-    for (int i = 1; i < inputs.size(); i++) {
-      auto current_shape = inputs[i]->tensor.shape;
-      if (shape0.c != current_shape.c || shape0.h != current_shape.h) {
+    for (int i = 1; i < ctx.input_shapes.size(); i++) {
+      if (ctx.input_shapes[0][3] != ctx.input_shapes[i][3] ||
+          ctx.input_shapes[0][1] != ctx.input_shapes[i][1]) {
         return false;
       }
     }
@@ -415,28 +383,27 @@ class FlatConcatByWidth : public NodeShader {
     return true;
   }
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     std::string code;
     std::vector<Variable> params;
-    for (int i = 0, shift = 0; i < inputs.size();
-         shift += inputs[i]->tensor.shape.w, i++) {
+    for (int i = 0, shift = 0; i < ctx.input_shapes.size();
+         shift += ctx.input_shapes[i][2], i++) {
       code += "if (";
       if (i != 0) {
         code += "$input_data_" + std::to_string(i - 1) + "_w$ <= gid.x && ";
       }
-      code += "gid.x < " + std::to_string(shift + inputs[i]->tensor.shape.w) +
-              ") {\n";
+      code +=
+          "gid.x < " + std::to_string(shift + ctx.input_shapes[i][2]) + ") {\n";
       code += "if (gid.x - " + std::to_string(shift) + " >= $input_data_" +
               std::to_string(i) + "_w$) return;\n";
       code += "value_0 = $input_data_" + std::to_string(i) + "[gid.x - " +
               std::to_string(shift) + ", gid.y, gid.z]$;\n}\n";
-      if (i != inputs.size() - 1) {
+      if (i != ctx.input_shapes.size() - 1) {
         code += " else ";
       }
       params.push_back({"input_data_" + std::to_string(i) + "_w",
-                        inputs[i]->tensor.shape.w});
+                        static_cast<int>(ctx.input_shapes[i][2])});
     }
 
     *generated_code = {
@@ -449,21 +416,22 @@ class FlatConcatByWidth : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 class FlatConcat : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     if (FlatConcatByHeight::IsSupported(ctx)) {
       return flat_concat_by_height_.GenerateCode(ctx, generated_code);
     }
     if (FlatConcatByWidth::IsSupported(ctx)) {
       return flat_concat_by_width_.GenerateCode(ctx, generated_code);
     }
-    return InvalidArgumentError("This case is not supported by flat concat");
+    return absl::InvalidArgumentError(
+        "This case is not supported by flat concat");
   }
 
  private:

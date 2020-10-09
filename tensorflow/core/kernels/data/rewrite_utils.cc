@@ -12,15 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/kernels/data/rewrite_utils.h"
 
+// On mobile we do not provide this functionality because not all of its
+// dependencies are available there.
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/graph_view.h"
@@ -30,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
+#include "tensorflow/core/kernels/data/serialization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -77,8 +82,7 @@ void RemoveFakeSinks(FunctionDef* function_def) {
 
 Status ApplyRewrites(OpKernelContext* ctx,
                      const std::function<RewriterConfig(void)> config_factory,
-                     bool optimize_function_library, GraphDef* graph_def,
-                     string* output_node) {
+                     GraphDef* graph_def, string* output_node) {
   // Add an identity node as the fetch node, otherwise we might get 'placeholder
   // is both fed and fetched' errors in some cases when using input list with
   // placeholder dataset nodes.
@@ -115,8 +119,9 @@ Status ApplyRewrites(OpKernelContext* ctx,
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef(
           "graph", meta_graph_def, item_config);
-  grappler_item->optimization_options().optimize_function_library =
-      optimize_function_library;
+  // Grappler should not optimize function library of tf.data graphs. The
+  // tf.data meta optimizer takes care of optimizing tf.data functions.
+  grappler_item->optimization_options().optimize_function_library = false;
   std::unordered_map<string, tensorflow::DeviceProperties> device_map;
   tensorflow::grappler::VirtualCluster cluster(device_map);
 
@@ -124,7 +129,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
   tensorflow::ConfigProto config;
   *config.mutable_graph_options()->mutable_rewrite_options() = config_factory();
   TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-      *grappler_item, config, ctx->device(), &cluster, graph_def));
+      std::move(*grappler_item), config, ctx->device(), &cluster, graph_def));
 
   // Remove fake sinks after optimizations are done.
   //
@@ -141,30 +146,16 @@ Status ApplyRewrites(OpKernelContext* ctx,
 
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input) {
-  SerializationContext::Params params;
+                      bool record_fingerprint, DatasetBase** rewritten_input) {
   std::vector<std::pair<string, Tensor>> input_list;
-  params.input_list = &input_list;
-  params.check_external_state = false;
-  params.fail_if_unimplemented = false;
-  params.serialize_data_tensors = false;
-  SerializationContext serialization_ctx(params);
   GraphDef graph_def;
-  TF_RETURN_IF_ERROR(
-      AsGraphDef(ctx, input, std::move(serialization_ctx), &graph_def));
-
   string output_node;
-  for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
-      output_node = node.input(0);
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      AsGraphDefMinimal(ctx, input, &input_list, &graph_def, &output_node));
 
   VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
-  TF_RETURN_IF_ERROR(ApplyRewrites(ctx, config_factory,
-                                   optimize_function_library, &graph_def,
-                                   &output_node));
+  TF_RETURN_IF_ERROR(
+      ApplyRewrites(ctx, config_factory, &graph_def, &output_node));
   VLOG(3) << "After graph rewrites: " << graph_def.DebugString();
 
   // Instantiate the optimized input pipeline by running the optimized graph
@@ -175,9 +166,8 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   TF_RETURN_IF_ERROR(
       ctx->function_library()->Clone(&lib_def, &pflr, &flr, true));
 
-  // Some functions may have been modified without having their names
-  // changed (for example, nested dataset graphs from FlatMap or
-  // Interleave).
+  // Some functions may have been modified without having their names changed
+  // (for example, nested dataset graphs from FlatMap or Interleave).
   TF_RETURN_IF_ERROR(AddToFunctionLibrary(lib_def.get(), graph_def.library()));
 
   Graph graph(OpRegistry::Global());
@@ -189,8 +179,49 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
   (*rewritten_input)->Ref();
+
+  if (record_fingerprint) {
+    (*ctx->runner())([graph_def = std::move(graph_def),
+                      lib_def = lib_def.release(),
+                      input_list = std::move(input_list),
+                      output_node = std::move(output_node)]() {
+      std::unique_ptr<FunctionLibraryDefinition> lib_def_owner(lib_def);
+      const NodeDef* node_def = nullptr;
+      for (const auto& node : graph_def.node()) {
+        if (node.name() == output_node) {
+          node_def = &node;
+          break;
+        }
+      }
+      if (node_def == nullptr) {
+        VLOG(3) << "Failed to find node: " << output_node;
+        return;
+      }
+      uint64 hash = 0;
+      Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
+      if (!s.ok()) {
+        VLOG(3) << "Failed to hash graph: " << s.ToString();
+        return;
+      }
+      for (const auto& pair : input_list) {
+        hash = Hash64CombineUnordered(hash, Hash64(pair.first));
+        uint64 tensor_hash = 0;
+        Status s = HashTensor(pair.second, &tensor_hash);
+        if (s.ok()) {
+          hash = Hash64CombineUnordered(hash, tensor_hash);
+        } else {
+          VLOG(3) << "Failed to hash tensor: " << s.ToString();
+        }
+      }
+      string graph_hash =
+          strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+      metrics::RecordTFDataFingerprint(graph_hash);
+    });
+  }
+
   return Status::OK();
 }
 
 }  // namespace data
 }  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM

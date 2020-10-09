@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -24,18 +25,23 @@ namespace {
 class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit IgnoreErrorsDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("log_warning", &log_warning_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input);
+    *output = new Dataset(ctx, input, log_warning_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)), input_(input) {
+    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
+                     const bool log_warning)
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          log_warning_(log_warning) {
       input_->Ref();
     }
 
@@ -60,6 +66,12 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -70,7 +82,11 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
                               Node** output) const override {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
+      AttrValue log_warning_attr;
+      b->BuildAttrValue<bool>(log_warning_, &log_warning_attr);
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {std::make_pair(0, input_graph_node)}, {},
+                        {{"log_warning", log_warning_attr}}, output));
       return Status::OK();
     }
 
@@ -81,20 +97,26 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        Status s;
         {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          while (!s.ok()) {
+          s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          while (!s.ok() && !errors::IsCancelled(s)) {
+            if (dataset()->log_warning_) {
+              LOG(WARNING) << "Error raised with error message "
+                           << s.error_message();
+            }
             out_tensors->clear();
             s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           }
@@ -103,7 +125,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           input_impl_.reset();
         }
-        return Status::OK();
+        return s;
       }
 
      protected:
@@ -113,10 +135,11 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
@@ -135,11 +158,13 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
+    const bool log_warning_;
   };
+  bool log_warning_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("IgnoreErrorsDataset").Device(DEVICE_CPU),

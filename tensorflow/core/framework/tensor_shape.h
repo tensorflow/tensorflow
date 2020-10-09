@@ -69,10 +69,8 @@ class TensorShapeRep {
   int64 num_elements() const { return num_elements_; }
 
   /// For error messages.
-  string DebugString() const;
-  static string DebugString(const TensorShapeProto& proto);
-
-  void DumpRep() const;  // XXX
+  std::string DebugString() const;
+  static std::string DebugString(const TensorShapeProto& proto);
 
  protected:
   // Constructable only via TensorShapeBase
@@ -103,10 +101,10 @@ class TensorShapeRep {
 
   // We use the max value of uint16 or uint32 to represent unknown shapes, so
   // the maximum representable valid shape in these representations is one less.
-  static const int64 kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
-  static const int64 kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
-  static const uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
-  static const uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
+  static constexpr int64 kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
+  static constexpr int64 kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
+  static constexpr uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
+  static constexpr uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
 
   Rep16* as16() { return reinterpret_cast<Rep16*>(buf()); }
   Rep32* as32() { return reinterpret_cast<Rep32*>(buf()); }
@@ -134,7 +132,7 @@ class TensorShapeRep {
   // We store the number of dimensions in byte 14, and the RepTag in byte 15.
   // Bytes [0..13] vary depending on the representation.
   // A value of 255 indicates unknown rank in the PartialTensorShape case.
-  static const uint8 kUnknownRank = 255;
+  static constexpr uint8 kUnknownRank = 255;
   uint8 ndims_byte() const { return buf()[14]; }
   void set_ndims_byte(uint8 nd) { buf()[14] = nd; }
 
@@ -183,6 +181,9 @@ class TensorShapeBase : public TensorShapeRep {
   /// Returns `OK` iff `proto` is a valid tensor shape, and a descriptive error
   /// status otherwise.
   static Status IsValidShape(const TensorShapeProto& proto);
+
+  /// Returns `true` iff this is a valid tensor shape.
+  bool IsValid();
 
   /// \brief Add a dimension to the end ("inner-most").
   /// REQUIRES: `size >= 0`
@@ -254,6 +255,13 @@ class TensorShapeBase : public TensorShapeRep {
   TensorShapeIter<Shape> begin() const;
   TensorShapeIter<Shape> end() const;
 
+ protected:
+  // Optimized constructor for a shape representing an empty vector.
+  //
+  // This constructor is provided to optimize the default constructor for
+  // `Tensor`.
+  explicit TensorShapeBase(DataType dt);
+
  private:
   void RecomputeNumElements();
   void InitDims(gtl::ArraySlice<int64> dim_sizes);
@@ -319,7 +327,15 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   void CheckDimsEqual(int NDIMS) const;
   // REQUIRES: dims() >= NDIMS
   void CheckDimsAtLeast(int NDIMS) const;
+
+  // For access to TensorShapeBase(DataType).
+  friend class Tensor;
 };
+
+/// Outputs `TensorShapeBase` to `std::ostream`.
+inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
+  return os << ts.DebugString();
+}
 
 /// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {
@@ -384,7 +400,8 @@ class TensorShapeUtils {
   static Status MakeShape(gtl::ArraySlice<int64> shape,
                           PartialTensorShape* out);
 
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
+  static std::string ShapeListString(
+      const gtl::ArraySlice<TensorShape>& shapes);
 
   /// \brief Returns true iff `shape` starts with `prefix`.
   static bool StartsWith(const TensorShape& shape, const TensorShape& prefix);
@@ -449,7 +466,7 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
 /// common predicates on a partially known tensor shape.
 class PartialTensorShapeUtils {
  public:
-  static string PartialShapeListString(
+  static std::string PartialShapeListString(
       const gtl::ArraySlice<PartialTensorShape>& shapes);
 
   static bool AreIdentical(const gtl::ArraySlice<PartialTensorShape>& shapes0,
@@ -543,6 +560,19 @@ inline TensorShape::operator const PartialTensorShape&() const {
   // Downcast to the shared representation and upcast to PartialTensorShape
   const TensorShapeRep* rep = this;
   return *static_cast<const PartialTensorShape*>(rep);
+}
+
+template <class Shape>
+inline TensorShapeBase<Shape>::TensorShapeBase(DataType dt) {
+  set_tag(REP16);
+  set_data_type(dt);
+
+  // Optimized implementation of InitDims() where the shape is statically known
+  // to be {0}.
+  set_ndims_byte(1);
+  uint16* dst = as16()->dims_;
+  *dst = 0;
+  set_num_elements(0);
 }
 
 // Declare explicit instantiations in .cc file

@@ -1,5 +1,9 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -25,6 +29,7 @@ cc_library(
         ":runtime_options",
         ":stats",
         ":variable",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -62,6 +67,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl/kernels:converter",
         "//tensorflow/lite/delegates/gpu/gl/kernels:registry",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -121,6 +127,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl/compiler:fuse_inplace",
         "//tensorflow/lite/delegates/gpu/gl/compiler:shader_code",
         "//tensorflow/lite/delegates/gpu/gl/compiler:shader_codegen",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:any",
     ],
@@ -206,7 +213,7 @@ cc_test(
         "-lEGL",
         "-lGLESv2",
     ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "local",
         "nobuilder",
         "notap",
@@ -318,6 +325,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/types:any",
     ],
 )
 

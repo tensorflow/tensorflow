@@ -34,7 +34,7 @@ namespace gpu {
 enum class MemorySpace { kHost, kDevice };
 
 // Returns a casual string, such as "host" for the provided memory space.
-string MemorySpaceString(MemorySpace memory_space);
+std::string MemorySpaceString(MemorySpace memory_space);
 
 class GpuContext;
 
@@ -71,7 +71,8 @@ class GpuDriver {
   // cuStreamCreate.
   // stream is an outparam owned by the caller, must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1ga581f0c5833e21ded8b5a56594e243f4
-  static bool CreateStream(GpuContext* context, GpuStreamHandle* stream);
+  static bool CreateStream(GpuContext* context, GpuStreamHandle* stream,
+                           int priority = 0);
 
   // Destroys a CUDA stream associated with the given context.
   // stream is owned by the caller, must not be null, and *stream is set to null
@@ -148,7 +149,8 @@ class GpuDriver {
 
   // Given a device handle, returns the name reported by the driver for the
   // device.
-  static bool GetDeviceName(GpuDeviceHandle device, string* device_name);
+  static port::Status GetDeviceName(GpuDeviceHandle device,
+                                    std::string* device_name);
 
   // Given a device to create a context for, returns a context handle into the
   // context outparam, which must not be null.
@@ -172,14 +174,14 @@ class GpuDriver {
   // in terms of integer-sized values, so there's no potential for overrun (as
   // of CUDA 5.5).
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1g5e92a1b0d8d1b82cb00dcfb2de15961b
-  static bool FuncGetAttribute(GpuFunctionAttribute attribute,
-                               GpuFunctionHandle function,
-                               int* attribute_value);
+  static port::Status FuncGetAttribute(GpuFunctionAttribute attribute,
+                                       GpuFunctionHandle function,
+                                       int* attribute_value);
 
   // Sets the preferred cache configuration for the specified function.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1g40f8c11e81def95dc0072a375f965681
-  static bool FuncSetCacheConfig(GpuFunctionHandle function,
-                                 GpuFuncCachePreference cache_config);
+  static port::Status FuncSetCacheConfig(GpuFunctionHandle function,
+                                         GpuFuncCachePreference cache_config);
 
   // Gets the preferred shared memory bank configuration for the specified
   // CONTEXT (not function!), either default or four- or eight-byte bank size.
@@ -219,8 +221,8 @@ class GpuDriver {
   // Loads HSACO with the ROCM runtime and stores the resulting handle in
   // "module". Any error logs that are produced are logged internally.
   // (supported on ROCm only)
-  static bool LoadHsaco(GpuContext* context, const char* hsaco_contents,
-                        GpuModuleHandle* module);
+  static port::Status LoadHsaco(GpuContext* context, const char* hsaco_contents,
+                                GpuModuleHandle* module);
 
   // Retrieves a named kernel from a loaded module, and places the resulting
   // handle into function (outparam) on success. Neither kernel_name nor
@@ -245,30 +247,33 @@ class GpuDriver {
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD8.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g6e582bf866e9e2fb014297bfaf354d7b
-  static bool SynchronousMemsetUint8(GpuContext* context, GpuDevicePtr location,
-                                     uint8 value, size_t size);
+  static port::Status SynchronousMemsetUint8(GpuContext* context,
+                                             GpuDevicePtr location, uint8 value,
+                                             size_t size);
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD32.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g983e8d8759acd1b64326317481fbf132
-  static bool SynchronousMemsetUint32(GpuContext* context,
-                                      GpuDevicePtr location, uint32 value,
-                                      size_t uint32_count);
+  static port::Status SynchronousMemsetUint32(GpuContext* context,
+                                              GpuDevicePtr location,
+                                              uint32 value,
+                                              size_t uint32_count);
 
   // Performs an asynchronous memset of the device memory segment via
   // cuMemsetD8Async.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gaef08a7ccd61112f94e82f2b30d43627
-  static bool AsynchronousMemsetUint8(GpuContext* context,
-                                      GpuDevicePtr location, uint8 value,
-                                      size_t uint32_count,
-                                      GpuStreamHandle stream);
+  static port::Status AsynchronousMemsetUint8(GpuContext* context,
+                                              GpuDevicePtr location,
+                                              uint8 value, size_t uint32_count,
+                                              GpuStreamHandle stream);
 
   // Performs an asynchronous memset of the device memory segment via
   // cuMemsetD32Async.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g58229da5d30f1c0cdf667b320ec2c0f5
-  static bool AsynchronousMemsetUint32(GpuContext* context,
-                                       GpuDevicePtr location, uint32 value,
-                                       size_t uint32_count,
-                                       GpuStreamHandle stream);
+  static port::Status AsynchronousMemsetUint32(GpuContext* context,
+                                               GpuDevicePtr location,
+                                               uint32 value,
+                                               size_t uint32_count,
+                                               GpuStreamHandle stream);
 
   // -- Synchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g4d32266788c440b0220b1a9ba5795169
@@ -465,7 +470,7 @@ class GpuDriver {
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g85295e7d9745ab8f0aa80dd1e172acfc
-  static string GetPCIBusID(GpuDeviceHandle device);
+  static std::string GetPCIBusID(GpuDeviceHandle device);
 
   // -- Context- and device-independent calls.
 

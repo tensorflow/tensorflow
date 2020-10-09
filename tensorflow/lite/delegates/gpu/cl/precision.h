@@ -28,9 +28,9 @@ enum class CalculationsPrecision { F32, F32_F16, F16 };
 // F32 - all data and all math ops in F32
 // F16 - all data and all math ops in F16
 // F32_F16 - as F16, but some operations (Convolution,
-// DepthWiseConvolution, FullyConnected, ConvolutionTransposed)
+// DepthwiseConvolution, FullyConnected, ConvolutionTransposed)
 // have accumulator in F32 and usually it calculates 4 mads in F16, sum them,
-// than converts this partial sum to F32 and add to acumulator.
+// than converts this partial sum to F32 and add to accumulator.
 
 DataType DeduceDataTypeFromPrecision(CalculationsPrecision precision);
 

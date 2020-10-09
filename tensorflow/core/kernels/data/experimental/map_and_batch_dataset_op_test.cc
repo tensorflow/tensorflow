@@ -41,8 +41,9 @@ class MapAndBatchDatasetParams : public DatasetParams {
         type_arguments_(std::move(type_arguments)),
         preserve_cardinality_(preserve_cardinality) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
@@ -81,7 +82,9 @@ class MapAndBatchDatasetParams : public DatasetParams {
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  string op_name() const override { return MapAndBatchDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return MapAndBatchDatasetOp::kDatasetType;
+  }
 
  private:
   std::vector<Tensor> other_arguments_;
@@ -94,7 +97,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
   bool preserve_cardinality_;
 };
 
-class MapAndBatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class MapAndBatchDatasetOpTest : public DatasetOpsTestBase {};
 
 FunctionDefHelper::AttrValueWrapper MapFunc(const string& func_name,
                                             const DataType& dtype) {
@@ -313,17 +316,17 @@ DATASET_OUTPUT_SHAPES_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
 std::vector<CardinalityTestCase<MapAndBatchDatasetParams>>
 CardinalityTestCases() {
   return {{/*dataset_params=*/MapAndBatchDatasetParams1(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/MapAndBatchDatasetParams2(),
            /*expected_cardinality=*/2},
           {/*dataset_params=*/MapAndBatchDatasetParams3(),
            /*expected_cardinality=*/3},
           {/*dataset_params=*/MapAndBatchDatasetParams4(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/kUnknownCardinality},
           {/*dataset_params=*/MapAndBatchDatasetParams5(),
            /*expected_cardinality=*/2},
           {/*dataset_params=*/MapAndBatchDatasetParams6(),
-           /*expected_cardinality=*/3}};
+           /*expected_cardinality=*/kUnknownCardinality}};
 }
 
 DATASET_CARDINALITY_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,

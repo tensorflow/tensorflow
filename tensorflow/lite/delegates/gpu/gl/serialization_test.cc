@@ -45,18 +45,19 @@ struct ProgramDesc {
 };
 
 struct Handler : public DeserializationHandler {
-  Status OnShader(absl::Span<const char> shader_src) final {
+  absl::Status OnShader(absl::Span<const char> shader_src) final {
     shaders.push_back(std::string(shader_src.data(), shader_src.size()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status OnProgram(const std::vector<Variable>& parameters,
-                   const std::vector<Object>& objects,
-                   const uint3& workgroup_size, const uint3& num_workgroups,
-                   size_t shader_index) final {
+  absl::Status OnProgram(const std::vector<Variable>& parameters,
+                         const std::vector<Object>& objects,
+                         const uint3& workgroup_size,
+                         const uint3& num_workgroups,
+                         size_t shader_index) final {
     programs.push_back(
         {parameters, objects, workgroup_size, num_workgroups, shader_index});
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void OnOptions(const CompiledModelOptions& o) final { options = o; }
@@ -176,7 +177,7 @@ TEST(Smoke, Read) {
   std::vector<Object> objects;
   objects.push_back(MakeReadonlyBuffer(std::vector<float>{1, 2, 3, 4}));
   objects.push_back(Object{AccessType::WRITE, DataType::FLOAT32,
-                           ObjectType::TEXTURE, 5, uint3(1, 2, 3), 100});
+                           ObjectType::TEXTURE, 5, uint3(1, 2, 3), 100u});
   objects.push_back(Object{AccessType::READ_WRITE, DataType::INT8,
                            ObjectType::BUFFER, 6, uint2(2, 1),
                            std::vector<uint8_t>{7, 9}});

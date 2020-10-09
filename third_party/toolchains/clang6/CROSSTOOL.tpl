@@ -74,13 +74,13 @@ toolchain {
   compiler_flag: "-fstack-protector"
   linker_flag: "-Wl,-z,relro,-z,now"
 
+  # TODO(b/151234342): Clean up the following options.
   # This adds a little bit more durability to our Clang build.
   #
   # Folks who do maintenance work on TF Bazel Clang should consider
   # commenting out these lines, while doing that work, to gain a better
   # understanding of what the intersection of support looks like between GCC
-  # and Clang. Please note that,  Bazel does not support
-  # -Xclang-only / -Xgcc-only.
+  # and Clang. Please note that Bazel does not support -Xclang-only.
   compiler_flag: "-Wno-unknown-warning-option"
   compiler_flag: "-Wno-unused-command-line-argument"
   compiler_flag: "-Wno-ignored-optimization-argument"
@@ -531,7 +531,6 @@ toolchain {
   linker_flag: "-L/usr/lib/gcc/x86_64-linux-gnu/4.8"
 
   # This is the minimum x86 architecture TensorFlow supports.
-  compiler_flag: "-DARCH_K8"
   compiler_flag: "-m64"
 
   # These are for Linux.

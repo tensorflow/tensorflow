@@ -203,12 +203,6 @@ class Layout {
   absl::Span<const Tile> tiles() const { return tiles_; }
   absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
-  // Methods for accessing the int64 fields.
-  int64 max_sparse_elements() const { return max_sparse_elements_; }
-  Layout& set_max_sparse_elements(int64 value) {
-    max_sparse_elements_ = value;
-    return *this;
-  }
   int64 element_size_in_bits() const { return element_size_in_bits_; }
   Layout& set_element_size_in_bits(int64 value) {
     element_size_in_bits_ = value;
@@ -233,8 +227,7 @@ class Layout {
 
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
-    return H::combine(std::move(h), l.format_, l.minor_to_major_,
-                      l.max_sparse_elements_, l.tiles_,
+    return H::combine(std::move(h), l.format_, l.minor_to_major_, l.tiles_,
                       l.element_size_in_bits_);
   }
 
@@ -254,11 +247,6 @@ class Layout {
   // The third most minor is [8,100,100,3][2], which is size 100.
   // And the major dim is [8,100,100,3][1], which is size 100.
   absl::InlinedVector<int64, 6> minor_to_major_;
-
-  // The maximum number of elements that can be stored for SPARSE formats.  This
-  // can be used to determine the maximum size in bytes of arrays stored in
-  // memory.  This field must be zero unless the format is SPARSE.
-  int64 max_sparse_elements_ = 0;
 
   // The tiles used in tiling-based layout.
   absl::InlinedVector<Tile, 2> tiles_;

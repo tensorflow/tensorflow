@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -29,7 +28,7 @@ using ::testing::ContainsRegex;
 class HloExecutionProfileTest : public HloTestBase {};
 
 TEST_F(HloExecutionProfileTest, Basic) {
-  auto hlo_module = ParseAndReturnUnverifiedModule(R"(
+  auto hlo_module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY entry_computation {
     lhs = f32[30,30]{1,0} parameter(0)
@@ -67,9 +66,9 @@ TEST_F(HloExecutionProfileTest, Basic) {
 
   EXPECT_THAT(execution_profile.ToString(
                   backend().default_stream_executor()->GetDeviceDescription()),
-              AllOf(ContainsRegex(StrCat(dot_cycles, R"(\b.*%)",
+              AllOf(ContainsRegex(StrCat(dot_cycles, " cycles.*%",
                                          dot_instruction->name())),
-                    ContainsRegex(StrCat(add_cycles, R"(\b.*%)",
+                    ContainsRegex(StrCat(add_cycles, " cycles.*%",
                                          add_instruction->name()))));
 }
 }  // namespace

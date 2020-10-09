@@ -21,7 +21,6 @@ import collections
 import functools
 import glob
 import os
-import shutil
 import tempfile
 import threading
 
@@ -40,6 +39,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -112,7 +112,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
     # Tear down temporary dump directory.
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
   def _debug_urls(self, run_number=None):
     raise NotImplementedError(
@@ -588,10 +588,10 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph_with_blacklists(
+      debug_utils.watch_graph_with_denylists(
           run_options,
           sess.graph,
-          node_name_regex_blacklist="(.*rnn/while/.*|.*TensorArray.*)",
+          node_name_regex_denylist="(.*rnn/while/.*|.*TensorArray.*)",
           debug_urls=self._debug_urls())
       # b/36870549: Nodes with these name patterns need to be excluded from
       # tfdbg in order to prevent MSAN warnings of uninitialized Tensors
@@ -1145,7 +1145,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual([ph.name], dump1.core_metadata.input_names)
       self.assertEqual([x.name], dump1.core_metadata.output_names)
       self.assertEqual([], dump1.core_metadata.target_nodes)
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
       # Calling run() with the same feed, same output and same debug watch
       # options should increment both session_run_index and
@@ -1160,7 +1160,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual([ph.name], dump2.core_metadata.input_names)
       self.assertEqual([x.name], dump2.core_metadata.output_names)
       self.assertEqual([], dump2.core_metadata.target_nodes)
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(
@@ -1388,7 +1388,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Another run with the default mute_if_healthy (false) value should
       # dump all the tensors.
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
       _, dump = self._debug_run_and_get_dump(
           sess, y, debug_ops=["DebugNumericSummary()"])
       self.assertLessEqual(8, dump.size)

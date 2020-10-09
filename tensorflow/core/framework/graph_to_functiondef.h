@@ -56,6 +56,10 @@ Status GraphToFunctionDef(
 Status GraphToFunctionDef(const Graph& graph, const string& name,
                           FunctionDef* fdef);
 
+Status GraphToFunctionDef(const Graph& graph, const string& name,
+                          const std::vector<std::string>& output_names,
+                          FunctionDef* fdef);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_

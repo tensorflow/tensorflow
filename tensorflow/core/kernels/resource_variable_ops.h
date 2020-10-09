@@ -24,14 +24,16 @@ class VarHandleOp : public OpKernel {
  public:
   explicit VarHandleOp(OpKernelConstruction* c);
   void Compute(OpKernelContext* ctx) override;
+  const Tensor* const_tensor() const override {
+    return name_ != ResourceHandle::ANONYMOUS_NAME ? &resource_ : nullptr;
+  }
 
  private:
   // Same fields as in ResourceHandleOp.
+  bool is_anonymous_;
   string container_;
   string name_;
-  mutex mutex_;
   Tensor resource_;
-  std::atomic<bool> initialized_{false};
 
   DtypeAndPartialTensorShape dtype_and_shape_;
 };

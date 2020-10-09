@@ -31,12 +31,12 @@ limitations under the License.
 @interface TFLComputeTask : NSObject
 
 /// Returns empty string or error if shader can't be compiled.
-- (::tflite::gpu::Status)compileWithDevice:(id<MTLDevice>)device
-                            taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
-                            runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
+- (absl::Status)compileWithDevice:(id<MTLDevice>)device
+                   taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
+                   runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
 
 /// Updates dimensions for inputs/outputs/intermediate tensors
-- (::tflite::gpu::Status)
+- (absl::Status)
     setInputDimensionsWithDevice:(id<MTLDevice>)device
                       dimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions;
 
@@ -50,12 +50,11 @@ limitations under the License.
 /// @param sharedBufferIds contain shared buffer id for each tensor usage record id.
 /// @param sharedBuffers contain metal handles to the allocated buffers for each shared buffer id.
 /// TODO(ypisarchyk): probably we can decrease the number of parameters here
-- (::tflite::gpu::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
-                             outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
-                        usageRecordIds:
-                            (const std::map<::tflite::gpu::ValueId, size_t>&)usageRecordIds
-                       sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
-                         sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
+- (absl::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
+                    outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
+               usageRecordIds:(const std::map<::tflite::gpu::ValueId, size_t>&)usageRecordIds
+              sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
+                sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
 
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder
        inputOutputBuffers:

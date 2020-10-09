@@ -12,14 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
 #include <vector>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -41,7 +45,9 @@ struct OpContext {
 
 TfLiteStatus UseDynamicOutputTensors(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < NumOutputs(node); ++i) {
-    SetTensorToDynamic(GetOutput(context, node, i));
+    TfLiteTensor* tensor;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &tensor));
+    SetTensorToDynamic(tensor);
   }
   return kTfLiteOk;
 }
@@ -109,7 +115,8 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
   for (int i = 0; i < NumOutputs(node); ++i) {
     TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
     output_dims->data[axis_value] = size_splits_vector.at(i);
-    TfLiteTensor* output = GetOutput(context, node, i);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
     TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_dims));
   }
 
@@ -127,9 +134,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
                      input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
-                     input_type == kTfLiteInt64);
+                     input_type == kTfLiteInt64 || input_type == kTfLiteInt8);
   for (int i = 0; i < NumOutputs(node); ++i) {
-    GetOutput(context, node, i)->type = input_type;
+    TfLiteTensor* tensor;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &tensor));
+    tensor->type = input_type;
   }
 
   auto size_splits = op_context.size_splits;
@@ -189,6 +198,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteInt64: {
       TF_LITE_SPLIT_V(int64_t);
+      break;
+    }
+    case kTfLiteInt8: {
+      TF_LITE_SPLIT_V(int8_t);
       break;
     }
     default:

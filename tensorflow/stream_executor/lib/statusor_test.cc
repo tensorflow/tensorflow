@@ -147,19 +147,19 @@ TEST(StatusOr, TestMoveOnlyVector) {
 }
 
 TEST(StatusOr, TestMoveWithValuesAndErrors) {
-  StatusOr<string> status_or(string(1000, '0'));
-  StatusOr<string> value1(string(1000, '1'));
-  StatusOr<string> value2(string(1000, '2'));
-  StatusOr<string> error1(Status(tensorflow::error::UNKNOWN, "error1"));
-  StatusOr<string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
+  StatusOr<std::string> status_or(std::string(1000, '0'));
+  StatusOr<std::string> value1(std::string(1000, '1'));
+  StatusOr<std::string> value2(std::string(1000, '2'));
+  StatusOr<std::string> error1(Status(tensorflow::error::UNKNOWN, "error1"));
+  StatusOr<std::string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
 
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(string(1000, '0'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '0'), status_or.ValueOrDie());
 
   // Overwrite the value in status_or with another value.
   status_or = std::move(value1);
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(string(1000, '1'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '1'), status_or.ValueOrDie());
 
   // Overwrite the value in status_or with an error.
   status_or = std::move(error1);
@@ -174,23 +174,23 @@ TEST(StatusOr, TestMoveWithValuesAndErrors) {
   // Overwrite the error with a value.
   status_or = std::move(value2);
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(string(1000, '2'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '2'), status_or.ValueOrDie());
 }
 
 TEST(StatusOr, TestCopyWithValuesAndErrors) {
-  StatusOr<string> status_or(string(1000, '0'));
-  StatusOr<string> value1(string(1000, '1'));
-  StatusOr<string> value2(string(1000, '2'));
-  StatusOr<string> error1(Status(tensorflow::error::UNKNOWN, "error1"));
-  StatusOr<string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
+  StatusOr<std::string> status_or(std::string(1000, '0'));
+  StatusOr<std::string> value1(std::string(1000, '1'));
+  StatusOr<std::string> value2(std::string(1000, '2'));
+  StatusOr<std::string> error1(Status(tensorflow::error::UNKNOWN, "error1"));
+  StatusOr<std::string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
 
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(string(1000, '0'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '0'), status_or.ValueOrDie());
 
   // Overwrite the value in status_or with another value.
   status_or = value1;
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(string(1000, '1'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '1'), status_or.ValueOrDie());
 
   // Overwrite the value in status_or with an error.
   status_or = error1;
@@ -205,13 +205,13 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
   // Overwrite the error with a value.
   status_or = value2;
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(string(1000, '2'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '2'), status_or.ValueOrDie());
 
   // Verify original values unchanged.
-  EXPECT_EQ(string(1000, '1'), value1.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '1'), value1.ValueOrDie());
   EXPECT_EQ("error1", error1.status().error_message());
   EXPECT_EQ("error2", error2.status().error_message());
-  EXPECT_EQ(string(1000, '2'), value2.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '2'), value2.ValueOrDie());
 }
 
 TEST(StatusOr, TestDefaultCtor) {
@@ -411,6 +411,26 @@ TEST(StatusOr, TestPointerValueConst) {
   const int kI = 0;
   const StatusOr<const int*> thing(&kI);
   EXPECT_EQ(&kI, thing.ValueOrDie());
+}
+
+TEST(StatusOr, TestArrowOperator) {
+  StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
+  EXPECT_EQ(*uptr->get(), 0);
+}
+
+TEST(StatusOr, TestArrowOperatorNotOk) {
+  StatusOr<Base1> error(Status(tensorflow::error::CANCELLED, "cancelled"));
+  EXPECT_DEATH(error->pad_++, "cancelled");
+}
+
+TEST(StatusOr, TestStarOperator) {
+  StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
+  EXPECT_EQ(**uptr, 0);
+}
+
+TEST(StatusOr, TestStarOperatorDeath) {
+  StatusOr<Base1> error(Status(tensorflow::error::CANCELLED, "cancelled"));
+  EXPECT_DEATH(*error, "cancelled");
 }
 
 // NOTE(tucker): StatusOr does not support this kind

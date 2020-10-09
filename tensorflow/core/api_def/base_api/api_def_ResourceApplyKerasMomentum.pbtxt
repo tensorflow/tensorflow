@@ -46,9 +46,9 @@ var + momentum * accum, so in the end, the var you get is actually
 var + momentum * accum.
 END
   }
-  summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
+  summary: "Update \'*var\' according to the momentum scheme."
   description: <<END
-want to use Nesterov momentum.
+Set use_nesterov = True if you want to use Nesterov momentum.
 
 accum = accum * momentum - lr * grad
 var += accum

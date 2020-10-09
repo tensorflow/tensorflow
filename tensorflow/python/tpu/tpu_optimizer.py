@@ -21,7 +21,6 @@ from __future__ import print_function
 
 
 from tensorflow.python.framework import ops
-from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_function
@@ -55,10 +54,11 @@ class CrossShardOptimizer(optimizer.Optimizer):
     """
     if reduction not in (losses.Reduction.SUM, losses.Reduction.MEAN):
       raise ValueError("Unsupported reduction: %s." % reduction)
-    if isinstance(opt, optimizer_v2.OptimizerV2):
+    if not isinstance(opt, optimizer.Optimizer):
       raise TypeError(
-          "CrossShardOptimizer does not work with OptimizerV2. If you are "
-          "using TPUStrategy, OptimizerV2 will sum gradients across replicas."
+          "CrossShardOptimizer only works with tf.training.Optimizer and not "
+          "Optimizer_v2. If you are using TPUStrategy, OptimizerV2 will sum "
+          "gradients across replicas."
           "If you are using TPUEstimator, you may instead sum your gradients "
           "with: grads = [tf.compat.v1.tpu.cross_replica_sum(g) for g in grads]"
           ". If you want to average your gradients, rescale your loss with: "
@@ -111,11 +111,21 @@ class CrossShardOptimizer(optimizer.Optimizer):
   def compute_gradients(self, loss, var_list=None, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
 
-    This simply wraps the compute_gradients() from the real optimizer. The
-    gradients will be aggregated in the apply_gradients() so that user can
+    This simply wraps `compute_gradients()` from the real optimizer. The
+    gradients will be aggregated in `apply_gradients()` so that user can
     modify the gradients like clipping with per replica global norm if needed.
     The global norm with aggregated gradients can be bad as one replica's huge
     gradients can hurt the gradients from other replicas.
+
+    When the CrossShardOptimizer is constructed with
+    `reduction == losses.Reduction.MEAN` (default), this function scales the
+    loss by `1.0 / num_shards` before computing the gradients. Assuming the
+    optimizer uses the default implementation of `compute_gradients()`, the
+    gradients of the scaled loss are scaled by `1.0 / num_shards` compared to
+    the gradients of the original loss. This scaling factor is important because
+    `apply_gradients()` sums gradients across shards, rather than averaging
+    them. However, the scaling factor must be taken into account when clipping
+    the norm of the gradients or performing other postprocessing.
 
     Args:
       loss: A Tensor containing the value to minimize.

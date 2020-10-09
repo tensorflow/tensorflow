@@ -286,6 +286,41 @@ TEST(GrpcSessionTest, FetchMultipleTimes) {
   TF_CHECK_OK(session->Close());
 }
 
+TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
+  GraphDef graph;
+  string node_names[3];
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  SessionOptions options = Options(cluster->targets()[0], 1);
+  options.config.mutable_experimental()->set_disable_output_partition_graphs(
+      true);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+  {
+    // Just run to target node.
+    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
+  }
+  {
+    // Attempting to get the partition graphs should fail.
+    RunOptions run_options;
+    run_options.set_output_partition_graphs(true);
+    RunMetadata run_metadata;
+    Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
+                            &run_metadata);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "disable_output_partition_graphs"));
+  }
+
+  TF_CHECK_OK(session->Close());
+}
+
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
 // eigenvalue for A, which is 2.0. Iteratively, we do
 //   repeat x = y / y.norm(); y = A * x; end

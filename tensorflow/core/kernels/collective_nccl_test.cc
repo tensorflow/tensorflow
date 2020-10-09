@@ -39,7 +39,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
@@ -80,20 +83,21 @@ class NcclTestBase : public ::testing::Test {
   class DeviceInstance;
 
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
-      : collective_type_(collective_type), collective_name_(collective_name) {}
+      : collective_type_(collective_type),
+        collective_name_(collective_name),
+        nccl_communicator_(MaybeCreateNcclCommunicator()),
+        work_queue_(std::make_shared<UnboundedWorkQueue>(
+            Env::Default(), "collective_executor")),
+        col_exec_(nullptr) {}
+
   ~NcclTestBase() override {
     if (col_exec_) col_exec_->Unref();
   }
 
-  void InitGPUDevices() {
+  void SetUp() {
     std::vector<std::unique_ptr<Device>> all_devices;
-    SessionOptions session_options;
-    session_options.config.mutable_gpu_options()
-        ->set_per_process_gpu_memory_fraction(0.1);
-    session_options.env = Env::Default();
-    Status s = DeviceFactory::GetFactory(DEVICE_GPU)
-                   ->AddDevices(session_options, "", &all_devices);
-    TF_CHECK_OK(s);
+    TF_CHECK_OK(DeviceFactory::GetFactory(DEVICE_GPU)
+                    ->AddDevices(SessionOptions(), "", &all_devices));
     for (std::unique_ptr<Device>& d : all_devices) {
       if (d->device_type() == "GPU") {
         gpus_.emplace_back(std::move(d));
@@ -104,13 +108,11 @@ class NcclTestBase : public ::testing::Test {
   void Init(const int num_ranks, const int instance_key) {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
-    InitGPUDevices();
     std::vector<std::unique_ptr<Device>> local_devices;
     std::vector<string> device_names;
+    CHECK_LE(num_ranks, gpus_.size());
     for (int rank = 0; rank < num_ranks; ++rank) {
-      if (rank < gpus_.size()) {
-        local_devices.emplace_back(std::move(gpus_[rank]));
-      }
+      local_devices.emplace_back(std::move(gpus_[rank]));
     }
     int num_gpus = local_devices.size();
     for (const auto& device : local_devices) {
@@ -121,7 +123,7 @@ class NcclTestBase : public ::testing::Test {
       dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, /*remote_access=*/nullptr, kStepId, dev_mgr_.get(),
-        /*gpu_ring_order=*/nullptr);
+        /*gpu_ring_order=*/nullptr, work_queue_);
 
     // Initialize collective params.
     col_params_.name = "test_nccl_collective_op";
@@ -134,15 +136,14 @@ class NcclTestBase : public ::testing::Test {
     col_params_.instance.data_type = DT_FLOAT;
     col_params_.instance.impl_details.collective_name = collective_name_;
     const string task_name = "/job:worker/replica:0/task:0";
-    col_params_.instance.num_devices_per_task[task_name] = num_ranks;
+    col_params_.group.num_devices_per_task[task_name] = num_ranks;
     for (int rank = 0; rank < num_ranks; ++rank) {
-      col_params_.instance.device_names.push_back(
-          device_names[rank % num_gpus]);
-      col_params_.instance.task_names.push_back(task_name);
+      col_params_.group.device_names.push_back(device_names[rank % num_gpus]);
+      col_params_.group.task_names.push_back(task_name);
     }
     for (int rank = 0; rank < num_ranks; ++rank) {
       instances_.push_back(absl::make_unique<DeviceInstance>(
-          rank, col_params_.instance.device_names[rank], this));
+          rank, col_params_.group.device_names[rank], this));
     }
   }
 
@@ -179,6 +180,11 @@ class NcclTestBase : public ::testing::Test {
   }
 
   void RunTest(int num_ranks, int input_length, int instance_key) {
+    if (num_ranks > gpus_.size()) {
+      LOG(WARNING) << "Skipping test because required " << num_ranks
+                   << " GPUs but found " << gpus_.size();
+      return;
+    }
     Init(num_ranks, instance_key);
     std::vector<float> expected;
     InitExpected(&expected, input_length, num_ranks);
@@ -203,15 +209,10 @@ class NcclTestBase : public ::testing::Test {
       VLOG(2) << "rank " << rank << " output " << output << " buf "
               << DMAHelper::base(output);
       Tensor actual(DT_FLOAT, TensorShape({output_length}));
-      Notification note;
       Device* dev = instances_[rank]->device_;
       auto* dev_info = dev->tensorflow_gpu_device_info();
-      dev_info->default_context->CopyDeviceTensorToCPU(
-          output, /*tensor_name=*/"", dev, &actual, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+          output, /*tensor_name=*/"", dev, &actual));
       VLOG(3) << "rank " << rank << " got output tensor "
               << actual.DebugString(output_length);
       for (int i = 0; i < output_length; ++i) {
@@ -249,9 +250,7 @@ class NcclTestBase : public ::testing::Test {
           << parent_->dev_mgr_->DebugString();
       col_params_.name = parent_->col_params_.name;
       col_params_.default_rank = rank;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
+      col_params_.group = parent_->col_params_.group;
       col_params_.instance = parent->col_params_.instance;
     }
 
@@ -268,13 +267,8 @@ class NcclTestBase : public ::testing::Test {
         VLOG(2) << "input tensor " << cpu_tensor.DebugString();
       }
       auto* dev_info = device_->tensorflow_gpu_device_info();
-      Notification note;
-      dev_info->default_context->CopyCPUTensorToDevice(
-          &cpu_tensor, device_, &input_, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
+          &cpu_tensor, device_, &input_));
     }
 
     void PrepareDeviceContext(OpKernelContext::Params* params) {
@@ -303,9 +297,6 @@ class NcclTestBase : public ::testing::Test {
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
       op_params.input_alloc_attrs = &input_aa;
-      gtl::InlinedVector<DeviceContext*, 4> input_dc;
-      input_dc.push_back(op_params.op_device_context);
-      op_params.input_device_contexts = &input_dc;
       int forward_from = 0;
       op_params.forward_from_array = &forward_from;
       AllocatorAttributes generic_alloc_attr;
@@ -324,14 +315,15 @@ class NcclTestBase : public ::testing::Test {
       // Run the all-reduce.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      NcclReducer reducer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                /*OpKernelContext=*/&ctx, &op_params,
-                                col_params_, exec_key, kStepId,
-                                /*input=*/&input_, /*output=*/&input_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
+      auto* reducer = new NcclReducer();
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
+          /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
+          /*input=*/&input_, /*output=*/&input_);
+      TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
       Notification note;
-      reducer.Run([this, &note](Status s) {
+      reducer->Run([this, &note](Status s) {
         status_ = s;
         note.Notify();
       });
@@ -340,6 +332,7 @@ class NcclTestBase : public ::testing::Test {
         CHECK(output_.CopyFrom(*ctx.mutable_output(0), input_.shape()));
       }
 
+      reducer->Unref();
       op_params.op_device_context->Unref();
     }
 
@@ -354,15 +347,16 @@ class NcclTestBase : public ::testing::Test {
       // Run broadcast.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      NcclBroadcaster broadcaster;
-      CollectiveContext col_ctx(
-          parent_->col_exec_, parent_->dev_mgr_.get(),
+      auto* broadcaster = new NcclBroadcaster();
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/col_params_.is_source ? &input_ : nullptr,
           /*output=*/&input_);
-      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(&col_ctx));
+      TF_CHECK_OK(broadcaster->InitializeCollectiveContext(col_ctx));
       Notification note;
-      broadcaster.Run([this, &note](Status s) {
+      broadcaster->Run([this, &note](Status s) {
         status_ = s;
         note.Notify();
       });
@@ -371,6 +365,7 @@ class NcclTestBase : public ::testing::Test {
         CHECK(output_.CopyFrom(input_, input_.shape()));
       }
 
+      broadcaster->Unref();
       op_params.op_device_context->Unref();
     }
 
@@ -393,20 +388,22 @@ class NcclTestBase : public ::testing::Test {
       // Run gather.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      NcclGatherer gatherer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                /*OpKernelContext=*/&ctx, &op_params,
-                                col_params_, exec_key, kStepId,
-                                /*input=*/&input_,
-                                /*output=*/&output_);
-      TF_CHECK_OK(gatherer.InitializeCollectiveContext(&col_ctx));
+      auto* gatherer = new NcclGatherer();
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
+          /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
+          /*input=*/&input_,
+          /*output=*/&output_);
+      TF_CHECK_OK(gatherer->InitializeCollectiveContext(col_ctx));
       Notification note;
-      gatherer.Run([this, &note](Status s) {
+      gatherer->Run([this, &note](Status s) {
         status_ = s;
         note.Notify();
       });
       note.WaitForNotification();
 
+      gatherer->Unref();
       op_params.op_device_context->Unref();
     }
 
@@ -424,12 +421,14 @@ class NcclTestBase : public ::testing::Test {
   const string collective_name_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpus_;
   TestCollectiveExecutorMgr col_exec_mgr_;
+  std::unique_ptr<NcclCommunicatorInterface> nccl_communicator_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CollectiveExecutor* col_exec_;
   std::unique_ptr<DeviceMgr> dev_mgr_;
   std::vector<std::unique_ptr<DeviceInstance>> instances_;
   CollectiveParams col_params_;
   mutex mu_;
-  int32 op_counter_ GUARDED_BY(mu_) = 0;
+  int32 op_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 class NcclReducerTest : public NcclTestBase {

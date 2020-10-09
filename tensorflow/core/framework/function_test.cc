@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/function.h"
+
 #include <vector>
+
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -909,9 +912,9 @@ TEST(FunctionCallFrame, Void_Void) {
   TF_EXPECT_OK(frame.SetArgs({}));
   auto a = test::AsTensor<float>({100});
   HasError(frame.SetArgs({a}), "Invalid argument");
-  Tensor v;
+  const Tensor* v;
   HasError(frame.GetArg(0, &v), "Invalid argument");
-  HasError(frame.SetRetval(0, v), "Invalid argument");
+  HasError(frame.SetRetval(0, *v), "Invalid argument");
   std::vector<Tensor> rets;
   TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 0);
@@ -927,28 +930,28 @@ TEST(FunctionCallFrame, Float_Float_Float) {
            "Invalid argument: Expects arg[1] to be float");
   TF_EXPECT_OK(frame.SetArgs({a, b}));
 
-  Tensor v;
+  const Tensor* v;
   HasError(frame.GetArg(-1, &v), "Invalid argument");
   HasError(frame.GetArg(2, &v), "Invalid argument");
   TF_EXPECT_OK(frame.GetArg(0, &v));
-  test::ExpectTensorEqual<float>(a, v);
+  test::ExpectTensorEqual<float>(a, *v);
   TF_EXPECT_OK(frame.GetArg(1, &v));
-  test::ExpectTensorEqual<float>(b, v);
+  test::ExpectTensorEqual<float>(b, *v);
 
-  v = test::AsTensor<float>({-100});
-  HasError(frame.SetRetval(-1, v), "Invalid argument");
-  HasError(frame.SetRetval(1, v), "Invalid argument");
+  Tensor w = test::AsTensor<float>({-100});
+  HasError(frame.SetRetval(-1, w), "Invalid argument");
+  HasError(frame.SetRetval(1, w), "Invalid argument");
   HasError(frame.SetRetval(0, test::AsTensor<int64>({-100})),
            "Invalid argument: Expects ret[0] to be float");
 
   std::vector<Tensor> rets;
   HasError(frame.GetRetvals(&rets), "does not have value");
-  TF_EXPECT_OK(frame.SetRetval(0, v));
-  HasError(frame.SetRetval(0, v), "has already been set");
+  TF_EXPECT_OK(frame.SetRetval(0, *v));
+  HasError(frame.SetRetval(0, *v), "has already been set");
 
   TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 1);
-  test::ExpectTensorEqual<float>(rets[0], v);
+  test::ExpectTensorEqual<float>(rets[0], *v);
 }
 
 TEST(Canonicalize, Basic) {
@@ -1063,6 +1066,16 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
   EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
   TF_EXPECT_OK(lib_def.RemoveFunction("XTimesTwo"));
   EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
+}
+
+TEST(FunctionLibraryDefinitionTest, Clear) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XAddX()));
+
+  lib_def.Clear();
+  EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
+  EXPECT_FALSE(lib_def.Contains("XAddX"));
 }
 
 TEST(FunctionLibraryDefinitionTest, AddLibrary) {
@@ -1470,6 +1483,120 @@ TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   SetAttrValue(&fdef3, "Baz", "abc");
   EXPECT_TRUE(FunctionDefsEqual(fdef2, fdef3));
   EXPECT_EQ(FunctionDefHash(fdef2), FunctionDefHash(fdef3));
+}
+
+TEST(InstantiateFunctionTest, ArgAttrs) {
+  auto fdef = FDH::Create(
+      // Name
+      "Func",
+      // Inputs
+      {"x: int32"},
+      // Outputs
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = Identity<int32>(x)
+       {{"a"}, "Identity", {"x"}, {{"T", DT_INT32}}},
+       // o = NoOp(^a)
+       {{"o"}, "NoOp", {"^a"}, {}},
+       // y = Identity<int32>(a, ^o)
+       {{"y"}, "Identity", {"a:output:0", "^o"}, {{"T", DT_INT32}}}},
+      // Returns
+      {{"y", "y:output:0"}});
+  AttrValue shape_attr;
+  TensorShapeProto* shape_proto = shape_attr.mutable_list()->add_shape();
+  shape_proto->add_dim()->set_size(2);
+  shape_proto->add_dim()->set_size(4);
+  shape_proto->add_dim()->set_size(6);
+  shape_proto->add_dim()->set_size(8);
+  FunctionDef::ArgAttrs arg_attrs;
+  (*arg_attrs.mutable_attr())["_output_shapes"] = std::move(shape_attr);
+  (*fdef.mutable_arg_attr())[0] = std::move(arg_attrs);
+
+  // Instantiate one with T=float
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
+  bool found = false;
+  for (const auto& node : result.nodes) {
+    if (node.name() != "x") {
+      continue;
+    }
+    found = true;
+    auto it = node.attr().find("_output_shapes");
+    ASSERT_TRUE(it != node.attr().end());
+    const auto& attr = it->second;
+    ASSERT_EQ(attr.list().shape_size(), 1);
+    const auto& shape_attr = attr.list().shape(0);
+    ASSERT_FALSE(shape_attr.unknown_rank());
+    ASSERT_EQ(shape_attr.dim_size(), 4);
+    EXPECT_EQ(shape_attr.dim(0).size(), 2);
+    EXPECT_EQ(shape_attr.dim(1).size(), 4);
+    EXPECT_EQ(shape_attr.dim(2).size(), 6);
+    EXPECT_EQ(shape_attr.dim(3).size(), 8);
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST(InstantiateFunctionTest, ResourceInputDevice) {
+  FunctionDef fdef = FDH::Create(
+      // Name
+      "Func",
+      // Args
+      {{"x0: resource"}, {"x1: resource"}},
+      // Return values
+      {"y: float"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"read0"},
+           "ReadVariableOp",
+           {"x0"},
+           {{"dtype", DT_FLOAT}},
+           {},
+           "/device:CPU:1"},
+          {{"read1"},
+           "ReadVariableOp",
+           {"x1"},
+           {{"dtype", DT_FLOAT}},
+           {},
+           "/device:CPU:0"},
+          {{"add"},
+           "Add",
+           {"read0:value:0", "read1:value:0"},
+           {{"T", DT_FLOAT}},
+           {},
+           "/device:CPU:0"},
+      },
+      {{"y", "add:z:0"}});
+  FunctionDef::ArgAttrs arg_attrs;
+  *(*arg_attrs.mutable_attr())["_composite_device"].mutable_s() =
+      "/device:COMPOSITE:0";
+  (*fdef.mutable_arg_attr())[0] = arg_attrs;
+  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+
+  Tensor arg0(DT_RESOURCE, TensorShape({2}));
+  ResourceHandle resource_handle0;
+  resource_handle0.set_device("/device:CPU:0");
+  ResourceHandle resource_handle1;
+  resource_handle1.set_device("/device:CPU:1");
+  arg0.flat<ResourceHandle>()(0) = resource_handle0;
+  arg0.flat<ResourceHandle>()(1) = resource_handle1;
+
+  Tensor arg1(DT_RESOURCE, TensorShape({}));
+  arg1.scalar<ResourceHandle>()() = resource_handle0;
+
+  const string device0 = GetFunctionResourceInputDevice(
+      arg0, /*arg_index=*/0, fdef, &composite_devices);
+  const string device1 = GetFunctionResourceInputDevice(
+      arg1, /*arg_index=*/1, fdef, &composite_devices);
+
+  EXPECT_EQ(device0, "/device:COMPOSITE:0");
+  EXPECT_EQ(device1, "/device:CPU:0");
+  EXPECT_EQ(composite_devices.size(), 1);
+  EXPECT_EQ(composite_devices.at("/device:COMPOSITE:0").size(), 2);
 }
 
 }  // end namespace

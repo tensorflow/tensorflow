@@ -24,7 +24,7 @@ from __future__ import print_function
 import collections
 import contextlib
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 
 
 class TangentInfo(
@@ -54,8 +54,7 @@ def pack_tangents(tensors):
       tangents: A flat list of Tensors. Best interpreted as a sequence to be
         appended to `tensors`.
   """
-  return TangentInfo(
-      *pywrap_tensorflow.TFE_Py_PackJVPs(tensors))
+  return TangentInfo(*pywrap_tfe.TFE_Py_PackJVPs(tensors))
 
 
 @contextlib.contextmanager
@@ -66,14 +65,14 @@ def push_forwardprop_state():
   temporarily reset its state. This is useful when building forwardprop versions
   of functions, where an accumulator will trigger function building and then
   must process captured symbolic tensors while building it. Without pushing and
-  poping, accumulators ignore operations executed as a direct result of their
+  popping, accumulators ignore operations executed as a direct result of their
   own jvp computations.
 
   Yields:
     None (used for its side effect).
   """
   try:
-    pywrap_tensorflow.TFE_Py_ForwardAccumulatorPushState()
+    pywrap_tfe.TFE_Py_ForwardAccumulatorPushState()
     yield
   finally:
-    pywrap_tensorflow.TFE_Py_ForwardAccumulatorPopState()
+    pywrap_tfe.TFE_Py_ForwardAccumulatorPopState()

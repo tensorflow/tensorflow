@@ -45,8 +45,8 @@ template <typename Key, typename Bucket, class Hash, class Eq>
 class FlatRep {
  public:
   // kWidth is the number of entries stored in a bucket.
-  static const uint32 kBase = 3;
-  static const uint32 kWidth = (1 << kBase);
+  static constexpr uint32 kBase = 3;
+  static constexpr uint32 kWidth = (1 << kBase);
 
   FlatRep(size_t N, const Hash& hf, const Eq& eq) : hash_(hf), equal_(eq) {
     Init(N);

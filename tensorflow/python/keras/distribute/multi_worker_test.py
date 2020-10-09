@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import functools
+import json
 import os
 import sys
 import threading
@@ -30,17 +31,18 @@ from absl.testing import parameterized
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -69,11 +71,11 @@ def _clone_and_build_model(model, strategy):
     cloned_model = models.clone_model(model)
 
   # Compile and build model.
-  if isinstance(model.optimizer, optimizers.TFOptimizer):
+  if isinstance(model.optimizer, optimizer_v1.TFOptimizer):
     optimizer = model.optimizer
     # TODO(yuefengz): figure out why the optimizer here is still a
     # TFOptimizer.
-    while isinstance(optimizer, optimizers.TFOptimizer):
+    while isinstance(optimizer, optimizer_v1.TFOptimizer):
       optimizer = optimizer.optimizer
     optimizer = copy.deepcopy(optimizer)
   else:
@@ -167,8 +169,8 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
       def wrapped_method(method_to_wrap, name, *arg, **kwargs):
         # Use lock to ensure += operation is thread-safe.
         with self._lock:
-          self._task_dict[test_base.get_task_type()][
-              test_base.get_task_index()][name] += 1
+          task_config = json.loads(os.environ['TF_CONFIG'])['task']
+          self._task_dict[task_config['type']][task_config['index']][name] += 1
         method_to_wrap(*arg, **kwargs)
 
       setattr(self, method_name,
@@ -202,7 +204,7 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
 class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
                                             parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['graph'],
           strategy_cls=[
@@ -260,7 +262,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
     self.join_independent_workers(threads_to_join)
     verification_callback.verify(self)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           mode=['graph'],
           strategy_cls=[ParameterServerStrategy],

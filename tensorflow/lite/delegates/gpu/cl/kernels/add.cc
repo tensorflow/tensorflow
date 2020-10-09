@@ -25,149 +25,29 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-std::string Add::GetElementWiseCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
-
-  std::string c = GetCommonDefines(precision);
-
-  c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ);
-  c += GetArgsDeclaration();
-  c += ::tflite::gpu::cl::GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,\n";
-  c += "    int4 dst_size\n";
-  c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
-  c += "    return; \n";
-  c += "  } \n";
-  c += "  FLT4 src = (FLT4)(0.0);\n";
-  c += "    " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  if (src_depthes_[0] != dst_depth_) {
-    c += "  if (Z < " + std::to_string(src_depthes_[0]) + ") {\n";
-    c += "    src += " +
-         src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) +
-         ";\n";
-    c += "  }\n";
-  } else {
-    c += "  src += " +
-         src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) +
-         ";\n";
+GPUOperation CreateAdd(const OperationDef& definition,
+                       const std::vector<int>& channels, int dst_channels) {
+  GPUOperation add(definition);
+  int dst_depth = DivideRoundUp(dst_channels, 4);
+  int src0_depth = DivideRoundUp(channels[0], 4);
+  add.elementwise_ = true;
+  add.linkable_ = dst_depth == src0_depth;
+  if (src0_depth < dst_depth) {
+    add.check_src_channels_size_ = true;
   }
-  const LinkingContext context{"src", "X", "Y", "Z"};
-  c += "  " + GetCoreCode(context);
-  c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("src", "X", "Y", "Z") + "\n";
-  c += "} \n";
-  return c;
-}
-
-Add::Add(const OperationDef& definition, const std::vector<int>& channels,
-         int dst_channels)
-    : ElementwiseOperation(definition),
-      dst_depth_(IntegralDivideRoundUp(dst_channels, 4)) {
-  src_depthes_.resize(channels.size());
-  for (int i = 0; i < channels.size(); ++i) {
-    src_depthes_[i] = IntegralDivideRoundUp(channels[i], 4);
-  }
-}
-
-Add::Add(Add&& operation)
-    : ElementwiseOperation(std::move(operation)),
-      link_index_(operation.link_index_),
-      src_depthes_(std::move(operation.src_depthes_)),
-      dst_depth_(operation.dst_depth_) {}
-
-Add& Add::operator=(Add&& operation) {
-  if (this != &operation) {
-    link_index_ = operation.link_index_;
-    src_depthes_ = std::move(operation.src_depthes_);
-    dst_depth_ = operation.dst_depth_;
-    ElementwiseOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-void Add::SetLinkIndex(int index) {
-  link_index_ = index;
-}
-
-std::string Add::GetCoreCode(const LinkingContext& context) const {
-  std::string result;
-  for (int i = 1; i < src_depthes_.size(); ++i) {
-    const std::string tensor_name =
-        absl::StrCat("src_data_", link_index_, "_", i);
-    const std::string size_name =
-        "src_size_" + std::to_string(link_index_) + "_" + std::to_string(i);
-    TensorCodeGenerator src_tensor(tensor_name, size_name,
-                                   definition_.src_tensors[i]);
-    if (src_depthes_[i] != dst_depth_) {
-      absl::StrAppend(&result, "  if (", context.z_coord, " < ",
-                      src_depthes_[i], ") {\n");
-      absl::StrAppend(
-          &result, "  ", context.var_name, " += ",
-          src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord,
-                            TextureAddressMode::DONT_CARE) +
-              ";\n");
-      absl::StrAppend(&result, "  }\n");
-    } else {
-      absl::StrAppend(
-          &result, "  ", context.var_name, " += ",
-          src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord,
-                            TextureAddressMode::DONT_CARE) +
-              ";\n");
+  for (int i = 1; i < definition.src_tensors.size(); ++i) {
+    const std::string tensor_name = absl::StrCat("src_data_", i);
+    auto src_desc = definition.src_tensors[i];
+    if (definition.IsBatchSupported()) {
+      src_desc.SetStateVar("BatchedWidth", "true");
     }
+    add.AddSrcTensor(tensor_name, src_desc);
+    add.code_ += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
+    add.code_ += "  in_out_value += args." + tensor_name +
+                 ".Read(X_COORD, Y_COORD, S_COORD);\n";
+    add.code_ += "}\n";
   }
-  return result;
-}
-
-std::string Add::GetArgsDeclaration() const {
-  std::string args;
-  for (int i = 1; i < src_depthes_.size(); ++i) {
-    const std::string tensor_name =
-        absl::StrCat("src_data_", link_index_, "_", i);
-    TensorCodeGenerator src_tensor(tensor_name, "", definition_.src_tensors[i]);
-    absl::StrAppend(&args, ",\n", src_tensor.GetDeclaration(AccessType::READ));
-  }
-  for (int i = 1; i < src_depthes_.size(); ++i) {
-    const std::string size_name =
-        "src_size_" + std::to_string(link_index_) + "_" + std::to_string(i);
-    absl::StrAppend(&args, ",\n   int4 ", size_name);
-  }
-  return args;
-}
-
-Status Add::BindArguments(CLKernel* kernel) {
-  for (int i = 1; i < src_depthes_.size(); ++i) {
-    RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[i]->GetMemoryPtr()));
-  }
-  for (int i = 1; i < src_depthes_.size(); ++i) {
-    RETURN_IF_ERROR(kernel->SetBytesAuto(src_[i]->GetSizeWithDepth()));
-  }
-  return OkStatus();
-}
-
-Status Add::Compile(const CreationContext& creation_context) {
-  const auto code =
-      GetElementWiseCode(definition_.src_tensors[0], definition_.dst_tensors[0],
-                         definition_.precision, linked_operations_);
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-Add CreateAdd(const OperationDef& definition, const std::vector<int>& channels,
-              int dst_channels) {
-  Add operation(definition, channels, dst_channels);
-  operation.SetLinkIndex(0);
-  return operation;
+  return add;
 }
 
 }  // namespace cl

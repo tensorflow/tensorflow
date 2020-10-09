@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -275,17 +277,10 @@ Status FillFunctionBody(
         }
       }
       if (!node_attr_def) {
-#ifdef TENSORFLOW_LITE_PROTOS
-        return errors::Unimplemented(
-            "Placeholder value is not supported for attributes not in OpDef. "
-            "Attribute: ",
-            node_attr_name);
-#else
         return errors::Unimplemented(
             "Placeholder value is not supported for attributes not in OpDef. "
             "Attribute: ",
             node_attr_name, ", OpDef: ", node->op_def().DebugString());
-#endif
       }
       OpDef::AttrDef* attr_def = fdef->mutable_signature()->add_attr();
       attr_def->set_name(func_attr_name);
@@ -295,6 +290,76 @@ Status FillFunctionBody(
     }
   }
   return Status::OK();
+}
+
+Status GraphToFunctionDefHelper(
+    const Graph& graph, const string& name,
+    const std::function<absl::optional<string>(const Node*)>& control_ret,
+    const std::vector<string>& output_names, FunctionDef* fdef) {
+  auto add_arg_or_retval = [](Node* node,
+                              std::vector<OutputTensor>* args_or_retvals) {
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
+    if (index >= args_or_retvals->size()) {
+      args_or_retvals->resize(index + 1);
+    }
+    if ((*args_or_retvals)[index].node == nullptr) {
+      (*args_or_retvals)[index].node = node;
+    } else {
+      return errors::InvalidArgument("Multiple '", node->type_string(),
+                                     "' nodes found with index ", index);
+    }
+    return Status::OK();
+  };
+
+  std::vector<const Node*> body_nodes;
+  std::vector<OutputTensor> inputs;
+  std::vector<OutputTensor> outputs;
+  std::vector<const Node*> control_outputs;
+  std::vector<string> control_output_names;
+  for (Node* node : graph.op_nodes()) {
+    if (node->IsArg()) {
+      TF_RETURN_IF_ERROR(add_arg_or_retval(node, &inputs));
+      continue;
+    }
+
+    if (node->IsRetval()) {
+      TF_RETURN_IF_ERROR(add_arg_or_retval(node, &outputs));
+      continue;
+    }
+
+    if (control_ret) {
+      auto control_ret_name = control_ret(node);
+      if (control_ret_name.has_value()) {
+        control_outputs.push_back(node);
+        control_output_names.push_back(control_ret_name.value());
+      }
+    }
+
+    body_nodes.push_back(node);
+  }
+
+  auto validate_args_retvals =
+      [](const std::vector<OutputTensor>& args_or_retvals,
+         const string& op_type) {
+        for (int i = 0, e = args_or_retvals.size(); i < e; ++i) {
+          if (args_or_retvals[i].node == nullptr) {
+            return errors::InvalidArgument("Missing '", op_type,
+                                           "' node at index ", i);
+          }
+        }
+        return Status::OK();
+      };
+
+  TF_RETURN_IF_ERROR(validate_args_retvals(inputs, "_Arg"));
+  TF_RETURN_IF_ERROR(validate_args_retvals(outputs, "_Retval"));
+
+  return GraphToFunctionDef(graph, name, /*append_hash_to_fn_name=*/false,
+                            /*set_stateful_from_nodes=*/false,
+                            /*copy_placeholder_attrs_from_nodes=*/false,
+                            body_nodes, inputs, outputs, output_names,
+                            control_outputs, control_output_names,
+                            /*description=*/nullptr, fdef);
 }
 
 }  // anonymous namespace
@@ -362,6 +427,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     const string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
     FunctionDef::ArgAttrs arg_attrs;
+    int64 resource_arg_unique_id = -1;
     for (const auto& attr : node->attrs()) {
       // Only copy internal attributes. These attributes will be applied to
       // _Arg/Placeholder nodes when this FunctionDef is converted to graph,
@@ -369,10 +435,32 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       // _Arg/Placeholder nodes.
       if (absl::StartsWith(attr.first, "_")) {
         arg_attrs.mutable_attr()->insert(attr);
+      } else if (attr.first == "shape" && argdef->type() != DT_RESOURCE) {
+        // Preserve known shapes by moving them to the _output_shapes list.
+        // The _Arg shape function knows how to extract them from there.
+        // Don't preserve the shape of a resource arg node, which is a scalar
+        // resource handle.
+        AttrValue value;
+        *(value.mutable_list()->add_shape()) = attr.second.shape();
+        arg_attrs.mutable_attr()->insert({"_output_shapes", value});
+      } else if (attr.first == "value" && node->type_string() == "Const") {
+        // Small eager tensors are captured as const ops rather than
+        // Placeholders. Add a _output_shapes arg_attr with the shape of the
+        // const tensor.
+        AttrValue value;
+        *(value.mutable_list()->add_shape()) =
+            attr.second.tensor().tensor_shape();
+        arg_attrs.mutable_attr()->insert({"_output_shapes", value});
+      }
+      if (attr.first == "_resource_arg_unique_id") {
+        resource_arg_unique_id = attr.second.i();
       }
     }
     if (arg_attrs.attr_size() > 0) {
       (*fdef->mutable_arg_attr())[i] = std::move(arg_attrs);
+    }
+    if (resource_arg_unique_id >= 0) {
+      (*fdef->mutable_resource_arg_unique_id())[idx] = resource_arg_unique_id;
     }
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
   }
@@ -499,75 +587,20 @@ Status GraphToFunctionDef(
     const Graph& graph, const string& name,
     const std::function<absl::optional<string>(const Node*)>& control_ret,
     FunctionDef* fdef) {
-  auto add_arg_or_retval = [](Node* node,
-                              std::vector<OutputTensor>* args_or_retvals) {
-    int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
-    if (index >= args_or_retvals->size()) {
-      args_or_retvals->resize(index + 1);
-    }
-    if ((*args_or_retvals)[index].node == nullptr) {
-      (*args_or_retvals)[index].node = node;
-    } else {
-      return errors::InvalidArgument("Multiple '", node->type_string(),
-                                     "' nodes found with index ", index);
-    }
-    return Status::OK();
-  };
-
-  std::vector<const Node*> body_nodes;
-  std::vector<OutputTensor> inputs;
-  std::vector<OutputTensor> outputs;
-  std::vector<const Node*> control_outputs;
-  std::vector<string> control_output_names;
-  for (Node* node : graph.op_nodes()) {
-    if (node->IsArg()) {
-      TF_RETURN_IF_ERROR(add_arg_or_retval(node, &inputs));
-      continue;
-    }
-
-    if (node->IsRetval()) {
-      TF_RETURN_IF_ERROR(add_arg_or_retval(node, &outputs));
-      continue;
-    }
-
-    if (control_ret) {
-      auto control_ret_name = control_ret(node);
-      if (control_ret_name.has_value()) {
-        control_outputs.push_back(node);
-        control_output_names.push_back(control_ret_name.value());
-      }
-    }
-
-    body_nodes.push_back(node);
-  }
-
-  auto validate_args_retvals =
-      [](const std::vector<OutputTensor>& args_or_retvals,
-         const string& op_type) {
-        for (int i = 0, e = args_or_retvals.size(); i < e; ++i) {
-          if (args_or_retvals[i].node == nullptr) {
-            return errors::InvalidArgument("Missing '", op_type,
-                                           "' node at index ", i);
-          }
-        }
-        return Status::OK();
-      };
-
-  TF_RETURN_IF_ERROR(validate_args_retvals(inputs, "_Arg"));
-  TF_RETURN_IF_ERROR(validate_args_retvals(outputs, "_Retval"));
-
-  return GraphToFunctionDef(graph, name, /*append_hash_to_fn_name=*/false,
-                            /*set_stateful_from_nodes=*/false,
-                            /*copy_placeholder_attrs_from_nodes=*/false,
-                            body_nodes, inputs, outputs, /*output_names=*/{},
-                            control_outputs, control_output_names,
-                            /*description=*/nullptr, fdef);
+  return GraphToFunctionDefHelper(graph, name, control_ret,
+                                  /*output_names=*/{}, fdef);
 }
 
 Status GraphToFunctionDef(const Graph& graph, const string& name,
                           FunctionDef* fdef) {
   return GraphToFunctionDef(graph, name, /*control_ret=*/nullptr, fdef);
+}
+
+Status GraphToFunctionDef(const Graph& graph, const string& name,
+                          const std::vector<std::string>& output_names,
+                          FunctionDef* fdef) {
+  return GraphToFunctionDefHelper(graph, name, /*control_ret=*/nullptr,
+                                  output_names, fdef);
 }
 
 }  // namespace tensorflow

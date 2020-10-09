@@ -94,11 +94,15 @@ class ArgOp : public OpKernel {
       HANDLE_DIM(3);
       HANDLE_DIM(4);
       HANDLE_DIM(5);
+      HANDLE_DIM(6);
+      HANDLE_DIM(7);
 
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
-                        "ArgOp : Unhandled input dimensions: ", input_dims));
+                    errors::InvalidArgument("Argmax and Argmin only support up "
+                                            "to 7 input dimensions, but got ",
+                                            input_dims, ". Inputs shape: ",
+                                            input.shape().DebugString()));
     }
   }
 #undef HANDLE_DIM
@@ -150,6 +154,7 @@ class ArgMinOp
                           ArgMinOp<CPUDevice, type, int32>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
+TF_CALL_bool(REGISTER_ARGMAX);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -173,11 +178,15 @@ namespace functor {
   DECLARE_GPU_SPEC(T, int64, 3); \
   DECLARE_GPU_SPEC(T, int64, 4); \
   DECLARE_GPU_SPEC(T, int64, 5); \
+  DECLARE_GPU_SPEC(T, int64, 6); \
+  DECLARE_GPU_SPEC(T, int64, 7); \
   DECLARE_GPU_SPEC(T, int32, 1); \
   DECLARE_GPU_SPEC(T, int32, 2); \
   DECLARE_GPU_SPEC(T, int32, 3); \
   DECLARE_GPU_SPEC(T, int32, 4); \
-  DECLARE_GPU_SPEC(T, int32, 5);
+  DECLARE_GPU_SPEC(T, int32, 5); \
+  DECLARE_GPU_SPEC(T, int32, 6); \
+  DECLARE_GPU_SPEC(T, int32, 7);
 
 #define DECLARE_GPU_CLASS(T)                          \
   extern template struct ArgMax<GPUDevice, T, int64>; \
@@ -186,7 +195,9 @@ namespace functor {
   extern template struct ArgMin<GPUDevice, T, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_bool(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
+TF_CALL_bool(DECLARE_GPU_CLASS);
 
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_CLASS
@@ -225,6 +236,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
                           ArgMinOp<GPUDevice, type, int32>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
+TF_CALL_bool(REGISTER_ARGMAX_GPU);
 
 #undef REGISTER_ARGMAX_GPU
 

@@ -97,7 +97,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "PrecisionAtRecall"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Recall"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RecallAtPrecision"
     mtype: "<type \'type\'>"
   }
   member {
@@ -193,11 +201,23 @@ tf_module {
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "kl_divergence"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "kld"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "kullback_leibler_divergence"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "log_cosh"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "logcosh"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

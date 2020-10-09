@@ -18,7 +18,6 @@ limitations under the License.
 #include <map>
 
 #include <gmock/gmock.h>
-#include "testing/base/public/googletest.h"
 #include <gtest/gtest.h>
 
 namespace tflite {
@@ -47,7 +46,7 @@ TEST(InputGeneratorTest, ReadWriteSimpleFile) {
   inputs.push_back(content);
   ASSERT_EQ(input_generator.GetInputs(), inputs);
 
-  auto output_filename = FLAGS_test_tmpdir + "/out.csv";
+  auto output_filename = ::testing::TempDir() + "/out.csv";
   ASSERT_EQ(input_generator.WriteInputsToFile(output_filename), kTfLiteOk);
 
   std::ifstream in(output_filename);

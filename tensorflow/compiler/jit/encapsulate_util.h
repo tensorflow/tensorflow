@@ -72,7 +72,7 @@ extern const char kXlaLiftedArgOutsideCompilationAttrName[];
 
 // Attribute indicating that this is an IdentityN node receiving inputs for a
 // outside compilation Placeholder node (the original outside compilation node
-// is moved out of TPU comutation, and we left a Placeholder node there).
+// is moved out of TPU computation, and we left a Placeholder node there).
 // Attribute value will be a string, which is the outside compilation cluster
 // name for the outside compilation Placeholder node.
 extern const char kXlaOutsideCompilationInputsAttrName[];

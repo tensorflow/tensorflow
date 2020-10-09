@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
-import sys
 import types
 
 from tensorflow.python.platform import tf_logging as logging
@@ -174,6 +173,8 @@ class TFModuleWrapper(types.ModuleType):
           attr_map[name] = attr
           return attr
 
+      # Placeholder for Google-internal contrib error
+
       attr = super(TFModuleWrapper, self).__getattribute__(name)
 
       # Return and cache dunders and our own members.
@@ -192,6 +193,8 @@ class TFModuleWrapper(types.ModuleType):
     try:
       attr = getattr(self._tfmw_wrapped_module, name)
     except AttributeError:
+      # Placeholder for Google-internal contrib error
+
       if not self._tfmw_public_apis:
         raise
       if name not in self._tfmw_public_apis:
@@ -232,11 +235,5 @@ class TFModuleWrapper(types.ModuleType):
   def __repr__(self):
     return self._tfmw_wrapped_module.__repr__()
 
-  def __getstate__(self):
-    return self.__name__
-
-  def __setstate__(self, d):
-    # pylint: disable=protected-access
-    self.__init__(sys.modules[d]._tfmw_wrapped_module,
-                  sys.modules[d]._tfmw_module_name)
-    # pylint: enable=protected-access
+  def __reduce__(self):
+    return importlib.import_module, (self.__name__,)

@@ -22,8 +22,12 @@ import weakref
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -70,6 +74,67 @@ class ContextTest(test.TestCase):
     # Deleting the last tensor should result in deleting its context.
     del tensor2
     self.assertIs(weak_c(), None)
+
+  @test_util.disable_tfrt('b/169294215: tfrt does not support RunMetadata yet')
+  def testSimpleGraphCollection(self):
+
+    @def_function.function
+    def f(x):
+      return x + constant_op.constant(1.)
+
+    with context.collect_graphs() as graphs:
+      with ops.device('CPU:0'):
+        f(constant_op.constant(1.))
+
+    self.assertLen(graphs, 1)
+    graph, = graphs
+    self.assertIn('CPU:0', graph.node[0].device)
+
+  def testGetFunctionDef(self):
+
+    @def_function.function
+    def f():
+      return constant_op.constant(1.)
+
+    concrete = f.get_concrete_function()
+    function_def = context.get_function_def(concrete.name)
+
+    self.assertIsNot(function_def, None)
+
+    found_const_node = False
+    for node_def in function_def.node_def:
+      if node_def.op == 'Const':
+        found_const_node = True
+        break
+    self.assertTrue(found_const_node)
+
+    with self.assertRaises(errors.NotFoundError):
+      _ = context.get_function_def('this_should_not_be_found')
+
+  @test_util.run_gpu_only
+  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
+  def testGetMemoryUsage(self):
+    array_ops.zeros([10]) # Allocate some memory on the GPU.
+    self.assertGreater(
+        context.context().get_total_memory_usage('GPU:0'), 0)
+
+  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
+  def testGetMemoryUsageCPU(self):
+    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
+      context.context().get_total_memory_usage('CPU:0')
+
+  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
+  def testGetMemoryUsageUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().get_total_memory_usage('unknown_device')
+
+  @test_util.run_gpu_only
+  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
+  def testGetMemoryUsageAmbiguousDevice(self):
+    if len(context.context().list_physical_devices('GPU')) < 2:
+      self.skipTest('Need at least 2 GPUs')
+    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
+      context.context().get_total_memory_usage('GPU')
 
 
 if __name__ == '__main__':

@@ -42,8 +42,26 @@ message TPUCompileMetadataProto {
       ALLOWED = 2;
     }
     // Whether to allow XLA to produce separate programs to shard/unshard this
-    // argument. Requires this arg to be an on-device variable.
+    // argument. Requires this arg to be an on-device Kind::VARIABLE, or a
+    // Kind::PARAMETER. For Kind::PARAMETER, it represents the initial value of
+    // a variable, and retval_index_for_sharding must be specified for the
+    // corresponding updated value.
     EnableXlaSharding enable_xla_sharding = 6;
+
+    // If XLA sharding is allowed on a Kind::PARAMETER, this field is used to
+    // specify the corresponding updated value in the return values. Use -1 for
+    // variables that are not updated.
+    int32 retval_index_for_sharding = 8;
+
+    // Whether this argument is placed on fast memory or not.
+    bool fast_mem = 7;
+
+    // Whether to let XLA to decide the layout during compilation, as opposed to
+    // using a fixed layout determined by the shape.
+    bool unrestricted_layout = 9;
+
+    // Name of the node that the arg comes from.
+    string name = 10;
   }
   repeated Arg args = 1;
 
@@ -75,7 +93,7 @@ message TPUCompileMetadataProto {
   string session_handle = 9;
 
   // Fingerprint of guaranteed_const value. The fingerprint computation inside
-  // tpu_compile_op may be slow. The compuation can be avoided by setting the
+  // tpu_compile_op may be slow. The computation can be avoided by setting the
   // fingerprint value here.
   string guaranteed_const_fingerprint = 10;
 
@@ -83,4 +101,18 @@ message TPUCompileMetadataProto {
 
   // The location of step markers that XLA compile will instrument.
   xla.DebugOptions.StepMarkerLocation step_marker_location = 12;
+
+  // Minimum number of batches run through the XLA graph before XLA fusion
+  // autotuner is enabled. Default value of zero disables the autotuner.
+  // The XLA fusion autotuner can improve performance by executing a heuristic
+  // search on the compiler parameters.
+  int64 xla_fusion_autotuner_thresh = 13;
+
+  // Enables TPU compiler to add partitioning policies for inputs/outputs to
+  // the XLA computation for model parallelism.
+  bool enable_automatic_model_parallelism = 14;
+
+  // Whether to use XLA's SPMD or MPMD partitioner when compiler partitioning is
+  // requested.
+  bool use_spmd_for_xla_partitioning = 15;
 }

@@ -398,7 +398,7 @@ class _SparseMetaData(object):
     """
     self._sparse = sparse
     self._map_op = map_op
-    self._rank = tensor_shape.Dimension(rank)
+    self._rank = tensor_shape.as_dimension(rank)
 
   def __eq__(self, other):
     if self.sparse != other.sparse:

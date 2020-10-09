@@ -125,7 +125,7 @@ class TestingCombinationsTest(test.TestCase):
   def test_overlapping_keys(self):
     c1 = combinations.combine(mode=["graph"], loss=["callable", "tensor"])
     c2 = combinations.combine(mode=["eager"], loss=["callable"])
-    with self.assertRaisesRegexp(ValueError, ".*Keys.+overlap.+"):
+    with self.assertRaisesRegex(ValueError, ".*Keys.+overlap.+"):
       _ = combinations.times(c1, c2)
 
 

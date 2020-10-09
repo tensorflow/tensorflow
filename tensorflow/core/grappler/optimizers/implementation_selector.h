@@ -34,6 +34,28 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+// Motivation: To achieve the same high level functionality, the underlying
+// implementations sometimes are different for various devices where the
+// function runs. In order to achieve the correct result and best performance,
+// the proper implementation needs to be picked dynamically.
+//
+// Currently there are two approaches to do this.
+// (1) Utilize case op and dynamacically change the branch index.
+// (2) Swap function implementation, it will be deprecated.
+//
+// Idea for approach 1.
+// This transformation rewrites the DeviceIndex op with a Const op with value
+// of the index of the device the associcated Case op runs.
+// Example:
+// def plus_one_gpu(x): return x + 1.0
+// def plus_one_reference_implementation(x): return x + 1.0
+// input = tf.constant(2.0, dtype=tf.float32)
+// cpu_fn = lambda:plus_one_reference_implementation(input)
+// gpu_fn = lambda:plus_one_gpu(input)
+// control_flow_ops.execute_fn_for_device(
+//  {"CPU": cpu_fn, "GPU":gpu_fn)}, default_fn=cpu_fn)
+//
+// Idea for approach 2.
 // This transformation replaces function calls by the appropriate function
 // definition based on properties of the runtime system. For instance,
 // we may choose one implementation over another if we have a GPU with
@@ -58,7 +80,8 @@ namespace grappler {
 // z = plus_one_gpu(input)
 // print(sess.run(z))
 //
-// At runtime, we will trim either `plus_one_gpu` or
+
+// At runtime, we will select either `plus_one_gpu` or
 // `plus_one_reference_implementation` based on the availability of the GPU.
 //
 // Available annotations:
@@ -105,6 +128,68 @@ class ImplementationSelector : public CustomGraphOptimizer {
   // For simplicity, we do not change function bodies. Also, we do not change
   // gradients.
   Status SelectImplementation(GraphDef* graph) const;
+
+  // Rewrites the DeviceIndex op with a Const op with value of the index of the
+  // device the associcated Case op runs.
+
+  // This function first looks up all the DeviceIndex ops.
+  // Then for each of these ops, it finds the device of the
+  // associated Case op that takes the DeviceIndex op as the input, and
+  // caculates the index of the device in the device list of DeviceIndex op.
+  // Lastly, it rewrites the DeviceIndex op with a Const op and sets the value
+  // to be the index.
+  //
+  // Example input nodes:
+  // node {
+  //   name: "x"
+  //   op: "DeviceIndex"
+  //   device: "/device:CPU:0"
+  //   attr {
+  //     key: "device_names"
+  //     value {
+  //       list {
+  //         s: "CPU"
+  //         s: "TPU_REPLICATED_CORE"
+  //         s: "GPU"
+  //       }
+  //     }
+  //   }
+  // }
+  // node {
+  //   name: "case"
+  //   op: "Case"
+  //   input: "x"
+  //   device: "/device:GPU:0"
+  //   ...
+  // }
+  // Example output nodes:
+  //
+  //  name: "x"
+  //  op: "Const"
+  //  device: "/device:CPU:0"
+  //  attr {
+  //    key: "dtype"
+  //    value {
+  //      type: DT_INT32
+  //    }
+  //  }
+  //  attr {
+  //    key: "value"
+  //    value {
+  //      tensor {
+  //        dtype: DT_INT32
+  //        int_val: 2
+  //      }
+  //    }
+  //  }
+  // node {
+  //   name: "case"
+  //   op: "Case"
+  //   input: "x"
+  //   device: "/device:GPU:0"
+  //   ...
+  // }
+  Status SelectDeviceIndex(GraphDef* graph) const;
 
   std::unique_ptr<FunctionLibraryApiInfo> lib_info_;
 

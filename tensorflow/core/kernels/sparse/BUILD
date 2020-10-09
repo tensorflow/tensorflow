@@ -1,11 +1,12 @@
 # Description: Op kernels for sparse matrix operations.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "tf_cc_test",
-    "tf_kernel_library",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -20,6 +21,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 tf_kernel_library(
@@ -59,6 +61,7 @@ tf_kernel_library(
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -76,9 +79,10 @@ tf_kernel_library(
         "//tensorflow/core/kernels:scatter_nd_op",
         "//tensorflow/core/kernels:slice_op",
         "//tensorflow/core/kernels:transpose_functor",
-    ] + if_cuda([
-        "//tensorflow/core/kernels:cuda_solvers",
-        "//tensorflow/core/kernels:cuda_sparse",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+    ] + if_cuda_or_rocm([
+        "//tensorflow/core/util:cuda_solvers",
+        "//tensorflow/core/util:cuda_sparse",
     ]),
     alwayslink = 1,
 )

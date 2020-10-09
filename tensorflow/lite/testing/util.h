@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdio>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/string_type.h"
 
@@ -50,7 +51,7 @@ class TestErrorReporter : public ErrorReporter {
 
 inline void LogToStderr() {
 #ifdef PLATFORM_GOOGLE
-  FLAGS_logtostderr = true;
+  absl::SetFlag(&FLAGS_logtostderr, true);
 #endif
 }
 

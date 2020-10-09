@@ -175,7 +175,7 @@ bool Spectrogram::ComputeSquaredMagnitudeSpectrogram(
     for (int i = 0; i < output_frequency_channels_; ++i) {
       // Similar to the Complex case, except storing the norm.
       // But the norm function is known to be a performance killer,
-      // so do it this way with explicit real and imagninary temps.
+      // so do it this way with explicit real and imaginary temps.
       const double re = fft_input_output_[2 * i];
       const double im = fft_input_output_[2 * i + 1];
       // Which finally converts double to float if it needs to.
