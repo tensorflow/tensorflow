@@ -92,7 +92,6 @@ cuda_py_test(
     size = "small",
     srcs = ["copy_to_device_test.py"],
     tags = ["no_windows_gpu"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -578,7 +577,6 @@ cuda_py_test(
     size = "small",
     srcs = ["prefetch_to_device_test.py"],
     tags = ["no_windows_gpu"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",

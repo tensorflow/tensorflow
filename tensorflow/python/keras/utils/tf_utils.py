@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -363,6 +364,9 @@ def register_symbolic_tensor_type(cls):
     cls: A `class` type which shall be regarded as a symbolic `Tensor`.
   """
   global _user_convertible_tensor_types
+  if cls not in _user_convertible_tensor_types:
+    keras_tensor.register_keras_tensor_specialization(
+        cls, keras_tensor.UserRegisteredTypeKerasTensor)
   _user_convertible_tensor_types.add(cls)
 
 
@@ -474,10 +478,11 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()
-  if shape:
-    shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)
+  shape = dynamic_batch_spec._shape
+  if shape.rank is not None and shape.rank > 0:
+    shape_list = shape.as_list()
+    shape_list[0] = None
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape_list)
   return dynamic_batch_spec
   # pylint: enable=protected-access
 

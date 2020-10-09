@@ -143,7 +143,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       MklPoolingParams fwdParams(
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
           padding_right, ALGORITHM::pooling_max, pooling_prop_kind,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), input_md);
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), input_md,
+          this->native_format_);
 #else
       MklPoolingParams fwdParams(
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
@@ -312,7 +313,8 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right, ALGORITHM::pooling_max,
           prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md);
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md,
+          this->native_format_);
 #else
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,

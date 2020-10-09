@@ -48,6 +48,7 @@ filegroup(
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_utils.td",
         "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td",
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",

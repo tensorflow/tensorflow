@@ -43,9 +43,9 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
+from tensorflow.python.keras.legacy_tf_layers import core as legacy_core
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import control_flow_util
-from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -469,6 +469,32 @@ class BaseLayerTest(keras_parameterized.TestCase):
         ]
         self.assertAllEqual(actual_names, expected_names)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_layer_names_after_loading(self):
+    if context.executing_eagerly():
+      backend.clear_session()
+      with testing_utils.use_keras_tensors_scope(True):
+        # Mimic loading a model that already contained add layers with
+        # name = 'add_1' and 'tf.__operators__.add'
+        layers.Add(name='add_1')
+        layers.Add(name='tf.__operators__.add')
+
+        inputs = input_layer.Input(shape=[2])
+        add1 = inputs + inputs
+        add2 = layers.Add()([inputs, inputs])
+        add3 = inputs + inputs
+        add4 = layers.Add()([inputs, inputs])
+        model = training_lib.Model(
+            inputs=[inputs], outputs=[add1, add2, add3, add4])
+        actual_names = [l.name for l in model.layers]
+        # The generated op layer names should have avoided layer names seen in
+        # the loaded model. (This avoiance should not apply to non-op-layers)
+        expected_names = [
+            'input_1', 'tf.__operators__.add_1',
+            'add', 'tf.__operators__.add_2', 'add_1'
+        ]
+        self.assertAllEqual(actual_names, expected_names)
+
   def test_add_trainable_weight_on_frozen_layer(self):
 
     class TestLayer(base_layer.Layer):
@@ -789,7 +815,6 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = array_ops.ones((3, 3))
-    self.assertIsInstance(x2, ops.EagerTensor)
     with self.assertRaisesRegex(TypeError, 'Graph tensors'):
       math_ops.matmul(x1, x2)
 

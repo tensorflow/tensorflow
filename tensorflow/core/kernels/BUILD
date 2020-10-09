@@ -20,6 +20,9 @@ load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generat
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # buildifier: disable=same-origin-load
@@ -511,10 +514,10 @@ tf_cuda_library(
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
-        "//tensorflow/core:autotuning_proto_cc",
-        "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor/gpu:asm_compiler",
@@ -890,6 +893,7 @@ cc_library(
     hdrs = [
         "eigen_spatial_convolutions-inl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":eigen_convolution_helpers",
     ],
@@ -900,6 +904,7 @@ cc_library(
     hdrs = [
         "eigen_convolution_helpers.h",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -3114,7 +3119,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "summary_image_op",
     prefix = "summary_image_op",
-    deps = LOGGING_DEPS + ["//tensorflow/core:png_internal"],
+    deps = LOGGING_DEPS + ["//tensorflow/core/lib/png:png_io"],
 )
 
 # TODO(b/162630222): remove this target
@@ -6191,6 +6196,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
+        "ragged_gather_op.cc",
         "ragged_tensor_to_sparse_kernel.cc",
         "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
@@ -6249,6 +6255,7 @@ filegroup(
         "string_lower_op.cc",
         "string_util.cc",
         "string_split_op.cc",
+        "string_strip_op.cc",
         "string_to_hash_bucket_op.cc",
         "substr_op.cc",
         "tensor_array.cc",
@@ -6443,12 +6450,6 @@ filegroup(
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
-alias(
-    name = "android_tensorflow_kernels",
-    actual = ":portable_tensorflow_kernels",
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "portable_tensorflow_kernels",
     srcs = if_mobile([
@@ -6465,9 +6466,9 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
-        "//tensorflow/core:portable_png_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
@@ -6630,7 +6631,7 @@ tf_cc_binary(
     deps = [
     ] + select({
         "//tensorflow:android": [
-            ":android_tensorflow_kernels",
+            ":portable_tensorflow_kernels",
             "//tensorflow/core:portable_tensorflow_lib",
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
@@ -6691,7 +6692,7 @@ cc_binary(
         "//tensorflow/cc:client_session",
     ] + select({
         "//tensorflow:android": [
-            ":android_tensorflow_kernels",
+            ":portable_tensorflow_kernels",
             "//tensorflow/core:portable_tensorflow_lib",
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
@@ -6776,7 +6777,7 @@ cc_binary(
         "//tensorflow/cc:client_session",
     ] + select({
         "//tensorflow:android": [
-            ":android_tensorflow_kernels",
+            ":portable_tensorflow_kernels",
             "//tensorflow/core:portable_tensorflow_lib",
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
@@ -6897,7 +6898,7 @@ cc_binary(
         "//tensorflow/cc:client_session",
     ] + select({
         "//tensorflow:android": [
-            ":android_tensorflow_kernels",
+            ":portable_tensorflow_kernels",
             "//tensorflow/core:portable_tensorflow_lib",
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
@@ -7039,7 +7040,7 @@ cc_binary(
         "//tensorflow/cc:client_session",
     ] + select({
         "//tensorflow:android": [
-            ":android_tensorflow_kernels",
+            ":portable_tensorflow_kernels",
             "//tensorflow/core:portable_tensorflow_lib",
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],

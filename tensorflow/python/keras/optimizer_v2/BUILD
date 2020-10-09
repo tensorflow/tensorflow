@@ -14,8 +14,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -136,7 +134,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adamax_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -157,7 +155,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["adadelta_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
+    tags = ["no_rocm"],
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -289,6 +288,7 @@ cuda_py_test(
         "//tensorflow/python:training_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
     ],
 )
@@ -298,7 +298,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["rmsprop_test.py"],
     shard_count = 2,
-    tfrt_enabled = True,
+    tags = ["no_rocm"],
+    # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:array_ops",

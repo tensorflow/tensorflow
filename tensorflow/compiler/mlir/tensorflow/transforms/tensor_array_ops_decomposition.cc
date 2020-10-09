@@ -132,11 +132,40 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
             return llvm::None;
           }
           return t;
+        } else if (auto scatter =
+                       llvm::dyn_cast<TF::TensorArrayScatterV3Op>(user)) {
+          // TensorArrayScatter writes vector of tensors to TensorArray. We can
+          // deduce the shape of TensorArray by dropping the 0th dim of
+          // TensorArrayScatter `value`.
+          auto t = scatter.value().getType().dyn_cast<RankedTensorType>();
+          if (!t || t.getShape().empty()) return llvm::None;
+          return RankedTensorType::get(t.getShape().drop_front(),
+                                       t.getElementType());
         }
         return llvm::None;
       });
   if (!elem_type) return llvm::None;
   return llvm::to_vector<8>(elem_type->getShape());
+}
+
+void ReplaceAllUsesWithCast(Value old_val, Value new_val) {
+  if (old_val.use_empty()) return;
+  auto cast_op =
+      OpBuilder(old_val.getDefiningOp())
+          .create<TensorCastOp>(old_val.getLoc(), old_val.getType(), new_val);
+  old_val.replaceAllUsesWith(cast_op);
+}
+
+void ReplaceAllUsesExceptTerminator(Value old_val, Value new_val) {
+  if (old_val.getType() == new_val.getType()) {
+    old_val.replaceAllUsesWith(new_val);
+    return;
+  }
+  Operation* old_op = old_val.getDefiningOp();
+  Operation* terminator_op =
+      old_op->getParentOfType<FuncOp>().front().getTerminator();
+  llvm::SmallPtrSet<mlir::Operation*, 1> exceptions = {terminator_op};
+  old_val.replaceAllUsesExcept(new_val, exceptions);
 }
 
 struct TensorArrayStats {
@@ -195,7 +224,8 @@ LogicalResult HandleTensorArrayReadV3Op(
   auto index_reshape =
       cutil::ReshapeScalarToSizeType(builder, read.index(), read.getLoc());
   auto elem = cutil::GetElement(index_reshape, buffer, builder, read.getLoc());
-  read.value().replaceAllUsesWith(elem);
+  ReplaceAllUsesExceptTerminator(read.value(), elem);
+  ReplaceAllUsesWithCast(read.value(), elem);
   read.erase();
   // The clear_after_read attribute does not mean setting the tensor to 0 after
   // read; instead it does not allow a second read before the next write. We
@@ -260,7 +290,8 @@ LogicalResult HandleTensorArrayConcatV3Op(
           RankedTensorType::get(shape, buffer_type.getElementType())},
       ArrayRef<Value>{buffer,
                       cutil::GetR1Const(shape, builder, concat.getLoc())});
-  concat.value().replaceAllUsesWith(buffer);
+  ReplaceAllUsesExceptTerminator(concat.value(), buffer);
+  ReplaceAllUsesWithCast(concat.value(), buffer);
 
   // Create the lengths as a list of the same value (element size).
   tensorflow::Tensor lengths_tensor(tensorflow::DT_INT64,
@@ -389,7 +420,8 @@ LogicalResult HandleTensorArrayGatherV3Op(
   auto buffer = cutil::ReadLocalVariable(local_var, builder, gather.getLoc());
   auto result =
       cutil::GatherElements(gather.indices(), buffer, builder, gather.getLoc());
-  gather.value().replaceAllUsesWith(result);
+  ReplaceAllUsesExceptTerminator(gather.value(), result);
+  ReplaceAllUsesWithCast(gather.value(), result);
   gather.erase();
   return success();
 }
@@ -570,6 +602,7 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }
@@ -636,6 +669,7 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
         }
         stat.grads[source] = grad_var;
         operands.push_back(grad_var);
+        (*stats)[grad_var].accumulate_on_write = true;
       }
     }
   }

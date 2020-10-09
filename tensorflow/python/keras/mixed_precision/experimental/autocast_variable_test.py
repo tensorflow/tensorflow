@@ -28,6 +28,7 @@ from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -58,7 +59,7 @@ def get_var(val, dtype, name=None):
 class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
+    test_util.set_logical_devices_to_at_least('CPU', 3)
     super(AutoCastVariableTest, self).setUp()
 
   @ds_combinations.generate(maybe_distribute)

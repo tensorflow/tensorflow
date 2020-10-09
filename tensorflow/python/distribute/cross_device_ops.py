@@ -1299,8 +1299,8 @@ class CollectiveAllReduce(CrossDeviceOps):
                                self._communication)
 
 
-def choose_the_best(devices, session_config=None):
-  """Find the best CrossDeviceOps locally given a `tf.compat.v1.ConfigProto`.
+def select_cross_device_ops(devices, session_config=None):
+  """Find the best `CrossDeviceOps` locally given a `tf.compat.v1.ConfigProto`.
 
   Args:
     devices: a list of devices passed to `tf.distribute.Strategy`.

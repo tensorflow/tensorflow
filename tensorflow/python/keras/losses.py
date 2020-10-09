@@ -183,7 +183,7 @@ class Loss(object):
     Returns:
       Loss values with the shape `[batch_size, d0, .. dN-1]`.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""
@@ -1288,7 +1288,7 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   >>> assert loss.shape == (2,)
   >>> y_true = np.maximum(y_true, 1e-7)
   >>> y_pred = np.maximum(y_pred, 1e-7)
-  >>> assert np.array_equal(
+  >>> assert np.allclose(
   ...     loss.numpy(),
   ...     np.mean(
   ...         np.square(np.log(y_true + 1.) - np.log(y_pred + 1.)), axis=-1))
@@ -1456,7 +1456,8 @@ def huber(y_true, y_pred, delta=1.0):
       axis=-1)
 
 
-@keras_export('keras.losses.log_cosh', 'keras.losses.logcosh')
+@keras_export('keras.losses.log_cosh', 'keras.losses.logcosh',
+              'keras.metrics.log_cosh', 'keras.metrics.logcosh')
 @dispatch.add_dispatch_support
 def log_cosh(y_true, y_pred):
   """Logarithm of the hyperbolic cosine of the prediction error.

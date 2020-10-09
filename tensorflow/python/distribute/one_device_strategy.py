@@ -383,6 +383,11 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     del reduce_op, destinations, experimental_hints
     return value
 
+  def _gather_to_implementation(self, value, destinations, axis,
+                                experimental_hints):
+    del destinations, axis, experimental_hints
+    return value
+
   def _update(self, var, fn, args, kwargs, group):
     # The implementations of _update() and _update_non_slot() are identical
     # except _update() passes `var` as the first argument to `fn()`.

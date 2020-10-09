@@ -589,6 +589,8 @@ class _EagerDefinedFunction(object):
                 config=config,
                 executor_type=executor_type)
 
+    for i, func_graph_output in enumerate(self._func_graph_outputs):
+      custom_gradient.copy_handle_data(func_graph_output, outputs[i])
     if executing_eagerly:
       return outputs
     else:
@@ -597,8 +599,6 @@ class _EagerDefinedFunction(object):
       # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
-      for i, func_graph_output in enumerate(self._func_graph_outputs):
-        custom_gradient.copy_handle_data(func_graph_output, outputs[i])
       return outputs
 
 
@@ -900,8 +900,9 @@ class _TapeGradientFunctions(object):
       for output in trainable_outputs:
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
-        gradients_wrt_outputs.append(
-            graph_placeholder(gradient_dtype, gradient_shape))
+        gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
+        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
             trainable_outputs,
@@ -2174,6 +2175,7 @@ class ConcreteFunction(object):
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
+        custom_gradient.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
@@ -2279,10 +2281,16 @@ class ConcreteFunction(object):
       lines.append("  Args:")
       lines.extend(arg_details)
     lines.append("  Returns:")
+
+    def spec_from_value(value):
+      # For loaded function, structured_outputs are already specs.
+      if isinstance(value, type_spec.TypeSpec):
+        return value
+      return type_spec.type_spec_from_value(value)
+
     lines.append("    {}".format(
         pretty_print_spec(
-            nest.map_structure(type_spec.type_spec_from_value,
-                               self.structured_outputs))))
+            nest.map_structure(spec_from_value, self.structured_outputs))))
 
     return "\n".join(lines)
 

@@ -36,7 +36,14 @@ namespace tensorflow {
 // Notably, resources and functions can be in a state where they reference
 // other resources/functions that have not been constructed yet. We collect
 // *all* objects in a partially valid state here, then properly initialize
-// resources and functions.
+// resources and functions. Implementation-wise, PartiallyRevivedObjects
+// contains maps keyed by the node number of the SavedObjectGraph, and map to an
+// object of the corresponding type. So, if node 2 in the object graph is a
+// variable, PartiallyRevivedObjects.variables[2] exists, and corresponds to a
+// tensorflow::Variable object. The only exception to this is the
+// "signatures_map", which is keyed by the "signature" key
+// (https://github.com/tensorflow/tensorflow/blob/372918decee7f558b3c194b04f77c20dcc679a31/tensorflow/core/protobuf/meta_graph.proto#L89),
+// and maps to the SignatureDefFunction node in the SavedObjectGraph.
 struct PartiallyRevivedObjects {
   gtl::FlatMap<int, std::unique_ptr<Variable>> variables;
   gtl::FlatMap<int, std::unique_ptr<Asset>> assets;
@@ -44,6 +51,7 @@ struct PartiallyRevivedObjects {
   gtl::FlatMap<int, TFConcreteFunctionRevivalState> concrete_functions;
   gtl::FlatMap<int, TFSignatureDefFunctionRevivalState> signature_def_functions;
   gtl::FlatMap<int, RestoredResourceRevivalState> restored_resources;
+  gtl::FlatMap<std::string, int> signatures_map;
 
   Status Build(ImmediateExecutionContext* ctx,
                const SavedObjectGraph& obj_graph, RevivedObjects* revived);

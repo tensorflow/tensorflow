@@ -73,6 +73,9 @@ def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 // certain state around within their implementations.
 def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
 
+// Trait to indicate an operation cannot be constant folded.
+def TF_NoConstantFold : NativeOpTrait<"TF::NoConstantFold">;
+
 // Coefficient wise binary operation with implicit broadcasting support, for
 // example tf.Sub operation.
 def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
@@ -112,6 +115,7 @@ def TF_SummaryResource : TF_ResourceBase<"Summary">;
 def TF_LookupTableResource : TF_ResourceBase<"LookupTable">;
 def TF_DatasetSeedGeneratorResource : TF_ResourceBase<"DatasetSeedGenerator">;
 def TF_DatasetMemoryCacheResource : TF_ResourceBase<"DatasetMemoryCache">;
+def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
 
 def TF_VariableRead : MemRead<TF_VariableResource>;
 def TF_StackRead : MemRead<TF_StackResource>;
@@ -119,6 +123,7 @@ def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
 def TF_LookupTableRead : MemRead<TF_LookupTableResource>;
 def TF_DatasetSeedGeneratorRead : MemRead<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheRead : MemRead<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorRead : MemRead<TF_DatasetIteratorResource>;
 
 def TF_VariableWrite : MemWrite<TF_VariableResource>;
 def TF_StackWrite : MemWrite<TF_StackResource>;
@@ -127,6 +132,7 @@ def TF_SummaryWrite : MemWrite<TF_SummaryResource>;
 def TF_LookupTableWrite : MemWrite<TF_LookupTableResource>;
 def TF_DatasetSeedGeneratorWrite : MemWrite<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheWrite : MemWrite<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorWrite : MemWrite<TF_DatasetIteratorResource>;
 
 def TF_VariableAlloc : MemAlloc<TF_VariableResource>;
 def TF_StackAlloc : MemAlloc<TF_StackResource>;
@@ -135,12 +141,14 @@ def TF_SummaryAlloc : MemAlloc<TF_SummaryResource>;
 def TF_LookupTableAlloc : MemAlloc<TF_LookupTableResource>;
 def TF_DatasetSeedGeneratorAlloc : MemAlloc<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheAlloc : MemAlloc<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorAlloc : MemAlloc<TF_DatasetIteratorResource>;
 
 def TF_StackFree : MemFree<TF_StackResource>;
 def TF_TensorArrayFree : MemFree<TF_TensorArrayResource>;
 def TF_SummaryFree : MemFree<TF_SummaryResource>;
 def TF_DatasetSeedGeneratorFree : MemFree<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheFree : MemFree<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorFree : MemFree<TF_DatasetIteratorResource>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
@@ -524,7 +532,7 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
   "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
-  [{ TypeAttr::get($_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 // A derived attribute that returns the element type of the tensor held by a
 // named resource-type operand or result.
@@ -544,7 +552,7 @@ class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
   "  .cast<TF::ResourceType>();\n"
   "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
   "return resource_type.getSubtypes().begin()->cast<ShapedType>();",
-  [{ TypeAttr::get($_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";

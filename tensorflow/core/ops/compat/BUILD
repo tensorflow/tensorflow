@@ -14,8 +14,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "op_compatibility_lib",
     srcs = ["op_compatibility_lib.cc"],

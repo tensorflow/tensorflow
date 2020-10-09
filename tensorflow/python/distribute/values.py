@@ -443,6 +443,12 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   """Holds a map from replica to variables."""
 
   def __init__(self, strategy, values, aggregation, var_policy=None):
+    if (aggregation == variables_lib.VariableAggregation.MEAN and
+        not values[0].dtype.is_floating):
+      raise ValueError(
+          "creating distributed tf.Variable with aggregation=MEAN and a "
+          "non-floating dtype is not supported, please use a different "
+          "aggregation or dtype")
     self._distribute_strategy = strategy
     self._aggregation = aggregation
     super(DistributedVariable, self).__init__(values)
@@ -1054,6 +1060,30 @@ class MirroredVariable(DistributedVariable, Mirrored):
       return _MirroredSaveable(self, self._primary, name)
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
+
+  def _write_object_proto(self, proto, options):
+    """Update a SavedObject proto for this object.
+
+    If an object defines this method, it will be called when saving with a
+    pre-built `SavedObject` proto representing the object, plus an instance of
+    `SaveOptions`. This method is then free to modify that proto instance.
+
+    `MirroredVariables` optionally write out information about their components
+    to the `experimental_distributed_variable_components` field of a
+    `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+    Args:
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    if options.experimental_variable_policy._expand_distributed_variables(  # pylint: disable=protected-access
+    ):
+      for var in self.values:
+        var_proto = (
+            proto.variable.experimental_distributed_variable_components.add())
+        var_proto.name = var.name.split(":")[0]
+        var_proto.device = var.device
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""

@@ -193,8 +193,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F64: np.dtype('float64'),
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
-    PrimitiveType.TUPLE: np.dtype(np.object),
-    PrimitiveType.TOKEN: np.dtype(np.object),
+    PrimitiveType.TUPLE: np.dtype(np.object_),
+    PrimitiveType.TOKEN: np.dtype(np.object_),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing

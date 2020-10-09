@@ -406,7 +406,7 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     with self.assertRaises(errors.InvalidArgumentError):
       self.client.join()
 
-    with self.assertRaises(client_lib.FunctionRetryableError):
+    with self.assertRaises(errors.CancelledError):
       long_function.fetch()
 
     for _ in range(3):

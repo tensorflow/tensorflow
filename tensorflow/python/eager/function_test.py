@@ -3364,8 +3364,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
-  # TODO(b/162544929): Enable this test.
-  def DISABLE_testCancelBlockedFunctionExecution(self):
+  def testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
 
@@ -4291,6 +4290,28 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     foo = Foo()
     with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
       foo.add(2)  # pylint: disable=no-value-for-parameter
+
+  @test_util.run_v2_only
+  def testControlDependencyAfterInline(self):
+    v = variables.Variable(0.)
+
+    @def_function.function
+    def assign():
+      return v.assign(1.)
+
+    @def_function.function
+    def assign_add():
+      return v.assign_add(1.)
+
+    @def_function.function
+    def f():
+      check_ops.assert_equal_v2(assign(), 1.)
+      check_ops.assert_equal_v2(assign_add(), 2.)
+
+    # We don't have a way to inspect the inlined graph in Python, so we run it
+    # multiple times to have more confidence the dependency is correct.
+    for _ in range(30):
+      f()
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

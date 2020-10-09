@@ -47,6 +47,7 @@ typedef struct {
   bool allow_precision_loss;
   TFLGpuDelegateWaitType wait_type;
   // Allows execution of integer quantized models
+  // TODO(b/169350710): Enable by default.
   bool enable_quantization;
 } TFLGpuDelegateOptions;
 

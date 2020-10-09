@@ -352,6 +352,48 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   EXPECT_TF_OK(status_);
 }
 
+TEST_F(HadoopFileSystemTest, ReadWhileOverwriting) {
+  static char set_disable_var[] = "HDFS_DISABLE_READ_EOF_RETRIED=1";
+  putenv(set_disable_var);
+
+  const std::string path = TmpDir("ReadWhileOverwriting");
+  if (path.find_first_of("hdfs://") != 0) GTEST_SKIP();
+
+  const string content1 = "content1";
+  WriteString(path, content1);
+  ASSERT_TF_OK(status_);
+
+  auto reader = GetReader();
+  tf_hadoop_filesystem::NewRandomAccessFile(filesystem_, path.c_str(),
+                                            reader.get(), status_);
+  EXPECT_TF_OK(status_);
+
+  std::string result;
+  result.resize(content1.size());
+  auto read = tf_random_access_file::Read(reader.get(), 0, content1.size(),
+                                          &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(content1, result);
+
+  tf_hadoop_filesystem::DeleteFile(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  string content2 = "overwrite";
+  WriteString(path, content1 + content2);
+  ASSERT_TF_OK(status_);
+
+  result.resize(content2.size());
+  read = tf_random_access_file::Read(reader.get(), content1.size(),
+                                     content2.size(), &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(0, result.size());
+
+  static char set_enable_var[] = "HDFS_DISABLE_READ_EOF_RETRIED=0";
+  putenv(set_enable_var);
+}
+
 TEST_F(HadoopFileSystemTest, HarSplit) {
   const std::string har_path =
       "har://hdfs-root/user/j.doe/my_archive.har/dir0/dir1/file.txt";

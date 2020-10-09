@@ -1708,7 +1708,6 @@ cc_library(
     srcs = ["hlo_creation_utils.cc"],
     hdrs = [
         "hlo_creation_utils.h",
-        "//tensorflow/compiler/xla:literal_util",
     ],
     deps = [
         ":hlo",
@@ -2374,6 +2373,7 @@ cc_library(
         ":hlo_pass_pipeline",
         ":hlo_verifier",
         ":tuple_simplifier",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

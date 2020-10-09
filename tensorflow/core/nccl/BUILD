@@ -25,8 +25,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "nccl_lib",
     srcs = if_cuda_or_rocm([

@@ -3,7 +3,10 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//tensorflow/core/tpu:__subpackages__"],
+    default_visibility = [
+        "//learning/brain/experimental/dtensor:__subpackages__",
+        "//tensorflow/core/tpu:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -222,6 +225,7 @@ cc_library(
 cc_library(
     name = "tpu_transfer_manager",
     srcs = ["tpu_transfer_manager_registration.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         ":tpu_executor",
         ":tpu_transfer_manager_base",
@@ -256,6 +260,7 @@ cc_library(
     name = "tpu_computation_placer",
     srcs = ["tpu_computation_placer.cc"],
     hdrs = ["tpu_computation_placer.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":status_helper",
         ":tpu_executor",

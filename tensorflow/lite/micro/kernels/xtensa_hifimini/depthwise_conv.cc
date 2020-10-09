@@ -28,11 +28,38 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace depthwise_conv {
-namespace xtensa {
-namespace hifimini {
+namespace {
+
+constexpr int kInputTensor = 0;
+constexpr int kFilterTensor = 1;
+constexpr int kBiasTensor = 2;
+constexpr int kOutputTensor = 0;
+
+// Depthwise conv is quantized along dimension 3:
+// https://www.tensorflow.org/lite/performance/quantization_spec
+constexpr int kDepthwiseConvQuantizedDimension = 3;
+
+struct OpData {
+  TfLitePaddingValues padding;
+  // The scaling factor from input to output (aka the 'real multiplier') can
+  // be represented as a fixed point multiplier plus a left shift.
+  int32_t output_multiplier;
+  int output_shift;
+
+  // Cached tensor zero point values for quantized operations.
+  int32_t input_zero_point;
+  int32_t output_zero_point;
+
+  // Per channel output multiplier and shift.
+  // TODO(b/141139247): Allocate these dynamically when possible.
+  int32_t* per_channel_output_multiplier;
+  int32_t* per_channel_output_shift;
+
+  // The range of the fused activation layer. For example for kNone and
+  // uint8_t these would be 0 and 255.
+  int32_t output_activation_min;
+  int32_t output_activation_max;
+};
 
 inline void DepthwiseConvPerChannel(
     const DepthwiseParams& params, const int32_t* output_multiplier,
@@ -145,9 +172,10 @@ inline void DepthwiseConvPerChannel(
 
             // Apply quantized multiplier and accumulate result at 48bit
             // alignment:
-            acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-                acc_24x2, output_multiplier[output_channel],
-                output_shift[output_channel]);
+            acc_56 =
+                ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
+                    acc_24x2, output_multiplier[output_channel],
+                    output_shift[output_channel]);
 
             // Add output offset, cap activation, and assign to the output:
             acc_56 = AE_ADDQ56(acc_56, output_offset_56);
@@ -260,11 +288,11 @@ inline void DepthwiseConv4x32MatchingInputAndFilter(
 
     // Apply quantized multiplier and accumulate result at 48bit
     // alignment:
-    block_0_acc = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
+    block_0_acc = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
         acc_24x2_0, mult, shift);
     // Apply quantized multiplier and accumulate result at 48bit
     // alignment:
-    block_1_acc = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
+    block_1_acc = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
         acc_24x2_1, mult, shift);
 
     // Add output offset, cap activation, and assign to the output:
@@ -279,42 +307,6 @@ inline void DepthwiseConv4x32MatchingInputAndFilter(
     output_data[ch_1] = static_cast<int8_t>(AE_TRUNCA32Q48(block_1_acc));
   }
 }
-
-}  // namespace hifimini
-}  // namespace xtensa
-
-namespace {
-
-constexpr int kInputTensor = 0;
-constexpr int kFilterTensor = 1;
-constexpr int kBiasTensor = 2;
-constexpr int kOutputTensor = 0;
-
-// Depthwise conv is quantized along dimension 3:
-// https://www.tensorflow.org/lite/performance/quantization_spec
-constexpr int kDepthwiseConvQuantizedDimension = 3;
-
-struct OpData {
-  TfLitePaddingValues padding;
-  // The scaling factor from input to output (aka the 'real multiplier') can
-  // be represented as a fixed point multiplier plus a left shift.
-  int32_t output_multiplier;
-  int output_shift;
-
-  // Cached tensor zero point values for quantized operations.
-  int32_t input_zero_point;
-  int32_t output_zero_point;
-
-  // Per channel output multiplier and shift.
-  // TODO(b/141139247): Allocate these dynamically when possible.
-  int32_t* per_channel_output_multiplier;
-  int32_t* per_channel_output_shift;
-
-  // The range of the fused activation layer. For example for kNone and
-  // uint8_t these would be 0 and 255.
-  int32_t output_activation_min;
-  int32_t output_activation_max;
-};
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              TfLiteDepthwiseConvParams* params, int width,
@@ -352,8 +344,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   }
   return kTfLiteOk;
 }
-
-}  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -437,16 +427,16 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
 
-  xtensa::hifimini::DepthwiseConvPerChannel(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<int8_t>(input),
-      tflite::micro::GetTensorShape(filter),
-      tflite::micro::GetTensorData<int8_t>(filter),
-      tflite::micro::GetTensorShape(bias),
-      tflite::micro::GetTensorData<int32_t>(bias),
-      tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<int8_t>(output));
+  DepthwiseConvPerChannel(op_params, data->per_channel_output_multiplier,
+                          data->per_channel_output_shift,
+                          tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<int8_t>(input),
+                          tflite::micro::GetTensorShape(filter),
+                          tflite::micro::GetTensorData<int8_t>(filter),
+                          tflite::micro::GetTensorShape(bias),
+                          tflite::micro::GetTensorData<int32_t>(bias),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<int8_t>(output));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -473,7 +463,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (input_dims[0] == 1 && input_dims[1] == 4 && input_dims[2] == 1 &&
       input_dims[3] == 32 && filter_dims[0] == 1 && filter_dims[1] == 4 &&
       filter_dims[2] == 1 && filter_dims[3] == 32) {
-    xtensa::hifimini::DepthwiseConv4x32MatchingInputAndFilter(
+    DepthwiseConv4x32MatchingInputAndFilter(
         -op_data->input_zero_point, op_data->output_zero_point,
         std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
         op_data->per_channel_output_multiplier,
@@ -500,19 +490,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace depthwise_conv
+}  // namespace
 
 TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
-  return {/*init=*/depthwise_conv::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/depthwise_conv::Prepare,
-          /*invoke=*/depthwise_conv::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

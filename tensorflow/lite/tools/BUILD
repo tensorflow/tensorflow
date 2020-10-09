@@ -1,7 +1,6 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = [
@@ -161,6 +160,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_googlesource_code_re2//:re2",
     ],
 )
@@ -195,7 +195,9 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -218,6 +220,7 @@ cc_test(
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -279,6 +282,7 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -362,19 +366,6 @@ py_binary(
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-    ],
-)
-
-pybind_extension(
-    name = "_pywrap_tensorflow_lite_sanitizers",
-    srcs = [
-        "sanitizers_pybind11.cc",
-    ],
-    link_in_framework = True,
-    module_name = "_pywrap_tensorflow_lite_sanitizers",
-    deps = [
-        "//tensorflow/python:pybind11_lib",
-        "@pybind11",
     ],
 )
 

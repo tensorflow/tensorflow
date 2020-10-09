@@ -169,8 +169,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
         "%d < %d",
         dest.size(), GetByteSizeRequirement(on_device_shape));
   }
-  ShapedBuffer shaped_buffer(/*on_host_shape=*/literal.shape(), on_device_shape,
-                             stream->parent()->platform(),
+  ShapedBuffer shaped_buffer(on_device_shape, stream->parent()->platform(),
                              stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(dest, /*index=*/{});
   return TransferLiteralToDevice(stream, literal, shaped_buffer,
@@ -194,8 +193,7 @@ void TransferManager::TransferArrayFromDevice(
                            "%d < %d",
                            source.size(), GetByteSizeRequirement(shape)));
   }
-  ShapedBuffer shaped_buffer(/*on_host_shape=*/shape, shape,
-                             stream->parent()->platform(),
+  ShapedBuffer shaped_buffer(shape, stream->parent()->platform(),
                              stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(source, /*index=*/{});
   return TransferLiteralFromDevice(stream, shaped_buffer, literal,
@@ -406,8 +404,8 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
   Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);
   TF_RET_CHECK(LayoutUtil::HasLayout(on_device_shape));
 
-  ScopedShapedBuffer shaped_buffer(on_host_shape, std::move(on_device_shape),
-                                   allocator, device_ordinal);
+  ScopedShapedBuffer shaped_buffer(std::move(on_device_shape), allocator,
+                                   device_ordinal);
 
   // Allocate an appropriate sized buffer for each element in the shape
   // including the tuple pointer arrays.

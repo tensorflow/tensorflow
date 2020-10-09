@@ -159,6 +159,19 @@ def mlir_sparsify(input_data_str):
   return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
 
 
+def register_custom_opdefs(custom_opdefs_list):
+  """Register the given custom opdefs to the TensorFlow global op registry.
+
+  Args:
+    custom_opdefs_list: String representing the custom ops OpDefs that are
+      included in the GraphDef.
+
+  Returns:
+    True if the registration is successfully completed.
+  """
+  return wrap_toco.wrapped_register_custom_opdefs(custom_opdefs_list)
+
+
 def toco_convert_protos(model_flags_str,
                         toco_flags_str,
                         input_data_str,

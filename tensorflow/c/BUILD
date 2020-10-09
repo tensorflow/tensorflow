@@ -255,6 +255,30 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "tf_shape",
+    srcs = ["tf_shape.cc"],
+    hdrs = ["tf_shape.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_macros",
+        ":tf_shape_internal",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tf_shape_internal",
+    hdrs = ["tf_shape_internal.h"],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":conversion_macros",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
     name = "tf_status",
     srcs = ["tf_status.cc"],
     hdrs = ["tf_status.h"],

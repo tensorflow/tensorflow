@@ -127,6 +127,17 @@ class BASE_HLO_AbsOp {
   }];
 }
 
+class BASE_HLO_CbrtOp {
+  string summary = "Cubic root operator";
+
+  string description = [{
+    Returns element-wise cubic root of the operand.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_CeilOp {
   string summary = "Ceil operator";
 
@@ -996,6 +1007,42 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+//===----------------------------------------------------------------------===//
+// Common convolution attributes
+//===----------------------------------------------------------------------===//
+
+class ConvDimensionNumbersBase<Dialect dialect>
+  : StructAttr<"ConvDimensionNumbers", dialect, [
+  StructFieldAttr<"input_batch_dimension",I64Attr>,
+  StructFieldAttr<"input_feature_dimension", I64Attr>,
+  StructFieldAttr<"input_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"kernel_input_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_output_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"output_batch_dimension", I64Attr>,
+  StructFieldAttr<"output_feature_dimension", I64Attr>,
+  StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
+
+  let description = "Structure of dimension information for conv op";
+}
+
+class ConvolutionAttributes<Dialect dialect> {
+  dag attributes = (ins
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: zero for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    ConvDimensionNumbersBase<dialect>:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
+  );
+}
+
 class BASE_HLO_ConvOp {
   string summary = "Convolution operator";
 
@@ -1333,6 +1380,19 @@ class BASE_HLO_WhileOp {
     true.
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
+  }];
+}
+
+class BASE_HLO_BitcastOp {
+  string summary = "Bitcast operator";
+
+  string description = [{
+    This op changes the shape of the input in the way that the physical
+    arranggment of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
   }];
 }
 

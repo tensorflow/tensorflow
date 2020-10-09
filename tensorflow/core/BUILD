@@ -47,7 +47,6 @@
 # Public mobile targets, e.g. for Android:
 #
 # filegroup ":android_proto_srcs" - Protos
-# filegroup ":android_srcs" - Core sources
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
@@ -69,9 +68,9 @@ load(
     "if_chromiumos",
     "if_cuda_or_rocm",
     "if_ios",
+    "if_libtpu",
     "if_mobile",
     "if_not_windows",
-    "if_tpu",
     "tf_android_core_proto_headers",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -259,6 +258,7 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
+    create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/example:protos_all",
@@ -297,7 +297,6 @@ cc_library(
     hdrs = ["//tensorflow/core/platform:base_hdrs"],
     copts = tf_copts(),
     tags = ["avoid_dep"],
-    visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:byte_order",
@@ -895,8 +894,7 @@ cc_library(
         "//tensorflow/c/kernels:summary_op_lib",
     ] + if_chromiumos(
         [],
-        # Non-tpu platforms don't need tpu dependency. It would be best to guard
-        # them by if_tpu. But there is no such flag yet.
+        # Non-tpu platforms don't need tpu dependency.
         [
             ":tpu_configuration_ops_op_lib",
             ":tpu_cross_replica_ops_op_lib",
@@ -917,7 +915,7 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
-    ]) + if_tpu(
+    ]) + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op"],
         if_true = [],
     ),
@@ -1292,7 +1290,7 @@ filegroup(
             "**/*main.cc",
         ],
     ),
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 # Sources required to build the TensorFlow framework with runtime on
@@ -1352,12 +1350,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//visibility:public"],
-)
-
 # Native library support for mobile applications.  Does not contain
 # operators, use :portable_tensorflow_lib if you want full operator
 # support.
@@ -1371,7 +1363,7 @@ alias(
 # Compiles to a trivial library on non-mobile to prevent irrelevant
 # build errors. If not building this e.g. as part of an android_binary,
 # a command such as the following must be used:
-# bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# bazel build -c opt tensorflow/core:portable_tensorflow_lib \
 # --define=TENSORFLOW_PROTOS=lite \
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
@@ -1394,24 +1386,6 @@ cc_library(
     alwayslink = 1,
 )
 
-alias(
-    name = "android_tensorflow_lib_lite",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_tensorflow_lib_lite_nortti",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_tensorflow_lib_lite_nortti_lite_protos",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
@@ -1420,26 +1394,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
-)
-
-alias(
-    name = "ios_tensorflow_lib_lite",
-    actual = ":portable_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-# Full TensorFlow library with operator support. Use this unless reducing
-# binary size (by packaging a reduced operator set) is a concern.
-alias(
-    name = "android_tensorflow_lib",
-    actual = ":portable_tensorflow_lib",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "ios_tensorflow_lib",
-    actual = ":portable_tensorflow_lib",
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -1486,28 +1440,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "android_test_srcs",
-    testonly = 1,
-    # TODO(andrewharp/nhua):
-    # make more test-related sources portable e.g. "//tensorflow/core/platform:test.cc",
-    srcs = tf_portable_full_lite_protos(
-        full = [
-            "//tensorflow/core/framework:android_test_hdrs",
-            "//tensorflow/core/framework:android_test_srcs",
-            "//tensorflow/core/platform:android_test_srcs",
-            "//tensorflow/core/util:android_test_srcs",
-        ],
-        lite = [
-            "//tensorflow/core/framework:android_test_hdrs",
-            "//tensorflow/core/framework:android_test_srcs_no_core",
-            "//tensorflow/core/platform:android_test_srcs",
-            "//tensorflow/core/util:android_test_srcs",
-        ],
-    ),
-    visibility = ["//visibility:public"],
-)
-
 # This is like android_test_srcs, minus the things that are already in mobile_srcs.
 filegroup(
     name = "android_test_srcs_no_core",
@@ -1522,18 +1454,6 @@ filegroup(
 )
 
 # Portable library providing testing functionality for TensorFlow.
-alias(
-    name = "android_tensorflow_test_lib",
-    actual = ":portable_tensorflow_test_lib",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "ios_tensorflow_test_lib",
-    actual = ":portable_tensorflow_test_lib",
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "portable_tensorflow_test_lib",
     testonly = 1,
@@ -1553,7 +1473,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib",
-        ":protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
@@ -1606,105 +1525,8 @@ alias(
     ]
 ]
 
-# The following targets will be moved to core/protobuf. The aliases are only temporary
-# since moving existing users will require several CLs over several projects.
-[
-    [
-        alias(
-            name = "protobuf_%s_pyclif%s" % (proto_name, target_suffix),
-            actual = "//tensorflow/core/protobuf:%s_pyclif%s" % (proto_name, target_suffix),
-            visibility = ["//visibility:public"],
-        )
-        for target_suffix in [
-            "",
-            "_pb2",
-        ]
-    ]
-    for proto_name in [
-        "config",
-        "device_properties",
-        "graph_debug_info",
-        "meta_graph",
-        "saved_model",
-    ]
-]
-
 # -----------------------------------------------------------------------------
 # Internal targets
-
-alias(
-    name = "autotuning_proto",
-    actual = "//tensorflow/core/protobuf:autotuning_proto",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "autotuning_proto_cc",
-    actual = "//tensorflow/core/protobuf:autotuning_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "conv_autotuning_proto",
-    actual = "//tensorflow/core/protobuf:conv_autotuning_proto",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "conv_autotuning_proto_cc",
-    actual = "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "worker_proto_cc",
-    actual = "//tensorflow/core/protobuf:worker_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "worker_service_proto_cc",
-    actual = "//tensorflow/core/protobuf:worker_service_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "master_proto_cc",
-    actual = "//tensorflow/core/protobuf:master_proto_cc",
-    visibility = [
-        "//learning/brain/frameworks/uptc:__subpackages__",
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "master_service_proto_cc",
-    actual = "//tensorflow/core/protobuf:master_service_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "eager_service_proto_cc",
-    actual = "//tensorflow/core/protobuf:eager_service_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
 filegroup(
     name = "lib_internal_private_headers",
     srcs = [
@@ -2020,21 +1842,6 @@ cc_library(
         ":lib_internal",
         "//tensorflow/core/platform:jpeg",
     ],
-)
-
-alias(
-    name = "png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
-alias(
-    name = "portable_png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
-alias(
-    name = "android_png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
 )
 
 cc_library(
@@ -2956,6 +2763,7 @@ tf_cc_test(
         "ops/image_ops_test.cc",
         "ops/io_ops_test.cc",
         "ops/linalg_ops_test.cc",
+        "ops/lookup_ops_test.cc",
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",

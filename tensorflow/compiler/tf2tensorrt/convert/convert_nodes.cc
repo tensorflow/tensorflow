@@ -5845,6 +5845,12 @@ Status ConvertResize(OpConverterParams* params) {
   // Verify resize mode. Initialize resize mode if supported.
   nvinfer1::ResizeMode resize_mode;
   if (node_def.op() == "ResizeBilinear") {
+#if IS_TRT_VERSION_GE(7, 1, 0, 0)
+    if (!align_corners) {
+      return errors::InvalidArgument(
+          "Cannot Convert Bilinear Resize when align_corners=False");
+    }
+#endif
     resize_mode = nvinfer1::ResizeMode::kLINEAR;
   } else if (node_def.op() == "ResizeNearestNeighbor") {
     resize_mode = nvinfer1::ResizeMode::kNEAREST;

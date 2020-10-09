@@ -27,9 +27,9 @@ import os
 import tensorflow as tf
 
 from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_lib
-from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import test
 
 
@@ -213,4 +213,4 @@ class PeerFailureRecoverTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

@@ -60,22 +60,15 @@ SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
 
 SimpleMemoryAllocator::~SimpleMemoryAllocator() {}
 
-TfLiteStatus SimpleMemoryAllocator::EnsureHeadSize(size_t size,
-                                                   size_t alignment) {
+TfLiteStatus SimpleMemoryAllocator::SetHeadSize(size_t size, size_t alignment) {
   if (head_ != temp_) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter_,
-        "Internal error: EnsureHeadSize() needs to be called after"
-        "ResetTempAllocations().");
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Internal error: SetHeadSize() needs to be called "
+                         "after ResetTempAllocations().");
     return kTfLiteError;
   }
 
   uint8_t* const aligned_result = AlignPointerUp(buffer_head_, alignment);
-  if (aligned_result + size < head_) {
-    // Size is below the current head size, just return.
-    return kTfLiteOk;
-  }
-
   const size_t available_memory = tail_ - aligned_result;
   if (available_memory < size) {
     TF_LITE_REPORT_ERROR(
@@ -138,13 +131,13 @@ size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
 }
 
 size_t SimpleMemoryAllocator::GetAvailableMemory(size_t alignment) const {
-  uint8_t* const aligned_head = AlignPointerUp(head_, alignment);
+  uint8_t* const aligned_temp = AlignPointerUp(temp_, alignment);
   uint8_t* const aligned_tail = AlignPointerDown(tail_, alignment);
-  return aligned_tail - aligned_head;
+  return aligned_tail - aligned_temp;
 }
 
 size_t SimpleMemoryAllocator::GetUsedBytes() const {
-  return GetBufferSize() - (tail_ - head_);
+  return GetBufferSize() - (tail_ - temp_);
 }
 
 size_t SimpleMemoryAllocator::GetBufferSize() const {

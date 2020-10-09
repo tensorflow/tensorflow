@@ -1054,6 +1054,33 @@ class MetricTest(test.TestCase, parameterized.TestCase):
             num_tensor_args,
             test_sample_weight=False)
 
+  def test_registered_custom_metric(self):
+
+    @generic_utils.register_keras_serializable('Testing')
+    class CustomMeanMetric(keras.metrics.Mean):
+
+      def update_state(self, *args):  # pylint: disable=useless-super-delegation
+        # Sometimes built-in metrics return an op in update_state. Custom
+        # metrics don't support returning ops, so wrap the update_state method
+        # while returning nothing.
+        super(CustomMeanMetric, self).update_state(*args)
+
+    with self.cached_session():
+      metric = CustomMeanMetric()
+      save_dir = self._save_model_dir('first_save')
+      self.evaluate([v.initializer for v in metric.variables])
+      loaded = self._test_metric_save_and_load(
+          metric,
+          save_dir,
+          num_tensor_args=1,
+          test_sample_weight=False)
+
+      self._test_metric_save_and_load(
+          loaded,
+          self._save_model_dir('second_save'),
+          num_tensor_args=1,
+          test_sample_weight=False)
+
   def test_custom_metric_wrapped_call(self):
 
     class NegativeMean(keras.metrics.Mean):

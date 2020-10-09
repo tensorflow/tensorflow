@@ -709,12 +709,13 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
 }
 
 void AlternateMemoryBestFitHeap::FindAliases(
-    std::vector<AllocationValue>* allocation_values) const {
+    std::vector<AllocationValue>* allocation_values,
+    bool skip_values_with_no_uses) const {
   absl::flat_hash_map<const HloInstruction*, const AllocationValue*>
       values_by_defining_inst;
   for (AllocationValue& value : *allocation_values) {
     // Skip the value if it doesn't have any uses.
-    if (value.uses().empty()) {
+    if (value.uses().empty() && skip_values_with_no_uses) {
       continue;
     }
     CHECK_EQ(values_by_defining_inst.count(value.defining_instruction()), 0);
@@ -1157,7 +1158,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
   for (const auto& colocated_interval : colocated_intervals) {
     CreateAllocationValues(*colocated_interval, allocation_values);
   }
-  FindAliases(&allocation_values);
+  FindAliases(&allocation_values, /*skip_values_with_no_uses=*/true);
 }
 
 AlternateMemoryBestFitHeap::Result
