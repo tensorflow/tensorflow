@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <climits>
 
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_time.h"
 
 namespace micro_benchmark {
@@ -43,31 +43,34 @@ extern tflite::ErrorReporter* reporter;
   return 0;                          \
   }
 
-#define TF_LITE_MICRO_BENCHMARK(func)                                         \
-  if (tflite::ticks_per_second() == 0) {                                      \
-    TF_LITE_REPORT_ERROR(micro_benchmark::reporter,                           \
-                         "no timer implementation found");                    \
-    return 0;                                                                 \
-  }                                                                           \
-  start_ticks = tflite::GetCurrentTimeTicks();                                \
-  func;                                                                       \
-  duration_ticks = tflite::GetCurrentTimeTicks() - start_ticks;               \
-  if (duration_ticks > INT_MAX / 1000) {                                      \
-    duration_ms = duration_ticks / (tflite::ticks_per_second() / 1000);       \
-  } else {                                                                    \
-    duration_ms = (duration_ticks * 1000) / tflite::ticks_per_second();       \
-  }                                                                           \
-  TF_LITE_REPORT_ERROR(micro_benchmark::reporter, "%s took %d ticks (%d ms)", \
-                       #func, duration_ticks, duration_ms);
+#define TF_LITE_MICRO_BENCHMARK(func)                                   \
+  if (tflite::ticks_per_second() == 0) {                                \
+    TF_LITE_REPORT_ERROR(micro_benchmark::reporter,                     \
+                         "no timer implementation found");              \
+    return 0;                                                           \
+  }                                                                     \
+  start_ticks = tflite::GetCurrentTimeTicks();                          \
+  func;                                                                 \
+  duration_ticks = tflite::GetCurrentTimeTicks() - start_ticks;         \
+  if (duration_ticks > INT_MAX / 1000) {                                \
+    duration_ms = duration_ticks / (tflite::ticks_per_second() / 1000); \
+  } else {                                                              \
+    duration_ms = (duration_ticks * 1000) / tflite::ticks_per_second(); \
+  }                                                                     \
+  micro_benchmark::reporter->Report("%s took %d ticks (%d ms)", #func,  \
+                                    duration_ticks, duration_ms);
 
 template <typename inputT>
 class MicroBenchmarkRunner {
  public:
-  MicroBenchmarkRunner(const uint8_t* model, uint8_t* tensor_arena,
-                       int tensor_arena_size)
+  // The lifetimes of model, op_resolver and tensor_arena must exceed that of
+  // the created MicroBenchmarkRunner object.
+  MicroBenchmarkRunner(const uint8_t* model,
+                       const tflite::MicroOpResolver* op_resolver,
+                       uint8_t* tensor_arena, int tensor_arena_size)
       : model_(tflite::GetModel(model)),
         reporter_(&micro_reporter_),
-        interpreter_(model_, resolver_, tensor_arena, tensor_arena_size,
+        interpreter_(model_, *op_resolver, tensor_arena, tensor_arena_size,
                      reporter_) {
     interpreter_.AllocateTensors();
   }
@@ -109,7 +112,6 @@ class MicroBenchmarkRunner {
   const tflite::Model* model_;
   tflite::MicroErrorReporter micro_reporter_;
   tflite::ErrorReporter* reporter_;
-  tflite::AllOpsResolver resolver_;
   tflite::MicroInterpreter interpreter_;
 };
 

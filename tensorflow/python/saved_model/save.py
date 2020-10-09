@@ -786,6 +786,16 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
 
+  # Give the object a chance to modify the SavedObject proto.
+  # This is currently used by MirroredVariables to optionally write their
+  # component variables to the proto.
+  #
+  # This is not yet an official Trackable method, the only current use case
+  # being MirroredVariables. See the method implementation there for more
+  # documentation.
+  if hasattr(obj, "_write_object_proto"):
+    obj._write_object_proto(proto, options)  # pylint: disable=protected-access
+
 
 def _export_debug_info(exported_graph):
   """Exports debug information from a graph.
@@ -991,10 +1001,6 @@ def save(obj, export_dir, signatures=None, options=None):
   @end_compatibility
   """
   options = options or save_options.SaveOptions()
-  if options.experimental_variable_policy._expand_distributed_variables():  # pylint:disable=protected-access
-    raise NotImplementedError(
-        "The VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES option is "
-        "not implemented in saved_model.save.")
   # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
   # compatible (no sessions) and share it with this export API rather than
   # making a SavedModel proto and writing it directly.

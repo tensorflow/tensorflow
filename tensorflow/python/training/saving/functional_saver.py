@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import uuid
-
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -252,7 +250,7 @@ class MultiDeviceSaver(object):
       sharded_suffix = array_ops.where(
           string_ops.regex_full_match(file_prefix, "^s3://.*"),
           constant_op.constant(".part"),
-          constant_op.constant("_temp_%s/part" % uuid.uuid4().hex))
+          constant_op.constant("_temp/part"))
       tmp_checkpoint_prefix = string_ops.string_join(
           [file_prefix, sharded_suffix])
 

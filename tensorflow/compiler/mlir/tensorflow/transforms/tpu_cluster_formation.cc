@@ -377,8 +377,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
   // Check if number of operands of each used TPUReplicatedInput op matches
   // `num_replicas` or 1. Collect all their operands and associated type for
   // creating the replicate op.
-  llvm::SmallVector<std::pair<Operation::operand_range, Type>, 8>
-      replicated_inputs;
+  llvm::SmallVector<std::pair<ValueRange, Type>, 8> replicated_inputs;
   llvm::SmallVector<Value, 8> packed_inputs;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();

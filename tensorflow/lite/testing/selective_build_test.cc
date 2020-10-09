@@ -68,7 +68,7 @@ TEST(SelectiveBuiltTest, AddModel) {
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 
-TEST(SelectiveBuiltTest, LGTMModel) {
+TEST(SelectiveBuiltTest, LSTMModel) {
   std::string model = "third_party/tensorflow/lite/testdata/lstm.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }

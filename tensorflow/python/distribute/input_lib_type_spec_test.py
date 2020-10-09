@@ -176,8 +176,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
           dataset_fn(distribute_lib.InputContext()))
       type_spec = ds.element_spec
     else:
-      ds = distribution.experimental_distribute_datasets_from_function(
-          dataset_fn)
+      ds = distribution.distribute_datasets_from_function(dataset_fn)
       iterator = iter(ds)
       _check_type_spec_structure(iterator)
       type_spec = iterator.element_spec

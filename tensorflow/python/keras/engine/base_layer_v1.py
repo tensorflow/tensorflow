@@ -66,7 +66,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -836,8 +835,9 @@ class Layer(base_layer.Layer):
   def _assert_built_as_v1(self):
     if not hasattr(self, '_originally_built_as_v1'):
       raise ValueError(
-          'Your Layer or Model is in an invalid state. This can happen if you '
-          'are interleaving estimator/non-estimator models or '
+          'Your Layer or Model is in an invalid state. '
+          'This can happen for the following cases:\n '
+          '1. You might be interleaving estimator/non-estimator models or '
           'interleaving models/layers made in tf.compat.v1.Graph.as_default() '
           'with models/layers created outside of it. '
           'Converting a model to an estimator (via model_to_estimator) '
@@ -845,7 +845,11 @@ class Layer(base_layer.Layer):
           'if they were not the model converted to an estimator). '
           'Similarly, making a layer or a model inside a '
           'a tf.compat.v1.Graph invalidates all layers/models you previously '
-          'made outside of the graph.')
+          'made outside of the graph.\n'
+          '2. You might be using a custom keras layer implementation with '
+          ' custom __init__ which didn\'t call super().__init__. '
+          ' Please check the implementation of %s and its bases.' %
+          (type(self),))
 
   @property
   def dtype(self):
@@ -2124,7 +2128,7 @@ class Layer(base_layer.Layer):
     Returns:
       A dict mapping all sublayers to their `trainable` value.
     """
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    layers = layer_utils.filter_empty_layer_containers(self._layers)
     # Keep track of each top-level layers' `trainable` as well as the
     # state of all of its sublayers.
     trainable_state = {self: self.trainable}
@@ -2134,7 +2138,7 @@ class Layer(base_layer.Layer):
 
   def _set_trainable_state(self, trainable_state):
     """Set `trainable` state for each sublayer."""
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    layers = layer_utils.filter_empty_layer_containers(self._layers)
     if self in trainable_state:
       self.trainable = trainable_state[self]
     for layer in layers:
@@ -2290,7 +2294,7 @@ class Layer(base_layer.Layer):
         'weights', 'trainable_weights', 'non_trainable_weights'
     }
     if hasattr(self, '_layers'):
-      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+      nested_layers = layer_utils.filter_empty_layer_containers(
           self._layers)
       return list(
           itertools.chain.from_iterable(

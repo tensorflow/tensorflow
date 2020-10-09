@@ -24,6 +24,7 @@ using std::vector;
 using tensorflow::ops::Conj;
 using tensorflow::ops::MatMul;
 using tensorflow::ops::Mul;
+using tensorflow::ops::SqrtGrad;
 
 namespace tensorflow {
 namespace gradients {
@@ -70,6 +71,25 @@ class ExpGradientFunction : public GradientFunction {
 
  private:
   AbstractTensorHandlePtr exp_;
+};
+
+class SqrtGradientFunction : public GradientFunction {
+ public:
+  explicit SqrtGradientFunction(AbstractTensorHandle* sqrt) : sqrt_(sqrt) {
+    sqrt->Ref();
+  }
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    std::string name = "Sqrt_Grad";
+    grad_outputs->resize(1);
+    TF_RETURN_IF_ERROR(SqrtGrad(ctx->ctx, {sqrt_.get(), grad_inputs[0]},
+                                absl::MakeSpan(*grad_outputs), name.c_str()));
+    return Status::OK();
+  }
+  ~SqrtGradientFunction() override {}
+
+ private:
+  AbstractTensorHandlePtr sqrt_;
 };
 
 class MatMulGradientFunction : public GradientFunction {
@@ -203,6 +223,15 @@ BackwardFunction* ExpRegisterer(const ForwardOperation& op) {
 
 BackwardFunction* MatMulRegisterer(const ForwardOperation& op) {
   auto gradient_function = new MatMulGradientFunction(op.inputs, op.attrs);
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* SqrtRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new SqrtGradientFunction(op.outputs[0]);
   // For ops with a single output, the gradient function is not called if there
   // is no incoming gradient. So we do not need to worry about creating zeros
   // grads in this case.

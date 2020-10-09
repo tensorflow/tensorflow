@@ -328,8 +328,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
           dev_name = strings::StrCat(task_name, "/device:CPU:", di);
         }
         VLOG(2) << "dev=" << dev_name;
-        col_params_.instance.device_names.push_back(dev_name);
-        col_params_.instance.task_names.push_back(task_name);
+        col_params_.group.device_names.push_back(dev_name);
+        col_params_.group.task_names.push_back(task_name);
         col_params_.task.is_local.push_back(true);
       }
     }
@@ -337,7 +337,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       for (int di = 0; di < num_devices_per_worker; di++) {
         int default_rank = wi * num_devices_per_worker + di;
         instances_.push_back(new DeviceInstance(
-            default_rank, col_params_.instance.device_names[default_rank],
+            default_rank, col_params_.group.device_names[default_rank],
             device_type, this));
       }
     }
@@ -539,8 +539,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
       for (int di = 0; di < num_gpus; di++) {
         string dev_name = strings::StrCat(task_name, "/device:GPU:", di);
-        cp->instance.task_names.push_back(task_name);
-        cp->instance.device_names.push_back(dev_name);
+        cp->group.task_names.push_back(task_name);
+        cp->group.device_names.push_back(dev_name);
       }
     }
   }
@@ -557,22 +557,16 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       TF_CHECK_OK(parent_->dev_mgr_->LookupDevice(dev_name, &device_));
       col_params_.name = parent_->col_params_.name;
       col_params_.instance.data_type = parent_->col_params_.instance.data_type;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
+      col_params_.group = parent_->col_params_.group;
       col_params_.instance.instance_key =
           parent_->col_params_.instance.instance_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
-      col_params_.instance.device_names =
-          parent_->col_params_.instance.device_names;
-      col_params_.instance.task_names =
-          parent_->col_params_.instance.task_names;
       col_params_.task.is_local = parent_->col_params_.task.is_local;
       col_params_.instance.impl_details.subdiv_permutations =
           parent_->col_params_.instance.impl_details.subdiv_permutations;
       col_params_.subdiv_rank = parent_->col_params_.subdiv_rank;
 
       int group_size = col_params_.group.group_size;
-      CHECK_EQ(group_size, col_params_.instance.device_names.size());
+      CHECK_EQ(group_size, col_params_.group.device_names.size());
       // Default rank is order in device_names.
       col_params_.default_rank = rank;
 
@@ -789,8 +783,8 @@ TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams4TasksVariableGPU) {
     string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
     for (int di = 0; di < dev_per_task[ti]; di++) {
       string dev_name = strings::StrCat(task_name, "/device:GPU:", di);
-      cp.instance.task_names.push_back(task_name);
-      cp.instance.device_names.push_back(dev_name);
+      cp.group.task_names.push_back(task_name);
+      cp.group.device_names.push_back(dev_name);
       cp.group.group_size++;
     }
   }

@@ -301,10 +301,12 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
       return IrExportStage::HLO;
     } else if (s_stage == "optimized_hlo") {
       return IrExportStage::OPTIMIZED_HLO;
+    } else if (s_stage == "optimized_hlo_dot") {
+      return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
       ThrowValueError(
           absl::StrFormat("Invalid stage selected: '%s'. Valid values are: "
-                          "'hlo', 'optimized_hlo'",
+                          "'hlo', 'optimized_hlo', 'optimized_hlo_dot'",
                           s_stage)
               .c_str());
     }
@@ -312,19 +314,10 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
 
   TFE_InputTensorHandles handles = InputTFE_InputTensorHandles(inputs);
 
-  std::vector<const Tensor*> input_tensors;
+  std::vector<const TensorHandle*> input_handles;
   for (TFE_TensorHandle* tensor_handle : handles) {
     AbstractTensorHandle* abstract_tensor_handle = unwrap(tensor_handle);
-    TensorHandle* th = TensorHandleFromInterface(abstract_tensor_handle);
-
-    const Tensor* t;
-    Status st = th->Tensor(&t);
-    if (!st.ok()) {
-      ThrowValueError(
-          absl::StrFormat("Could not resolve tensor: '%s'", st.error_message())
-              .c_str());
-    }
-    input_tensors.push_back(t);
+    input_handles.push_back(TensorHandleFromInterface(abstract_tensor_handle));
   }
 
   DeviceNameUtils::ParsedName input_device_name;
@@ -345,7 +338,7 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
 
   xla::StatusOr<std::string> hlo_text =
       GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
-                    *selected_device, input_tensors);
+                    *selected_device, context, input_handles);
 
   if (!hlo_text.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",

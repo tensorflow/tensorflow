@@ -283,7 +283,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     auto if_op = rewriter.create<scf::IfOp>(
         loc, result_type, IsScalarTensor(rewriter, op, lhs), true);
     OpBuilder if_lhs_scalar_builder = if_op.getThenBodyBuilder();
-    Value reshaped_lhs = if_lhs_scalar_builder.create<mhlo::ReshapeOp>(
+    Value reshaped_lhs = if_lhs_scalar_builder.create<TensorCastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
     Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
@@ -300,7 +300,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     else_lhs_scalar_builder.create<scf::YieldOp>(loc,
                                                  if_rhs_scalar_op.getResult(0));
     OpBuilder if_rhs_scalar_builder = if_rhs_scalar_op.getThenBodyBuilder();
-    Value reshaped_rhs = if_rhs_scalar_builder.create<mhlo::ReshapeOp>(
+    Value reshaped_rhs = if_rhs_scalar_builder.create<TensorCastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), rhs);
     Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},

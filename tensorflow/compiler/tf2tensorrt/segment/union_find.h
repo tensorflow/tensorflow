@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_SEGMENT_UNION_FIND_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_SEGMENT_UNION_FIND_H_
 
-#include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -31,108 +31,59 @@ namespace segment {
 // When constructing clusters for implicit batch mode, we support the
 // with both dynamic batch size and static batch size. We restrict nodes inside
 // a cluster to either have dynamic batch size or have the same value for static
-// batch size. For this reason, we use a field has_dynamic_batch_value_ to keep
+// batch size. For this reason, we use a field has_dynamic_batch_size_ to keep
 // track of whether the cluster has any node with dynamic batch size. We use
-// field static_batch_value_ to keep track of whether the cluster has any node
+// field static_batch_size_ to keep track of whether the cluster has any node
 // with static batch size and what the value of the static batch size, if any.
 // Examples:
 // cluster:  a = a1[1,3] + a1[1,3]
 // ClusterBatchSize: has_dynamic_batch_size_ = false
-//                   static_batch_value_ = {has value, 1}
+//                   static_batch_size_ = {has value, 1}
 //
 // cluster:  b = b1[-1,3] + b2[-1, 3]
 // ClusterBatchSize: has_dynamic_batch_size_ = true
-//                   static_batch_value_ = {has no value}
+//                   static_batch_size_ = {has no value}
 //
 // cluster:  a = a1[1,3] + a1[1,3]; b = b1[-1,3] + b2[-1, 3]
 // ClusterBatchSize: has_dynamic_batch_size_ = true
-//                   static_batch_value_ = {has value, 1}
+//                   static_batch_size_ = {has value, 1}
 //
 // When constructing cluster for explicit batch mode, all ClusterBatchSize is
 // irrelevant.
 //
 //
-absl::optional<int> static_batch_value_;
+
 class ClusterBatchSize {
  public:
-  ClusterBatchSize()
-      : has_dynamic_batch_value_(false), static_batch_value_(absl::nullopt) {}
+  ClusterBatchSize();
 
-  bool operator==(const ClusterBatchSize& b) {
-    return HasDynamicBatchValue() == b.HasDynamicBatchValue() &&
-           static_batch_value_ == b.static_batch_value_;
-  }
+  bool operator==(const ClusterBatchSize& other);
+  bool operator!=(const ClusterBatchSize& other) { return !(*this == other); }
 
-  bool operator!=(const ClusterBatchSize& b) { return !(*this == b); }
-
-  int GetStaticBatchValue() const {
-    DCHECK(HasStaticBatchValue());
-    return static_batch_value_.value();
-  }
-
-  // Sets the batch size value assuming that the object doesn't have a batch
-  // size value yet:
-  //   a non-negative input value representing a known batch size.
+  // Sets the batch size assuming that the object doesn't have a batch size yet:
+  //   a non-negative input value representing a static batch size.
   //   a negative input value representing a dynamic batch size.
-  ClusterBatchSize SetBatchSizeValue(int value) {
-    if (value < 0) {
-      has_dynamic_batch_value_ = true;
-      return *this;
-    }
-    static_batch_value_ = value;
-    return *this;
-  }
+  ClusterBatchSize& SetBatchSize(int batch_size);
+  bool HasStaticBatchSize() const { return static_batch_size_.has_value(); }
+  int GetStaticBatchSize() const;
 
-  bool MergeIfCompatible(const ClusterBatchSize& b) {
-    bool is_compatible = MergeIfCompatible(b.static_batch_value_);
-    if (!is_compatible) return false;
+  bool MergeIfCompatible(const ClusterBatchSize& other);
 
-    if (!HasDynamicBatchValue() && b.HasDynamicBatchValue()) {
-      has_dynamic_batch_value_ = true;
-    }
-
-    return true;
-  }
-
-  // Returns a string for the batch size value. If the object has a static
-  // batch size value, return a string for the value. If the object has a
-  // dynamic size value, return -1. Otherwise, returns -2 to represent that
-  // a batch size hasn't been set yet.
-  string ToString() const {
-    string s;
-    absl::StrAppendFormat(&s, "batch_size=(%d,%d,", HasDynamicBatchValue(),
-                          HasStaticBatchValue());
-    if (HasStaticBatchValue()) {
-      absl::StrAppendFormat(&s, "%d", GetStaticBatchValue());
-    }
-    absl::StrAppend(&s, ")");
-    return s;
-  }
-
-  bool HasStaticBatchValue() const { return static_batch_value_.has_value(); }
+  // Returns a string for the batch size.
+  //   If the object has a static batch size, return a string for the value.
+  //   If the object has a dynamic size, return -1.
+  //   Otherwise, returns -2 to represent that the batch size hasn't been set
+  //     yet.
+  std::string ToString() const;
 
  private:
-  bool HasDynamicBatchValue() const { return has_dynamic_batch_value_; }
+  bool HasDynamicBatchSize() const { return has_dynamic_batch_size_; }
 
- private:
-  bool MergeIfCompatible(const absl::optional<int>& b) {
-    bool is_compatible = !HasStaticBatchValue() || !b.has_value() ||
-                         GetStaticBatchValue() == b.value();
-    if (!is_compatible) {
-      return false;
-    }
-    if (!HasStaticBatchValue() && b.has_value()) {
-      static_batch_value_ = b;
-    }
-    return true;
-  }
-
- private:
   // To track whether the cluster has any node with dynamic batch size.
-  bool has_dynamic_batch_value_;
+  bool has_dynamic_batch_size_;
   // To track whether the cluster has any node with static batch size, and the
   // unique value for static batch size.
-  absl::optional<int> static_batch_value_;
+  absl::optional<int> static_batch_size_;
 };
 
 inline std::ostream& operator<<(std::ostream& os,
@@ -140,89 +91,89 @@ inline std::ostream& operator<<(std::ostream& os,
   return os << batch_size.ToString();
 }
 
-// Represents a disjoint set of copyable values with type T. We use this data
-// structure to construct clusters for TRTEngineOp. As such, this data structure
-// has a field to record the batch size for the current cluster and merges the
-// corresponding batch sizes when merging two clusters. Most of the methods in
-// this class are side-effecting as they also compress the path from the object
-// to the parent of its containing set.
-template <typename T>
-class UnionFind {
+// Represents the accumulated properties of a cluster during segmentation,
+// including information about batch size and device assignment. Clusters shall
+// have compatible properties in order to be merged together.
+class ClusterProperty {
  public:
-  UnionFind() : size_(1), parent_(nullptr) {}
-  UnionFind(const T& v, ClusterBatchSize batch_size,
-            const DeviceNameUtils::ParsedName& device_name)
-      : size_(1),
-        cluster_batch_size_(batch_size),
-        cluster_device_name_(device_name),
-        parent_(nullptr),
-        value_(v) {}
-
-  // Returns the number of elements in the cluster and compresses the path from
-  // this object to the root of the cluster.
-  int Size() { return FindRoot()->size_; }
+  ClusterProperty() {}
+  ClusterProperty(const ClusterBatchSize& batch_size,
+                  const DeviceNameUtils::ParsedName& device_name);
 
   // Returns the batch size of the cluster and compresses the path from this
   // object to the root object.
-  ClusterBatchSize BatchSize() { return FindRoot()->cluster_batch_size_; }
+  const ClusterBatchSize& BatchSize() const { return batch_size_; }
 
   // Returns the device name of the cluster and compresses the path from this
   // object to the root object.
-  const DeviceNameUtils::ParsedName& DeviceName() {
-    return FindRoot()->cluster_device_name_;
-  }
+  const DeviceNameUtils::ParsedName& DeviceName() const { return device_name_; }
 
-  // Merges this cluster with 'other'. This cluster's size_ is updated to
-  // the size of the merged cluster; the size_ of 'other' becomes inaccessible
-  // as only the size_ of the root object is accessible.
-  Status Merge(UnionFind* other);
-
-  // Retrieves the value for the root of the cluster.
-  T& ParentValue() { return FindRoot()->value_; }
-
-  // Returns the value for the object.
-  T& Value() { return value_; }
+  Status Merge(const ClusterProperty& other);
 
  private:
-  // Returns the root object for the cluster and compresses the path from this
+  ClusterBatchSize batch_size_;
+  DeviceNameUtils::ParsedName device_name_;
+};
+
+// Represents a disjoint set of copyable value with type T and accumulated
+// property of the values with type P. Most of the methods in this class are
+// side-effecting as they also compress the path from the object to the parent
+// of its containing set.
+template <typename T, typename P = ClusterProperty>
+class UnionFind {
+ public:
+  UnionFind() : size_(1), parent_(nullptr) {}
+  UnionFind(const T& v, const P& p)
+      : size_(1), parent_(nullptr), value_(v), property_(p) {}
+  UnionFind(const T& v, P&& p)
+      : size_(1), parent_(nullptr), value_(v), property_(p) {}
+
+  // Returns the number of elements in the set and compresses the path from
+  // this object to the root of the set.
+  int Size() { return FindRoot()->size_; }
+
+  // Returns the accumulated property of all the elements in the set and
+  // compresses the path from this object to the root of the set.
+  const P& Property() { return FindRoot()->property_; }
+
+  // Merges this set with 'other'. This updates the size_ and property_ of the
+  // set. The size_ and property_ of 'other' becomes inaccessible as only the
+  // size_ and property_ of the root of the set is accessible.
+  Status Merge(UnionFind* other);
+
+  // Retrieves the value for the root of the set.
+  const T& ParentValue() { return FindRoot()->value_; }
+
+  // Returns the value for the object.
+  const T& Value() const { return value_; }
+
+ private:
+  // Returns the root object for the set and compresses the path from this
   // object to the root object.
   UnionFind* FindRoot();
 
   int size_;
-  ClusterBatchSize cluster_batch_size_;
-  DeviceNameUtils::ParsedName cluster_device_name_;
   UnionFind* parent_;
   T value_;
+  P property_;
 };
 
-template <typename T>
-Status UnionFind<T>::Merge(UnionFind* other) {
+template <typename T, typename P>
+Status UnionFind<T, P>::Merge(UnionFind* other) {
   UnionFind<T>* a = FindRoot();
   UnionFind<T>* b = other->FindRoot();
   if (a == b) return Status::OK();
 
-  ClusterBatchSize batch_size = a->cluster_batch_size_;
-  if (!batch_size.MergeIfCompatible(other->cluster_batch_size_)) {
-    return errors::Internal(
-        "trying to merge clusters with incompatible batch sizes.");
-  }
-
-  absl::optional<DeviceNameUtils::ParsedName> device_name =
-      MergeIfCompatible(a->cluster_device_name_, other->cluster_device_name_);
-  if (!device_name.has_value()) {
-    return errors::Internal(
-        "trying to merge clusters with incompatible device assignment.");
-  }
-
-  a->cluster_batch_size_ = batch_size;
-  a->cluster_device_name_ = *device_name;
+  P merged_property(a->property_);
+  TF_RETURN_IF_ERROR(merged_property.Merge(b->property_));
   b->parent_ = a;
   a->size_ += b->size_;
+  a->property_ = std::move(merged_property);
   return Status::OK();
 }
 
-template <typename T>
-UnionFind<T>* UnionFind<T>::FindRoot() {
+template <typename T, typename P>
+UnionFind<T, P>* UnionFind<T, P>::FindRoot() {
   if (!parent_) return this;
   // Path compression: update intermediate nodes to point to the root of the
   // equivalence class.

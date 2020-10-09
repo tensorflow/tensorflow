@@ -140,7 +140,7 @@ class ExtractElementOpConversion
       ConversionPatternRewriter &rewriter) const final {
     ExtractElementOpAdaptor adaptor(operands);
 
-    if (!adaptor.aggregate().getType().isa<MemRefType>()) {
+    if (!adaptor.aggregate().getType().isa<BaseMemRefType>()) {
       return failure();
     }
 
@@ -159,14 +159,10 @@ class TensorCastOpConverter
   LogicalResult matchAndRewrite(
       TensorCastOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
-    auto tensor_ty = op.getType().dyn_cast<RankedTensorType>();
-    if (!tensor_ty) return failure();
-
     Value arg = operands.front();
-    auto arg_ty = arg.getType().dyn_cast<MemRefType>();
-    if (!arg_ty) return failure();
+    if (!arg.getType().isa<BaseMemRefType>()) return failure();
 
-    auto result_ty = converter->convertType(tensor_ty);
+    auto result_ty = converter->convertType(op.getType());
     rewriter.replaceOpWithNewOp<MemRefCastOp>(op, arg, result_ty);
 
     return success();

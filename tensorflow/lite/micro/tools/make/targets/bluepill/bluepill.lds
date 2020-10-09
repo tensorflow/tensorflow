@@ -20,7 +20,7 @@ limitations under the License.
 
 /*
  * 0x00000000 - 0x07ffffff - aliased to flash or sys memory depending on BOOT jumpers.
- * 0x08000000 - 0x0807ffff - Flash.
+ * 0x08000000 - 0x080fffff - Flash.
  * 0x1ffff000 - 0x1ffff7ff - Boot firmware in system memory.
  * 0x1ffff800 - 0x1fffffff - Option bytes.
  * 0x20000000 - 0x2003ffff - SRAM.
@@ -32,7 +32,7 @@ ENTRY(_main)
 
 MEMORY {
 RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 256K
-FLASH (rx) : ORIGIN = 0x8000000, LENGTH = 512K
+FLASH (rx) : ORIGIN = 0x8000000, LENGTH = 1024K
 }
 
 /* Compute where the stack ends rather than hard coding it */

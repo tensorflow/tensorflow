@@ -155,6 +155,10 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       the number of unique tokens in the vocabulary is less than max_tokens,
       resulting in a tensor of shape [batch_size, max_tokens] regardless of
       vocabulary size. Defaults to True.
+    vocabulary: An optional list of vocabulary terms, or a path to a text file
+      containing a vocabulary to load into this layer. The file should contain
+      one token per line. If the list or file contains the same token multiple
+      times, an error will be thrown.
 
   Example:
   This example instantiates a TextVectorization layer that lowercases text,
@@ -196,6 +200,43 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   array([[2, 1, 4, 0],
          [1, 3, 0, 0]])
 
+  Example:
+  This example instantiates a TextVectorization layer by passing a list
+  of vocabulary terms to the layer's __init__ method.
+
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.INT,
+        vocabulary=vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+
+    output_dataset = model.predict(input_array)
+  >>> vocab_data = ["earth", "wind", "and", "fire"]
+  >>> max_len = 4  # Sequence length to pad the outputs to.
+  >>>
+  >>> # Create the layer, passing the vocab directly. You can also pass the
+  >>> # vocabulary arg a path to a file containing one vocabulary word per
+  >>> # line.
+  >>> vectorize_layer = TextVectorization(
+  ...  max_tokens=max_features,
+  ...  output_mode='int',
+  ...  output_sequence_length=max_len,
+  ...  vocabulary=vocab_data)
+  >>>
+  >>> # Because we've passed the vocabulary directly, we don't need to adapt
+  >>> # the layer - the vocabulary is already set. The vocabulary contains the
+  >>> # padding token ('') and OOV token ('[UNK]') as well as the passed tokens.
+  >>> vectorize_layer.get_vocabulary()
+  ['', '[UNK]', 'earth', 'wind', 'and', 'fire']
+
   """
   # TODO(momernick): Add an examples section to the docstring.
 
@@ -207,6 +248,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
                output_mode=INT,
                output_sequence_length=None,
                pad_to_max_tokens=True,
+               vocabulary=None,
                **kwargs):
 
     # This layer only applies to string processing, and so should only have
@@ -295,7 +337,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
-        max_tokens=max_tokens, mask_token=mask_token)
+        max_tokens=max_tokens, mask_token=mask_token, vocabulary=vocabulary)
 
     # If this layer is configured for string or integer output, we do not
     # create a vectorization layer (as the output is not vectorized).
@@ -404,6 +446,9 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     return self._index_lookup_layer.get_vocabulary()
 
   def get_config(self):
+    # This does not include the 'vocabulary' arg, since if the vocab was passed
+    # at init time it's now stored in variable state - we don't need to
+    # pull it off disk again.
     config = {
         "max_tokens": self._max_tokens,
         "standardize": self._standardize,

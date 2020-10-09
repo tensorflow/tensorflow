@@ -576,6 +576,11 @@ class Interpreter {
   const Subgraph& primary_subgraph() const {
     return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
+
+  /// WARNING: Experimental interface, subject to change
+  // Get the error reporter associated with this interpreter.
+  ErrorReporter* error_reporter() const { return error_reporter_; }
+
 #endif  // DOXYGEN_SKIP
 
  private:
@@ -601,9 +606,6 @@ class Interpreter {
 
   // Returns true if cancellation function returns true.
   bool IsCancelled();
-
-  // Get the error reporter associated with this interpreter.
-  ErrorReporter* error_reporter() { return error_reporter_; }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

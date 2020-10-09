@@ -25,11 +25,12 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
+namespace {
 
-namespace xtensa {
-namespace hifimini {
+struct OpData {
+  int32_t zero_point = 0;
+  int scale_multiplier = 0;
+};
 
 void AffineQuantize(int scale_multiplier, const int32_t zero_point,
                     const RuntimeShape& input_shape, const int16_t* input_data,
@@ -98,16 +99,6 @@ void AffineQuantize(int scale_multiplier, const int32_t zero_point,
   }
 }
 
-}  // namespace hifimini
-}  // namespace xtensa
-
-namespace quantize {
-
-struct OpData {
-  int32_t zero_point = 0;
-  int scale_multiplier = 0;
-};
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
@@ -121,8 +112,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
 
   // TODO(b/155682734): Fix dangerous input/output scale ratio assumptions.
-  op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
-      0, input->params.scale / output->params.scale);
+  op_data->scale_multiplier =
+      ops::micro::xtensa::hifimini::CreateQConstantForInt24(
+          0, input->params.scale / output->params.scale);
 
   op_data->zero_point = output->params.zero_point;
 
@@ -146,31 +138,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  xtensa::hifimini::AffineQuantize(
-      op_data->scale_multiplier, op_data->zero_point,
-      tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<int16_t>(input),
-      tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<int8_t>(output));
+  AffineQuantize(op_data->scale_multiplier, op_data->zero_point,
+                 tflite::micro::GetTensorShape(input),
+                 tflite::micro::GetTensorData<int16_t>(input),
+                 tflite::micro::GetTensorShape(output),
+                 tflite::micro::GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
-}  // namespace quantize
+}  // namespace
 
-// This Op (QUANTIZE) quantizes the input and produces quantized output.
-// AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8_t or uint8_t format.
 TfLiteRegistration Register_QUANTIZE() {
-  return {/*init=*/quantize::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/quantize::Prepare,
-          /*invoke=*/quantize::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

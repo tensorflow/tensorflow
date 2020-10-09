@@ -5,8 +5,9 @@ func @main(tensor<3x!quant.uniform<i8:f32, 1.0>>) -> tensor<3x!quant.uniform<i8:
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
   // CHECK-NEXT:  operator_codes: [ {
-  // CHECK-NEXT:    builtin_code: MUL,
-  // CHECK-NEXT:    version: 3
+  // CHECK-NEXT:    deprecated_builtin_code: 18,
+  // CHECK-NEXT:    version: 3,
+  // CHECK-NEXT:    builtin_code: MUL
   // CHECK-NEXT:  } ],
   // CHECK-NEXT:  subgraphs: [ {
   // CHECK-NEXT:    tensors: [ {

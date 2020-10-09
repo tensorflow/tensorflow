@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
@@ -59,6 +59,7 @@ const double kNumPsPerMs = 1000000000.0;
 // input-bound; else if it is considered HIGHLY input-bound.
 constexpr double kModeratelyInfeedBoundThresholdInPercent = 5;
 constexpr double kHighlyInfeedBoundThresholdInPercent = 20;
+
 // If the percentage of step time that is due to outfeed is less than
 // kModeratelyOutfeedBoundThresholdInPercent, it is considered NOT
 // output-bound; else if it is less than
@@ -66,6 +67,7 @@ constexpr double kHighlyInfeedBoundThresholdInPercent = 20;
 // output-bound; else if it is considered HIGHLY output-bound.
 constexpr double kModeratelyOutfeedBoundThresholdInPercent = 5;
 constexpr double kHighlyOutfeedBoundThresholdInPercent = 20;
+
 // If the percentage of step time that is due to kernel launch is less than
 // kModeratelyKernelLaunchBoundThresholdInPercent, it is considered NOT
 // kernel-launch bound; else if it is less than
@@ -73,6 +75,7 @@ constexpr double kHighlyOutfeedBoundThresholdInPercent = 20;
 // kernel-launch bound; else if it is considered HIGHLY kernel-launch bound.
 constexpr double kModeratelyKernelLaunchBoundThresholdInPercent = 3;
 constexpr double kHighlyKernelLaunchBoundThresholdInPercent = 15;
+
 // If the percentage of step time that is due to all other time is less than
 // kModeratelyAllOtherBoundThresholdInPercent, it is considered NOT
 // all-other bound; else if it is less than
@@ -80,6 +83,16 @@ constexpr double kHighlyKernelLaunchBoundThresholdInPercent = 15;
 // all-other bound; else if it is considered HIGHLY all-other bound.
 constexpr double kModeratelyAllOtherBoundThresholdInPercent = 3;
 constexpr double kHighlyAllOtherBoundThresholdInPercent = 15;
+
+// If the percentage of step time that is due to device collectives is less than
+// kModeratelyDeviceCollectivesBoundThresholdInPercent, it is considered NOT
+// device-collectives bound; else if it is less than
+// kHighlyDeviceCollectivesBoundThresholdInPercent, it is considered MODERATELY
+// device-collectives  bound; else if it is considered HIGHLY device-collectives
+// bound.
+constexpr double kModeratelyDeviceCollectivesBoundThresholdInPercent = 3;
+constexpr double kHighlyDeviceCollectivesBoundThresholdInPercent = 15;
+
 // Section number of the host-analysis section in the input-pipeline analysis.
 constexpr int kHostAnalysisSectionNumber = 3;
 // Python-only explanation for "All Others" time.
@@ -125,6 +138,7 @@ GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
   Stat<double> output_ms;
   Stat<double> device_compute_ms;
   Stat<double> device_to_device_ms;
+  Stat<double> device_collectives_ms;
   Stat<double> host_compute_ms;
   Stat<double> host_prepare_ms;
   Stat<double> host_compile_ms;
@@ -146,6 +160,7 @@ GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
     output_ms.UpdateStat(details.output_ms());
     device_compute_ms.UpdateStat(details.device_compute_ms());
     device_to_device_ms.UpdateStat(details.device_to_device_ms());
+    device_collectives_ms.UpdateStat(details.device_collectives_ms());
     host_compute_ms.UpdateStat(details.host_compute_ms());
     host_prepare_ms.UpdateStat(details.host_prepare_ms());
     host_compile_ms.UpdateStat(details.host_compile_ms());
@@ -162,6 +177,8 @@ GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
       GetStepSummaryForSampleStats(device_compute_ms);
   *result.mutable_device_to_device_ms_summary() =
       GetStepSummaryForSampleStats(device_to_device_ms);
+  *result.mutable_device_collectives_ms_summary() =
+      GetStepSummaryForSampleStats(device_collectives_ms);
   *result.mutable_host_compute_ms_summary() =
       GetStepSummaryForSampleStats(host_compute_ms);
   *result.mutable_host_prepare_ms_summary() =
@@ -208,14 +225,13 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
                                   GetTimeInMs(type_ps, DEVICE_WAIT_HOST));
     details.set_output_ms(GetTimeInMs(type_ps, DEVICE_TO_HOST));
     details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE_16) +
-                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32) +
-                                  GetTimeInMs(type_ps, DEVICE_COLLECTIVES));
+                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32));
     details.set_device_to_device_ms(GetTimeInMs(type_ps, DEVICE_TO_DEVICE) +
                                     GetTimeInMs(type_ps, DEVICE_WAIT_DEVICE));
+    details.set_device_collectives_ms(GetTimeInMs(type_ps, DEVICE_COLLECTIVES));
     details.set_host_compute_ms(GetTimeInMs(type_ps, HOST_COMPUTE));
     details.set_host_prepare_ms(GetTimeInMs(type_ps, HOST_PREPARE));
     details.set_host_compile_ms(GetTimeInMs(type_ps, HOST_COMPILE));
-
     result.add_step_details()->PackFrom(details);
 
     const double input_percent_of_step_time =
@@ -360,14 +376,36 @@ double RatioOfHostToDeviceTimeToStepTime(
   return 0.0;
 }
 
+void DeviceCollectivesAnalysis(double device_collectives_percent,
+                               std::string* device_collectives_classification,
+                               std::string* device_collectives_statement) {
+  if (device_collectives_percent >=
+      kHighlyDeviceCollectivesBoundThresholdInPercent) {
+    *device_collectives_classification = "high";
+    *device_collectives_statement =
+        absl::StrCat(OneDigit(device_collectives_percent),
+                     " % of the total step time sampled is spent on 'Device "
+                     "Collective Communication'.");
+  } else if (device_collectives_percent >=
+             kModeratelyDeviceCollectivesBoundThresholdInPercent) {
+    *device_collectives_classification = "moderate";
+    *device_collectives_statement =
+        absl::StrCat(OneDigit(device_collectives_percent),
+                     " % of the total step time sampled is spent on 'Device "
+                     "Collective Communication'.");
+  } else {
+    *device_collectives_classification = "no";
+    *device_collectives_statement = "";
+  }
+}
+
 void KernelLaunchAnalysis(bool tfdata_used, double kernel_launch_percent,
                           std::string* kernel_launch_classification,
                           std::string* kernel_launch_statement) {
-  std::string percent_str = absl::StrFormat("%.1lf", kernel_launch_percent);
   if (kernel_launch_percent >= kHighlyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "high";
     *kernel_launch_statement = absl::StrCat(
-        percent_str,
+        OneDigit(kernel_launch_percent),
         " % of the total step time sampled is spent on 'Kernel Launch'.");
     if (tfdata_used) {
       absl::StrAppend(kernel_launch_statement, kKernelLaunchTfDataContention);
@@ -376,7 +414,7 @@ void KernelLaunchAnalysis(bool tfdata_used, double kernel_launch_percent,
              kModeratelyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "moderate";
     *kernel_launch_statement = absl::StrCat(
-        percent_str,
+        OneDigit(kernel_launch_percent),
         " % of the total step time sampled is spent on 'Kernel Launch'.");
     if (tfdata_used) {
       absl::StrAppend(kernel_launch_statement, kKernelLaunchTfDataContention);
@@ -395,15 +433,14 @@ void AllOtherAnalysis(bool all_other_reported, double all_other_percent,
     *all_other_statement = "";
     return;
   }
-  std::string percent_str = absl::StrFormat("%.1lf", all_other_percent);
   if (all_other_percent >= kHighlyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "high";
     *all_other_statement =
-        absl::StrCat(percent_str, kAllOthersPythonExplanation);
+        absl::StrCat(OneDigit(all_other_percent), kAllOthersPythonExplanation);
   } else if (all_other_percent >= kModeratelyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "moderate";
     *all_other_statement =
-        absl::StrCat(percent_str, kAllOthersPythonExplanation);
+        absl::StrCat(OneDigit(all_other_percent), kAllOthersPythonExplanation);
   } else {
     *all_other_classification = "no";
     *all_other_statement = "";
@@ -585,18 +622,18 @@ bool InputAnalysis(double input_percent, double all_other_percent,
                    std::string* input_classification,
                    std::string* input_statement) {
   absl::string_view non_input_time = "other time";
-  std::string infeed_percent_str = absl::StrFormat("%.1lf", input_percent);
   if (input_percent >= kHighlyInfeedBoundThresholdInPercent) {
     *input_classification = "host";
     *input_statement = absl::StrCat(
-        "Your program is HIGHLY input-bound because ", infeed_percent_str,
+        "Your program is HIGHLY input-bound because ", OneDigit(input_percent),
         "% of the total step time sampled is waiting for input. Therefore, you "
         "should first focus on reducing the input time.");
     return false;
   } else if (input_percent >= kModeratelyInfeedBoundThresholdInPercent) {
     *input_classification = "both";
     *input_statement = absl::StrCat(
-        "Your program is MODERATELY input-bound because ", infeed_percent_str,
+        "Your program is MODERATELY input-bound because ",
+        OneDigit(input_percent),
         "% of the total step time sampled is waiting for input. Therefore, "
         "you would need to reduce both the input time and ",
         non_input_time, ".");
@@ -605,41 +642,40 @@ bool InputAnalysis(double input_percent, double all_other_percent,
     // Input analysis says it is not input-bound, but "All-Other" time
     // is significant. It could still be input-bound (or Python overhead).
     *input_classification = "both";
-    std::string all_other_percent_str =
-        absl::StrFormat("%.1lf", all_other_percent);
     *input_statement = absl::StrCat(
         "Your program is POTENTIALLY input-bound because ",
-        all_other_percent_str,
+        OneDigit(all_other_percent),
         "% of the total step time sampled is spent on 'All Others' time (which "
         "could be due to I/O or Python execution or both).");
     return true;
   } else {
     // Defintely not input-bound.
     *input_classification = "device";
-    *input_statement = absl::StrCat(
-        "Your program is NOT input-bound because only ", infeed_percent_str,
-        "% of the total step time sampled is waiting for "
-        "input. Therefore, you should focus on "
-        "reducing ",
-        non_input_time, ".");
+    *input_statement =
+        absl::StrCat("Your program is NOT input-bound because only ",
+                     OneDigit(input_percent),
+                     "% of the total step time sampled is waiting for "
+                     "input. Therefore, you should focus on "
+                     "reducing ",
+                     non_input_time, ".");
     return false;
   }
 }
 
 void OutputAnalysis(double output_percent, std::string* output_classification,
                     std::string* output_statement) {
-  string tc_outfeed_percent_str = absl::StrFormat("%.1lf", output_percent);
   if (output_percent >= kHighlyOutfeedBoundThresholdInPercent) {
     *output_classification = "host";
     *output_statement = absl::StrCat(
-        "Your program is HIGHLY output-bound because ", tc_outfeed_percent_str,
+        "Your program is HIGHLY output-bound because ",
+        OneDigit(output_percent),
         "% of the total step time sampled is spent on output. Therefore, you "
         "should first focus on reducing the output time.");
   } else if (output_percent >= kModeratelyOutfeedBoundThresholdInPercent) {
     *output_classification = "both";
     *output_statement = absl::StrCat(
         "Your program is MODERATELY output-bound because ",
-        tc_outfeed_percent_str,
+        OneDigit(output_percent),
         "% of the total step time sampled is spent on output. Therefore, "
         "you would need to reduce both the output time and other time.");
   } else {
@@ -660,6 +696,7 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
   double total_host_compile_ms = 0;
   double total_device_compute_ms = 0;
   double total_device_to_device_ms = 0;
+  double total_device_collectives_ms = 0;
   double total_unknown_ms = 0;
 
   for (const google::protobuf::Any& step_details : any_step_details) {
@@ -677,6 +714,7 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
     total_host_prepare_ms += details.host_prepare_ms();
     total_device_compute_ms += details.device_compute_ms();
     total_device_to_device_ms += details.device_to_device_ms();
+    total_device_collectives_ms += details.device_collectives_ms();
     total_host_compute_ms += details.host_compute_ms();
     total_host_compile_ms += details.host_compile_ms();
     total_unknown_ms += details.unknown_time_ms();
@@ -692,23 +730,36 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
     analysis.set_kernel_launch_statement("");
     analysis.set_all_other_classification("no");
     analysis.set_all_other_statement("");
+    analysis.set_device_collectives_classification("no");
+    analysis.set_device_collectives_statement("");
     return analysis;
   }
   double input_percent = 100.0 * total_input_ms / total_step_time_ms;
   double output_percent = 100.0 * total_output_ms / total_step_time_ms;
   double compute_percent = 100.0 * total_device_compute_ms / total_step_time_ms;
+  double device_collectives_percent =
+      100.0 * total_device_collectives_ms / total_step_time_ms;
+
   // idle_percent includes host_prepare (i.e. kernel launch, device-to-device,
   // host compute, host compile, and unknown.
   double idle_percent =
-      std::max(0.0, 100.0 - input_percent - output_percent - compute_percent);
+      std::max(0.0, 100.0 - input_percent - output_percent - compute_percent -
+                        device_collectives_percent);
   double kernel_launch_percent =
       100.0 * total_host_prepare_ms / total_step_time_ms;
   double all_other_percent = 100.0 * total_unknown_ms / total_step_time_ms;
+
   std::string input_classification;
   std::string input_statement;
   bool all_other_reported =
       InputAnalysis(input_percent, all_other_percent, &input_classification,
                     &input_statement);
+
+  std::string device_collectives_classification;
+  std::string device_collectives_statement;
+  DeviceCollectivesAnalysis(device_collectives_percent,
+                            &device_collectives_classification,
+                            &device_collectives_statement);
 
   std::string kernel_launch_classification;
   std::string kernel_launch_statement;
@@ -732,6 +783,10 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
   analysis.set_kernel_launch_statement(kernel_launch_statement);
   analysis.set_all_other_classification(all_other_classification);
   analysis.set_all_other_statement(all_other_statement);
+  analysis.set_device_collectives_classification(
+      device_collectives_classification);
+  analysis.set_device_collectives_statement(device_collectives_statement);
+
   return analysis;
 }
 

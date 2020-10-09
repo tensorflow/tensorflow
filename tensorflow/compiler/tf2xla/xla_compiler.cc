@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -57,6 +55,11 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/util/dump_graph.h"
+
+#ifndef LIBTPU_ON_GCE
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
+#endif
 
 namespace tensorflow {
 namespace {
@@ -730,18 +733,30 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
+#ifdef LIBTPU_ON_GCE
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+    VLOG(1) << "MLIR is not supported in this environment.";
+  }
+  TF_RETURN_IF_ERROR(
+      CompileGraph(options, function_id, std::move(graph), args, result));
+#else
   if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
+    std::vector<std::string> control_rets;
+    for (const auto* control_ret_node : fbody->control_ret_nodes) {
+      control_rets.push_back(control_ret_node->name());
+    }
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
-        options_.device_type.type_string(), options.use_tuple_arg,
+        control_rets, options_.device_type.type_string(), options.use_tuple_arg,
         *options_.flib_def, debug_info, options_.shape_representation_fn,
         result));
   } else {
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }
+#endif
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
