@@ -739,7 +739,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       atexit.register(async_wait)
 
     # Flag to turn on VariablePolicy
-    self._use_var_policy = False
+    self._use_var_policy = True
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
