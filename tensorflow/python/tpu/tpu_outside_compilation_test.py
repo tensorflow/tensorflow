@@ -24,6 +24,7 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
 from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -492,6 +493,35 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
 
     def host_computation(x):
       scalar_summary_v2.scalar("x", x, step=0)
+      return x * 2.0
+
+    @def_function.function
+    def step():
+
+      def computation(x):
+        x = x + 1.0
+        y = host_computation(x)
+        return y + 1.0
+
+      return strategy.run(computation, args=(2.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
+    events = _events_from_logdir(self, logdir)
+    # There will be 2 entries: 1 summary file header entry, and 1 entry
+    # written by host.
+    self.assertLen(events, 2)
+    self.assertEqual(events[1].summary.value[0].tag, "x")
+
+  def testHistogramSummaryWithAutoOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      histogram_summary_v2.histogram("x", x, step=0)
       return x * 2.0
 
     @def_function.function
