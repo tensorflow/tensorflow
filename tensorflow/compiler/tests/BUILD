@@ -1282,6 +1282,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_oss",  # b/170479349
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",  # b/170479349
         "optonly",
