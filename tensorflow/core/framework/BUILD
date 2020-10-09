@@ -454,7 +454,7 @@ cc_library(
         "allocator.h",
     ],
     features = ["parse_headers"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":numeric_types",
         ":type_traits",
