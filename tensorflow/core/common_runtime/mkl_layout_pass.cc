@@ -408,7 +408,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.concatv2,
                       mkl_op_registry::GetMklOpName(csinfo_.concatv2),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, ConcatV2Rewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.conjugate_transpose,
          mkl_op_registry::GetMklOpName(csinfo_.conjugate_transpose),
@@ -553,7 +553,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_concatv2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_concatv2),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, ConcatV2Rewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
@@ -1500,6 +1500,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       return true;
     }
     return false;
+  }
+  // For oneDNN, only int32 is supported for axis data type
+  static bool ConcatV2Rewrite(const Node* n) {
+    DataType T;
+    GetNodeAttr(n->def(), "Tidx", &T);
+    return (T == DT_INT32);
   }
 
   static bool DequantizeRewrite(const Node* n) {
