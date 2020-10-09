@@ -29,6 +29,7 @@ enum class RecordedAllocationType {
   kTfLiteEvalTensorData,
   kPersistentTfLiteTensorData,
   kPersistentTfLiteTensorQuantizationData,
+  kPersistentBufferData,
   kTfLiteTensorVariableBufferData,
   kNodeAndRegistrationArray,
   kOpData,
@@ -66,6 +67,8 @@ class RecordingMicroAllocator : public MicroAllocator {
   // Logs out through the ErrorReporter all allocation recordings by type
   // defined in RecordedAllocationType.
   void PrintAllocations() const;
+
+  void* AllocatePersistentBuffer(size_t bytes) override;
 
  protected:
   TfLiteStatus AllocateNodeAndRegistrations(
@@ -109,6 +112,7 @@ class RecordingMicroAllocator : public MicroAllocator {
   RecordedAllocation recorded_tflite_eval_tensor_data_ = {};
   RecordedAllocation recorded_persistent_tflite_tensor_data_ = {};
   RecordedAllocation recorded_persistent_tflite_tensor_quantization_data_ = {};
+  RecordedAllocation recorded_persistent_buffer_data_ = {};
   RecordedAllocation recorded_tflite_tensor_variable_buffer_data_ = {};
   RecordedAllocation recorded_node_and_registration_array_data_ = {};
   RecordedAllocation recorded_op_data_ = {};

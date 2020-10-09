@@ -165,7 +165,7 @@ class MicroAllocator {
   // Allocates persistent buffer which has the same life time as the allocator.
   // The memory is immediately available and is allocated from the tail of the
   // arena.
-  void* AllocatePersistentBuffer(size_t bytes);
+  virtual void* AllocatePersistentBuffer(size_t bytes);
 
   // Register a scratch buffer of size `bytes` for Node with `node_id`.
   // This method only requests a buffer with a given size to be used after a

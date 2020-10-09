@@ -54,6 +54,8 @@ RecordedAllocation RecordingMicroAllocator::GetRecordedAllocation(
       return recorded_persistent_tflite_tensor_data_;
     case RecordedAllocationType::kPersistentTfLiteTensorQuantizationData:
       return recorded_persistent_tflite_tensor_quantization_data_;
+    case RecordedAllocationType::kPersistentBufferData:
+      return recorded_persistent_buffer_data_;
     case RecordedAllocationType::kTfLiteTensorVariableBufferData:
       return recorded_tflite_tensor_variable_buffer_data_;
     case RecordedAllocationType::kNodeAndRegistrationArray:
@@ -91,6 +93,8 @@ void RecordingMicroAllocator::PrintAllocations() const {
   PrintRecordedAllocation(
       RecordedAllocationType::kPersistentTfLiteTensorQuantizationData,
       "Persistent TfLiteTensor quantization data", "allocations");
+  PrintRecordedAllocation(RecordedAllocationType::kPersistentBufferData,
+                          "Persistent buffer data", "allocations");
   PrintRecordedAllocation(
       RecordedAllocationType::kTfLiteTensorVariableBufferData,
       "TfLiteTensor variable buffer data", "allocations");
@@ -99,6 +103,14 @@ void RecordingMicroAllocator::PrintAllocations() const {
                           "NodeAndRegistration structs");
   PrintRecordedAllocation(RecordedAllocationType::kOpData,
                           "Operator runtime data", "OpData structs");
+}
+
+void* RecordingMicroAllocator::AllocatePersistentBuffer(size_t bytes) {
+  RecordedAllocation allocations = SnapshotAllocationUsage();
+  void* buffer = MicroAllocator::AllocatePersistentBuffer(bytes);
+  RecordAllocationUsage(allocations, recorded_persistent_buffer_data_);
+
+  return buffer;
 }
 
 void RecordingMicroAllocator::PrintRecordedAllocation(
