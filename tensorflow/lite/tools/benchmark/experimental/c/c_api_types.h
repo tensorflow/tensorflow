@@ -421,7 +421,7 @@ typedef struct TfLiteCustomAllocation {
   size_t bytes;
 } TfLiteCustomAllocation;
 
-// An tensor in the interpreter system which is a wrapper around a buffer of
+// A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY
 typedef struct TfLiteTensor {
