@@ -61,7 +61,9 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
