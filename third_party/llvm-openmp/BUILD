@@ -5,7 +5,6 @@ exports_files(["LICENSE.txt"])
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
     "cmake_var_string",
-    "dict_add",
     "expand_cmake_vars",
 )
 load(
@@ -14,17 +13,17 @@ load(
 )
 
 genrule(
-    name = "il8n_id",
+    name = "kmp_il8n_id",
     srcs = [
         "runtime/tools/message-converter.pl",
         "runtime/src/i18n/en_US.txt",
     ],
     outs = ["include/kmp_i18n_id.inc"],
-    cmd = "$(location runtime/tools/message-converter.pl) --os=lin --prefix=kmp_i18n --enum=$@  $(location runtime/src/i18n/en_US.txt)",
+    cmd = "perl $(location runtime/tools/message-converter.pl) --os=lin --prefix=kmp_i18n --enum=$@  $(location runtime/src/i18n/en_US.txt)",
 )
 
 genrule(
-    name = "kmp_i18n_default",
+    name = "kmp_il8n_default",
     srcs = [
         "runtime/tools/message-converter.pl",
         "runtime/src/i18n/en_US.txt",
@@ -49,12 +48,12 @@ omp_vars = {
     "LIBOMP_ENABLE_ASSERTIONS": 1,
     "LIBOMP_ENABLE_SHARED": 1,
     "LIBOMP_LEGAL_ARCH": "Intel(R) 64",
-    "LIBOMP_LIB_FILE": "libiomp5.so",
+    "LIBOMP_LIB_FILE": "libiomp5",
     "LIBOMP_VERSION_MAJOR": 5,
     "LIBOMP_VERSION_MINOR": 0,
 }
 
-omp_all_cmake_vars = cmake_var_string(dict_add(omp_vars))
+omp_all_cmake_vars = cmake_var_string(omp_vars)
 
 expand_cmake_vars(
     name = "config_kmp",
@@ -73,7 +72,6 @@ expand_cmake_vars(
 cc_binary(
     name = "libiomp5.so",
     srcs = glob([
-        "runtime/src/*.h",
         "runtime/src/kmp_alloc.cpp",
         "runtime/src/kmp_atomic.cpp",
         "runtime/src/kmp_csupport.cpp",
@@ -109,8 +107,8 @@ cc_binary(
     ]) + [
         ":config_kmp",
         ":config_omp",
-        ":il8n_id",
-        ":kmp_i18n_default",
+        ":kmp_il8n_id",
+        ":kmp_il8n_default",
         ":ldscript",
     ],
     copts = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
